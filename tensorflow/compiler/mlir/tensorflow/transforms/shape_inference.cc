@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -1256,8 +1257,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
   tsl::Status status = loader->RefineDynamicShapes(input_shapes);
   if (!status.ok()) {
-    llvm::errs() << "Failed during XlaCallModule shape refinement: "
-                 << status.ToString();
     // Do not return false here.
     //
     // RefineDynamicShapes returns ok only when it produces full static shapes.
@@ -1266,6 +1265,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     // to abort here.
     // TODO(b/316639984): improve RefineDynamicShapes return values to include
     // these info.
+    VLOG(1) << "Failed during XlaCallModule shape refinement: " << status;
   }
   mlir::ResultRange op_results = op.getResults();
   // The main_outputs may include tokens that are not among the op_results;
@@ -1977,7 +1977,7 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
     slice_sizes_attr = attr;
   } else if (const auto it = results_.find(ValuePort(op.getSliceSizes()));
              it != results_.end() &&
-             llvm::isa<DenseIntElementsAttr>(it->second)) {
+             llvm::isa_and_nonnull<DenseIntElementsAttr>(it->second)) {
     slice_sizes_attr = llvm::cast<DenseIntElementsAttr>(it->second);
   } else {
     return false;

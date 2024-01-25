@@ -926,28 +926,6 @@ cc_library(
 )
 
 cc_library(
-    name = "lhlo_elemental_utils",
-    srcs = ["lhlo/transforms/lhlo_elemental_utils.cc"],
-    hdrs = ["lhlo/transforms/lhlo_elemental_utils.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":codegen_utils",
-        ":lhlo",
-        ":map_lmhlo_to_scalar_op",
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "legalize_to_linalg_utils",
     srcs = ["mhlo/utils/legalize_to_linalg_utils.cc"],
     hdrs = ["mhlo/utils/legalize_to_linalg_utils.h"],

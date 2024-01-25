@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
@@ -77,6 +78,12 @@ bool IsI32F32UniformQuantizedType(Type type);
 // Determines whether the storage type of a quantized type is supported by
 // `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
 bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type);
+
+// Returns true if a type is quantized tensor type.
+bool IsQuantizedTensorType(Type type);
+
+// Returns true if all operands and results are quantized.
+bool IsOpFullyQuantized(Operation* op);
 
 }  // namespace quant
 }  // namespace mlir

@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -94,6 +95,19 @@ static absl::Duration TerminateTimeout() {
 //===----------------------------------------------------------------------===//
 // NcclClique
 //===----------------------------------------------------------------------===//
+
+std::string NcclClique::DebugString() const {
+  std::string out = absl::StrFormat(
+      "NcclClique: clique_key: %s; hash(id): %d; size: %d; communicators: ",
+      value().clique_key.ToString(), absl::HashOf(value().clique_id),
+      value().communicators.size());
+  int32_t cnt = 0;
+  for (const auto& [rank, comm] : value().communicators) {
+    if (cnt++) absl::StrAppend(&out, ", ");
+    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank, comm.value());
+  }
+  return out;
+}
 
 namespace {
 // Container for initialized and ready to use local (in-process) NCCL cliques.
@@ -289,6 +303,10 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     // Create NCCL communicators from handles.
     absl::node_hash_map<int32_t, NcclComm> communicators;
     for (const auto& [rank, comm] : state->comms) {
+      if (*comm == nullptr) {
+        return absl::InternalError(absl::StrFormat(
+            "uninitialized NCCL communicator for rank %d", rank));
+      }
       communicators.try_emplace(rank, *comm);
     }
 
@@ -297,8 +315,17 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     // Create a new clique with given clique id and communicators.
     absl::MutexLock lock(&cliques.mu);
-    cliques.map.try_emplace(clique_key, clique_key, state->clique_id,
-                            std::move(communicators));
+    auto emplaced = cliques.map.try_emplace(
+        clique_key, clique_key, state->clique_id, std::move(communicators));
+
+    // We can have a race to create a clique for a given key, the winner inserts
+    // it into a map and the looser destroys all communicators.
+    if (!emplaced.second) {
+      VLOG(3) << "Clique already exists: "
+              << emplaced.first->second.DebugString();
+    } else {
+      VLOG(3) << "Created new clique: " << emplaced.first->second.DebugString();
+    }
   }
 
   // Do one more round of rendezvous to guarantee that all ranks that

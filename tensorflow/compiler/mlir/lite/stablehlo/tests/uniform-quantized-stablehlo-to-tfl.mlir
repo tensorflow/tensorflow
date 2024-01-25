@@ -506,8 +506,8 @@ func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_with_mult
  func.func @dot_general_full_integer(%arg0: tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x3xf32> {tf_saved_model.index_path = ["output"]}) {
     %0 = stablehlo.constant() {value = dense<1> : tensor<1024x3xi8>} : () -> tensor<1024x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+0:0>>
     %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+0:0>>, tensor<1024x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+0:0>>) -> tensor<1x3x!quant.uniform<i32:f32, 4.000000e+0:-127>>
-    %2 = stablehlo.uniform_quantize %1 : (tensor<1x3x!quant.uniform<i32:f32, 4.000000e+0:-127>>) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+0:-127>>
-    %3 = stablehlo.uniform_dequantize %2 : (tensor<1x3x!quant.uniform<i8:f32, 2.000000e+0:-127>>) -> tensor<1x3xf32>
+    %2 = stablehlo.uniform_quantize %1 : (tensor<1x3x!quant.uniform<i32:f32, 4.000000e+0:-127>>) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-127>>
+    %3 = stablehlo.uniform_dequantize %2 : (tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-127>>) -> tensor<1x3xf32>
     return %3 : tensor<1x3xf32>
   }
 
@@ -519,13 +519,34 @@ func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_with_mult
 
 // -----
 
+// Test that a `stablehlo.dot_general` with an i32 output remains unchanged when
+// it is not followed by a requantization (`stablehlo.quantize`).
+
+// CHECK-LABEL: dot_general_no_requantize
+func.func @dot_general_no_requantize(%arg0: tensor<1x4xf32>) -> tensor<1x3xf32> {
+  %0 = stablehlo.constant() {value = dense<5> : tensor<4x3xi8>} : () -> tensor<4x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+00>>
+  %1 = stablehlo.uniform_quantize %arg0 : (tensor<1x4xf32>) -> tensor<1x4x!quant.uniform<i8:f32, 3.000000e+00>>
+  %2 = stablehlo.dot_general %1, %0, contracting_dims = [1] x [0] : (tensor<1x4x!quant.uniform<i8:f32, 3.000000e+00>>, tensor<4x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+00>>) -> tensor<1x3x!quant.uniform<i32:f32, 5.000000e+00>>
+  %3 = stablehlo.uniform_dequantize %2 : (tensor<1x3x!quant.uniform<i32:f32, 5.000000e+00>>) -> tensor<1x3xf32>
+  return %3 : tensor<1x3xf32>
+}
+// CHECK: "tfl.quantize"
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.fully_connected
+// CHECK-NOT: tfl.batch_matmul
+// CHECK: stablehlo.uniform_dequantize
+
+// -----
+
+// Test that a quantized stablehlo.transpose is converted to tfl.transpose.
+
 // CHECK-LABEL: transpose
 // CHECK-SAME: %[[ARG0:.*]]: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
 func.func @transpose(
-    %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+0:-1>>
-  ) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:-1>> {
-  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+0:-1>>) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:-1>>
-  return %0 : tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:-1>>
+    %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
 }
 
 // CHECK-NOT: stablehlo.transpose
@@ -535,7 +556,7 @@ func.func @transpose(
 
 // -----
 
-// Test that a float stablehlo.transpose is not legalized to tfl.transpose.
+// Test that a float stablehlo.transpose is not converted to tfl.transpose.
 
 // CHECK-LABEL: float_transpose
 func.func @float_transpose(%arg0: tensor<2x3x4xf32>) -> tensor<4x3x2xf32> {
@@ -545,3 +566,105 @@ func.func @float_transpose(%arg0: tensor<2x3x4xf32>) -> tensor<4x3x2xf32> {
 
 // CHECK-NOT: tfl.transpose
 // CHECK: stablehlo.transpose
+
+// -----
+
+// Test that a quantized stablehlo.reshape is converted to tfl.reshape.
+
+// CHECK-LABEL: reshape
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @reshape(
+    %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<6x4x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = stablehlo.reshape %arg0 : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<6x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<6x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK-NOT: stablehlo.reshape
+// CHECK: %[[CST:.*]] = arith.constant dense<[6, 4]> : tensor<2xi32>
+// CHECK: %[[RESHAPE:.*]] = "tfl.reshape"(%[[ARG0]], %[[CST]]) : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<2xi32>) -> tensor<6x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[RESHAPE]]
+
+// -----
+
+// Test that a float stablehlo.reshape is not converted to tfl.reshape.
+
+// CHECK-LABEL: float_reshape
+func.func @float_reshape(%arg0: tensor<2x3x4xf32>) -> tensor<6x4xf32> {
+  %0 = stablehlo.reshape %arg0 : (tensor<2x3x4xf32>) -> tensor<6x4xf32>
+  return %0 : tensor<6x4xf32>
+}
+
+// CHECK-NOT: tfl.reshape
+// CHECK: stablehlo.reshape
+
+// -----
+
+// Test that a quantized stablehlo.select is converted to tfl.select_v2.
+
+// CHECK-LABEL: select
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1x3xi1>, %[[ARG1:.*]]: tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>, %[[ARG2:.*]]: tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @select(
+    %arg0: tensor<1x3xi1>,
+    %arg1: tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    %arg2: tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (
+    tensor<1x3xi1>,
+    tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK-NOT: stablehlo.select
+// CHECK: %[[SELECT:.*]] = "tfl.select_v2"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : (tensor<1x3xi1>, tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[SELECT]]
+
+// -----
+
+// Test that a float stablehlo.select is not converted to tfl.select_v2.
+
+
+// CHECK-LABEL: float_select
+func.func @float_select(%arg0: tensor<1x3xi1>, %arg1: tensor<1x3xf32>, %arg2: tensor<1x3xf32>) -> tensor<1x3xf32> {
+  %0 = "stablehlo.select"(%arg0, %arg1, %arg2) : (tensor<1x3xi1>, tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
+  return %0 : tensor<1x3xf32>
+}
+
+// CHECK-NOT: tfl.select_v2
+// CHECK: stablehlo.select
+
+// -----
+
+// Test that a quantized stablehlo.concatenate is converted to tfl.concatenation.
+
+// CHECK-LABEL: concatenate
+// CHECK-SAME: %[[ARG0:.*]]: tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>, %[[ARG1:.*]]: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @concatenate(
+    %arg0: tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    %arg1: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = "stablehlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (
+    tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK-NOT: stablehlo.concatenate
+// CHECK: %[[CONCAT:.*]] = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[CONCAT]]
+
+// -----
+
+// Test that a float stablehlo.concatenate is not converted to tfl.concatenation.
+
+// CHECK-LABEL: float_concatenate
+func.func @float_concatenate(%arg0: tensor<3x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<4x2xf32> {
+  %0 = "stablehlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x2xf32>, tensor<1x2xf32>) -> tensor<4x2xf32>
+  return %0 : tensor<4x2xf32>
+}
+
+// CHECK-NOT: tfl.concatenation
+// CHECK: stablehlo.concatenate

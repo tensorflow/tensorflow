@@ -158,7 +158,7 @@ lit_test_suite(
         ],
     ),
     args = if_cuda_is_configured([
-        "--param=GPU=a100",
+        "--param=GPU=a100_80",
     ]) + if_rocm_is_configured([
         "--param=GPU=mi200",
     ]),
@@ -179,11 +179,17 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "gpu_specs/a100.txtpb",
+        "gpu_specs/a100_80.txtpb",
         "gpu_specs/mi200.txtpb",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "all_gpu_specs",
+    data = glob(["gpu_specs/*.txtpb"]),
     visibility = ["//visibility:public"],
 )
 

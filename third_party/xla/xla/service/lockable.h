@@ -97,6 +97,9 @@ class Lockable {
 
   std::string ToString() const { return LockableName::ToString(value_); }
 
+ protected:
+  const T& value() const { return value_; }
+
  private:
   friend class Lock;
 

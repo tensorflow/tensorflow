@@ -298,6 +298,7 @@ cc_library(
     name = "trt_engine_resource_op_kernels",
     srcs = ["kernels/trt_engine_resource_ops.cc"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":trt_allocator",
@@ -994,6 +995,7 @@ tf_cuda_library(
     name = "trt_plugins",
     srcs = ["plugin/trt_plugin.cc"],
     hdrs = ["plugin/trt_plugin.h"],
+    features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",

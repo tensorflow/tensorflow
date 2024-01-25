@@ -7,8 +7,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization:__subpackages__",
     ],
     licenses = ["notice"],
 )

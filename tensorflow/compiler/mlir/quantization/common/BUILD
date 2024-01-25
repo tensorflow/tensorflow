@@ -73,7 +73,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:test",

@@ -27,12 +27,25 @@ include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 // Pattern rules for lifting ops with bias as functions
 //===----------------------------------------------------------------------===//
 
+def LiftDotGeneralWithBiasSameShape : Pat<
+  (StableHLO_AddOp:$res
+    (StableHLO_DotGeneralOp
+        $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+    $bias),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_same_shape_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias)], [], (addBenefit 5)>;
+
 def LiftConvWithBias : Pat<
   (StableHLO_AddOp:$res
     (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
         $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
         $feature_group_count, $batch_group_count, $precision_config),
-    $bias),
+    (StableHLO_BroadcastInDimOp $bias, $dims)),
   (LiftAsTFXlaCallModule<"composite_conv_with_bias_fn">
     (ArgumentList $lhs, $rhs, $bias),
     (ResultList $res),
@@ -52,7 +65,7 @@ def LiftDotGeneralWithBias : Pat<
   (StableHLO_AddOp:$res
     (StableHLO_DotGeneralOp
         $lhs, $rhs, $dot_dimension_numbers, $precision_config),
-    $bias),
+    (StableHLO_BroadcastInDimOp $bias, $dims)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_fn">
     (ArgumentList $lhs, $rhs, $bias),
     (ResultList $res),
@@ -216,13 +229,29 @@ def LiftDotGeneralWithRelu6 : Pat<
 // Pattern rules for lifting ops with bias and activation as functions
 //===----------------------------------------------------------------------===//
 
+def LiftDotGeneralWithBiasSameShapeAndRelu : Pat<
+  (StableHLO_MaxOp:$res
+    (StableHLO_AddOp
+      (StableHLO_DotGeneralOp
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+      $bias),
+    (StableHLO_ConstantOp $cst)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_same_shape_and_relu_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res),
+   (FloatValueEquals<"0"> $cst), (IsStableHLOConstantOp $bias)], [], (addBenefit 10)>;
+
 def LiftConvWithBiasAndRelu : Pat<
   (StableHLO_MaxOp:$res
     (StableHLO_AddOp
       (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
           $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
           $feature_group_count, $batch_group_count, $precision_config),
-      $bias),
+      (StableHLO_BroadcastInDimOp $bias, $dims)),
     (StableHLO_ConstantOp $cst)),
   (LiftAsTFXlaCallModule<"composite_conv_with_bias_and_relu_fn">
     (ArgumentList $lhs, $rhs, $bias),
@@ -245,7 +274,7 @@ def LiftDotGeneralWithBiasAndRelu : Pat<
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp
           $lhs, $rhs, $dot_dimension_numbers, $precision_config),
-      $bias),
+      (StableHLO_BroadcastInDimOp $bias, $dims)),
     (StableHLO_ConstantOp $cst)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu_fn">
     (ArgumentList $lhs, $rhs, $bias),
@@ -303,6 +332,21 @@ def LiftDotGeneralWithBiasAndReluDynamic : Pat<
   [(IsNotInLiftedFunc $res),
    (FloatValueEquals<"0"> $cst), (IsStableHLOConstantOp $bias)], [], (addBenefit 15)>;
 
+def LiftDotGeneralWithBiasSameShapeAndRelu6 : Pat<
+  (StableHLO_ClampOp:$res
+    (StableHLO_ConstantOp $cst_0),
+    (StableHLO_AddOp
+      (StableHLO_DotGeneralOp
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+      $bias),
+    (StableHLO_ConstantOp $cst_1)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_same_shape_and_relu6_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 10)>;
 
 def LiftConvWithBiasAndRelu6 : Pat<
   (StableHLO_ClampOp:$res
@@ -311,7 +355,7 @@ def LiftConvWithBiasAndRelu6 : Pat<
       (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
           $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
           $feature_group_count, $batch_group_count, $precision_config),
-      $bias),
+      (StableHLO_BroadcastInDimOp $bias, $dims)),
     (StableHLO_ConstantOp $cst_1)),
   (LiftAsTFXlaCallModule<"composite_conv_with_bias_and_relu6_fn">
     (ArgumentList $lhs, $rhs, $bias),
@@ -334,7 +378,7 @@ def LiftDotGeneralWithBiasAndRelu6 : Pat<
     (StableHLO_AddOp
       (StableHLO_DotGeneralOp
           $lhs, $rhs, $dot_dimension_numbers, $precision_config),
-      $bias),
+      (StableHLO_BroadcastInDimOp $bias, $dims)),
     (StableHLO_ConstantOp $cst_1)),
   (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu6_fn">
     (ArgumentList $lhs, $rhs, $bias),

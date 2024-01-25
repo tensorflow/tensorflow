@@ -73,10 +73,11 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
 
   const SmallVector<NamedAttribute>& attributes = {
-      builder_.getNamedAttr("precision_config",
-                            builder_.getArrayAttr(SmallVector<Attribute>(
-                                1, stablehlo::PrecisionAttr::get(
-                                       &ctx_, stablehlo::Precision::DEFAULT)))),
+      builder_.getNamedAttr(
+          "precision_config",
+          builder_.getArrayAttr(SmallVector<Attribute>(
+              1, mlir::stablehlo::PrecisionAttr::get(
+                     ctx_.get(), mlir::stablehlo::Precision::DEFAULT)))),
   };
   Operation* lifted_op =
       LiftAsFunctionCall(builder_, dot_general_op->getLoc(),
@@ -99,8 +100,8 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
   EXPECT_EQ(
       lifted_dot_general_op->getAttr("precision_config").cast<ArrayAttr>(),
       builder_.getArrayAttr(SmallVector<Attribute>(
-          1, stablehlo::PrecisionAttr::get(&ctx_,
-                                           stablehlo::Precision::DEFAULT))));
+          1, mlir::stablehlo::PrecisionAttr::get(
+                 ctx_.get(), mlir::stablehlo::Precision::DEFAULT))));
 }
 
 TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {

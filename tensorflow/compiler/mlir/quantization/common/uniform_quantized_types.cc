@@ -16,12 +16,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
@@ -163,6 +165,19 @@ bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type) {
                 "i16 for the storage type of uniform quantized type. Got: "
              << storage_type << ".\n");
   return false;
+}
+
+bool IsQuantizedTensorType(Type type) {
+  if (!type.isa<TensorType>()) {
+    return false;
+  }
+  Type element_type = type.cast<TensorType>().getElementType();
+  return element_type.isa<QuantizedType>();
+}
+
+bool IsOpFullyQuantized(Operation* op) {
+  return llvm::all_of(op->getOperandTypes(), IsQuantizedTensorType) &&
+         llvm::all_of(op->getResultTypes(), IsQuantizedTensorType);
 }
 
 }  // namespace quant

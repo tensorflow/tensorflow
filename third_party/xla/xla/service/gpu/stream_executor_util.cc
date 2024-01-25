@@ -573,16 +573,16 @@ absl::Status NoAlgorithmSuppliedInternalError(
     std::optional<std::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
-    msg << "The are no algorithm candiates for computing: \n  "
+    msg << "There are no algorithm candiates for computing: \n  "
         << instr_str.value()
         << "\nThis likely means that the instruction shape is not supported by "
            "the target GPU library.";
   } else {
-    msg << "The are no algorithm candiates for computing the instruction.\n"
+    msg << "There are no algorithm candiates for computing the instruction.\n"
            "This likely means that the instruction shape is not supported by "
            "the target GPU library.";
   }
-  return InternalError("%s", msg.str());
+  return Internal("%s", msg.str());
 }
 
 void SortAutotuningResultsByRunTime(std::vector<AutotuneResult>& results) {

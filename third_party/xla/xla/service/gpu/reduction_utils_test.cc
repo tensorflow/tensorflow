@@ -65,6 +65,36 @@ TEST_F(ReductionUtilsTest, ReductionsAreMultioutputFusionCompatible) {
 }
 
 TEST_F(ReductionUtilsTest,
+       ReductionsWithSameCanonicalizedDimsAreMultioutputFusionCompatible) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_sibling1 {
+      p_0 = f32[32,64]{1,0} parameter(0)
+      constant = f32[] constant(0)
+      ROOT reduce = f32[32]{0} reduce(p_0, constant), dimensions={1}, to_apply=scalar_add
+    }
+
+    fused_sibling2 {
+      p_0 = f32[32,64]{1,0} parameter(0)
+      bitcast = f32[32,8,8]{2,1,0} bitcast(p_0)
+      constant = f32[] constant(0)
+      ROOT reduce = f32[32]{0} reduce(bitcast, constant), dimensions={1,2}, to_apply=scalar_add
+    }
+
+    ENTRY entry {
+      p_0 = f32[32,64]{1,0} parameter(0)
+      fusion1 = f32[32]{0} fusion(p_0), kind=kInput, calls=fused_sibling1
+      fusion2 = f32[32]{0} fusion(p_0), kind=kInput, calls=fused_sibling2
+      ROOT root = (f32[32]{0}, f32[32]{0}) tuple(fusion1, fusion2)
+    })"))
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* fusion1 = root->operand(0);
+  const HloInstruction* fusion2 = root->operand(1);
+  EXPECT_TRUE(AreReductionsMultiOutputFusionCompatible(
+      fusion1->fused_expression_root(), fusion2->fused_expression_root()));
+}
+
+TEST_F(ReductionUtilsTest,
        ReductionsAreNotMultioutputFusionCompatible_DifferentOperandShapes) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_sibling1 {

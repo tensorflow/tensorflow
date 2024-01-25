@@ -207,122 +207,118 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   auto tile_to_inout = TileToInoutPermutation(permutation);
   auto input_shape = Permute(tiling_scheme_.GetShape(), tile_to_inout);
-  TileElementGenerator tile_generator =
-      [&](const TilingThreadIdInfo& thread_id_info,
-          const llvm_ir::IrArray::Index& index,
-          std::array<llvm::Value*, 2> tile_dimensions) {
-        // Copy input parameter values to shared memory buffers:
-        // tile[thread_id_y, thread_id_x] = input[index]
-        EmitTile(
-            builder, tiling_scheme_, index, thread_id_info, tile_dimensions,
-            [&](const TilingThreadIdInfo& thread_id_info,
-                const llvm_ir::IrArray::Index& tiled_index, llvm::Value* y_loc,
-                llvm::Value* x_loc) {
-              auto index = PermuteIndex(tiled_index, tile_to_inout);
-              for (const auto& tr : transposes) {
-                auto input_gen =
-                    *fused_emitter.GetGenerator(*tr.instr->operand(0));
-                auto input_index = GetUnnormalizedIndex(
-                    index, tr.instr->operand(0)->shape(), builder, input_shape);
-                llvm::Value* value = *input_gen(input_index);
-                llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                    builder, tiles[tr.instr], {y_loc, x_loc});
+  auto tile_generator = [&](const TilingThreadIdInfo& thread_id_info,
+                            const llvm_ir::IrArray::Index& tile_start_index,
+                            std::array<llvm::Value*, 2> tile_dimensions) {
+    // Copy input parameter values to shared memory buffers:
+    // tile[thread_id_y, thread_id_x] = input[index]
+    EmitTile(
+        builder, tiling_scheme_, thread_id_info, tile_dimensions,
+        [&](llvm::Value* y_loc, llvm::Value* x_loc) {
+          auto index = PermuteIndex(
+              tile_start_index
+                  .AddOffsetToDim(y_loc, TilingScheme::DimY, builder)
+                  .AddOffsetToDim(x_loc, TilingScheme::DimX, builder),
+              tile_to_inout);
+          for (const auto& tr : transposes) {
+            auto input_gen = *fused_emitter.GetGenerator(*tr.instr->operand(0));
+            auto input_index = GetUnnormalizedIndex(
+                index, tr.instr->operand(0)->shape(), builder, input_shape);
+            llvm::Value* value = *input_gen(input_index);
+            llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
+                builder, tiles[tr.instr], {y_loc, x_loc});
 
-                builder->CreateStore(value, addr);
-              }
+            builder->CreateStore(value, addr);
+          }
 
-              // Compute all extra output values before writing them. This
-              // avoids overwriting aliased input/output values before all reads
-              // occurred.
-              std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
-                                     llvm::Value*>>
-                  scheduled_writes;
-              for (const auto& [output_idx, root] : extra_outputs) {
-                llvm_ir::IrArray::Index extra_output_index =
-                    GetUnnormalizedIndex(index, root->shape(), builder,
-                                         input_shape);
-                auto output_gen = *fused_emitter.GetGenerator(*root);
-                llvm::Value* output_value = *output_gen(extra_output_index);
-                scheduled_writes.emplace_back(outputs[output_idx],
-                                              extra_output_index, output_value);
-              }
+          // Compute all extra output values before writing them. This
+          // avoids overwriting aliased input/output values before all reads
+          // occurred.
+          std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
+                                 llvm::Value*>>
+              scheduled_writes;
+          for (const auto& [output_idx, root] : extra_outputs) {
+            llvm_ir::IrArray::Index extra_output_index = GetUnnormalizedIndex(
+                index, root->shape(), builder, input_shape);
+            auto output_gen = *fused_emitter.GetGenerator(*root);
+            llvm::Value* output_value = *output_gen(extra_output_index);
+            scheduled_writes.emplace_back(outputs[output_idx],
+                                          extra_output_index, output_value);
+          }
 
-              for (const auto& [output, idx, value] : scheduled_writes) {
-                output.EmitWriteArrayElement(idx, value, builder);
-              }
-            });
+          for (const auto& [output, idx, value] : scheduled_writes) {
+            output.EmitWriteArrayElement(idx, value, builder);
+          }
+        });
 
-        EmitSyncThreads(builder, ir_emitter_context);
+    EmitSyncThreads(builder, ir_emitter_context);
 
-        llvm_ir::IrArray::Index output_tile_index =
-            PermuteIndex(index, {0, 2, 1});
-        std::array<llvm::Value*, 2> transposed_tile_dimensions = {
-            tile_dimensions[1], tile_dimensions[0]};
+    auto output_tile_index = PermuteIndex(tile_start_index, {0, 2, 1});
+    std::array<llvm::Value*, 2> transposed_tile_dimensions = {
+        tile_dimensions[1], tile_dimensions[0]};
 
-        EmitTile(
-            builder, tiling_scheme_, output_tile_index, thread_id_info,
-            transposed_tile_dimensions,
-            /*emit_elem_function=*/
-            [&](const TilingThreadIdInfo& thread_id_info,
-                const llvm_ir::IrArray::Index& tiled_index, llvm::Value* y_loc,
-                llvm::Value* x_loc) {
-              auto index = PermuteIndex(tiled_index, tile_to_inout);
-              for (const auto& tr : transposes) {
-                std::vector<llvm::Value*> idx = {x_loc, y_loc};
-                llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
-                    builder, tiles[tr.instr], idx);
-                llvm::Type* type = thread_id_info.GEPIntoSharedMemoryType(
-                    tiles[tr.instr], idx);
-                llvm::Value* loaded =
-                    builder->CreateLoad(type, gep, "tiled_buffer");
+    EmitTile(
+        builder, tiling_scheme_, thread_id_info, transposed_tile_dimensions,
+        /*emit_elem_function=*/
+        [&](llvm::Value* y_loc, llvm::Value* x_loc) {
+          auto index = PermuteIndex(
+              output_tile_index
+                  .AddOffsetToDim(y_loc, TilingScheme::DimY, builder)
+                  .AddOffsetToDim(x_loc, TilingScheme::DimX, builder),
+              tile_to_inout);
+          for (const auto& tr : transposes) {
+            std::vector<llvm::Value*> idx = {x_loc, y_loc};
+            llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
+                builder, tiles[tr.instr], idx);
+            llvm::Type* type =
+                thread_id_info.GEPIntoSharedMemoryType(tiles[tr.instr], idx);
+            llvm::Value* loaded =
+                builder->CreateLoad(type, gep, "tiled_buffer");
 
-                FusedIrEmitter fused_emitter(elemental_emitter);
-                fused_emitter.BindGenerator(
-                    *tr.instr,
-                    [&](const llvm_ir::IrArray::Index&) { return loaded; });
-                for (int64_t i = 0;
-                     i <
-                     fusion.fused_instructions_computation()->num_parameters();
-                     ++i) {
-                  llvm_ir::IrArray ir_array = inputs[i];
-                  HloInstruction* fused_operand = fusion.fused_parameter(i);
-                  fused_emitter.BindGenerator(
-                      *fused_operand,
-                      [=](const llvm_ir::IrArray::Index& index) {
-                        return ir_array.EmitReadArrayElement(
-                            index, builder, fused_operand->name());
-                      });
-                }
+            FusedIrEmitter fused_emitter(elemental_emitter);
+            fused_emitter.BindGenerator(
+                *tr.instr,
+                [&](const llvm_ir::IrArray::Index&) { return loaded; });
+            for (int64_t i = 0;
+                 i < fusion.fused_instructions_computation()->num_parameters();
+                 ++i) {
+              llvm_ir::IrArray ir_array = inputs[i];
+              HloInstruction* fused_operand = fusion.fused_parameter(i);
+              fused_emitter.BindGenerator(
+                  *fused_operand, [=](const llvm_ir::IrArray::Index& index) {
+                    return ir_array.EmitReadArrayElement(index, builder,
+                                                         fused_operand->name());
+                  });
+            }
 
-                // Apply code generation for the code after the real hero.
-                // Compute all output values before writing them. This avoids
-                // overwriting aliased input/output values before all reads
-                // occurred.
-                std::vector<std::tuple<llvm_ir::IrArray,
-                                       llvm_ir::IrArray::Index, llvm::Value*>>
-                    scheduled_writes;
-                for (const auto& [output_idx, root] :
-                     transposes_to_roots[tr.instr]) {
-                  TF_ASSIGN_OR_RETURN(llvm_ir::ElementGenerator gen,
-                                      fused_emitter.GetGenerator(*root));
+            // Apply code generation for the code after the real hero.
+            // Compute all output values before writing them. This avoids
+            // overwriting aliased input/output values before all reads
+            // occurred.
+            std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
+                                   llvm::Value*>>
+                scheduled_writes;
+            for (const auto& [output_idx, root] :
+                 transposes_to_roots[tr.instr]) {
+              TF_ASSIGN_OR_RETURN(llvm_ir::ElementGenerator gen,
+                                  fused_emitter.GetGenerator(*root));
 
-                  // Both for emission and writing it should be
-                  // index-as-transformed by the computation.
-                  llvm_ir::IrArray::Index untiled_index =
-                      GetUnnormalizedIndex(index, root->shape(), builder,
-                                           Permute(input_shape, permutation));
-                  TF_ASSIGN_OR_RETURN(llvm::Value * generated,
-                                      gen(untiled_index));
-                  scheduled_writes.emplace_back(outputs[output_idx],
-                                                untiled_index, generated);
-                }
-                for (const auto& [output, idx, value] : scheduled_writes) {
-                  output.EmitWriteArrayElement(idx, value, builder);
-                }
-              }
-              return absl::OkStatus();
-            });
-      };
+              // Both for emission and writing it should be
+              // index-as-transformed by the computation.
+              llvm_ir::IrArray::Index untiled_index =
+                  GetUnnormalizedIndex(index, root->shape(), builder,
+                                       Permute(input_shape, permutation));
+              TF_ASSIGN_OR_RETURN(llvm::Value * generated, gen(untiled_index));
+              scheduled_writes.emplace_back(outputs[output_idx], untiled_index,
+                                            generated);
+            }
+            for (const auto& [output, idx, value] : scheduled_writes) {
+              output.EmitWriteArrayElement(idx, value, builder);
+            }
+          }
+          return absl::OkStatus();
+        });
+  };
 
   llvm::Type* index_type =
       GetIndexTypeForKernel(&fusion, launch_dims.launch_bound(), builder);
