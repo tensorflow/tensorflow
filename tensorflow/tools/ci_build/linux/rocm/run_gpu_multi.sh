@@ -49,7 +49,9 @@ if [ -f /usertools/rocm.bazelrc ]; then
            --bazelrc=/usertools/rocm.bazelrc \
            test \
            --local_test_jobs=${N_TEST_JOBS} \
-           --jobs=${N_BUILD_JOBS} \
+           --jobs=30 \
+           --local_ram_resources=60000 \
+           --local_cpu_resources=15 \
            --config=sigbuild_local_cache \
            --config=rocm \
            --config=nonpip_multi_gpu \
@@ -63,7 +65,9 @@ else
               --config=rocm \
               -k \
               --test_tag_filters=-no_gpu,-no_rocm \
-              --jobs=${N_BUILD_JOBS} \
+              --jobs=30 \
+              --local_ram_resources=60000 \
+              --local_cpu_resources=15 \
               --local_test_jobs=${N_TEST_JOBS} \
               --test_timeout 920,2400,7200,9600 \
               --build_tests_only \
