@@ -1977,7 +1977,7 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
     slice_sizes_attr = attr;
   } else if (const auto it = results_.find(ValuePort(op.getSliceSizes()));
              it != results_.end() &&
-             llvm::isa<DenseIntElementsAttr>(it->second)) {
+             llvm::isa_and_nonnull<DenseIntElementsAttr>(it->second)) {
     slice_sizes_attr = llvm::cast<DenseIntElementsAttr>(it->second);
   } else {
     return false;
