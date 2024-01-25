@@ -69,6 +69,7 @@ docker exec xla bazel \
         test \
         --build_tag_filters=$TAGS_FILTER  \
         --test_tag_filters=$TAGS_FILTER \
+        --test_output=errors \
         --keep_going \
         --features=layering_check \
         --profile=/tf/pkg/profile.json.gz \
