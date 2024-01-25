@@ -123,18 +123,6 @@ static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
   absl::MutexLock lock(&cliques.mu);
   if (auto it = cliques.map.find(clique_key); it != cliques.map.end()) {
     NcclClique::Lock clique = it->second.Acquire();
-
-    // If multiple executable are running simultaneously while using multiple
-    // hosts, it is possible that different executables could acquire the same
-    // clique on different hosts. We protect against this by checking that the
-    // run ID increases monotonically.
-    bool is_local = clique_key.devices().size() == num_local_participants;
-    TF_RET_CHECK(is_local || (run_id.ToInt() >= clique->run_id))
-        << "Run ID " << run_id.ToInt() << " is smaller than clique run ID "
-        << clique->run_id << ". Multiple XLA runs for the same clique "
-        << "can lead to a deadlock. Do not execute concurrent runs of "
-        << "multi-host XLA executable.";
-
     clique->run_id = run_id.ToInt();
     return clique;
   }

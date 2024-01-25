@@ -313,33 +313,6 @@ func.func @cluster_func(%arg0: tensor<*xf32>) {
 
 // -----
 
-// Tests that device variable sharding defaults to xla.OpSharding
-// { type : MAXIMAL
-//   tile_assignment_dimensions: [ 1 ]
-//   tile_assignment_devices   : [ 0 ]
-// }
-
-// CHECK-LABEL: func @maximal_device_variable
-func.func @maximal_device_variable(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) {
-   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<*xf32>>>)
-     {_mirrored_variable_indices = [0], n = 2 : i32} {
-     %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
-     // CHECK:      tf_device.cluster_func
-     // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]
-     "tf_device.cluster_func"(%0) {func = @cluster_func, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 1 : i64} : (tensor<*xf32>) -> ()
-     tf_device.return
-  }
-  func.return
-}
-
-// CHECK-LABEL: func @cluster_func
-// CHECK-SAME: ({{.+}}: tensor<*xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
-func.func @cluster_func(%arg0: tensor<*xf32>) {
-  func.return
-}
-
-// -----
-
 // Tests that device variable sharding for an implicitly capture device variable
 // defaults to REPLICATE.
 

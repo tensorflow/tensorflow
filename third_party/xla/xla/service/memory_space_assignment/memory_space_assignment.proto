@@ -36,6 +36,10 @@ message SlicedPrefetchOptions {
   // size that is not a multiple of the required hardware alignment. Otherwise,
   // we will choose not to slice such situations, which is always safe.
   bool fail_on_non_alignment_boundary_slice_proposal = 3;
+
+  // The threshold for max_slices after which we limit the permutations of slice
+  // times that we try when placing a sliced allocation.
+  uint32 all_slice_time_permutations_threshold = 4;
 }
 
 // Options for memory-bound loop optimizations in memory space assignment. If

@@ -112,7 +112,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal_util",
         "//xla:types",
-        "//xla/service/gpu:custom_fusion_rewriter",
+        "//xla/service/gpu:custom_kernel_fusion_rewriter",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:hlo_test_base",
         "@local_tsl//tsl/platform:test",

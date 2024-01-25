@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/custom_fusion_rewriter.h"
+#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 
 #include <cstdint>
 #include <optional>
@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// Simple pattern matchers for testing custom fusion rewriter.
+// Simple pattern matchers for testing custom kernel_fusion rewriter.
 //===----------------------------------------------------------------------===//
 
 struct SimpleGemmPattern : public CustomKernelFusionPattern {
@@ -52,9 +52,9 @@ struct SimpleGemmPattern : public CustomKernelFusionPattern {
 
 //===----------------------------------------------------------------------===//
 
-class CustomFusionRewriterTest : public HloTestBase {};
+class CustomKernelFusionRewriterTest : public HloTestBase {};
 
-TEST_F(CustomFusionRewriterTest, SimpleGemm) {
+TEST_F(CustomKernelFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(
     HloModule test
 
@@ -84,15 +84,15 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
-TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
+TEST_F(CustomKernelFusionRewriterTest, SimpleGemmWithWorkspace) {
   const char* hlo = R"(
     HloModule test
 
@@ -127,11 +127,11 @@ TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>(1024);
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 

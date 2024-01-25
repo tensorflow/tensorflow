@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
 #define XLA_SERVICE_GPU_MODEL_INDEXING_TEST_UTILS_H_
 
+#include <string_view>
+
 #include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -70,6 +72,18 @@ MATCHER_P2(MatchIndexingMap, affine_map_string, domain, "") {
                             AffineMapPrinter().ToString(arg->affine_map),
                             result_listener) &&
          ExplainMatchResult(domain, arg->domain, result_listener);
+}
+
+// Matches two strings ignoring whitespaces.
+bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
+
+MATCHER_P(MatchIndexingString, indexing_string, "") {
+  if (!arg.has_value()) {
+    return false;
+  }
+  return ExplainMatchResult(true,
+                            ApproximateMatch(indexing_string, arg->ToString()),
+                            result_listener);
 }
 
 HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(

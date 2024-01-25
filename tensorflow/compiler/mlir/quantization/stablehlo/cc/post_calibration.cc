@@ -40,7 +40,8 @@ PostCalibrationComponent::PostCalibrationComponent(
 absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(
-      RunPasses(/*name=*/kName,
+      RunPasses(/*name=*/
+                kName,
                 /*add_passes_func=*/[this](PassManager& pm) { AddPasses(pm); },
                 *ctx_, module_op));
   return module_op;
@@ -50,7 +51,6 @@ void PostCalibrationComponent::AddPasses(OpPassManager& pm) const {
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass());
-  pm.addPass(createOptimizeGraphPass());
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
 }

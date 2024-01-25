@@ -155,6 +155,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
@@ -1006,6 +1007,71 @@ absl::Status IrEmitterUnnested::EmitGemmThunk(
 }
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
+
+absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
+    const HloCustomCallInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  xla::gpu::GemmBackendConfig config = gpu_config.gemm_backend_config();
+  xla::gpu::GemmBackendConfig_Epilogue epilogue = config.epilogue();
+
+  TF_ASSIGN_OR_RETURN(bool has_vector_bias,
+                      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(epilogue));
+  bool has_matrix_bias = config.beta() != 0;
+
+  TF_RET_CHECK(instr->operand_count() ==
+               2 + int{has_matrix_bias} + int{has_vector_bias});
+
+  TF_ASSIGN_OR_RETURN(
+      bool has_aux_output,
+      xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(epilogue));
+  xla::ShapeIndex output_index =
+      has_aux_output ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
+                      GetAllocationSliceForHlo(instr->operand(1)));
+  BufferAllocation::Slice c;
+  if (has_matrix_bias) {
+    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr->operand(2)));
+  } else {
+    TF_ASSIGN_OR_RETURN(c, GetAllocationSliceForHlo(instr, output_index));
+  }
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
+                      GetAllocationSliceForHlo(instr, output_index));
+
+  BufferAllocation::Slice bias;
+  if (has_vector_bias) {
+    TF_ASSIGN_OR_RETURN(bias, GetAllocationSliceForHlo(
+                                  instr->operand(has_matrix_bias ? 3 : 2)));
+  }
+
+  BufferAllocation::Slice aux;
+  if (has_aux_output) {
+    TF_ASSIGN_OR_RETURN(aux, GetAllocationSliceForHlo(instr, {1}));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto gemm_config,
+      GemmConfig::For(static_cast<const HloInstruction*>(instr)));
+
+  // Use the first algorithm by default (i.e. fastest according to heuristics).
+  int64_t algorithm =
+      config.algorithm_case() == GemmBackendConfig::kSelectedAlgorithm
+          ? config.selected_algorithm()
+          : 0;
+
+  BufferAllocation::Slice a_scale, b_scale, c_scale, d_scale, d_amax;
+  TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
+                      gpublas_lt::AsBlasLtEpilogue(epilogue));
+  auto thunk = std::make_unique<CublasLtMatmulThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(gemm_config),
+      blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
+      c_scale, d_scale, d_amax);
+  AddThunkToThunkSequence(std::move(thunk));
+  return absl::OkStatus();
+}
 
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulOp>(op);
@@ -3932,6 +3998,10 @@ absl::Status IrEmitterUnnested::EmitOp(
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      const auto* instr = Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitCublasLtMatmulThunk(instr);
+    }
     return EmitCublasLtMatmulThunk(op);
   }
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
@@ -4290,6 +4360,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsLegacyCublasMatmul(*instr)) {
         return EmitGemmThunk(custom_call);
       }
+#if GOOGLE_CUDA || TF_HIPBLASLT
+      if (IsCublasLtMatmul(*instr)) {
+        return EmitCublasLtMatmulThunk(custom_call);
+      }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
       if (IsCustomCallToTopK(*instr)) {
         return EmitTopKCustomCall(custom_call);
       }

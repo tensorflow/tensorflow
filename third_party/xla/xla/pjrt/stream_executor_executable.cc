@@ -36,6 +36,7 @@ StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable() const {
   proto.set_num_replicas(num_replicas_);
   proto.set_num_partitions(num_partitions_);
   proto.set_name(name_);
+  proto.set_fingerprint(fingerprint_);
   return proto.SerializeAsString();
 }
 }  // namespace xla

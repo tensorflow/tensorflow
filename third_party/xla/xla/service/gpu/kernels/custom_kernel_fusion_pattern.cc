@@ -64,17 +64,18 @@ CustomKernelFusionPattern::Match::BuildReplacement(
 }
 
 //===----------------------------------------------------------------------===//
-// CustomFusionPatternRegistry
+// CustomKernelFusionPatternRegistry
 //===----------------------------------------------------------------------===//
 
-CustomFusionPatternRegistry* CustomFusionPatternRegistry::Default() {
-  static auto* registry = new CustomFusionPatternRegistry();
+CustomKernelFusionPatternRegistry*
+CustomKernelFusionPatternRegistry::Default() {
+  static auto* registry = new CustomKernelFusionPatternRegistry();
   return registry;
 }
 
 std::vector<CustomKernelFusionPattern::Match>
-CustomFusionPatternRegistry::Match(const se::DeviceDescription& device,
-                                   HloInstruction* instr) const {
+CustomKernelFusionPatternRegistry::Match(const se::DeviceDescription& device,
+                                         HloInstruction* instr) const {
   std::vector<CustomKernelFusionPattern::Match> matches;
   for (auto& pattern : patterns_) {
     if (auto matched = pattern->TryMatch(device, instr); matched.has_value())
@@ -83,7 +84,7 @@ CustomFusionPatternRegistry::Match(const se::DeviceDescription& device,
   return matches;
 }
 
-void CustomFusionPatternRegistry::Add(
+void CustomKernelFusionPatternRegistry::Add(
     std::unique_ptr<CustomKernelFusionPattern> pattern) {
   patterns_.push_back(std::move(pattern));
 }

@@ -336,6 +336,23 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "fingerprint_test",
+    size = "small",
+    srcs = ["fingerprint_test.py"],
+    deps = [
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "fixed_length_record_dataset_test",
     size = "medium",
     srcs = ["fixed_length_record_dataset_test.py"],

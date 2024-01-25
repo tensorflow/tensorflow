@@ -2049,7 +2049,6 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
-            "jitrt_executable",
         ],
         "cpu": [
             "notsan",
@@ -2088,7 +2087,6 @@ xla_test(
             "multi_gpu",
             "no_oss",
             "notap",
-            "jitrt_executable",
         ],
     },
     backends = [
