@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -102,6 +103,32 @@ TEST(FfiTest, BuiltinAttributes) {
                      .Attr<std::string_view>("str")
                      .To(fn);
 
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, PointerAttr) {
+  std::string foo = "foo";
+
+  // Test for convenience attr binding that casts i64 attribute to user-type
+  // pointers. It's up to the user to guarantee that pointer is valid.
+  auto ptr = reinterpret_cast<uintptr_t>(&foo);
+  static_assert(sizeof(ptr) == sizeof(int64_t));
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("ptr", static_cast<int64_t>(ptr));
+
+  CallFrameBuilder builder;
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto fn = [&](const std::string* str) {
+    EXPECT_EQ(*str, "foo");
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
