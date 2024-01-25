@@ -722,7 +722,7 @@ filegroup(
     testonly = True,
     data = [
         "//xla/tools:hlo-opt",
-        "//xla/tools/hlo_opt:gpu_specs/a100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/a100_80.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
