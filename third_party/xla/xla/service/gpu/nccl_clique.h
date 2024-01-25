@@ -53,6 +53,9 @@ namespace xla::gpu {
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html#using-multiple-nccl-communicators-concurrently
 
+// Forward declare.
+struct NcclClique;
+
 //===----------------------------------------------------------------------===//
 // NcclUniqueId
 //===----------------------------------------------------------------------===//
@@ -79,6 +82,8 @@ struct NcclCommName {
 };
 
 struct NcclComm : public Lockable<NcclApi::NcclCommHandle, NcclCommName> {
+  friend struct NcclClique;
+
   explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
 };
 
@@ -121,6 +126,8 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
              absl::node_hash_map<int32_t, NcclComm> communicators)
       : Lockable(NcclCliqueCommunicators{std::move(clique_key), clique_id,
                                          std::move(communicators)}) {}
+
+  std::string DebugString() const;
 };
 
 // Acquires an shared access to a NCCL clique (NcclClique::Lock collectively

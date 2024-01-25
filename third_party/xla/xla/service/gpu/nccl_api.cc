@@ -352,7 +352,7 @@ absl::StatusOr<NcclApi::NcclCommHandle> DefaultNcclApi::CommInitRank(
         "Invalid rank %d, it must be in [0, %d) range", rank, nranks));
 
   ncclComm_t comm = nullptr;
-  absl::Status status = XLA_NCCL_STATUS(
+  XLA_NCCL_RETURN_IF_ERROR(
       ncclCommInitRank(&comm, nranks, AsNcclUniqueId(clique_id), rank));
 
   return Cast(comm);
