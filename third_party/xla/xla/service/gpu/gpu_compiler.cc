@@ -266,6 +266,97 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+// A class for storing either an owned thread pool or a non-owning pointer to an
+// external thread pool.
+class MaybeOwningThreadPool {
+ public:
+  // Gets or creates a thread pool.
+  //
+  // See the code for the logic.
+  static MaybeOwningThreadPool GetOrCreate(
+      int parallelism, tsl::thread::ThreadPool* default_thread_pool,
+      int default_parallelism);
+
+  // Not owning (nullptr).
+  MaybeOwningThreadPool();
+  // Not owning.
+  explicit MaybeOwningThreadPool(tsl::thread::ThreadPool* thread_pool);
+  // Owning.
+  explicit MaybeOwningThreadPool(
+      std::unique_ptr<tsl::thread::ThreadPool> thread_pool);
+  tsl::thread::ThreadPool* get();
+  const tsl::thread::ThreadPool* get() const;
+  tsl::thread::ThreadPool* operator->();
+  const tsl::thread::ThreadPool* operator->() const;
+  explicit operator bool() const;
+  bool operator!() const;
+
+ private:
+  std::variant<tsl::thread::ThreadPool*,
+               std::unique_ptr<tsl::thread::ThreadPool>>
+      thread_pool_;
+};
+
+/*static*/ MaybeOwningThreadPool MaybeOwningThreadPool::GetOrCreate(
+    int parallelism, tsl::thread::ThreadPool* default_thread_pool,
+    int default_parallelism) {
+  CHECK_GE(parallelism, 0);
+  CHECK_GE(default_parallelism, 1);
+
+  auto create_thread_pool = [&](int num_threads) {
+    CHECK_GE(num_threads, 1);
+    return std::make_unique<tsl::thread::ThreadPool>(tsl::Env::Default(), "",
+                                                     num_threads);
+  };
+
+  switch (parallelism) {
+    case 0:
+      if (default_thread_pool == nullptr && default_parallelism > 1) {
+        return MaybeOwningThreadPool(create_thread_pool(default_parallelism));
+      }
+      return MaybeOwningThreadPool(default_thread_pool);
+    case 1:
+      return MaybeOwningThreadPool(nullptr);
+    default:
+      return MaybeOwningThreadPool(create_thread_pool(parallelism));
+  }
+}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool() : thread_pool_(nullptr) {}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool(
+    tsl::thread::ThreadPool* thread_pool)
+    : thread_pool_(thread_pool) {}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool(
+    std::unique_ptr<tsl::thread::ThreadPool> thread_pool)
+    : thread_pool_(std::move(thread_pool)) {}
+
+tsl::thread::ThreadPool* MaybeOwningThreadPool::get() {
+  if (std::holds_alternative<tsl::thread::ThreadPool*>(thread_pool_)) {
+    return std::get<tsl::thread::ThreadPool*>(thread_pool_);
+  }
+  return std::get<std::unique_ptr<tsl::thread::ThreadPool>>(thread_pool_).get();
+}
+
+const tsl::thread::ThreadPool* MaybeOwningThreadPool::get() const {
+  return const_cast<MaybeOwningThreadPool*>(this)->get();
+}
+
+tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() {
+  tsl::thread::ThreadPool* thread_pool = get();
+  CHECK_NE(thread_pool, nullptr);
+  return thread_pool;
+}
+
+const tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() const {
+  return const_cast<MaybeOwningThreadPool*>(this)->operator->();
+}
+
+MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
+
+bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
+
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
