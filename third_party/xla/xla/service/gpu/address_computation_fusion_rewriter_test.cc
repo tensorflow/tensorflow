@@ -402,4 +402,43 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(), expected);
 }
 
+TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main.9 {
+      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
+      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %slice.13 = f16[1,4,6]{2,1,0} slice(%p0), slice={[1:2], [0:4], [0:6]}
+      %bitcast.41 = f16[4,6]{1,0} bitcast(%slice.13)
+      %slice.14 = f16[1,6,4]{2,1,0} slice(%p1), slice={[1:2], [0:6], [0:4]}
+      %bitcast.42 = f16[6,4]{1,0} bitcast(%slice.14)
+
+      ROOT %custom-call.1 = f16[4,4]{1,0} custom-call(%bitcast.41, %bitcast.42),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+    }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(),
+                            std::nullopt);
+}
+
 }  // namespace xla::gpu

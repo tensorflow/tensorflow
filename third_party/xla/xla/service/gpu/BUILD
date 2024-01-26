@@ -3264,6 +3264,7 @@ cc_library(
         ":backend_configs_cc",
         ":cublas_cudnn",
         ":hlo_traversal",
+        ":ir_emission_utils",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -63,14 +64,15 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
           // of the operand to reuse the address computation. Only worth it if
           // other uses are also custom calls though.
           return cur->user_count() > 1 || !IsNoOp(cur) ||
-                 node.opcode() == HloOpcode::kSlice;
+                 IsContiguousSlice(*cur);
         });
     if (maybe_slice_adaptor == std::nullopt) continue;
     const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
-    if (maybe_slice_instr.opcode() == HloOpcode::kSlice)
+    if (IsContiguousSlice(maybe_slice_instr)) {
       sliced_operand_chains.insert(sliced_operand_chains.end(),
                                    maybe_sliced_operand_chain.begin(),
                                    maybe_sliced_operand_chain.end());
+    }
   }
   return sliced_operand_chains;
 }
