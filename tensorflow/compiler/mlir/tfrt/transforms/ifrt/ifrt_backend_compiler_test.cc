@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
+
+// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#define EIGEN_USE_THREADS
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
@@ -79,8 +81,6 @@ TEST(IfrtBackendCompilerTest, Basic) {
                           xla::ifrt::test_util::GetClient());
   Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
-  IfrtModelContext model_context(client, &thread_pool_device);
-
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
       tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
   tensorflow::tfrt_stub::GraphExecutionOptions graph_execution_options(
@@ -90,7 +90,7 @@ TEST(IfrtBackendCompilerTest, Basic) {
       &graph_execution_options, /*export_dir=*/"", &resource_context);
 
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", std::move(model_context));
+      "IfrtModelContext", client, &thread_pool_device);
 
   IfrtBackendCompiler compiler;
   TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));

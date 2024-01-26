@@ -645,6 +645,7 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",

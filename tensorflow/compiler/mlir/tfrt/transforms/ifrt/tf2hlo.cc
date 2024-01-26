@@ -80,7 +80,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     // tpu_compile_metadata takes priority if exists.
     VLOG(1) << "Parsing from attribute " << kMetadataAttrName << " : "
             << metadata_attr.getValue().str();
-    if (!metadata.ParseFromString(metadata_attr.getValue())) {
+    if (!metadata.ParseFromString(metadata_attr.getValue().str())) {
       return absl::InternalError(
           absl::StrCat("Failed to parse tpu_compile_metadata attribute:",
                        metadata_attr.getValue().str()));
@@ -91,7 +91,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
             << metadata_text_attr.getValue().str();
     if (!tsl::protobuf::TextFormat::ParseFromString(
-            metadata_text_attr.getValue(), &metadata)) {
+            metadata_text_attr.getValue().str(), &metadata)) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Attribute ", kMetadataTextAttrName, ":",
           metadata_text_attr.getValue().str(), " cannot be parsed"));
@@ -101,7 +101,8 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
         "Missing ", kMetadataAttrName, " and ", kMetadataTextAttrName));
   }
 
-  VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
+  VLOG(3) << "TpuCompileMetadata before shape is populated "
+          << metadata.DebugString();
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
     return absl::InternalError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
@@ -188,7 +189,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   TF_ASSIGN_OR_RETURN(tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
                       GetCompileMetadata(entry_fn, inputs, ifrt_client));
 
-  VLOG(1) << "Compilation metadata: " << compile_metadata;
+  VLOG(1) << "Compilation metadata: " << compile_metadata.DebugString();
 
   std::vector<TensorShape> arg_shapes;
   for (const auto& input : inputs) {
