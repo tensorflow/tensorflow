@@ -101,6 +101,17 @@ class IrArray {
       return with_offset;
     }
 
+    Index AddOffset(absl::Span<llvm::Value* const> offsets,
+                    llvm::IRBuilder<>* b) const {
+      CHECK_EQ(multidim_.size(), offsets.size());
+      Index with_offset = *this;
+      with_offset.linear_ = nullptr;
+      for (auto&& [dim, offset] : llvm::zip(with_offset.multidim_, offsets)) {
+        dim = b->CreateAdd(dim, offset);
+      }
+      return with_offset;
+    }
+
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     const std::vector<int64_t>& dims() const { return dims_; }
     llvm::Value* linear() const { return linear_; }

@@ -722,20 +722,6 @@ ReductionFusion::ReductionEmitter::BuildFusedInitializerThunk(
                                    builder_fn);
 }
 
-// Gets the output offset as calculated from thread_id.x (to be applied to the
-// offset calculated from block_id and thread_id.y).
-static llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
-                                    llvm::Value* thread_id_x,
-                                    llvm::Type* index_ty,
-                                    llvm::IRBuilder<>* b) {
-  int64_t multiplier =
-      tiling_scheme.GetIndexingOrder() == TilingScheme::StridedIndexingX
-          ? tiling_scheme.GetVectorSize()
-          : tiling_scheme.GetThreadTileSize()[TilingScheme::DimX];
-  return b->CreateMul(thread_id_x,
-                      llvm::ConstantInt::get(index_ty, multiplier));
-}
-
 // Emits shuffle-down reduction for the `partial_result_address` using the
 // reduction computation `reducer`, writes output into
 // `partial_result_address`.
@@ -808,16 +794,11 @@ ReductionFusion::ReductionGroupEmitter::GetOutputIndexForReduction(
   const TilingThreadIdInfo& thread_id_info = tiling_kernel_info.thread_id_info;
 
   llvm_ir::IrArray::Index index = [&] {
-    llvm::Value* x_loc = thread_id_info.thread_id_x;
-    llvm::Value* y_loc = thread_id_info.thread_id_y;
+    auto offsets = thread_id_info.start_offsets;
     if (!reduction_info.IsRowReduction()) {
-      std::swap(x_loc, y_loc);
+      std::swap(offsets[TilingScheme::DimX], offsets[TilingScheme::DimY]);
     }
-    llvm::Value* start_offset_x = GetStartOffsetX(
-        tiling_scheme, x_loc, reduction_emitter_.index_ty_, builder);
-    return tiling_kernel_info.tile_origin
-        .AddOffsetToDim(y_loc, TilingScheme::DimY, builder)
-        .AddOffsetToDim(start_offset_x, TilingScheme::DimX, builder);
+    return tiling_kernel_info.tile_origin.AddOffset(offsets, builder);
   }();
 
   const Shape& operand_shape = reduction->inputs()[output_idx]->shape();
@@ -914,6 +895,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
     const std::vector<const HloInstruction*>& roots) const {
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
+  auto* thread_id_x = thread_id_info.thread_ids[TilingScheme::DimX];
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(reduction_emitter_.index_ty_, c);
   };
@@ -942,8 +924,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
       tiling_scheme.GetNumThreadsPerBlockPhysical(), num_rows_per_warp);
 
   KernelSupportLibrary ksl(builder);
-  llvm::Value* warp_id =
-      builder->CreateUDiv(thread_id_info.thread_id_x, constant(WarpSize()));
+  llvm::Value* warp_id = builder->CreateUDiv(thread_id_x, constant(WarpSize()));
 
   auto emit_write_output = [&](llvm::Value* write_condition,
                                const absl::Span<TypedPointer const> values) {
@@ -954,8 +935,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
 
   if (num_rows_per_warp > 1) {
     llvm::Value* is_writing_thread = is_zero(builder->CreateAnd(
-        thread_id_info.thread_id_x,
-        constant(reduction_emitter_.ReducedDimensionSize() - 1)));
+        thread_id_x, constant(reduction_emitter_.ReducedDimensionSize() - 1)));
     emit_write_output(is_writing_thread, current_outputs);
     return;
   }
@@ -993,7 +973,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
       builder->CreateStore(state.initial_value, initial_value_addr);
 
       llvm::Value* warp_exists = builder->CreateICmpULT(
-          thread_id_info.thread_id_x,
+          thread_id_x,
           constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX] /
                    WarpSize()));
 
@@ -1014,7 +994,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
           tiling_scheme.GetNumThreadsPerBlock(), /*num_results_per_warp=*/1);
     }
 
-    emit_write_output(is_zero(thread_id_info.thread_id_x), selected_values);
+    emit_write_output(is_zero(thread_id_x), selected_values);
   });
 }
 
@@ -1028,6 +1008,7 @@ void ReductionFusion::ReductionGroupEmitter::
   KernelSupportLibrary ksl(builder);
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
+  const auto& thread_ids = thread_id_info.thread_ids;
 
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(reduction_emitter_.index_ty_, c);
@@ -1046,7 +1027,7 @@ void ReductionFusion::ReductionGroupEmitter::
     llvm::AddrSpaceCastInst* shmem_output_addr =
         llvm::cast<llvm::AddrSpaceCastInst>(thread_id_info.GEPIntoSharedMemory(
             builder, shared_cache,
-            {thread_id_info.thread_id_x, thread_id_info.thread_id_y},
+            {thread_ids[TilingScheme::DimX], thread_ids[TilingScheme::DimY]},
             "shmem_output_address"));
 
     llvm::Value* current_output_value =
@@ -1064,7 +1045,7 @@ void ReductionFusion::ReductionGroupEmitter::
     llvm::AddrSpaceCastInst* shmem_transposed_addr =
         llvm::cast<llvm::AddrSpaceCastInst>(thread_id_info.GEPIntoSharedMemory(
             builder, state.shared_cache,
-            {thread_id_info.thread_id_y, thread_id_info.thread_id_x},
+            {thread_ids[TilingScheme::DimY], thread_ids[TilingScheme::DimX]},
             "shmem_transposed_addr"));
     shmem_transposed_addrs.push_back(
         {shmem_transposed_addr, llvm::cast<llvm::GetElementPtrInst>(
@@ -1081,11 +1062,11 @@ void ReductionFusion::ReductionGroupEmitter::
   // tensor, so they should not write any output at all.
   llvm::Value* has_output = builder->CreateAnd(
       builder->CreateICmpULT(
-          GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_y,
-                          reduction_emitter_.index_ty_, builder),
-          tiling_kernel_info.output_tile_bounds[1]),
-      builder->CreateICmpULT(thread_id_info.thread_id_x,
-                             tiling_kernel_info.output_tile_bounds[0]));
+          thread_ids[TilingScheme::DimY],
+          tiling_kernel_info.output_tile_bounds[TilingScheme::DimX]),
+      builder->CreateICmpULT(
+          thread_ids[TilingScheme::DimX],
+          tiling_kernel_info.output_tile_bounds[TilingScheme::DimY]));
 
   ksl.If("reduction_write_output",
          builder->CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
@@ -1188,19 +1169,16 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
           builder_, tiling_scheme, index_ty_,
           [&](const TilingThreadIdInfo& thread_id_info,
               const llvm_ir::IrArray::Index& tile_index,
-              std::array<llvm::Value*, 2> tile_dimensions) {
-            auto emit_reduction_element = [&](llvm::Value* y_loc,
-                                              llvm::Value* x_loc) {
+              std::array<llvm::Value*, 3> tile_dimensions) {
+            auto emit_element = [&](std::array<llvm::Value*, 3> index_in_tile) {
               llvm_ir::IrArray::Index index =
-                  tile_index.AddOffsetToDim(y_loc, TilingScheme::DimY, builder_)
-                      .AddOffsetToDim(x_loc, TilingScheme::DimX, builder_);
+                  tile_index.AddOffset(index_in_tile, builder_);
               llvm::Value* partial_result_index =
                   reduction_codegen_info_.IsRowReduction()
                       ? builder_->getInt32(0)
                       : builder_->CreateSub(
-                            x_loc, GetStartOffsetX(tiling_scheme,
-                                                   thread_id_info.thread_id_x,
-                                                   index_ty_, builder_));
+                            index_in_tile[TilingScheme::DimX],
+                            thread_id_info.start_offsets[TilingScheme::DimX]);
 
               // Emit code to generate the input and perform the reduction
               // computation for each reduction instruction.
@@ -1218,7 +1196,7 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
                   index, extra_output_gens));
             };
             EmitTile(builder_, reduction_codegen_info_.GetTilingScheme(),
-                     thread_id_info, tile_dimensions, emit_reduction_element);
+                     thread_id_info, tile_dimensions, emit_element);
           }));
 
   KernelSupportLibrary ksl(builder_);

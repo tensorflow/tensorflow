@@ -95,16 +95,15 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_61:.*]] = icmp ult i32 %[[VAL_60]], 19
 // CHECK:         br i1 %[[VAL_61]], label %[[VAL_62:.*]], label %[[VAL_63:.*]]
 // CHECK:       9:                                                ; preds = %[[VAL_49]]
-// CHECK:         %[[VAL_64:.*]] = urem i32 %[[VAL_57]], 1024
 // CHECK:         %[[VAL_65:.*]] = udiv i32 %[[VAL_57]], 1024
+// CHECK:         %[[VAL_64:.*]] = urem i32 %[[VAL_57]], 1024
+// CHECK:         %[[VAL_114:.*]] = mul i32 %[[VAL_64]], 2
 // CHECK:         %[[VAL_66:.*]] = urem i32 %[[VAL_57]], 32
 // CHECK:         %[[VAL_67:.*]] = udiv i32 %[[VAL_60]], 1
 // CHECK:         %[[VAL_68:.*]] = urem i32 %[[VAL_67]], 19
 // CHECK:         %[[VAL_69:.*]] = udiv i32 %[[VAL_60]], 19
 // CHECK:         %[[VAL_70:.*]] = urem i32 %[[VAL_69]], 1
 // CHECK:         %[[VAL_71:.*]] = udiv i32 %[[VAL_60]], 19
-// CHECK:         %[[VAL_72:.*]] = icmp eq i32 %[[VAL_70]], 0
-// CHECK:         %[[VAL_73:.*]] = select i1 %[[VAL_72]], i32 1, i32 1
 // CHECK:         %[[VAL_74:.*]] = icmp eq i32 %[[VAL_68]], 18
 // CHECK:         %[[VAL_75:.*]] = select i1 %[[VAL_74]], i32 5088, i32 16384
 // CHECK:         %[[VAL_76:.*]] = mul i32 %[[VAL_71]], 1
@@ -112,11 +111,11 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_78:.*]] = mul i32 %[[VAL_68]], 16384
 // CHECK:         store i32 %[[VAL_65]], ptr %[[VAL_44]], align 4
 // CHECK:         br label %[[VAL_79:.*]]
-// CHECK:       y_in_tile.loop_header:                            ; preds = %[[VAL_80:.*]], %[[VAL_62]]
+// CHECK:       loop1.loop_header:                            ; preds = %[[VAL_80:.*]], %[[VAL_62]]
 // CHECK:         %[[VAL_81:.*]] = load i32, ptr %[[VAL_44]], align 4
-// CHECK:         %[[VAL_82:.*]] = icmp uge i32 %[[VAL_81]], %[[VAL_73]]
+// CHECK:         %[[VAL_82:.*]] = icmp uge i32 %[[VAL_81]], 1
 // CHECK:         br i1 %[[VAL_82]], label %[[VAL_83:.*]], label %[[VAL_84:.*]]
-// CHECK:       y_in_tile.loop_body:                              ; preds = %[[VAL_79]]
+// CHECK:       loop1.loop_body:                              ; preds = %[[VAL_79]]
 // CHECK:         %[[VAL_85:.*]] = add nuw nsw i32 %[[VAL_81]], 1
 // CHECK:         store i32 %[[VAL_85]], ptr %[[VAL_44]], align 4
 // CHECK:         %[[VAL_86:.*]] = icmp eq i32 %[[VAL_81]], %[[VAL_65]]
@@ -124,7 +123,7 @@ ENTRY reduce.1 {
 // CHECK:         br i1 %[[VAL_87]], label %[[VAL_88:.*]], label %[[VAL_89:.*]]
 // CHECK:       is_full_tile-after:                               ; preds = %[[VAL_90:.*]], %[[VAL_91:.*]]
 // CHECK:         br label %[[VAL_79]], !llvm.loop !8
-// CHECK:       y_in_tile.loop_exit:                              ; preds = %[[VAL_79]]
+// CHECK:       loop1.loop_exit:                              ; preds = %[[VAL_79]]
 // CHECK:         %[[VAL_92:.*]] = load float, ptr %[[VAL_45]], align 4
 // CHECK:         %[[VAL_93:.*]] = call float @llvm.nvvm.shfl.sync.down.f32(i32 -1, float %[[VAL_92]], i32 16, i32 31)
 // CHECK:         store float %[[VAL_93]], ptr %[[VAL_37]], align 4
@@ -167,14 +166,13 @@ ENTRY reduce.1 {
 // CHECK:       early_return:                                     ; preds = %[[VAL_49]]
 // CHECK:         ret void
 // CHECK:       is_full_tile-true:                                ; preds = %[[VAL_84]]
-// CHECK:         %[[VAL_114:.*]] = mul i32 %[[VAL_64]], 2
 // CHECK:         store i32 0, ptr %[[VAL_43]], align 4
 // CHECK:         br label %[[VAL_115:.*]]
-// CHECK:       tile_loop.loop_header:                            ; preds = %[[VAL_116:.*]], %[[VAL_88]]
+// CHECK:       loop2.loop_header:                            ; preds = %[[VAL_116:.*]], %[[VAL_88]]
 // CHECK:         %[[VAL_117:.*]] = load i32, ptr %[[VAL_43]], align 4
 // CHECK:         %[[VAL_118:.*]] = icmp uge i32 %[[VAL_117]], 8
 // CHECK:         br i1 %[[VAL_118]], label %[[VAL_91]], label %[[VAL_116]]
-// CHECK:       tile_loop.loop_body:                              ; preds = %[[VAL_115]]
+// CHECK:       loop2.loop_body:                              ; preds = %[[VAL_115]]
 // CHECK:         %[[VAL_119:.*]] = add nuw nsw i32 %[[VAL_117]], 1
 // CHECK:         store i32 %[[VAL_119]], ptr %[[VAL_43]], align 4
 // CHECK:         %[[VAL_120:.*]] = icmp eq i32 %[[VAL_117]], 0
@@ -203,35 +201,34 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_139:.*]] = load float, ptr %[[VAL_41]], align 4
 // CHECK:         store float %[[VAL_139]], ptr %[[VAL_138]], align 4
 // CHECK:         br label %[[VAL_115]], !llvm.loop !10
-// CHECK:       tile_loop.loop_exit:                              ; preds = %[[VAL_115]]
+// CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_115]]
 // CHECK:         br label %[[VAL_80]]
 // CHECK:       is_full_tile-false:                               ; preds = %[[VAL_84]]
-// CHECK:         %[[VAL_140:.*]] = mul i32 %[[VAL_64]], 2
 // CHECK:         store i32 0, ptr %[[VAL_40]], align 4
 // CHECK:         br label %[[VAL_141:.*]]
-// CHECK:       tile_loop.loop_header9:                           ; preds = %[[VAL_142:.*]], %[[VAL_89]]
+// CHECK:       loop2.loop_header7:                           ; preds = %[[VAL_142:.*]], %[[VAL_89]]
 // CHECK:         %[[VAL_143:.*]] = load i32, ptr %[[VAL_40]], align 4
 // CHECK:         %[[VAL_144:.*]] = icmp uge i32 %[[VAL_143]], 8
 // CHECK:         br i1 %[[VAL_144]], label %[[VAL_90]], label %[[VAL_145:.*]]
-// CHECK:       tile_loop.loop_body10:                            ; preds = %[[VAL_141]]
+// CHECK:       loop2.loop_body8:                            ; preds = %[[VAL_141]]
 // CHECK:         %[[VAL_146:.*]] = add nuw nsw i32 %[[VAL_143]], 1
 // CHECK:         store i32 %[[VAL_146]], ptr %[[VAL_40]], align 4
 // CHECK:         %[[VAL_147:.*]] = icmp eq i32 %[[VAL_143]], 0
 // CHECK:         %[[VAL_148:.*]] = mul i32 %[[VAL_143]], 2048
 // CHECK:         %[[VAL_149:.*]] = add i32 %[[VAL_148]], 0
-// CHECK:         %[[VAL_150:.*]] = add i32 %[[VAL_149]], %[[VAL_140]]
+// CHECK:         %[[VAL_150:.*]] = add i32 %[[VAL_149]], %[[VAL_114]]
 // CHECK:         %[[VAL_151:.*]] = icmp ult i32 %[[VAL_150]], %[[VAL_75]]
 // CHECK:         br i1 %[[VAL_151]], label %[[VAL_152:.*]], label %[[VAL_153:.*]]
 // CHECK:       x_in_tile-after:                                  ; preds = %[[VAL_152]], %[[VAL_145]]
 // CHECK:         %[[VAL_154:.*]] = mul i32 %[[VAL_143]], 2048
 // CHECK:         %[[VAL_155:.*]] = add i32 %[[VAL_154]], 1
-// CHECK:         %[[VAL_156:.*]] = add i32 %[[VAL_155]], %[[VAL_140]]
+// CHECK:         %[[VAL_156:.*]] = add i32 %[[VAL_155]], %[[VAL_114]]
 // CHECK:         %[[VAL_157:.*]] = icmp ult i32 %[[VAL_156]], %[[VAL_75]]
 // CHECK:         br i1 %[[VAL_157]], label %[[VAL_158:.*]], label %[[VAL_142]]
-// CHECK:       x_in_tile-after20:                                ; preds = %[[VAL_158]], %[[VAL_153]]
+// CHECK:       x_in_tile-after16:                                ; preds = %[[VAL_158]], %[[VAL_153]]
 // CHECK:         br label %[[VAL_141]], !llvm.loop !12
-// CHECK:       tile_loop.loop_exit8:                             ; preds = %[[VAL_141]]
-// CHECK:         br label %[[VAL_80]]
+// CHECK:       loop2.loop_exit6:                             ; preds = %[[VAL_141]]
+// CHECK:         br label %is_full_tile-after
 // CHECK:       x_in_tile-true:                                   ; preds = %[[VAL_145]]
 // CHECK:         %[[VAL_159:.*]] = add i32 %[[VAL_77]], %[[VAL_81]]
 // CHECK:         %[[VAL_160:.*]] = add i32 %[[VAL_78]], %[[VAL_150]]
@@ -243,7 +240,7 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_164:.*]] = load float, ptr %[[VAL_39]], align 4
 // CHECK:         store float %[[VAL_164]], ptr %[[VAL_163]], align 4
 // CHECK:         br label %[[VAL_153]]
-// CHECK:       x_in_tile-true19:                                 ; preds = %[[VAL_153]]
+// CHECK:       x_in_tile-true15:                                 ; preds = %[[VAL_153]]
 // CHECK:         %[[VAL_165:.*]] = add i32 %[[VAL_77]], %[[VAL_81]]
 // CHECK:         %[[VAL_166:.*]] = add i32 %[[VAL_78]], %[[VAL_156]]
 // CHECK:         %[[VAL_167:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_127]], i32 0, i32 %[[VAL_166]]
@@ -254,7 +251,7 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_170:.*]] = load float, ptr %[[VAL_38]], align 4
 // CHECK:         store float %[[VAL_170]], ptr %[[VAL_169]], align 4
 // CHECK:         br label %[[VAL_142]]
-// CHECK:       intra_warp_reduce_write-true:                     ; preds = %[[VAL_83]]
+// CHECK:       intra_warp_reduce_write-true:
 // CHECK:         %[[VAL_171:.*]] = getelementptr inbounds [1 x [1 x [32 x float]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_58]], i32 0, i32 %[[VAL_107]]
 // CHECK:         %[[VAL_172:.*]] = addrspacecast ptr addrspace(3) %[[VAL_171]] to ptr
 // CHECK:         %[[VAL_173:.*]] = load float, ptr %[[VAL_45]], align 4
@@ -301,9 +298,8 @@ ENTRY reduce.1 {
 // CHECK:       reduction_write_output-after:                     ; preds = %[[VAL_195:.*]], %[[VAL_112]]
 // CHECK:         br label %[[VAL_51]]
 // CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_112]]
-// CHECK:         %[[VAL_196:.*]] = mul i32 %[[VAL_64]], 2
 // CHECK:         %[[VAL_197:.*]] = add i32 %[[VAL_77]], %[[VAL_65]]
-// CHECK:         %[[VAL_198:.*]] = add i32 %[[VAL_78]], %[[VAL_196]]
+// CHECK:         %[[VAL_198:.*]] = add i32 %[[VAL_78]], %[[VAL_114]]
 // CHECK:         %[[VAL_199:.*]] = load float, ptr %[[VAL_177]], align 4
 // CHECK:         %[[VAL_200:.*]] = load i32, ptr %[[VAL_201:.*]], align 4
 // CHECK:         store i32 %[[VAL_200]], ptr %[[VAL_16]], align 4

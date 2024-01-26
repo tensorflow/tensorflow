@@ -35,8 +35,6 @@ namespace gpu {
 //
 // In the presence of virtual threadIdx/blockIdx scaling, all accessors are
 // "logical", unless otherwise specified.
-//
-// DimZ is always the batch dimension, DimY and DimX are tiled.
 class TilingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
@@ -164,23 +162,24 @@ class TilingScheme {
 // occupancy) will differ from logical thread id. This struct contains
 // logical thread ids, along with meta-information about the scaling applied.
 struct TilingThreadIdInfo {
-  TilingThreadIdInfo(llvm::Value* thread_id, llvm::Value* thread_id_x,
-                     llvm::Value* thread_id_y, llvm::Value* lane_id,
+  TilingThreadIdInfo(llvm::Value* thread_id,
+                     std::array<llvm::Value*, 3> thread_ids,
+                     std::array<llvm::Value*, 3> start_offsets,
+                     std::array<llvm::Value*, 3> strides, llvm::Value* lane_id,
                      llvm::Value* block_id, llvm::Value* scaling)
       : thread_id(thread_id),
-        thread_id_x(thread_id_x),
-        thread_id_y(thread_id_y),
+        thread_ids(thread_ids),
+        start_offsets(start_offsets),
+        strides(strides),
         lane_id(lane_id),
         block_id(block_id),
         scaling(scaling) {}
 
   llvm::Value* thread_id;
 
-  // X-coordinate calculated from thread id: `thread_id % num_threads_x`
-  llvm::Value* thread_id_x;
-
-  // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
-  llvm::Value* thread_id_y;
+  std::array<llvm::Value*, 3> thread_ids;
+  std::array<llvm::Value*, 3> start_offsets;
+  std::array<llvm::Value*, 3> strides;
 
   // Lane id: `thread_id % WarpSize`
   llvm::Value* lane_id;
@@ -210,7 +209,7 @@ struct TilingThreadIdInfo {
 
 struct TilingKernelInfo {
   // Tiling bounds.
-  std::array<llvm::Value*, 2> output_tile_bounds;
+  std::array<llvm::Value*, 3> output_tile_bounds;
 
   // Starting tile, as calculated from block id only.
   llvm_ir::IrArray::Index tile_origin;
@@ -226,14 +225,13 @@ struct TilingKernelInfo {
 using TileGenerator =
     std::function<void(const TilingThreadIdInfo& thread_id_info,
                        const llvm_ir::IrArray::Index& tile_start_index,
-                       std::array<llvm::Value*, 2> tile_dimensions)>;
+                       std::array<llvm::Value*, 3> tile_dimensions)>;
 
 // A function object to generate code to process one element in a tile.
 //
-// y_loc: The y coordinate within a tile.
-// x_loc: The x coordinate within a tile.
+// index_in_tile: the current [z, y, x] coordinate.
 using TileElementGenerator =
-    std::function<void(llvm::Value* y_loc, llvm::Value* x_loc)>;
+    std::function<void(std::array<llvm::Value*, 3> index_in_tile)>;
 
 // Emits code to iterate through a 2-dimensional tile with a given tile
 // dimensions and given strides, and call the callback at each iteration.,
@@ -261,7 +259,7 @@ using TileElementGenerator =
 //
 void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
               const TilingThreadIdInfo& thread_id_info,
-              std::array<llvm::Value*, 2> tile_dimensions,
+              absl::Span<llvm::Value* const> tile_dimensions,
               const TileElementGenerator& emit_elem_function);
 
 // Emits a kernel for the hlo instruction using the given kernel mapping

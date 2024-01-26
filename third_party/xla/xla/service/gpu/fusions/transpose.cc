@@ -209,24 +209,24 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   auto input_shape = Permute(tiling_scheme_.GetShape(), tile_to_inout);
   auto tile_generator = [&](const TilingThreadIdInfo& thread_id_info,
                             const llvm_ir::IrArray::Index& tile_start_index,
-                            std::array<llvm::Value*, 2> tile_dimensions) {
+                            std::array<llvm::Value*, 3> tile_dimensions) {
     // Copy input parameter values to shared memory buffers:
     // tile[thread_id_y, thread_id_x] = input[index]
     EmitTile(
         builder, tiling_scheme_, thread_id_info, tile_dimensions,
-        [&](llvm::Value* y_loc, llvm::Value* x_loc) {
-          auto index = PermuteIndex(
-              tile_start_index
-                  .AddOffsetToDim(y_loc, TilingScheme::DimY, builder)
-                  .AddOffsetToDim(x_loc, TilingScheme::DimX, builder),
-              tile_to_inout);
+        [&](std::array<llvm::Value*, 3> index_in_tile) {
+          auto index =
+              PermuteIndex(tile_start_index.AddOffset(index_in_tile, builder),
+                           tile_to_inout);
           for (const auto& tr : transposes) {
             auto input_gen = *fused_emitter.GetGenerator(*tr.instr->operand(0));
             auto input_index = GetUnnormalizedIndex(
                 index, tr.instr->operand(0)->shape(), builder, input_shape);
             llvm::Value* value = *input_gen(input_index);
             llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                builder, tiles[tr.instr], {y_loc, x_loc});
+                builder, tiles[tr.instr],
+                {index_in_tile[TilingScheme::DimY],
+                 index_in_tile[TilingScheme::DimX]});
 
             builder->CreateStore(value, addr);
           }
@@ -254,20 +254,18 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
     EmitSyncThreads(builder, ir_emitter_context);
 
     auto output_tile_index = PermuteIndex(tile_start_index, {0, 2, 1});
-    std::array<llvm::Value*, 2> transposed_tile_dimensions = {
-        tile_dimensions[1], tile_dimensions[0]};
+    auto transposed_tile_dimensions = Permute(tile_dimensions, {0, 2, 1});
 
     EmitTile(
         builder, tiling_scheme_, thread_id_info, transposed_tile_dimensions,
         /*emit_elem_function=*/
-        [&](llvm::Value* y_loc, llvm::Value* x_loc) {
-          auto index = PermuteIndex(
-              output_tile_index
-                  .AddOffsetToDim(y_loc, TilingScheme::DimY, builder)
-                  .AddOffsetToDim(x_loc, TilingScheme::DimX, builder),
-              tile_to_inout);
+        [&](std::array<llvm::Value*, 3> index_in_tile) {
+          auto index =
+              PermuteIndex(output_tile_index.AddOffset(index_in_tile, builder),
+                           tile_to_inout);
           for (const auto& tr : transposes) {
-            std::vector<llvm::Value*> idx = {x_loc, y_loc};
+            std::vector<llvm::Value*> idx = {index_in_tile[2],
+                                             index_in_tile[1]};
             llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
                 builder, tiles[tr.instr], idx);
             llvm::Type* type =

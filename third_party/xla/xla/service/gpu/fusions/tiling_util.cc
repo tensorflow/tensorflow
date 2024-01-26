@@ -57,105 +57,86 @@ llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
                       llvm::ConstantInt::get(index_ty, multiplier));
 }
 
-// Emits loop through the minor (X) dimension of a tile, starting at a given
-// offset.
-//
-// Rough pseudocode:
-//
-// Given: offset, callback
-//
-// for (int x = 0; x < x_tile_size / vector_size; ++x) {
-//   for (int i = 0; i < vector_size; ++i) {
-//      callback(offset + x * stride * vector_size + i);
-//   }
-// }
-void EmitXTileLoop(const TilingThreadIdInfo& thread_id_info,
-                   const TilingScheme& tiling_scheme, bool check_x_tile_bounds,
-                   llvm::Value* y_loc,
-                   std::array<llvm::Value*, 2> tile_dimensions,
-                   llvm::IRBuilder<>* b,
-                   const TileElementGenerator& emit_elem_function) {
-  llvm::Type* index_ty = tile_dimensions[1]->getType();
-  KernelSupportLibrary ksl(b, llvm_ir::UnrollMode::kDefaultUnroll);
+void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
+                 const TilingScheme& tiling_scheme, int dim,
+                 std::array<llvm::Value*, 3> tile_idx,
+                 absl::Span<llvm::Value* const> tile_dimensions,
+                 llvm::IRBuilder<>* b, const TileElementGenerator& emit_elem) {
+  llvm::Type* index_ty = thread_id_info.thread_id->getType();
   auto constant = [&](int64_t val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
-  llvm::Value* start_offset_x =
-      GetStartOffsetX(tiling_scheme, thread_id_info.thread_id_x, index_ty, b);
 
-  int64_t vector_size = tiling_scheme.GetVectorSize();
-  int64_t stride_x =
-      tiling_scheme.GetIndexingOrder() == TilingScheme::LinearIndexingX
-          ? 1
-          : tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX];
-  KernelSupportLibrary unrolled_ksl(b, llvm_ir::UnrollMode::kFullyUnroll);
-  unrolled_ksl.For(
-      "tile_loop",
-      /*start=*/constant(0),
-      /*end=*/
-      constant(tiling_scheme.GetThreadTileSize()[TilingScheme::DimX] /
-               vector_size),
-      /*step=*/1, [&](llvm::Value* x) {
-        for (int64_t i = 0; i < vector_size; i++) {
-          llvm::Value* x_offset = b->CreateAdd(
-              b->CreateMul(x, constant(stride_x * vector_size)), constant(i));
-          llvm::Value* x_loc = b->CreateAdd(x_offset, start_offset_x, "x_loc");
-          auto emit_element = [&] { return emit_elem_function(y_loc, x_loc); };
-          if (check_x_tile_bounds) {
-            ksl.If("x_in_tile", b->CreateICmpULT(x_loc, tile_dimensions[1]),
-                   emit_element);
+  auto recurse = [&] {
+    EmitTileRec(thread_id_info, tiling_scheme, dim + 1, tile_idx,
+                tile_dimensions, b, emit_elem);
+  };
+
+  KernelSupportLibrary ksl(b, dim == TilingScheme::DimX
+                                  ? llvm_ir::UnrollMode::kFullyUnroll
+                                  : llvm_ir::UnrollMode::kDefaultUnroll);
+
+  // TODO(jreiffers): Remove the dim==Z check, this is only here for historical
+  // reasons.
+  if (dim == TilingScheme::DimZ && tiling_scheme.GetBlockTileSize()[dim] == 1) {
+    tile_idx[dim] = constant(0);
+    recurse();
+  } else if (dim == TilingScheme::DimX) {
+    int64_t vector_size = tiling_scheme.GetVectorSize();
+    int64_t stride =
+        tiling_scheme.GetIndexingOrder() == TilingScheme::StridedIndexingX
+            ? tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX]
+            : 1;
+    int64_t last_dim_size = tiling_scheme.GetThreadTileSize()[2] / vector_size;
+
+    auto make_loop = [&](bool emit_bounds_checks) {
+      auto body = [&, emit_bounds_checks](llvm::Value* i) {
+        for (int64_t v = 0; v < vector_size; ++v) {
+          tile_idx[dim] = b->CreateAdd(
+              b->CreateAdd(b->CreateMul(i, constant(stride * vector_size)),
+                           constant(v)),
+              thread_id_info.start_offsets[dim]);
+          if (emit_bounds_checks) {
+            auto* in_bounds =
+                b->CreateICmpULT(tile_idx[dim], tile_dimensions[dim]);
+            ksl.If("x_in_tile", in_bounds, [&] { emit_elem(tile_idx); });
           } else {
-            emit_element();
+            emit_elem(tile_idx);
           }
         }
-      });
+      };
+      return [&, body] {
+        ksl.For(absl::StrCat("loop", dim), constant(0), constant(last_dim_size),
+                constant(1), body);
+      };
+    };
+    // Most tiles will be full, so we emit a single bounds checks for those.
+    auto* is_full_tile = b->CreateICmpEQ(
+        constant(tiling_scheme.GetBlockTileSize()[dim]), tile_dimensions[dim]);
+    // TODO(jreiffers): Always check for full tiles, iff the block count is > 1.
+    if (stride > 1) {
+      ksl.If("is_full_tile", is_full_tile, make_loop(false), make_loop(true));
+    } else {
+      make_loop(true)();
+    }
+  } else {
+    ksl.For(absl::StrCat("loop", dim), thread_id_info.start_offsets[dim],
+            tile_dimensions[dim], thread_id_info.strides[dim],
+            [&](llvm::Value* i) {
+              tile_idx[dim] = i;
+              recurse();
+            });
+  }
 }
 
 }  // namespace
 
 void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
               const TilingThreadIdInfo& thread_id_info,
-              std::array<llvm::Value*, 2> tile_dimensions,
+              absl::Span<llvm::Value* const> tile_dimensions,
               const TileElementGenerator& emit_elem_function) {
-  llvm::Type* index_ty = tile_dimensions[0]->getType();
-  auto constant = [&](int64_t val) {
-    return llvm::ConstantInt::get(index_ty, val);
-  };
-  llvm::Value* num_threads_y =
-      constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimY]);
-
-  KernelSupportLibrary ksl(builder, llvm_ir::UnrollMode::kDefaultUnroll);
-
-  ksl.For(
-      "y_in_tile",
-      /*start=*/thread_id_info.thread_id_y,
-      /*end=*/
-      tile_dimensions[0],
-      /*step=*/num_threads_y, [&](llvm::Value* y_loc) {
-        auto unroll_inner_tile_loop = [&](bool check_x_tile_bounds) {
-          return EmitXTileLoop(thread_id_info, tiling_scheme,
-                               check_x_tile_bounds, y_loc, tile_dimensions,
-                               builder, emit_elem_function);
-        };
-
-        // Only take this path when we unroll in a way vectorizable by
-        // LLVM. Special case when the tile doesn't fit completely for even
-        // row size. For odd row size every other row isn't aligned to the
-        // vectorized size, so it can't be vectorized by LLVM.
-        if (tiling_scheme.GetIndexingOrder() ==
-            TilingScheme::StridedIndexingX) {
-          ksl.If(
-              "is_full_tile",
-              builder->CreateICmpEQ(
-                  constant(
-                      tiling_scheme.GetBlockTileSize()[TilingScheme::DimX]),
-                  tile_dimensions[1]),
-              [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/false); },
-              [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/true); });
-        } else {
-          unroll_inner_tile_loop(/*check_x_tile_bounds=*/true);
-        }
-      });
+  EmitTileRec(thread_id_info, tiling_scheme, 0, {}, tile_dimensions, builder,
+              emit_elem_function);
 }
 
 namespace {
@@ -212,7 +193,12 @@ absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
   }
   llvm::Value* block_id_physical = EmitBlockId(builder, num_blocks, index_ty);
 
-  // Wait this will break coalescing.
+  // More than one thread in the z axis is currently not supported by the
+  // index computation. Since the indexing is a bit complicated (with respect to
+  // strides and starts and "virtual scaling"), there's no obvious way to extend
+  // it right now.
+  CHECK_EQ(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimZ], 1);
+
   llvm::Value* thread_id_logical = builder->CreateURem(
       thread_id_physical, constant(tiling_scheme.GetNumThreadsPerBlock()));
   llvm::Value* scaling = builder->CreateUDiv(
@@ -228,16 +214,25 @@ absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
   llvm::Value* block_exists = builder->CreateICmpULT(
       block_id_logical, constant(tiling_scheme.GetNumBlocks()));
   llvm_ir::EmitEarlyReturn(block_exists, builder);
-  return {
-      {thread_id_logical,
-       /*thread_id_x=*/
-       builder->CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x"),
-       /*thread_id_y=*/
-       builder->CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
-       /*lane_id=*/
-       builder->CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
-       /*block_id=*/block_id_logical,
-       /*scaling=*/scaling}};
+
+  std::array<llvm::Value*, 3> thread_ids{
+      constant(0),  // See above, there must be 1 thread in the z axis.
+      builder->CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
+      builder->CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x")};
+  std::array<llvm::Value*, 3> start_offsets{
+      constant(0), thread_ids[TilingScheme::DimY],
+      GetStartOffsetX(tiling_scheme, thread_ids[TilingScheme::DimX], index_ty,
+                      builder)};
+  std::array<llvm::Value*, 3> strides{
+      constant(1),
+      constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimY]),
+      constant(1)  // Not really, see EmitTileRec.
+  };
+
+  return TilingThreadIdInfo(
+      thread_id_logical, thread_ids, start_offsets, strides,
+      builder->CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
+      block_id_logical, scaling);
 }
 
 }  // namespace
@@ -260,18 +255,23 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
       thread_id_info.block_id,
       ShapeUtil::MakeShape(PRED /*arbitrary*/, dims_in_blocks), builder);
 
-  std::array<llvm::Value*, 2> tile_dimensions;
-  for (int i = 0; i < 2; ++i) {
-    int dim = i + 1;
-    int64_t block_tile_size = tiling_scheme.GetBlockTileSize()[dim];
-    // Only last row or column may not have full size.
-    llvm::Value* is_last = builder->CreateICmpEQ(
-        block_coords[dim], constant(dims_in_blocks[dim] - 1));
-    int64_t partial_row =
-        dims_in_elems[dim] - (dims_in_blocks[dim] - 1) * block_tile_size;
-    tile_dimensions[i] =
-        builder->CreateSelect(is_last, constant(partial_row),
-                              constant(block_tile_size), "tile_bound");
+  std::array<llvm::Value*, 3> tile_dimensions;
+  for (int i = 0; i < 3; ++i) {
+    int64_t block_tile_size = tiling_scheme.GetBlockTileSize()[i];
+    if (dims_in_elems[i] % block_tile_size == 0) {
+      // The block tile size evenly divides the tiled shape -> no need to emit
+      // the bounds check.
+      tile_dimensions[i] = constant(block_tile_size);
+    } else {
+      // Only the last tile in each dimension may not have full size.
+      llvm::Value* is_last = builder->CreateICmpEQ(
+          block_coords[i], constant(dims_in_blocks[i] - 1));
+      int64_t partial_row =
+          dims_in_elems[i] - (dims_in_blocks[i] - 1) * block_tile_size;
+      tile_dimensions[i] =
+          builder->CreateSelect(is_last, constant(partial_row),
+                                constant(block_tile_size), "tile_bound");
+    }
   }
 
   llvm_ir::IrArray::Index tile_origin = [&] {
@@ -287,36 +287,7 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
                                    index_ty);
   }();
 
-  auto emit_tile = [&](const llvm_ir::IrArray::Index& tile) {
-    tile_generator(thread_id_info, tile, tile_dimensions);
-  };
-
-  if (tiling_scheme.GetBlockTileSize()[0] == 1) {
-    emit_tile(tile_origin);
-  } else {
-    llvm::Value* starting_tile_index_for_dim = tile_origin[0];
-    llvm::Value* block_size_for_dim =
-        constant(tiling_scheme.GetBlockTileSize()[0]);
-    llvm::Value* block_id_for_dim =
-        builder->CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
-    llvm::Value* last_block_for_dim = constant(dims_in_blocks[0] - 1);
-    llvm::Value* last_block_size_for_dim =
-        constant(dims_in_elems[0] -
-                 (dims_in_blocks[0] - 1) * tiling_scheme.GetBlockTileSize()[0]);
-
-    llvm::Value* num_tiles_in_block = builder->CreateSelect(
-        builder->CreateICmpEQ(last_block_for_dim, block_id_for_dim),
-        last_block_size_for_dim, block_size_for_dim);
-    ksl.For("loop_z",
-            /*start=*/constant(0),
-            /*end=*/num_tiles_in_block,
-            /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
-              llvm_ir::IrArray::Index tile_index = tile_origin.AddOffsetToDim(
-                  block_dim_induction_var, 0, builder);
-              emit_tile(tile_index);
-            });
-  }
-
+  tile_generator(thread_id_info, tile_origin, tile_dimensions);
   return {{tile_dimensions, tile_origin, thread_id_info}};
 }
 
