@@ -2539,8 +2539,7 @@ absl::Status IrEmitterUnnested::EmitFusion(
   // Create HloFusionAnalysis instance.
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
-  TF_ASSIGN_OR_RETURN(auto fusion_analysis,
-                      HloFusionAnalysis::Create(fusion, &device_info));
+  auto fusion_analysis = HloFusionAnalysis::Create(fusion, &device_info);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<FusionInterface> emitter,
@@ -4149,8 +4148,7 @@ absl::Status IrEmitterUnnested::EmitOp(
           Cast<HloFusionInstruction>(hlo_for_lmhlo.at(op));
       const se::DeviceDescription& device_info =
           ir_emitter_context_->gpu_device_info();
-      TF_ASSIGN_OR_RETURN(auto fusion_analysis,
-                          HloFusionAnalysis::Create(instr, &device_info));
+      auto fusion_analysis = HloFusionAnalysis::Create(instr, &device_info);
       return EmitFusion(instr, fusion_analysis);
     }
 
@@ -4470,8 +4468,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       auto* fusion = Cast<HloFusionInstruction>(instr);
       const se::DeviceDescription& device_info =
           ir_emitter_context_->gpu_device_info();
-      TF_ASSIGN_OR_RETURN(auto fusion_analysis,
-                          HloFusionAnalysis::Create(fusion, &device_info));
+      auto fusion_analysis = HloFusionAnalysis::Create(fusion, &device_info);
       return EmitFusion(fusion, fusion_analysis);
     }
     case HloOpcode::kInfeed:

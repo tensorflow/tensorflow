@@ -67,11 +67,9 @@ class PriorityFusionTest : public HloTestBase {
       if (!computation->FusionInstruction()) continue;
 
       auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-      auto analysis =
-          HloFusionAnalysis::Create(
-              Cast<HloFusionInstruction>(computation->FusionInstruction()),
-              &device_info)
-              .value();
+      auto analysis = HloFusionAnalysis::Create(
+          Cast<HloFusionInstruction>(computation->FusionInstruction()),
+          &device_info);
       kinds.push_back(analysis.GetEmitterFusionKind());
     }
     return kinds;

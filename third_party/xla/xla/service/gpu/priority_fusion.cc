@@ -439,12 +439,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // TODO(b/312686229): Cost model should handle this.
     const auto& analysis_fused =
         fusion_analysis_cache_.Get(*producer, *consumer);
-    if (producer->IsInputFusion() && analysis_fused &&
-        analysis_fused->GetEmitterFusionKind() ==
+    if (producer->IsInputFusion() &&
+        analysis_fused.GetEmitterFusionKind() ==
             HloFusionAnalysis::EmitterFusionKind::kLoop) {
       const auto& analysis = fusion_analysis_cache_.Get(*producer);
-      if (!analysis || analysis->GetEmitterFusionKind() ==
-                           HloFusionAnalysis::EmitterFusionKind::kReduction) {
+      if (analysis.GetEmitterFusionKind() ==
+          HloFusionAnalysis::EmitterFusionKind::kReduction) {
         return "fusion into output of a reduce fusion would create a loop "
                "fusion";
       }
@@ -711,8 +711,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
   // matter but some passes downstream still query these instead of fusion
   // analysis.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
-  if (!analysis) return HloInstruction::FusionKind::kLoop;
-  switch (analysis->GetEmitterFusionKind()) {
+  switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
@@ -739,7 +738,7 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
   absl::string_view emitter_fusion_kind =
       HloFusionAnalysis::GetEmitterFusionKindString(
           fusion_analysis_cache_.Get(*fusion_instruction)
-              ->GetEmitterFusionKind());
+              .GetEmitterFusionKind());
   fusion_instruction->SetAndSanitizeName(
       absl::StrCat(emitter_fusion_kind, "_fusion"));
   fusion_instruction->UniquifyName(
