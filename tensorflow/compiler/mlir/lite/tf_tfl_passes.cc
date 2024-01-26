@@ -436,7 +436,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // completed. Add either full integer quantization or dynamic range
     // quantization passes based on quant_specs.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses() ||
-        pass_config.qdq_conversion_mode !=
+        pass_config.quant_specs.qdq_conversion_mode !=
             mlir::quant::QDQConversionMode::kQDQNone) {
       AddQuantizationPasses(pass_config, *pass_manager);
       // Remove unnecessary QDQs while handling QAT models.

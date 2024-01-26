@@ -672,6 +672,7 @@ lit_test_suite(
             "launch_dimensions.hlo",
             "pad_to_static.hlo",
             "reduce_atomic_min.hlo",
+            "reduce_f64_column.hlo",
             "reduce_large_row_to_scalar.hlo",
             "reduce_row_vectorized.hlo",
             "reduce_unnested.hlo",

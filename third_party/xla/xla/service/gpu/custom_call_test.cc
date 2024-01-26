@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "xla/shape.h"
 #include "tsl/platform/statusor.h"
 
@@ -468,6 +469,36 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+// Test passing arbitrary pointers as i64 attributes.
+static absl::Status HandleUserPointer(ffi::Buffer, const std::string* str) {
+  return absl::InternalError(*str);
+}
+
+XLA_FFI_DEFINE_HANDLER(kHandleUserPointer, HandleUserPointer,
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::Buffer>()  // buffer for result
+                           .Attr<ffi::Pointer<std::string>>("message"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$user_data", PLATFORM,
+                         kHandleUserPointer);
+
+TEST_F(CustomCallTest, PassUserPointerWithAttrs) {
+  std::string message = "User-defined message";
+  auto ptr = reinterpret_cast<uintptr_t>(&message);
+
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$user_data", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/absl::StrFormat("{message = %d : i64}", ptr),
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("User-defined message"));
 }
 
 //===----------------------------------------------------------------------===//

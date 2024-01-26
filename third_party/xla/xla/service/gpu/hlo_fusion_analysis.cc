@@ -131,7 +131,7 @@ HloFusionAnalysis::HloFusionAnalysis(
       input_output_info_(std::move(input_output_info)) {}
 
 // static
-absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+HloFusionAnalysis HloFusionAnalysis::Create(
     FusionBackendConfig backend_config,
     std::unique_ptr<HloFusionAdaptor> fusion,
     const se::DeviceDescription* device_info) {
@@ -189,13 +189,14 @@ absl::string_view HloFusionAnalysis::GetEmitterFusionKindString(
 }
 
 // static
-absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+HloFusionAnalysis HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {
   CHECK(device_info != nullptr);
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
-                      fusion->backend_config<GpuBackendConfig>());
-  FusionBackendConfig backend_config = gpu_config.fusion_backend_config();
+  FusionBackendConfig backend_config =
+      fusion->has_backend_config()
+          ? fusion->backend_config<GpuBackendConfig>()->fusion_backend_config()
+          : FusionBackendConfig::default_instance();
   return Create(std::move(backend_config),
                 HloFusionAdaptor::ForInstruction(fusion), device_info);
 }
@@ -321,10 +322,10 @@ const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
   LOG(FATAL) << "Did not find a hero reduction";
 }
 
-std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+HloFusionAnalysis AnalyzeProducerConsumerFusion(
     const HloInstruction& producer, const HloInstruction& consumer,
     const se::DeviceDescription& device_info) {
-  auto ret = HloFusionAnalysis::Create(
+  return HloFusionAnalysis::Create(
       consumer.has_backend_config()
           ? consumer.backend_config<GpuBackendConfig>()->fusion_backend_config()
           : producer.backend_config<GpuBackendConfig>()
@@ -333,17 +334,13 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
           HloFusionAdaptor::ForInstruction(&producer),
           HloFusionAdaptor::ForInstruction(&consumer)),
       &device_info);
-  if (!ret.ok()) return std::nullopt;
-  return {std::move(*ret)};
 }
 
-std::optional<HloFusionAnalysis> AnalyzeFusion(
-    const HloInstruction& consumer, const se::DeviceDescription& device_info) {
-  auto ret = HloFusionAnalysis::Create(
+HloFusionAnalysis AnalyzeFusion(const HloInstruction& consumer,
+                                const se::DeviceDescription& device_info) {
+  return HloFusionAnalysis::Create(
       consumer.backend_config<GpuBackendConfig>()->fusion_backend_config(),
       HloFusionAdaptor::ForInstruction(&consumer), &device_info);
-  if (!ret.ok()) return std::nullopt;
-  return {std::move(*ret)};
 }
 
 }  // namespace gpu

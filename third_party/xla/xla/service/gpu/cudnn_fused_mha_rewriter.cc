@@ -471,7 +471,9 @@ StatusOr<bool> IsFlashAttention(
   TF_RET_CHECK(hidden_dim.size() == 1);
   auto is_fixed_topology =
       (custom_call_name == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget ||
-       custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget);
+       custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget ||
+       custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget ||
+       custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget);
 
   auto is_seqlen_supported = seq_q[0] > 512 && seq_k[0] > 512 &&
                              seq_q[0] % 64 == 0 && seq_k[0] % 64 == 0;
@@ -736,7 +738,6 @@ MatchFwdResult MatchBmm1ScaleBiasMaskSoftmaxDropoutBmm2(
       matched_result.has_match = false;
       return matched_result;
     }
-    matched_result.is_causal_mask |= IsCausalMaskPattern(mask);
     if (has_dropout) {
       // Found BMM1 - (Scale) - (bias) - Mask - Softmax - dropout - BMM2
       matched_result.matched_custom_call_name =
@@ -1259,9 +1260,16 @@ absl::StatusOr<bool> IsMHABlockSupported(
   if (is_flash_attention) {
     if (is_causal_mask) {
       // if bias is causal mask, needs to remove bias from name
-      custom_call_name = MHACallHasDropout(custom_call_name)
-                             ? kCudnnfMHASoftmaxDropoutCallTarget
-                             : kCudnnfMHASoftmaxCallTarget;
+      if (custom_call_name == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget) {
+        custom_call_name = kCudnnfMHASoftmaxDropoutCallTarget;
+      } else if (custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget) {
+        custom_call_name = kCudnnfMHASoftmaxCallTarget;
+      } else if (custom_call_name ==
+                 kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget) {
+        custom_call_name = kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+      } else if (custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget) {
+        custom_call_name = kCudnnfMHAScaleMaskSoftmaxCallTarget;
+      }
     }
     return true;
   }

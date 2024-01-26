@@ -266,6 +266,97 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+// A class for storing either an owned thread pool or a non-owning pointer to an
+// external thread pool.
+class MaybeOwningThreadPool {
+ public:
+  // Gets or creates a thread pool.
+  //
+  // See the code for the logic.
+  static MaybeOwningThreadPool GetOrCreate(
+      int parallelism, tsl::thread::ThreadPool* default_thread_pool,
+      int default_parallelism);
+
+  // Not owning (nullptr).
+  MaybeOwningThreadPool();
+  // Not owning.
+  explicit MaybeOwningThreadPool(tsl::thread::ThreadPool* thread_pool);
+  // Owning.
+  explicit MaybeOwningThreadPool(
+      std::unique_ptr<tsl::thread::ThreadPool> thread_pool);
+  tsl::thread::ThreadPool* get();
+  const tsl::thread::ThreadPool* get() const;
+  tsl::thread::ThreadPool* operator->();
+  const tsl::thread::ThreadPool* operator->() const;
+  explicit operator bool() const;
+  bool operator!() const;
+
+ private:
+  std::variant<tsl::thread::ThreadPool*,
+               std::unique_ptr<tsl::thread::ThreadPool>>
+      thread_pool_;
+};
+
+/*static*/ MaybeOwningThreadPool MaybeOwningThreadPool::GetOrCreate(
+    int parallelism, tsl::thread::ThreadPool* default_thread_pool,
+    int default_parallelism) {
+  CHECK_GE(parallelism, 0);
+  CHECK_GE(default_parallelism, 1);
+
+  auto create_thread_pool = [&](int num_threads) {
+    CHECK_GE(num_threads, 1);
+    return std::make_unique<tsl::thread::ThreadPool>(tsl::Env::Default(), "",
+                                                     num_threads);
+  };
+
+  switch (parallelism) {
+    case 0:
+      if (default_thread_pool == nullptr && default_parallelism > 1) {
+        return MaybeOwningThreadPool(create_thread_pool(default_parallelism));
+      }
+      return MaybeOwningThreadPool(default_thread_pool);
+    case 1:
+      return MaybeOwningThreadPool(nullptr);
+    default:
+      return MaybeOwningThreadPool(create_thread_pool(parallelism));
+  }
+}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool() : thread_pool_(nullptr) {}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool(
+    tsl::thread::ThreadPool* thread_pool)
+    : thread_pool_(thread_pool) {}
+
+MaybeOwningThreadPool::MaybeOwningThreadPool(
+    std::unique_ptr<tsl::thread::ThreadPool> thread_pool)
+    : thread_pool_(std::move(thread_pool)) {}
+
+tsl::thread::ThreadPool* MaybeOwningThreadPool::get() {
+  if (std::holds_alternative<tsl::thread::ThreadPool*>(thread_pool_)) {
+    return std::get<tsl::thread::ThreadPool*>(thread_pool_);
+  }
+  return std::get<std::unique_ptr<tsl::thread::ThreadPool>>(thread_pool_).get();
+}
+
+const tsl::thread::ThreadPool* MaybeOwningThreadPool::get() const {
+  return const_cast<MaybeOwningThreadPool*>(this)->get();
+}
+
+tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() {
+  tsl::thread::ThreadPool* thread_pool = get();
+  CHECK_NE(thread_pool, nullptr);
+  return thread_pool;
+}
+
+const tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() const {
+  return const_cast<MaybeOwningThreadPool*>(this)->operator->();
+}
+
+MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
+
+bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
+
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
@@ -342,21 +433,20 @@ class GpuAotCompilationResult : public AotCompilationResult {
 
 class GpuThunkAotCompilationResult : public AotCompilationResult {
  public:
-  GpuThunkAotCompilationResult(const HloModule* hlo_module,
-                               const BufferAssignment* buffer_assignment,
-                               std::string_view asm_text,
-                               absl::Span<const uint8_t> binary) {
-    *proto_.mutable_hlo_module() = hlo_module->ToProto();
-    *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
-    proto_.set_asm_text(std::string(asm_text));
-    proto_.set_binary(binary.data(), binary.size());
-  }
-
   explicit GpuThunkAotCompilationResult(CompilationResultProto proto)
-      : proto_(proto) {}
+      : proto_(std::move(proto)) {}
 
-  absl::StatusOr<std::string> SerializeAsString() const override {
-    return proto_.SerializeAsString();
+  static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
+  FromModule(const HloModule* hlo_module,
+             const BufferAssignment* buffer_assignment,
+             std::string_view asm_text, absl::Span<const uint8_t> binary) {
+    CompilationResultProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_hlo_module_with_config(),
+                        hlo_module->ToProtoWithConfig());
+    *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
+    proto.set_asm_text(std::string(asm_text));
+    proto.set_binary(binary.data(), binary.size());
+    return std::make_unique<GpuThunkAotCompilationResult>(std::move(proto));
   }
 
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
@@ -366,7 +456,12 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
       return Internal(
           "Failed to parse serialized GpuThunkAotCompilationResult.");
     }
-    return std::make_unique<GpuThunkAotCompilationResult>(proto);
+
+    return std::make_unique<GpuThunkAotCompilationResult>(std::move(proto));
+  }
+
+  absl::StatusOr<std::string> SerializeAsString() const override {
+    return proto_.SerializeAsString();
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
@@ -412,13 +507,10 @@ GpuAotCompilationResult::LoadExecutable(
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
     Compiler* compiler, const se::StreamExecutor* stream_exec) const {
-  // Recreate HloModule from proto.
-  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          proto_.hlo_module(), GetDebugOptionsFromFlags()));
+  // Recreate HloModule+HloModuleConfig from proto.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(proto_.hlo_module(), hlo_module_config));
+      HloModule::CreateFromProtoWithConfig(proto_.hlo_module_with_config()));
 
   // Recreate BufferAssignment from proto.
   TF_ASSIGN_OR_RETURN(
@@ -1972,9 +2064,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     if (!IsXlaRuntimeExecutableEnabled(module->config())) {
       // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
-      results.emplace_back(std::make_unique<GpuThunkAotCompilationResult>(
-          module.get(), res.compile_module_results.buffer_assignment.get(),
-          res.backend_result.asm_text, res.backend_result.binary));
+      TF_ASSIGN_OR_RETURN(
+          results.emplace_back(),
+          GpuThunkAotCompilationResult::FromModule(
+              module.get(), res.compile_module_results.buffer_assignment.get(),
+              res.backend_result.asm_text, res.backend_result.binary));
       continue;
     }
 
@@ -2051,17 +2145,13 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   if (!gpu_executable) return Internal("GpuExecutable is null");
 
   if (gpu_executable->IsXlaRuntimeEnabled()) {
-    HloModuleProto module_proto = gpu_executable->module().ToProto();
-    auto obj_file = gpu_executable->GetObjFile().value_or("");
-    auto mlir_module = gpu_executable->GetMlirModule().value_or("");
-    return std::make_unique<xla::gpu::GpuAotCompilationResult>(
-        module_proto, obj_file, mlir_module, gpu_executable->text(),
-        gpu_executable->binary(), gpu_executable->constants());
-  } else {
-    return std::make_unique<xla::gpu::GpuThunkAotCompilationResult>(
-        &gpu_executable->module(), gpu_executable->buffer_assignment(),
-        gpu_executable->text(), gpu_executable->binary());
+    return absl::InternalError(
+        "Exporting executables when XLA runtime is enabled is not supported");
   }
+
+  return GpuThunkAotCompilationResult::FromModule(
+      &gpu_executable->module(), gpu_executable->buffer_assignment(),
+      gpu_executable->text(), gpu_executable->binary());
 }
 
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
@@ -2172,10 +2262,6 @@ GpuCompiler::LoadAotCompilationResult(
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 GpuCompiler::LoadAotCompilationResultStatic(
     const std::string& serialized_aot_result) {
-  // TODO(anlunx): Remove the code that loads a GpuAotCompilationResult when we
-  // convert to thunk runtime.
-  auto result = GpuAotCompilationResult::FromString(serialized_aot_result);
-  if (result.ok()) return result;
   return GpuThunkAotCompilationResult::FromString(serialized_aot_result);
 }
 

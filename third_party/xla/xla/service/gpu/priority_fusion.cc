@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -285,6 +287,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
+    absl::string_view emitter_fusion_kind =
+        HloFusionAnalysis::GetEmitterFusionKindString(
+            fusion_analysis_cache_.Get(*fusion).GetEmitterFusionKind());
+    fusion->SetAndSanitizeName(absl::StrCat(emitter_fusion_kind, "_fusion"));
+    fusion->UniquifyName(&fusion->GetModule()->instruction_name_uniquer());
+
     if (fusion_process_dump_) {
       auto* fusion_step =
           fusion_process_dump_->add_fusion_steps()->mutable_fusion();
@@ -415,7 +423,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // Avoid fusing reduce into reduce. Our cost model doesn't currently
     // understand this case due to a lack of tiling analysis.
     // TODO(b/312200883): Remove this.
-    auto contains_signficant_reduce = [&](const HloInstruction* instr) {
+    auto contains_significant_reduce = [&](const HloInstruction* instr) {
       auto fusion = HloFusionAdaptor::ForInstruction(instr);
       return HloAnyOf(fusion->GetRoots(), *fusion, [](auto node) {
         if (node.opcode() != HloOpcode::kReduce) return false;
@@ -428,8 +436,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
         return reduction_size >= 16;
       });
     };
-    if (contains_signficant_reduce(producer) &&
-        contains_signficant_reduce(consumer)) {
+    if (contains_significant_reduce(producer) &&
+        contains_significant_reduce(consumer)) {
       return "both the producer and the consumer contain a reduce";
     }
 
@@ -439,12 +447,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // TODO(b/312686229): Cost model should handle this.
     const auto& analysis_fused =
         fusion_analysis_cache_.Get(*producer, *consumer);
-    if (producer->IsInputFusion() && analysis_fused &&
-        analysis_fused->GetEmitterFusionKind() ==
+    if (producer->IsInputFusion() &&
+        analysis_fused.GetEmitterFusionKind() ==
             HloFusionAnalysis::EmitterFusionKind::kLoop) {
       const auto& analysis = fusion_analysis_cache_.Get(*producer);
-      if (!analysis || analysis->GetEmitterFusionKind() ==
-                           HloFusionAnalysis::EmitterFusionKind::kReduction) {
+      if (analysis.GetEmitterFusionKind() ==
+          HloFusionAnalysis::EmitterFusionKind::kReduction) {
         return "fusion into output of a reduce fusion would create a loop "
                "fusion";
       }
@@ -518,7 +526,7 @@ class GpuPriorityFusionQueue : public FusionQueue {
   }
 
   FusionDecision CanFuseWithAllUsers(HloInstruction* producer) {
-    if (producer->users().size() == 0) {
+    if (producer->users().empty()) {
       return "No users to fuse";
     }
 
@@ -640,7 +648,7 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
   // Before: broadcast.123 -> broadcast.124
   // After: broadcast.123.0 -> broadcast.123.1
   //
-  // With this modification it will be easier to match intructions before and
+  // With this modification it will be easier to match instructions before and
   // after fusion passes, because they will have the same unique prefix. Names
   // are not used in the pipeline, but it makes debugging much easier.
   for (auto* computation : GetFusionComputations(module, execution_threads)) {
@@ -711,8 +719,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
   // matter but some passes downstream still query these instead of fusion
   // analysis.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
-  if (!analysis) return HloInstruction::FusionKind::kLoop;
-  switch (analysis->GetEmitterFusionKind()) {
+  switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
@@ -735,15 +742,6 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
-
-  absl::string_view emitter_fusion_kind =
-      HloFusionAnalysis::GetEmitterFusionKindString(
-          fusion_analysis_cache_.Get(*fusion_instruction)
-              ->GetEmitterFusionKind());
-  fusion_instruction->SetAndSanitizeName(
-      absl::StrCat(emitter_fusion_kind, "_fusion"));
-  fusion_instruction->UniquifyName(
-      &fusion_instruction->GetModule()->instruction_name_uniquer());
   return result;
 }
 

@@ -79,6 +79,31 @@ struct ArgDecoding<Buffer> {
 };
 
 //===----------------------------------------------------------------------===//
+// Attributes decoding
+//===----------------------------------------------------------------------===//
+
+// A type tag to mark i64 attributes as pointers to `T`.
+template <typename T>
+struct Pointer {};
+
+template <typename T>
+struct AttrDecoding<Pointer<T>> {
+  using Type = T*;
+
+  static std::optional<Type> Decode(XLA_FFI_AttrType type, void* attr,
+                                    DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_AttrType_I64) {
+      return diagnostic.Emit("Wrong attribute type: ")
+             << "expected i64 for passing user data but got " << type;
+    }
+
+    static_assert(sizeof(uintptr_t) == sizeof(int64_t));
+    uintptr_t ptr = *reinterpret_cast<uintptr_t*>(attr);
+    return reinterpret_cast<Type>(ptr);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Context decoding
 //===----------------------------------------------------------------------===//
 

@@ -262,14 +262,19 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Handle of a graph node that acts as a barrier for all newly added commands.
   GpuGraphNodeHandle barrier_ = nullptr;
 
-  // Handles to load bearing graph nodes (kernel, memcpy, etc.) corresponding to
-  // command buffer commands and also to no-op nodes corresponding to barriers
-  // (nodes defining DAG structure). Owned by the `graph_` instance.
-  std::vector<GpuGraphNodeHandle> nodes_;
+  // A handle to a Gpu graph node and a metadata describing the node properties.
+  struct GpuGraphNodeInfo {
+    // Gpu graph node handle owned by `graph_` instance.
+    GpuGraphNodeHandle handle = nullptr;
+  };
+
+  // Gpu graph nodes info for load bearing graph nodes (kernel, memcpy, etc.)
+  // corresponding to command buffer commands and also to no-op nodes
+  // corresponding to barriers (nodes defining DAG structure).
+  std::vector<GpuGraphNodeInfo> nodes_;
 
   // Handles to no-op graph nodes corresponding to barriers that define nodes
-  // execution order. Can be nullptr if regular node acts as a barrier. Owned by
-  // the `graph_` instance.
+  // execution order. Can be nullptr if regular node acts as a barrier.
   std::vector<GpuGraphNodeHandle> barriers_;
 
   // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu

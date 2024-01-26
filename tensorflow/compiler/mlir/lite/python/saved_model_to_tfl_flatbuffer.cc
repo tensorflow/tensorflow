@@ -201,13 +201,16 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
       toco_flags.legalize_custom_tensor_list_ops();
 
   if (toco_flags.qdq_conversion_mode() == "STATIC") {
-    pass_config.qdq_conversion_mode =
+    pass_config.quant_specs.qdq_conversion_mode =
         mlir::quant::QDQConversionMode::kQDQStatic;
   } else if (toco_flags.qdq_conversion_mode() == "DYNAMIC") {
-    pass_config.qdq_conversion_mode =
+    pass_config.quant_specs.qdq_conversion_mode =
         mlir::quant::QDQConversionMode::kQDQDynamic;
+    // Need to set this or else the ops will still use floating point kernels
+    pass_config.quant_specs.inference_type = tensorflow::DT_QINT8;
   } else if (toco_flags.qdq_conversion_mode() == "NONE") {
-    pass_config.qdq_conversion_mode = mlir::quant::QDQConversionMode::kQDQNone;
+    pass_config.quant_specs.qdq_conversion_mode =
+        mlir::quant::QDQConversionMode::kQDQNone;
   } else {
     return errors::InvalidArgument("Unknown QDQ conversion mode: ",
                                    toco_flags.qdq_conversion_mode());

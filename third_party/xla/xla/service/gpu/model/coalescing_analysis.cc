@@ -37,16 +37,13 @@ namespace gpu {
 
 using mlir::AffineMap;
 
-bool IsReadCoalescedHeuristic(
-    const std::optional<HloFusionAnalysis>& fusion_analysis,
-    const HloInstruction* producer, const HloInstruction* consumer) {
-  auto analyzed_kind_or_reduction =
-      fusion_analysis ? fusion_analysis->GetEmitterFusionKind()
-                      : HloFusionAnalysis::EmitterFusionKind::kReduction;
+bool IsReadCoalescedHeuristic(const HloFusionAnalysis& fusion_analysis,
+                              const HloInstruction* producer,
+                              const HloInstruction* consumer) {
+  auto fusion_kind = fusion_analysis.GetEmitterFusionKind();
 
   // Transposing minor dimension breaks coalescing.
-  if (analyzed_kind_or_reduction !=
-      HloFusionAnalysis::EmitterFusionKind::kTranspose) {
+  if (fusion_kind != HloFusionAnalysis::EmitterFusionKind::kTranspose) {
     auto is_broadcast = [&](const HloInstruction* instr) {
       while (true) {
         if (instr->opcode() == HloOpcode::kBroadcast) return true;
@@ -77,8 +74,7 @@ bool IsReadCoalescedHeuristic(
   }
 
   // Fusing two row reductions breaks coalescing.
-  if (analyzed_kind_or_reduction ==
-          HloFusionAnalysis::EmitterFusionKind::kReduction &&
+  if (fusion_kind == HloFusionAnalysis::EmitterFusionKind::kReduction &&
       IsInputFusibleReduction(*producer) && consumer &&
       IsInputFusibleReduction(*consumer)) {
     return false;

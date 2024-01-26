@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GEMM_THUNK_H_
-#define XLA_SERVICE_GPU_GEMM_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_GEMM_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_GEMM_THUNK_H_
 
 #include <optional>
 
@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -67,4 +66,4 @@ class GemmThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GEMM_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_GEMM_THUNK_H_

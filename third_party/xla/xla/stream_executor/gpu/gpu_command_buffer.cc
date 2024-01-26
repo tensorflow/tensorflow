@@ -251,28 +251,28 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
     // Collect nodes that will become a new barrier dependencies.
     Dependencies dependencies;
     for (int32_t i = nodes_.size() - 1; i >= 0; --i) {
-      if (nodes_[i] == barrier_) break;
-      dependencies.push_back(nodes_[i]);
+      if (nodes_[i].handle == barrier_) break;
+      dependencies.push_back(nodes_[i].handle);
     }
 
     // Add a noop kernel node acting as a barrier.
     if (dependencies.size() > 1) {
       // TODO(b/316343054): This should be an empty node, however CUDA 12.3 does
       // not support empty nodes inside conditional command buffers.
-      GpuGraphNodeHandle* node = &nodes_.emplace_back();
+      GpuGraphNodeInfo& node_info = nodes_.emplace_back();
       TF_ASSIGN_OR_RETURN(auto noop, GetNoOpKernel(executor));
       TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-          node, graph_, absl::MakeSpan(dependencies), noop->name(),
+          &node_info.handle, graph_, absl::MakeSpan(dependencies), noop->name(),
           AsGpuKernel(noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
           /*kernel_params=*/nullptr, /*extra=*/nullptr));
-      barriers_.push_back(*node);
+      barriers_.push_back(node_info.handle);
     } else {
       barriers_.push_back(nullptr);
     }
 
     // Make the last node a barrier, if we didn't add a new no-op node acting
     // as a barrier we simply reuse the last node.
-    barrier_ = nodes_.back();
+    barrier_ = nodes_.back().handle;
     return absl::OkStatus();
   }
 
@@ -281,9 +281,9 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
     // means that we just updated a "real" barrier node, otherwise barrier is
     // the last updated node.
     if (barriers_[update_state_.barrier_idx++]) {
-      barrier_ = nodes_[update_state_.node_idx++];
+      barrier_ = nodes_[update_state_.node_idx++].handle;
     } else if (update_state_.node_idx) {
-      barrier_ = nodes_[update_state_.node_idx - 1];
+      barrier_ = nodes_[update_state_.node_idx - 1].handle;
     }
     return absl::OkStatus();
   }
@@ -306,16 +306,16 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     return GpuDriver::GraphAddKernelNode(
-        node, graph_, absl::MakeSpan(barrier), kernel.name(), gpu_func,
-        blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z,
+        &node_info.handle, graph_, absl::MakeSpan(barrier), kernel.name(),
+        gpu_func, blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z,
         packed_args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
   }
 
   // Updates kernel node in the executable graph.
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++].handle;
     return GpuDriver::GraphExecKernelNodeSetParams(
         exec_, node, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
         threads.x, threads.y, threads.z, packed_args.number_of_shared_bytes(),
@@ -361,14 +361,14 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
-    return GpuDriver::GraphAddChildNode(node, graph_, absl::MakeSpan(barrier),
-                                        child_graph);
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
+    return GpuDriver::GraphAddChildNode(&node_info.handle, graph_,
+                                        absl::MakeSpan(barrier), child_graph);
   }
 
   // Updates child graph node in the executable graph.
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++].handle;
     return GpuDriver::GraphExecChildNodeSetParams(exec_, node, child_graph);
   }
 
@@ -382,14 +382,14 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     return GpuDriver::GraphAddMemcpyD2DNode(
-        parent_->gpu_context(), node, graph_, absl::MakeSpan(barrier),
-        AsDevicePtr(*dst), AsDevicePtr(src), size);
+        parent_->gpu_context(), &node_info.handle, graph_,
+        absl::MakeSpan(barrier), AsDevicePtr(*dst), AsDevicePtr(src), size);
   }
 
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++].handle;
     return GpuDriver::GraphExecMemcpyD2DNodeSetParams(
         parent_->gpu_context(), exec_, node, AsDevicePtr(*dst),
         AsDevicePtr(src), size);
@@ -405,14 +405,14 @@ absl::Status GpuCommandBuffer::Memset(DeviceMemoryBase* dst,
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     return GpuDriver::GraphAddMemsetNode(
-        parent_->gpu_context(), node, graph_, absl::MakeSpan(barrier),
-        AsDevicePtr(*dst), bit_pattern, num_elements);
+        parent_->gpu_context(), &node_info.handle, graph_,
+        absl::MakeSpan(barrier), AsDevicePtr(*dst), bit_pattern, num_elements);
   }
 
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++];
+    GpuGraphNodeHandle node = nodes_[update_state_.node_idx++].handle;
     return GpuDriver::GraphExecMemsetNodeSetParams(
         parent_->gpu_context(), exec_, node, AsDevicePtr(*dst), bit_pattern,
         num_elements);
@@ -427,11 +427,11 @@ absl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
   // Adds a new memory allocation node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
 
     GpuDevicePtr ptr;
     TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemAllocNode(
-        node, graph_, absl::MakeSpan(barrier),
+        &node_info.handle, graph_, absl::MakeSpan(barrier),
         GpuDriver::MemAccessFlags::kReadWrite,
         GpuDriver::MemLocationType::kDevice, parent_->device_ordinal(),
         GpuDriver::MemAllocationType::kPinned, bytes, &ptr));
@@ -450,7 +450,7 @@ absl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
     // during the create step.
     TF_ASSIGN_OR_RETURN(AllocationResult params,
                         GpuDriver::GraphGetMemAllocNodeParams(
-                            nodes_[update_state_.node_idx++]));
+                            nodes_[update_state_.node_idx++].handle));
     return DeviceMemoryBase(reinterpret_cast<void*>(params.first),
                             params.second);
   }
@@ -464,10 +464,10 @@ absl::Status GpuCommandBuffer::Free(DeviceMemoryBase dst) {
   // Adds a new memfree node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     GpuDevicePtr gpu_dptr = AsDevicePtr(dst);
     TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemFreeNode(
-        node, graph_, absl::MakeSpan(barrier), gpu_dptr));
+        &node_info.handle, graph_, absl::MakeSpan(barrier), gpu_dptr));
     return absl::OkStatus();
   }
 
@@ -514,7 +514,7 @@ GpuCommandBuffer::CreateConditionalNodes(
 
   for (GpuGraphConditionalHandle handle : handles) {
     Dependencies barrier = GetBarrier();
-    GpuGraphNodeHandle* node = &nodes_.emplace_back();
+    GpuGraphNodeInfo& node_info = nodes_.emplace_back();
 
     ConditionalParams params;
     params.type = type;
@@ -523,7 +523,8 @@ GpuCommandBuffer::CreateConditionalNodes(
 
     TF_ASSIGN_OR_RETURN(
         GpuDriver::GpuGraphNodeResult result,
-        GpuDriver::GraphAddNode(node, graph_, absl::MakeSpan(barrier), params));
+        GpuDriver::GraphAddNode(&node_info.handle, graph_,
+                                absl::MakeSpan(barrier), params));
 
     conditional_graphs.push_back(std::get<ConditionalResult>(result).graph);
   }

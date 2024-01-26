@@ -110,5 +110,49 @@ ENTRY entry {
                         _, _));
 }
 
+TEST_F(WhileLoopFusibleSinkingTest, NoSinkSlicedMask) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[5,7],f32[5,7]) parameter(0)
+  p_body.0 = get-tuple-element(p_body), index=0
+  p_body.1 = get-tuple-element(p_body), index=1
+  z = s32[] constant(0)
+  j = s32[] constant(3)
+  ds = f32[1,7] dynamic-slice(p_body.1, j, z), dynamic_slice_sizes={1,7}
+  r = f32[7] reshape(ds)
+  b = f32[5,7] broadcast(r), dimensions={1}
+  a = add(b, p_body.0)
+  add.0 = add(a, p_body.1)
+  ROOT root = tuple(add.0, p_body.1)
+}
+
+condition {
+  p_cond = (f32[5,7],f32[5,7]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[5,7] parameter(0)
+  p = f32[5] parameter(1)
+  a = f32[5,7] iota(), iota_dimension=0
+  b = f32[5,7] iota(), iota_dimension=1
+  c = add(a, b)
+  d = f32[5,7] broadcast(p), dimensions={0}
+  mask = multiply(c,d)
+  while_init = tuple(const_0, mask)
+  ROOT while = while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          WhileLoopFusibleSinking{}.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

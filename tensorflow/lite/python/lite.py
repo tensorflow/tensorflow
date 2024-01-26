@@ -27,6 +27,8 @@ from absl import logging
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
+from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metdata_fb
@@ -836,7 +838,37 @@ class TFLiteConverterBase:
 
     # TODO: b/307626169 - Integrate StableHLO Quantizer.
     if self.experimental_use_stablehlo_quantizer:
-      raise ValueError("StableHLO quantizer is not supported yet.")
+      if Optimize.DEFAULT in self.optimizations and self.representative_dataset:
+        if len(self._saved_model_exported_names) != 1:
+          raise ValueError(
+              "StableHLO quantizer is only supported when converting from a"
+              " SavedModel with one signature key."
+          )
+
+        signature_key = self._saved_model_exported_names[0]
+
+        # Convert a programmatically provided representative dataset to a
+        # temporary TFRecord file to be used by the StableHLO quantizer.
+        tfrecord_file_path: str = tempfile.mkstemp(
+            suffix=".tfrecord", prefix=signature_key
+        )[1]
+        rd.TfRecordRepresentativeDatasetSaver(
+            {signature_key: tfrecord_file_path}
+        ).save({signature_key: self.representative_dataset()})
+
+        quantization_config = qc.QuantizationConfig(
+            static_range_ptq_preset=qc.StaticRangePtqPreset(
+                representative_datasets=[
+                    qc.RepresentativeDatasetConfig(
+                        tf_record=qc.TfRecordFile(path=tfrecord_file_path)
+                    )
+                ]
+            )
+        )
+
+        args["quantization_config"] = quantization_config
+      else:
+        raise ValueError("StableHLO quantizer only supports static-range PTQ.")
 
     return args
 
@@ -1028,7 +1060,14 @@ class TFLiteConverterBase:
   def _optimize_tflite_model(self, model, quant_mode, quant_io=True):
     """Apply optimizations on a TFLite model."""
 
-    if quant_mode.is_integer_quantization():
+    # Disable TFLite quantization pass when
+    # `experimental_use_stablehlo_quantizer` is set to `True`. StableHLO
+    # Quantizer performs quantization during the conversion step, which happens
+    # before `_optimize_tflite_model`.
+    if (
+        quant_mode.is_integer_quantization()
+        and not self.experimental_use_stablehlo_quantizer
+    ):
       in_type, out_type = self.inference_input_type, self.inference_output_type
 
       if quant_mode.is_post_training_integer_quantization():
@@ -2088,7 +2127,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     with context.eager_mode():
       saved_model = _load(saved_model_dir, tags)
     if not signature_keys:
-      signature_keys = saved_model.signatures
+      signature_keys = list(saved_model.signatures.keys())
 
     if not signature_keys:
       raise ValueError("Only support at least one signature key.")
@@ -2562,8 +2601,6 @@ class TFLiteSavedModelConverter(TFLiteConverterBaseV1):
     self.saved_model_dir = saved_model_dir
     self._saved_model_tags = saved_model_tags
     self._saved_model_exported_names = saved_model_exported_names
-
-    signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
     if len(self._saved_model_exported_names) != 1:
       raise ValueError("Only support a single signature key.")

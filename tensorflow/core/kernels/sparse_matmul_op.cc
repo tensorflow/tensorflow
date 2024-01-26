@@ -105,6 +105,9 @@ struct SparseSlice {
  public:
   // Indices of three elements on the same row.
   struct Index3 {
+    Index3(uint8 m, uint8 k1, uint8 k2, uint8 k3)
+        : m(m), k1(k1), k2(k2), k3(k3) {}
+
     uint8 m;  // row
     // columns
     uint8 k1;
@@ -114,6 +117,8 @@ struct SparseSlice {
 
   // Index of one element.
   struct Index {
+    Index(uint8 m, uint8 k) : m(m), k(k) {}
+
     uint8 m;
     uint8 k;
   };
@@ -164,6 +169,39 @@ ALWAYS_INLINE bool IsZero(float v) {
   return v == 0.0f;
 }
 
+// Note: this is intended to be used as a value type with all inline methods so
+// that the compiler can optimize.
+template <typename T>
+class StridedIterator {
+ public:
+  StridedIterator(int stride, const T* start, const T* end)
+      : stride_(stride), k_(0), curr_(start), end_(end) {}
+
+  ALWAYS_INLINE bool Done() const { return curr_ >= end_; }
+
+  // Requires `!Done()`.
+  ALWAYS_INLINE T Value() const { return *curr_; }
+
+  ALWAYS_INLINE uint8 K() const { return k_; }
+
+  ALWAYS_INLINE void Next() {
+    curr_ += stride_;
+    ++k_;
+  }
+
+  ALWAYS_INLINE void EatZeros() {
+    while (curr_ < end_ && IsZero<T>(*curr_)) {
+      Next();
+    }
+  }
+
+ private:
+  const int stride_;
+  uint8 k_;
+  const T* curr_;
+  const T* const end_;
+};
+
 template <typename T>
 template <bool Transpose>
 void SparseSlice<T>::Initialize(
@@ -184,62 +222,52 @@ void SparseSlice<T>::Initialize(
   data.reserve(num_blocks * num_rows * 2);
   index.reserve(num_blocks * num_rows * 2);
 
-  Index3 idx3;
   const int stride = Transpose ? mat.dimension(1) : 1;
 
   for (int i = 0; i < num_blocks; ++i) {
     int num_block_cols = std::min(block_size, num_cols - block_size * i);
     for (int row = 0; row < num_rows; ++row) {
-      idx3.m = static_cast<uint8>(row);
+      const uint8 m = static_cast<uint8>(row);
       // Safety note: The following code has a race, since it checks whether
       // *curr is nonzero and then reads it again on use.  However, the result
       // of the race is only that some of the "nonzeros" in the resulting sparse
       // representation may actually be zero, which is harmless.
       const auto* start =
           Transpose ? &mat(col_offset, row) : &mat(row, col_offset);
-      const auto* curr = start;
       const auto* end = start + stride * num_block_cols;
-      uint8 k = 0;
-#define NEXT_ELEM \
-  curr += stride; \
-  ++k;
-#define EAT_ZEROS                          \
-  while (curr < end && IsZero<T>(*curr)) { \
-    NEXT_ELEM;                             \
-  }
+      StridedIterator<T> iter(stride, start, end);
       while (true) {
-        EAT_ZEROS
-        if (curr >= end) break;
-        idx3.k1 = k;
-        const T value1 = *curr;
-        NEXT_ELEM;
+        iter.EatZeros();
+        if (iter.Done()) break;
+        const uint8 k1 = iter.K();
+        const T value1 = iter.Value();
+        iter.Next();
 
-        EAT_ZEROS
-        if (curr >= end) {
+        iter.EatZeros();
+        if (iter.Done()) {
           data.push_back(value1);
-          index.push_back({idx3.m, idx3.k1});
+          index.emplace_back(m, k1);
           break;
         }
-        idx3.k2 = k;
-        const T value2 = *curr;
-        NEXT_ELEM;
+        const uint8 k2 = iter.K();
+        const T value2 = iter.Value();
+        iter.Next();
 
-        EAT_ZEROS
-        if (curr >= end) {
+        iter.EatZeros();
+        if (iter.Done()) {
           data.push_back(value2);
-          index.push_back({idx3.m, idx3.k2});
+          index.emplace_back(m, k2);
           data.push_back(value1);
-          index.push_back({idx3.m, idx3.k1});
+          index.emplace_back(m, k1);
           break;
         }
-        idx3.k3 = k;
+        const uint8 k3 = iter.K();
         data3.push_back(value1);
         data3.push_back(value2);
-        data3.push_back(*curr);
-        NEXT_ELEM;
-        index3.push_back(idx3);
-#undef NEXT_ELEM
-#undef EAT_ZEROS
+        data3.push_back(iter.Value());
+        iter.Next();
+        ;
+        index3.emplace_back(m, k1, k2, k3);
       }
     }
     col_offset += block_size;
