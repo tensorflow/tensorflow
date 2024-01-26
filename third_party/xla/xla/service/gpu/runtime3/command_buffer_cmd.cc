@@ -765,8 +765,10 @@ Status CustomCallCmd::Record(const RecordParams& params,
         continue;
       }
 
-      if (!slice->slice.allocation())
-        return InternalError("custom call input missing buffer allocation");
+      if (!slice->slice.allocation()) {
+        return absl::InternalError(
+            "custom call input missing buffer allocation");
+      }
 
       buffers.push_back(
           params.buffer_allocations->GetDeviceAddress(slice->slice).opaque());

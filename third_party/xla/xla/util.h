@@ -211,13 +211,6 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 Status AddStatus(Status prior, absl::string_view context);
 Status AppendStatus(Status prior, absl::string_view context);
 
-template <typename... Args>
-Status InternalError(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
-
 // This macro defines the arguments to be used as an error
 // message to be passed to absl::StrFormat, and returns a status in the
 // canonical error space.

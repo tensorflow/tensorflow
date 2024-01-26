@@ -1490,7 +1490,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
       } else if (bmm2_grad2_user->opcode() == HloOpcode::kTranspose) {
         activation_output = bmm2_grad2_user;
       } else {
-        return InternalError("Unexpected activation patterns");
+        return Internal("Unexpected activation patterns");
       }
     }
     // if it is flash attention, should output softmax stats to the bwd

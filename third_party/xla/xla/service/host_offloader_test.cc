@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,7 +48,7 @@ class HostOffloaderTest : public HloTestBase {
   StatusOr<bool> RunHostOffloader(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
-      return InternalError("Expected a non-scheduled module");
+      return absl::InternalError("Expected a non-scheduled module");
     }
 
     HostOffloader host_offloader(kHostMemorySpaceColor);
