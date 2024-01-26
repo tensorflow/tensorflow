@@ -13,16 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gemm_thunk.h"
+#include "xla/service/gpu/runtime3/gemm_thunk.h"
 
 #include <optional>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/logging.h"
 

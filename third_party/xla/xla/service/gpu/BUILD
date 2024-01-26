@@ -311,7 +311,6 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
-        ":gemm_thunk",
         ":gpu_asm_opts_util",
         ":gpu_constants",
         ":gpu_conv_runner",
@@ -372,6 +371,7 @@ cc_library(
         "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/service/gpu/runtime3:for_thunk",
         "//xla/service/gpu/runtime3:fused_mha_thunk",
+        "//xla/service/gpu/runtime3:gemm_thunk",
         "//xla/service/gpu/runtime3:infeed_thunk",
         "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/gpu/runtime3:norm_thunk",
@@ -1805,23 +1805,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gemm_thunk",
-    srcs = ["gemm_thunk.cc"],
-    hdrs = ["gemm_thunk.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":matmul_utils",
-        ":thunk",
-        "//xla:status",
-        "//xla/service:buffer_assignment",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
     name = "gpublas_lt_matmul_thunk",
     srcs = if_gpu_is_configured(["gpublas_lt_matmul_thunk.cc"]),
     hdrs = if_gpu_is_configured(["gpublas_lt_matmul_thunk.h"]),
@@ -1852,7 +1835,6 @@ cc_library(
     deps = if_gpu_is_configured([
         ":backend_configs_cc",
         ":buffer_comparator",
-        ":gemm_thunk",
         ":gpu_asm_opts_util",
         ":gpu_conv_runner",
         ":ir_emission_utils",
