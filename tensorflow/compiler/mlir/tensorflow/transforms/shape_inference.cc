@@ -437,6 +437,24 @@ Type GetType(Attribute shape_attr, Attribute type_attr) {
   else
     return UnrankedTensorType::get(type.getValue());
 }
+}  // namespace
+
+// Returns whether type can be further refined.
+bool CanBeRefined(Type type) {
+  auto shape_type = type.dyn_cast<ShapedType>();
+  if (!shape_type) return false;
+
+  // Returns whether type with subtypes can be further refined.
+  auto can_refine_subtypes = [](TF::TensorFlowTypeWithSubtype tws) {
+    return tws.GetSubtypes().empty() ||
+           llvm::any_of(tws.GetSubtypes(), CanBeRefined);
+  };
+  auto type_with_subtype =
+      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  if (type_with_subtype && can_refine_subtypes(type_with_subtype)) return true;
+
+  return !shape_type.hasStaticShape();
+}
 
 // Returns a new arg type based on the shape and element type. If there are
 // dynamic bounds attribute to the arg, update the bounds based on the shape
@@ -465,25 +483,6 @@ Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
     }
   }
   return new_arg_type;
-}
-
-}  // namespace
-
-// Returns whether type can be further refined.
-bool CanBeRefined(Type type) {
-  auto shape_type = type.dyn_cast<ShapedType>();
-  if (!shape_type) return false;
-
-  // Returns whether type with subtypes can be further refined.
-  auto can_refine_subtypes = [](TF::TensorFlowTypeWithSubtype tws) {
-    return tws.GetSubtypes().empty() ||
-           llvm::any_of(tws.GetSubtypes(), CanBeRefined);
-  };
-  auto type_with_subtype =
-      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  if (type_with_subtype && can_refine_subtypes(type_with_subtype)) return true;
-
-  return !shape_type.hasStaticShape();
 }
 
 // Combination of value producer and port of value produced (e.g.,

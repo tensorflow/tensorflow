@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -30,6 +31,12 @@ namespace TF {
 
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type);
+
+// Returns a new arg type based on the shape and element type. If there are
+// dynamic bounds attribute to the arg, update the bounds based on the shape
+// as well.
+Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
+                   Type element_type, mlir::MLIRContext* context);
 
 // Refines all the shapes in a module, skipping the inference for all ops
 // whose type is in ops_to_skip.
