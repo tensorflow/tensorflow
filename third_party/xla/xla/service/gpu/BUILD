@@ -2537,6 +2537,7 @@ cc_library(
     deps = [
         ":fusion_process_dump_proto_cc",
         ":gpu_fusible",
+        ":hlo_fusion_analysis",
         ":hlo_traversal",
         "//xla:shape_util",
         "//xla:statusor",
@@ -2552,10 +2553,8 @@ cc_library(
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/service/gpu/model:gpu_performance_model",
         "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
