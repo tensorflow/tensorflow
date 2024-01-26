@@ -1538,8 +1538,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     return saved_model_dir, input_name, output_name
 
   @test_util.run_v2_only
-  def testStableHloQuantizerNotSupported(self):
-    """Test that StableHLO Quantizer is not yet supported."""
+  def testStableHloQuantizerSupportsOnlyStaticRangePtq(self):
+    """Tests that StableHLO Quantizer supports only static-range PTQ."""
     input_data = tf.constant(1.0, shape=[1])
     root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2.0 * x)
@@ -1550,8 +1550,39 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
     converter.experimental_use_stablehlo_quantizer = True
-    with self.assertRaisesRegex(ValueError, 'not supported'):
+    with self.assertRaisesRegex(ValueError, 'only supports static-range PTQ'):
       converter.convert()
+
+  @test_util.run_v2_only
+  def testStableHloQuantizerNoOpForStaticRangePtq(self):
+    """Tests that StableHLO Quantizer performs a no-op for Static-Range PTQ."""
+    # TODO: b/307626169 - Provide a full test after StableHLO Quantizer
+    # integration.
+    input_data = tf.constant(1.0, shape=[1])
+    root = autotrackable.AutoTrackable()
+    root.f = tf.function(lambda x: 2.0 * x)
+    to_save = root.f.get_concrete_function(input_data)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir, to_save)
+
+    def _representative_data_gen():
+      return [{'x': np.ones(shape=(1,), dtype=np.float32)}]
+
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    converter.experimental_use_stablehlo_quantizer = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = _representative_data_gen
+
+    tflite_model = converter.convert()
+    self.assertIsNotNone(tflite_model)
+
+    # Test that no tensor is quantized.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    all_tensor_details = interpreter.get_tensor_details()
+    for tensor_detail in all_tensor_details:
+      self.assertIn('dtype', tensor_detail)
+      self.assertEqual(tensor_detail['dtype'], np.float32)
 
   @test_util.run_v2_only
   def testV1SimpleModel(self):
@@ -2754,8 +2785,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save(model, saved_model_dir)
-    k_conv_name = ('tfl.pseudo_qconst' if enable_mlir_quantizer
-                   else 'sequential/conv2d/Conv2D')
+    k_conv_name = (
+        'tfl.pseudo_qconst'
+        if enable_mlir_quantizer
+        else 'sequential/conv2d/Conv2D'
+    )
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir
     )
@@ -2816,8 +2850,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ])
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save(model, saved_model_dir)
-    k_dense_bias_name = ('sequential/dense/BiasAdd/ReadVariableOp'
-                         if is_int16_quantize else 'tfl.pseudo_qconst')
+    k_dense_bias_name = (
+        'sequential/dense/BiasAdd/ReadVariableOp'
+        if is_int16_quantize
+        else 'tfl.pseudo_qconst'
+    )
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir
     )
