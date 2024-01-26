@@ -293,13 +293,13 @@ ENTRY reduce.1 {
 // CHECK:         store %[[VAL_1]] %[[VAL_219]], ptr %[[VAL_218]], align 1
 // CHECK:         br label %[[VAL_191]]
 // CHECK:       intra_warp_reduce_write-true:                     ; preds = %[[VAL_67]]
-// CHECK:         %[[VAL_220:.*]] = getelementptr inbounds [1 x [1 x [20 x %[[VAL_1]]]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_42]], i32 0, i32 %[[VAL_156]]
-// CHECK:         %[[VAL_221:.*]] = addrspacecast ptr addrspace(3) %[[VAL_220]] to ptr
 // CHECK:         %[[VAL_222:.*]] = load %[[VAL_1]], ptr %[[VAL_29]], align 1
+// CHECK:         %[[VAL_220:.*]] = getelementptr inbounds [1 x [20 x %[[VAL_1]]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_42]], i32 %[[VAL_156]]
+// CHECK:         %[[VAL_221:.*]] = addrspacecast ptr addrspace(3) %[[VAL_220]] to ptr
 // CHECK:         store %[[VAL_1]] %[[VAL_222]], ptr %[[VAL_221]], align 1
 // CHECK:         br label %[[VAL_159]]
 // CHECK:       inter_warp_reduce-true:                           ; preds = %[[VAL_159]]
-// CHECK:         %[[VAL_223:.*]] = getelementptr inbounds [1 x [1 x [20 x %[[VAL_1]]]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_42]], i32 0, i32 %[[VAL_50]]
+// CHECK:         %[[VAL_223:.*]] = getelementptr inbounds [1 x [20 x %[[VAL_1]]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_42]], i32 %[[VAL_50]]
 // CHECK:         %[[VAL_224:.*]] = addrspacecast ptr addrspace(3) %[[VAL_223]] to ptr
 // CHECK:         store %[[VAL_1]] %[[VAL_37]], ptr %[[VAL_11]], align 1
 // CHECK:         %[[VAL_225:.*]] = icmp ult i32 %[[VAL_48]], 20

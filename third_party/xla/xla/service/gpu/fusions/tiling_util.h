@@ -162,19 +162,6 @@ class TilingScheme {
 // occupancy) will differ from logical thread id. This struct contains
 // logical thread ids, along with meta-information about the scaling applied.
 struct TilingThreadIdInfo {
-  TilingThreadIdInfo(llvm::Value* thread_id,
-                     std::array<llvm::Value*, 3> thread_ids,
-                     std::array<llvm::Value*, 3> start_offsets,
-                     std::array<llvm::Value*, 3> strides, llvm::Value* lane_id,
-                     llvm::Value* block_id, llvm::Value* scaling)
-      : thread_id(thread_id),
-        thread_ids(thread_ids),
-        start_offsets(start_offsets),
-        strides(strides),
-        lane_id(lane_id),
-        block_id(block_id),
-        scaling(scaling) {}
-
   llvm::Value* thread_id;
 
   std::array<llvm::Value*, 3> thread_ids;
@@ -187,24 +174,8 @@ struct TilingThreadIdInfo {
   // Block id.
   llvm::Value* block_id;
 
-  // Emits GEP into a shared memory, taking virtual thread scaling into
-  // account. Automatically inserts the first zero required by LLVM GEP.
-  // Defined on ThreadIdInfo to keep `scaling` private.
-  //
-  // Same semantics as CreateInBoundsGEP.
-  llvm::Value* GEPIntoSharedMemory(
-      llvm::IRBuilder<>* b, llvm::GlobalVariable* shared,
-      absl::Span<llvm::Value* const> idx_major_to_minor,
-      const llvm::Twine& name = "") const;
-
-  // Calculate the pointee type of the llvm::Value returned by
-  // GEPIntoSharedMemory
-  llvm::Type* GEPIntoSharedMemoryType(
-      llvm::GlobalVariable* shared,
-      absl::Span<llvm::Value* const> idx_major_to_minor) const;
-
- private:
-  llvm::Value* scaling;
+  // The virtual scaling index: [0; thread_id_virtual_scaling).
+  llvm::Value* scaling_index;
 };
 
 struct TilingKernelInfo {

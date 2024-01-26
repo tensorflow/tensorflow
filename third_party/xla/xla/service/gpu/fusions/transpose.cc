@@ -191,18 +191,18 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
     }
   }
 
-  absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
+  absl::flat_hash_map<const HloInstruction*, llvm_ir::SharedMemoryTile> tiles;
   Vector3 permutation;
   for (const auto& [tile_idx, tr] : llvm::enumerate(transposes)) {
     permutation = tr.permutation;
-    const auto& block_tile_size = tiling_scheme_.GetBlockTileSize();
-    tiles[tr.instr] =
-        AllocateShared(builder, tiling_scheme_,
-                       llvm_ir::PrimitiveTypeToIrType(
-                           tr.instr->operand(0)->shape().element_type(),
-                           ir_emitter_context.llvm_module()),
-                       {block_tile_size[1], block_tile_size[2] + 1},
-                       absl::StrCat("tr_tile_", tile_idx));
+    auto tile_size = tiling_scheme_.GetBlockTileSize();
+    ++tile_size.back();  // Prevent bank conflicts.
+    auto* module = ir_emitter_context.llvm_module();
+    tiles[tr.instr] = llvm_ir::AllocateSharedMemoryTile(
+        module,
+        llvm_ir::PrimitiveTypeToIrType(tr.instr->shape().element_type(),
+                                       module),
+        tile_size, absl::StrCat("tr_tile_", tile_idx));
   }
 
   auto tile_to_inout = TileToInoutPermutation(permutation);
@@ -223,12 +223,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
             auto input_index = GetUnnormalizedIndex(
                 index, tr.instr->operand(0)->shape(), builder, input_shape);
             llvm::Value* value = *input_gen(input_index);
-            llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                builder, tiles[tr.instr],
-                {index_in_tile[TilingScheme::DimY],
-                 index_in_tile[TilingScheme::DimX]});
-
-            builder->CreateStore(value, addr);
+            tiles[tr.instr].Store(value, index_in_tile, builder);
           }
 
           // Compute all extra output values before writing them. This
@@ -264,14 +259,8 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
               PermuteIndex(output_tile_index.AddOffset(index_in_tile, builder),
                            tile_to_inout);
           for (const auto& tr : transposes) {
-            std::vector<llvm::Value*> idx = {index_in_tile[2],
-                                             index_in_tile[1]};
-            llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
-                builder, tiles[tr.instr], idx);
-            llvm::Type* type =
-                thread_id_info.GEPIntoSharedMemoryType(tiles[tr.instr], idx);
-            llvm::Value* loaded =
-                builder->CreateLoad(type, gep, "tiled_buffer");
+            llvm::Value* loaded = tiles[tr.instr].Load(
+                Permute(index_in_tile, {0, 2, 1}), builder);
 
             FusedIrEmitter fused_emitter(elemental_emitter);
             fused_emitter.BindGenerator(

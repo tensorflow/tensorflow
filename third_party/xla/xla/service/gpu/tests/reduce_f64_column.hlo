@@ -24,7 +24,7 @@ ENTRY e {
   ROOT f = f64[1024]{0} fusion(p1, p2, s), kind=kInput, calls=fused_computation
 }
 
-// CHECK: @shared_cache = private addrspace(3) global [1 x [32 x [33 x double]]]
+// CHECK: @shared_cache = private addrspace(3) global [32 x [33 x double]]
 
 // CHECK-LABEL: entry:
 // CHECK:         %[[VAL_0:.*]] = alloca double, align 8
@@ -106,12 +106,12 @@ ENTRY e {
 // CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_55]]
 // CHECK:         br label %[[VAL_46]], !llvm.loop !8
 // CHECK:       loop1.loop_exit:                              ; preds = %[[VAL_46]]
-// CHECK:         %[[VAL_67:.*]] = getelementptr inbounds [1 x [32 x [33 x double]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_25]], i32 %[[VAL_31]], i32 %[[VAL_32]]
-// CHECK:         %[[VAL_68:.*]] = addrspacecast ptr addrspace(3) %[[VAL_67]] to ptr
 // CHECK:         %[[VAL_69:.*]] = load double, ptr %[[VAL_13]], align 8
+// CHECK:         %[[VAL_67:.*]] = getelementptr inbounds [32 x [33 x double]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_31]], i32 %[[VAL_32]]
+// CHECK:         %[[VAL_68:.*]] = addrspacecast ptr addrspace(3) %[[VAL_67]] to ptr
 // CHECK:         store double %[[VAL_69]], ptr %[[VAL_68]], align 8
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_70:.*]] = getelementptr inbounds [1 x [32 x [33 x double]]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_25]], i32 %[[VAL_32]], i32 %[[VAL_31]]
+// CHECK:         %[[VAL_70:.*]] = getelementptr inbounds [32 x [33 x double]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_32]], i32 %[[VAL_31]]
 // CHECK:         %[[VAL_71:.*]] = addrspacecast ptr addrspace(3) %[[VAL_70]] to ptr
 // CHECK:         %[[VAL_72:.*]] = load double, ptr %[[VAL_71]], align 8
 // CHECK:         %[[VAL_73:.*]] = bitcast double %[[VAL_72]] to i64

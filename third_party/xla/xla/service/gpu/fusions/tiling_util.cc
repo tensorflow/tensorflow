@@ -229,10 +229,11 @@ absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
       constant(1)  // Not really, see EmitTileRec.
   };
 
-  return TilingThreadIdInfo(
-      thread_id_logical, thread_ids, start_offsets, strides,
-      builder->CreateURem(thread_id_logical, constant(WarpSize()), "lane_id"),
-      block_id_logical, scaling);
+  auto* lane_id =
+      builder->CreateURem(thread_id_logical, constant(WarpSize()), "lane_id");
+  return TilingThreadIdInfo{
+      thread_id_logical, thread_ids,       start_offsets, strides,
+      lane_id,           block_id_logical, scaling};
 }
 
 }  // namespace
@@ -289,39 +290,6 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
 
   tile_generator(thread_id_info, tile_origin, tile_dimensions);
   return {{tile_dimensions, tile_origin, thread_id_info}};
-}
-
-llvm::Type* TilingThreadIdInfo::GEPIntoSharedMemoryType(
-    llvm::GlobalVariable* shared,
-    absl::Span<llvm::Value* const> idx_major_to_minor) const {
-  std::vector<llvm::Value*> idxs_scaled;
-  idxs_scaled.push_back(llvm::ConstantInt::get(scaling->getType(), 0));
-  idxs_scaled.push_back(scaling);
-  idxs_scaled.insert(idxs_scaled.end(), idx_major_to_minor.begin(),
-                     idx_major_to_minor.end());
-  return llvm::GetElementPtrInst::getIndexedType(shared->getValueType(),
-                                                 idxs_scaled);
-}
-
-llvm::Value* TilingThreadIdInfo::GEPIntoSharedMemory(
-    llvm::IRBuilder<>* b, llvm::GlobalVariable* shared,
-    absl::Span<llvm::Value* const> idx_major_to_minor,
-    const llvm::Twine& name) const {
-  std::vector<llvm::Value*> idxs_scaled;
-  idxs_scaled.push_back(llvm::ConstantInt::get(scaling->getType(), 0));
-  idxs_scaled.push_back(scaling);
-  idxs_scaled.insert(idxs_scaled.end(), idx_major_to_minor.begin(),
-                     idx_major_to_minor.end());
-  llvm::Value* gep =
-      b->CreateInBoundsGEP(shared->getValueType(), shared, idxs_scaled, name);
-
-  llvm::PointerType* pointer_in_addressspace = llvm::PointerType::get(
-      llvm::cast<llvm::PointerType>(gep->getType())->getContext(),
-      /*AddressSpace=*/0);
-
-  // __shared__ memory uses a different address space, so we cast it to
-  // global address space before writing or reading.
-  return b->CreateAddrSpaceCast(gep, pointer_in_addressspace);
 }
 
 llvm_ir::IrArray::Index GetUnnormalizedIndex(

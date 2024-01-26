@@ -369,7 +369,7 @@ class ReductionFusion::ReductionEmitter {
 class ReductionFusion::ReductionGroupEmitter {
  public:
   struct ReductionCalculationState {
-    llvm::GlobalVariable* shared_cache;
+    std::optional<llvm_ir::SharedMemoryTile> shared_cache;
     llvm::Value* initial_value;
     llvm::AllocaInst* partial_result_address;
     llvm::AllocaInst* input_address;
@@ -429,7 +429,7 @@ class ReductionFusion::ReductionGroupEmitter {
   absl::Status EmitExtraOutputsForReduce(
       const Shape& reduction_operand_shape,
       const llvm_ir::IrArray::Index& index,
-      const ExtraOutputGensMap& extra_output_gens) const;
+      const ExtraOutputGensMap& extra_output_gens);
 
  private:
   ReductionFusion::ReductionEmitter& reduction_emitter_;
@@ -441,23 +441,6 @@ class ReductionFusion::ReductionGroupEmitter {
   // HloInstruction -> operand_idx -> cache
   absl::flat_hash_map<const HloInstruction*, ReductionOpState> state_;
 };
-
-// Allocates a shared tile of given dimensions, applying scaling specified in
-// tilng_scheme as a major-most dimension to avoid collisions.
-llvm::GlobalVariable* AllocateShared(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* element_type,
-    absl::Span<int64_t const> dimensions_major_to_minor,
-    absl::string_view buffer_name) {
-  CHECK(!dimensions_major_to_minor.empty());
-  llvm::Type* ty = element_type;
-  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
-    ty = llvm::ArrayType::get(ty, dim);
-  }
-  ty = llvm::ArrayType::get(ty, tiling_scheme.GetThreadIdScalingFactor());
-  return llvm_ir::AllocateSharedMemoryTile(
-      builder->GetInsertBlock()->getModule(), ty, buffer_name);
-}
 
 // Creates accumulator alloca's, populates them with initial values, generates
 // __shared__ caches and returns the populated object.
@@ -499,35 +482,31 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
 
       builder->CreateStore(init_ir_value, result_address);
       const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
-      llvm::GlobalVariable* shared_cache = [&]() -> llvm::GlobalVariable* {
+      auto shared_cache = [&]() -> std::optional<llvm_ir::SharedMemoryTile> {
+        auto* module = reduction_emitter.ir_emitter_context_.llvm_module();
         if (reduction_info.IsRowReduction()) {
           // Multi-row reductions do not use shared memory.
           if (RowReductionGetRowsPerWarp(
                   reduction_emitter_.ReducedDimensionSize()) > 1) {
-            return nullptr;
+            return std::nullopt;
           }
-          // Allocate __shared__
-          // cache[1][num_warps][scaling_factor].
           CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
           int num_warps = tiling_scheme.GetNumThreadsPerBlock() / WarpSize();
-          return AllocateShared(builder, tiling_scheme, element_type,
-                                {1, num_warps}, "shared_cache");
-        } else {
-          const auto& num_threads = tiling_scheme.GetThreadsPerBlock();
-          // Allocate __shared__
-          // cache[num_threads][num_threads + 1], where
-          // num_threads == num_threads_x == num_threads_y.  The "+1" is used to
-          // avoid bank conflicts.
-          //
-          // (Although each thread produces num_partial_results results, we
-          // don't need that much cache: Only one result is live at a time.)
-          CHECK_EQ(num_threads[TilingScheme::DimX],
-                   num_threads[TilingScheme::DimY]);
-          return AllocateShared(builder, tiling_scheme, element_type,
-                                {num_threads[TilingScheme::DimX],
-                                 num_threads[TilingScheme::DimX] + 1},
-                                "shared_cache");
+          return llvm_ir::AllocateSharedMemoryTile(
+              module, element_type,
+              {tiling_scheme.GetThreadIdScalingFactor(), num_warps},
+              "shared_cache");
         }
+        const auto& num_threads = tiling_scheme.GetThreadsPerBlock();
+        // num_threads_x == num_threads_y.  The "+1" is used to avoid bank
+        // conflicts.
+        CHECK_EQ(num_threads[TilingScheme::DimX],
+                 num_threads[TilingScheme::DimY]);
+        return llvm_ir::AllocateSharedMemoryTile(
+            module, element_type,
+            {num_threads[TilingScheme::DimX],
+             num_threads[TilingScheme::DimX] + 1},
+            "shared_cache");
       }();
 
       llvm_ir::ElementGenerator input_gen =
@@ -632,7 +611,7 @@ ReductionFusion::ReductionEmitter::BuildKernelThunkForFusion(
 
 absl::Status ReductionFusion::ReductionGroupEmitter::EmitExtraOutputsForReduce(
     const Shape& reduction_operand_shape, const llvm_ir::IrArray::Index& index,
-    const ExtraOutputGensMap& extra_output_gens) const {
+    const ExtraOutputGensMap& extra_output_gens) {
   if (extra_output_gens.empty()) {
     return absl::OkStatus();
   }
@@ -908,8 +887,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
   int num_outputs = reducer->num_parameters() / 2;
   absl::InlinedVector<TypedPointer, 2> current_outputs;
   for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
-    const ReductionGroupEmitter::ReductionCalculationState& state =
-        GetCalculationStateFor(reduction, output_idx);
+    const auto& state = GetCalculationStateFor(reduction, output_idx);
     current_outputs.push_back(
         {state.partial_result_address,
          state.partial_result_address->getAllocatedType()});
@@ -942,12 +920,11 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
 
   ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
     for (int oidx = 0; oidx < num_outputs; oidx++) {
-      const auto& state = GetCalculationStateFor(reduction, oidx);
-      llvm::Value* shmem_output_addr = thread_id_info.GEPIntoSharedMemory(
-          builder, state.shared_cache, {constant(0), warp_id});
-      builder->CreateStore(builder->CreateLoad(current_outputs[oidx].second,
-                                               current_outputs[oidx].first),
-                           shmem_output_addr);
+      auto& state = GetCalculationStateFor(reduction, oidx);
+      state.shared_cache->Store(
+          builder->CreateLoad(current_outputs[oidx].second,
+                              current_outputs[oidx].first),
+          {thread_id_info.scaling_index, warp_id}, builder);
     }
   });
 
@@ -957,9 +934,9 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
   ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
     absl::InlinedVector<TypedPointer, 2> selected_values;
     for (int oidx = 0; oidx < num_outputs; oidx++) {
-      const auto& state = GetCalculationStateFor(reduction, oidx);
-      llvm::Value* block_accum_addr = thread_id_info.GEPIntoSharedMemory(
-          builder, state.shared_cache, {constant(0), thread_id_info.lane_id});
+      auto& state = GetCalculationStateFor(reduction, oidx);
+      llvm::Value* block_accum_addr = state.shared_cache->Address(
+          {thread_id_info.scaling_index, thread_id_info.lane_id}, builder);
 
       llvm::Type* element_type =
           state.partial_result_address->getAllocatedType();
@@ -1023,17 +1000,14 @@ void ReductionFusion::ReductionGroupEmitter::
   // Store the transpose in shared memory.
   for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const auto& state = GetCalculationStateFor(reduction, output_idx);
-    llvm::GlobalVariable* shared_cache = state.shared_cache;
-    llvm::AddrSpaceCastInst* shmem_output_addr =
-        llvm::cast<llvm::AddrSpaceCastInst>(thread_id_info.GEPIntoSharedMemory(
-            builder, shared_cache,
-            {thread_ids[TilingScheme::DimX], thread_ids[TilingScheme::DimY]},
-            "shmem_output_address"));
-
-    llvm::Value* current_output_value =
+    const auto& shared_cache = state.shared_cache;
+    auto* current_output_value =
         builder->CreateLoad(state.partial_result_address->getAllocatedType(),
                             state.partial_result_address);
-    builder->CreateStore(current_output_value, shmem_output_addr);
+    shared_cache->Store(
+        current_output_value,
+        {thread_ids[TilingScheme::DimX], thread_ids[TilingScheme::DimY]},
+        builder);
   }
 
   reduction_emitter_.EmitSyncThreads();
@@ -1042,15 +1016,11 @@ void ReductionFusion::ReductionGroupEmitter::
   absl::InlinedVector<TypedPointer, 2> shmem_transposed_addrs;
   for (int output_idx = 0; output_idx < num_outputs; output_idx++) {
     const auto& state = GetCalculationStateFor(reduction, output_idx);
-    llvm::AddrSpaceCastInst* shmem_transposed_addr =
-        llvm::cast<llvm::AddrSpaceCastInst>(thread_id_info.GEPIntoSharedMemory(
-            builder, state.shared_cache,
-            {thread_ids[TilingScheme::DimY], thread_ids[TilingScheme::DimX]},
-            "shmem_transposed_addr"));
+    auto* shmem_transposed_addr = state.shared_cache->Address(
+        {thread_ids[TilingScheme::DimY], thread_ids[TilingScheme::DimX]},
+        builder);
     shmem_transposed_addrs.push_back(
-        {shmem_transposed_addr, llvm::cast<llvm::GetElementPtrInst>(
-                                    shmem_transposed_addr->getPointerOperand())
-                                    ->getResultElementType()});
+        {shmem_transposed_addr, state.shared_cache->GetElementType()});
   }
 
   EmitFullWarpShuffleDownLoopForReduce(reducer,
