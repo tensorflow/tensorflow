@@ -2535,7 +2535,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,199 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2710,7 +2710,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    GreedyRewriteConfig config;
 +    config.useTopDownTraversal = true;
 +    config.enableRegionSimplification = true;
-+    config.maxIterations = 2;
++    config.maxIterations = 3;
 +    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
 +    config.strictMode = GreedyRewriteStrictness::AnyOp;
 +
@@ -2723,6 +2723,9 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    patterns.add<RefineTopKOpPattern>(&getContext());
 +    if (failed(
 +            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
++      func.emitError()
++          << "Greedy rewriter in StablehloRefineShapes does not converge after "
++          << config.maxIterations << " iterations.";
 +      return signalPassFailure();
 +    }
 +  }
