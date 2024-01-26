@@ -3282,8 +3282,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pattern_matcher",
+        "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
@@ -3296,14 +3298,19 @@ xla_cc_test(
     name = "while_loop_analysis_test",
     srcs = ["while_loop_analysis_test.cc"],
     deps = [
-        ":hlo_parser",
         ":while_loop_analysis",
+        "//xla:comparison_util",
+        "//xla:statusor",
         "//xla:test",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
