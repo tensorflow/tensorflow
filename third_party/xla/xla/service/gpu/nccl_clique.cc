@@ -153,27 +153,32 @@ static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
 // error state. It will free resources that are allocated to a communicator
 // and abort any uncompleted operations before destroying the communicator.
 static absl::Status CheckComm(NcclComm& lockable_comm) {
-  NcclComm::Lock comm = lockable_comm.Acquire();
-  absl::Status async_err = NcclApi::Default()->CommGetAsyncError(*comm);
-  if (!async_err.ok()) {
-    LOG(ERROR) << "Aborting communicator: " << comm
-               << " due to async NCCL error: " << async_err;
-    TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(*comm));
+  if (NcclComm::Lock comm = lockable_comm.TryAcquire()) {
+    absl::Status async_err = NcclApi::Default()->CommGetAsyncError(*comm);
+    if (!async_err.ok()) {
+      LOG(ERROR) << "Aborting communicator: " << comm
+                 << " due to async NCCL error: " << async_err;
+      TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(*comm));
+    }
+    return async_err;
   }
-  return async_err;
+  return absl::OkStatus();
 }
 
 // Runs async check on all communicators in a clique.
 static void CheckClique(const NcclCliqueKey& clique_key,
                         NcclClique& lockable_clique) {
-  NcclClique::Lock clique = lockable_clique.Acquire();
-  VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
-          << " for async errors; num_communicators="
-          << clique->communicators.size();
-  for (auto& [rank, comm] : clique->communicators) {
-    if (auto status = CheckComm(comm); !status.ok()) {
-      LOG(ERROR) << status;
+  if (NcclClique::Lock clique = lockable_clique.TryAcquire()) {
+    VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
+            << " for async errors; num_communicators="
+            << clique->communicators.size();
+    for (auto& [rank, comm] : clique->communicators) {
+      if (auto status = CheckComm(comm); !status.ok()) {
+        LOG(ERROR) << status;
+      }
     }
+  } else {
+    VLOG(5) << "Skip checking in-use NCCL clique " << clique_key.ToString();
   }
 }
 
