@@ -422,8 +422,9 @@ class ShapeUtil {
   static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
-      int64_t memory_space = 0);
+      absl::Span<const Tile> tiles = {},
+      int64_t tail_padding_alignment_in_elements = 1,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0);
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that
@@ -436,6 +437,7 @@ class ShapeUtil {
       absl::Span<const bool> dim_ordered = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t tail_padding_alignment_in_elements = 1,
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 

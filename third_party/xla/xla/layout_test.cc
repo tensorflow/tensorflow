@@ -37,9 +37,10 @@ TEST_F(LayoutTest, ToString) {
                 .ToString(),
             "{3,2,1,0:T(42,123)(4,5)}");
   EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
+                .set_tail_padding_alignment_in_elements(100)
                 .set_element_size_in_bits(42)
                 .ToString(),
-            "{3,2,1,0:T(42,123)(4,5)E(42)}");
+            "{3,2,1,0:T(42,123)(4,5)L(100)E(42)}");
   EXPECT_EQ(Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})})
                 .set_memory_space(3)
                 .ToString(),
@@ -85,11 +86,11 @@ TEST_F(LayoutTest, Equality) {
                                Layout({0, 1, 2})));
   EXPECT_TRUE(Layout::Equal().IgnoreTiles()(
       Layout({0, 1, 2}, {}, {}, {}, {Tile({42, 44})}), Layout({0, 1, 2})));
-  EXPECT_FALSE(
-      Layout::Equal()(Layout({0, 1, 2}, {}, {}, {}, {}, PRIMITIVE_TYPE_INVALID,
-                             PRIMITIVE_TYPE_INVALID, 32),
-                      Layout({0, 1, 2}, {}, {}, {}, {}, PRIMITIVE_TYPE_INVALID,
-                             PRIMITIVE_TYPE_INVALID, 1)));
+  EXPECT_FALSE(Layout::Equal()(
+      Layout({0, 1, 2}, {}, {}, {}, {}, 1, PRIMITIVE_TYPE_INVALID,
+             PRIMITIVE_TYPE_INVALID, 32),
+      Layout({0, 1, 2}, {}, {}, {}, {}, 1, PRIMITIVE_TYPE_INVALID,
+             PRIMITIVE_TYPE_INVALID, 1)));
   EXPECT_TRUE(Layout::Equal().IgnoreElementSize()(
       Layout({0, 1, 2}).set_element_size_in_bits(32),
       Layout({0, 1, 2}).set_element_size_in_bits(1)));
@@ -111,7 +112,7 @@ TEST_F(LayoutTest, LayoutToFromProto) {
       Layout({3, 2, 1, 0}, {}, {}, {}, {Tile({42, 123}), Tile({4, 5})}));
   expect_unchanged(Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {}));
   expect_unchanged(
-      Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {},
+      Layout({1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {}, {}, {}, 1,
              PRIMITIVE_TYPE_INVALID, PRIMITIVE_TYPE_INVALID, 0, 0,
              std::make_unique<Shape>(ShapeUtil::MakeShape(S32, {10, 10}))));
 }

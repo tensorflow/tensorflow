@@ -216,6 +216,15 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
+  // The shape is padded at the end to multiple of, in terms of number of
+  // elements. This is useful when tiling does not bring the shape to certain
+  // desired granules. Tiling effectively pads/reshapes/transposes the shape
+  // to another shape. This field pads the total number of elements of that
+  // new shape to a multiple of certain number of elements. This is useful such
+  // as we want a layout which does not tile the data but still requires it to
+  // be padded to certain number of elements.
+  int64 tail_padding_alignment_in_elements = 16;
+
   // (Optional) Bit size of each element. When unspecified or being 0, default
   // to ShapeUtil::ByteSizeOfPrimitiveType.
   int64 element_size_in_bits = 7;

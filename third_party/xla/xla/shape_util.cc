@@ -122,9 +122,10 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
-    absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
-    PrimitiveType pointer_primitive_type, int64_t element_size_in_bits,
-    int64_t memory_space, std::optional<Shape> physical_shape) {
+    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
+    PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
+    int64_t element_size_in_bits, int64_t memory_space,
+    std::optional<Shape> physical_shape) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -143,8 +144,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   *shape.mutable_layout() = LayoutUtil::MakeLayout(
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
-      index_primitive_type, pointer_primitive_type, element_size_in_bits,
-      memory_space, std::move(physical_shape));
+      tail_padding_alignment_in_elements, index_primitive_type,
+      pointer_primitive_type, element_size_in_bits, memory_space,
+      std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return std::move(shape);
 }
@@ -341,10 +343,12 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-    int64_t element_size_in_bits, int64_t memory_space) {
+    int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
+    int64_t memory_space) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, /*dim_level_types=*/{},
       /*dim_unique=*/{}, /*dim_ordered=*/{}, tiles,
+      tail_padding_alignment_in_elements,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, element_size_in_bits,
       memory_space,
@@ -359,12 +363,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     absl::Span<const DimLevelType> dim_level_types,
     absl::Span<const bool> dim_unique, absl::Span<const bool> dim_ordered,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
-    int64_t element_size_in_bits, int64_t memory_space,
-    std::optional<Shape> physical_shape) {
+    int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
+    int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, dim_level_types, dim_unique,
-      dim_ordered, /*tiles=*/{}, index_primitive_type, pointer_primitive_type,
-      element_size_in_bits, memory_space, std::move(physical_shape));
+      dim_ordered, /*tiles=*/{}, tail_padding_alignment_in_elements,
+      index_primitive_type, pointer_primitive_type, element_size_in_bits,
+      memory_space, std::move(physical_shape));
   TF_CHECK_OK(ret.status());
   return *ret;
 }
@@ -421,6 +426,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
         shape.layout().tiles().begin(), shape.layout().tiles().end());
     new_shape.mutable_layout()->set_element_size_in_bits(
         shape.layout().element_size_in_bits());
+    new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(
+        shape.layout().tail_padding_alignment_in_elements());
   }
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
@@ -2052,6 +2059,7 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
       subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
       subshape->mutable_layout()->clear_physical_shape();
       subshape->mutable_layout()->set_element_size_in_bits(0);
+      subshape->mutable_layout()->set_tail_padding_alignment_in_elements(1);
       subshape->mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
     }
   });
@@ -2118,6 +2126,11 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
     const int64_t num_bits =
         num_of_elements * shape.layout().element_size_in_bits();
     return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
+  }
+
+  if (shape.layout().tail_padding_alignment_in_elements() != 1) {
+    num_of_elements = RoundUpTo(
+        num_of_elements, shape.layout().tail_padding_alignment_in_elements());
   }
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }

@@ -256,6 +256,7 @@ StatusOr<Literal> MakeFakeLiteralInternal(
   // literal.
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
+  new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(1);
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
