@@ -4988,37 +4988,13 @@ def sampled_addmm(indices,
     The function `spy(indices)` is the sparsity pattern matrix derived from
     `indices`. 
   """
-  if context.executing_eagerly():
-    if not isinstance(indices, ops.EagerTensor):
-      indices = ops.convert_to_tensor(indices)
-    if not isinstance(values, ops.EagerTensor):
-      values = ops.convert_to_tensor(values)
-    if not isinstance(mat1, ops.EagerTensor):
-      mat1 = ops.convert_to_tensor(mat1)
-    if not isinstance(mat2, ops.EagerTensor):
-      mat2 = ops.convert_to_tensor(mat2)
-  else:
-    if not isinstance(indices, tensor_lib.Tensor):
-      indices = ops.convert_to_tensor(indices)
-    if not isinstance(values, tensor_lib.Tensor):
-      values = ops.convert_to_tensor(values)
-    if not isinstance(mat1, tensor_lib.Tensor):
-      mat1 = ops.convert_to_tensor(mat1)
-    if not isinstance(mat2, tensor_lib.Tensor):
-      mat2 = ops.convert_to_tensor(mat2)
-
-  if values.dtype != output_type:
-    values = cast(values, output_type)
-  if mat1.dtype != output_type:
-    mat1 = cast(mat1, output_type)
-  if mat2.dtype != output_type:
-    mat2 = cast(mat2, output_type)
-
-  dense_rows = mat1.shape[-2]
-  dense_cols = mat2.shape[-1]
+  indices = ops.convert_to_tensor(indices)
+  values = ops.convert_to_tensor(values, dtype=output_type)
+  dense_shape = ops.convert_to_tensor(dense_shape)
+  mat1 = ops.convert_to_tensor(mat1, dtype=output_type)
+  mat2 = ops.convert_to_tensor(mat2, dtype=output_type)
 
   # TODO(mattbahr): use dense_shape to validate the shapes of mat1 and mat2
-  dense_shape = constant_op.constant([dense_rows, dense_cols])
 
   # Extract row and column indices
   batch_indices = indices[..., :-2]
@@ -5028,9 +5004,9 @@ def sampled_addmm(indices,
 
   # Extract rows and columns 
   rows = array_ops.gather_nd(mat1, row_indices, 
-                             batch_dims=mat1.ndim - 2)
+                             batch_dims=array_ops.rank(mat1) - 2)
   cols = array_ops.gather_nd(array_ops.matrix_transpose(mat2), col_indices,
-                             batch_dims=mat2.ndim - 2)
+                             batch_dims=array_ops.rank(mat2) - 2)
 
   # Calculate dot product for the selected rows and columns
   dot = reduce_sum(rows * cols, axis=-1)
