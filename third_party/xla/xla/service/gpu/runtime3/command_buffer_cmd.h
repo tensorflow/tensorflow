@@ -229,6 +229,26 @@ class CommandBufferCmdSequence {
 };
 
 //===----------------------------------------------------------------------===//
+// ComputationIdCmd (ReplicaId and PartitionId)
+//===----------------------------------------------------------------------===//
+
+class ComputationIdCmd : public CommandBufferCmd {
+ public:
+  enum class Kind { kReplica, kPartition };
+
+  ComputationIdCmd(BufferAllocation::Slice dest, Kind kind);
+
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  BufferAllocation::Slice dest_;
+  Kind kind_;
+};
+
+//===----------------------------------------------------------------------===//
 // LaunchCmd
 //===----------------------------------------------------------------------===//
 

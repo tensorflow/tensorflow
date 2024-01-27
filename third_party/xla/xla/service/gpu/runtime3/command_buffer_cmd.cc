@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -259,6 +260,34 @@ std::vector<bool> CommandBufferCmdSequence::barriers() const {
   absl::c_transform(commands_, std::back_inserter(barriers),
                     [](auto& command) { return command.requires_barrier; });
   return barriers;
+}
+//===----------------------------------------------------------------------===//
+// ComputationId
+//===----------------------------------------------------------------------===//
+
+ComputationIdCmd::ComputationIdCmd(BufferAllocation::Slice dest, Kind kind)
+    : dest_(dest), kind_(kind) {}
+
+CommandBufferCmd::BufferUsageVector ComputationIdCmd::buffers() {
+  return {{dest_, MemoryAccess::kWrite}};
+}
+
+absl::Status ComputationIdCmd::Record(const RecordParams& params,
+                                      se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dest_);
+
+  VLOG(5) << "ComputationIdCmd: kind="
+          << (kind_ == Kind::kReplica ? "replica" : "partition");
+  VLOG(5) << "  Id: " << dest_ << " (" << dst.opaque() << ")";
+
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
+                      params.collective_params->device_assn->LogicalIdForDevice(
+                          global_device_id));
+
+  uint32_t value = kind_ == Kind::kReplica ? logical_id.replica_id
+                                           : logical_id.computation_id;
+  return command_buffer->Memset(&dst, value, /*num_elements=*/1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -632,6 +661,10 @@ absl::Status WhileCmd::Record(const RecordParams& params,
                               se::CommandBuffer* command_buffer) {
   se::DeviceMemoryBase pred =
       params.buffer_allocations->GetDeviceAddress(pred_);
+
+  VLOG(5) << "WhileCmd: cond_commands=" << cond_commands_.size()
+          << " body_commands=" << body_commands_.size();
+  VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
 
   return command_buffer->While(params.executor, se::DeviceMemory<bool>(pred),
                                ConditionBuilder(&cond_commands_, &params),

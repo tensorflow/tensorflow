@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/gemm_thunk.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/runtime3/memset_thunk.h"
+#include "xla/service/gpu/runtime3/replica_id_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -145,6 +146,16 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
                                         thunk.buffers());
 }
 
+static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
+  return std::make_unique<ComputationIdCmd>(thunk.dest(),
+                                            ComputationIdCmd::Kind::kPartition);
+}
+
+static absl::StatusOr<Command> Convert(const ReplicaIdThunk& thunk) {
+  return std::make_unique<ComputationIdCmd>(thunk.dest(),
+                                            ComputationIdCmd::Kind::kReplica);
+}
+
 static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
   return std::make_unique<CustomCallCmd>(thunk.call_target(), thunk.operands(),
                                          thunk.results(), thunk.opaque());
@@ -196,6 +207,10 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
       return append(Convert<NcclAllReduceStartThunk>(thunk));
     case Thunk::Kind::kNcclReduceScatterStart:
       return append(Convert<NcclReduceScatterStartThunk>(thunk));
+    case Thunk::Kind::kPartitionId:
+      return append(Convert<PartitionIdThunk>(thunk));
+    case Thunk::Kind::kReplicaId:
+      return append(Convert<ReplicaIdThunk>(thunk));
     case Thunk::Kind::kWhile:
       return append(Convert<WhileThunk>(thunk, force_barriers));
 
