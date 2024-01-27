@@ -110,6 +110,15 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
 AutoShardingSolverRequest ScaleRequest(
     const AutoShardingSolverRequest& request);
 
+// Determines if two strategies are equivalent (i.e., share identical node
+// costs, edge costs, and alias mappings).
+bool CheckEquivalent(const AutoShardingSolverRequest& request,
+                     const std::vector<EdgeIdx>& src_edges,
+                     const std::vector<EdgeIdx>& dst_edges,
+                     const std::vector<AliasIdx>& src_aliases,
+                     const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
+                     NodeStrategyIdx first, NodeStrategyIdx second);
+
 }  // namespace spmd
 }  // namespace xla
 
