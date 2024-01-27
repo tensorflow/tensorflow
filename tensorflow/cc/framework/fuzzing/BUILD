@@ -29,7 +29,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:hash",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:status",
     ],
