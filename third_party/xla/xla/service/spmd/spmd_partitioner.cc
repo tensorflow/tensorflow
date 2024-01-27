@@ -3343,7 +3343,8 @@ Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
     TF_RET_CHECK(ar->use_global_device_ids())
         << "Cross-partition allreduce in partial manual partitioning mode must "
            "use global device IDs.";
-    absl::flat_hash_map<int64_t, int64_t> partition_to_group_id;
+    std::vector<int64_t> partition_to_group_id(
+        hlo->sharding().tile_assignment().num_elements());
     hlo->sharding().tile_assignment().Each(
         [&](absl::Span<const int64_t> indices, int64_t partition) {
           int64_t group_id = 0;

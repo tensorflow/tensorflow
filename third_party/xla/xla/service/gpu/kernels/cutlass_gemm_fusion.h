@@ -19,20 +19,21 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
 // Pattern matches simple row-major gemms to CUTLASS kernels.
-class CutlassGemmPattern : public CustomFusionPattern {
+class CutlassGemmPattern : public CustomKernelFusionPattern {
  public:
   std::optional<Match> TryMatch(const se::DeviceDescription& device,
                                 HloInstruction* instr) const override;
 };
 
 // Pattern matches simple row-major gemms with dynamic-update-slice.
-class CutlassGemmWithDynamicUpdateSlicePattern : public CustomFusionPattern {
+class CutlassGemmWithDynamicUpdateSlicePattern
+    : public CustomKernelFusionPattern {
  public:
   std::optional<Match> TryMatch(const se::DeviceDescription& device,
                                 HloInstruction* instr) const override;
@@ -40,7 +41,7 @@ class CutlassGemmWithDynamicUpdateSlicePattern : public CustomFusionPattern {
 
 // Pattern matches mixed dtype gemms when one of the operands is upcasted to an
 // accumulator (output) dtype, i.e. BF16 <= BF16 x S8.
-class CutlassGemmWithUpcastPattern : public CustomFusionPattern {
+class CutlassGemmWithUpcastPattern : public CustomKernelFusionPattern {
  public:
   std::optional<Match> TryMatch(const se::DeviceDescription& device,
                                 HloInstruction* instr) const override;

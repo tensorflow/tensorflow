@@ -34,7 +34,8 @@ tsl::thread::ThreadPool CreateThreadPool(int32_t size) {
 }
 
 TEST(RendezvousTest, OneParticipant) {
-  auto result = RendezvousSingle<int32_t>(0, 1, [] { return 42; });
+  auto result =
+      RendezvousSingle<int32_t>("rendezvous_test", 0, 1, [] { return 42; });
   ASSERT_EQ(*result, 42);
 }
 
@@ -44,7 +45,8 @@ TEST(RendezvousTest, TwoParticipants) {
 
   auto task = [&](int32_t id) {
     return [&, id] {
-      results[id] = RendezvousSingle<int32_t>(0, 2, [] { return 42; });
+      results[id] =
+          RendezvousSingle<int32_t>("rendezvous_test", 0, 2, [] { return 42; });
       counter.DecrementCount();
     };
   };
@@ -71,7 +73,8 @@ TEST(RendezvousTest, TwoParticipantsWithValues) {
 
   auto task = [&](int32_t id) {
     return [&, id] {
-      results[id] = RendezvousSingle<int32_t>(0, id, 2, accumulate);
+      results[id] =
+          RendezvousSingle<int32_t>("rendezvous_test", 0, id, 2, accumulate);
       counter.DecrementCount();
     };
   };
@@ -93,7 +96,7 @@ TEST(RendezvousTest, RepeatRendezvous) {
     absl::BlockingCounter counter(2);
 
     auto task = [&] {
-      RendezvousSingle<int32_t>(i, 2, [] { return 42; });
+      RendezvousSingle<int32_t>("rendezvous_test", i, 2, [] { return 42; });
       counter.DecrementCount();
     };
 
@@ -109,8 +112,8 @@ TEST(RendezvousTest, ReturningStatusOr) {
 
   auto task = [&](int32_t id) {
     return [&, id] {
-      results[id] =
-          RendezvousSingle<absl::StatusOr<int32_t>>(0, 2, [] { return 42; });
+      results[id] = RendezvousSingle<absl::StatusOr<int32_t>>(
+          "rendezvous_test", 0, 2, [] { return 42; });
       counter.DecrementCount();
     };
   };
@@ -137,7 +140,8 @@ static void BM_Rendezvous(benchmark::State& state) {
     absl::BlockingCounter counter(num_threads);
     for (int64_t i = 0; i < num_threads; ++i) {
       thread_pool.Schedule([&] {
-        RendezvousSingle<int32_t>(0, num_threads, [] { return 42; });
+        RendezvousSingle<int32_t>("rendezvous_test", 0, num_threads,
+                                  [] { return 42; });
         counter.DecrementCount();
       });
     }
@@ -154,7 +158,7 @@ static void BM_RendezvousWithValues(benchmark::State& state) {
     for (int64_t i = 0; i < num_threads; ++i) {
       thread_pool.Schedule([&] {
         int32_t value = i;
-        RendezvousSingle<int32_t>(0, value, num_threads,
+        RendezvousSingle<int32_t>("rendezvous_test", 0, value, num_threads,
                                   [](auto) { return 42; });
         counter.DecrementCount();
       });

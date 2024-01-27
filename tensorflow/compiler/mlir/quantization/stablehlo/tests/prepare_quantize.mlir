@@ -135,6 +135,6 @@ func.func @skip_nan_inf_constant(%arg0: tensor<?x112x112x64xf32>) -> tensor<?x56
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %7 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
     stablehlo.return %7 : tensor<f32>
-  }) {padding = dense<[[0, 0], [0, 1], [0, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>, window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<?x112x112x64xf32>, tensor<f32>) -> tensor<?x56x56x64xf32>
+  }) {padding = dense<[[0, 0], [0, 1], [0, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = array<i64: 1, 3, 3, 1>, window_strides = array<i64: 1, 2, 2, 1>} : (tensor<?x112x112x64xf32>, tensor<f32>) -> tensor<?x56x56x64xf32>
   return %6 : tensor<?x56x56x64xf32>
 }

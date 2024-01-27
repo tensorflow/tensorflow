@@ -74,7 +74,8 @@ fi
 # it. TFCI Mac VMs only have one Python version installed so we need to install
 # the other versions manually.
 if [[ "${TFCI_MACOS_PYENV_INSTALL_ENABLE}" == 1 ]]; then
-  pyenv install "$TFCI_PYTHON_VERSION"
+  # Install the necessary Python, unless it's already present
+  pyenv install -s "$TFCI_PYTHON_VERSION"
   pyenv local "$TFCI_PYTHON_VERSION"
   # Do a sanity check to make sure that we using the correct Python version
   python --version

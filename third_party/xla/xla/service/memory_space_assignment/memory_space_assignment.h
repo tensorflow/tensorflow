@@ -1361,11 +1361,11 @@ class MemoryBoundednessBufferIntervalComparator
  private:
   // See the value returned by DescribeComparisonCriteria() for the meaning of
   // each tuple element.
-  using ComparisonTuple =
-      std::tuple<float, int64_t, int64_t, int64_t, int64_t, BufferValue::Id>;
+  using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
+                                     int64_t, BufferValue::Id>;
 
   ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
-
+  int64_t GetLatestUseTime(const BufferInterval& buffer_interval);
   absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache_;
@@ -1594,6 +1594,10 @@ struct Options {
   // Option to always spill buffers from alternate memory to default memory
   // and prefetching back to alternate memory(if needed) just in time for use.
   bool always_spill_to_default_memory = false;
+
+  // Config to override alternate memory assignment sorting order for filtered
+  // buffers.
+  MsaSortOrderOverrides msa_sort_order_overrides;
 };
 
 // A struct representing an asynchronous copy with its logical start and end

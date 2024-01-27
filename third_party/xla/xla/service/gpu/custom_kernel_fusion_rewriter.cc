@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/custom_fusion_rewriter.h"
+#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 
 #include <cstdint>
 #include <optional>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -42,9 +42,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-CustomFusionRewriter::CustomFusionRewriter(
+CustomKernelFusionRewriter::CustomKernelFusionRewriter(
     const se::DeviceDescription* device,
-    const CustomFusionPatternRegistry* patterns)
+    const CustomKernelFusionPatternRegistry* patterns)
     : device_(device), patterns_(patterns) {}
 
 // Returns a set of instruction that have users outside of a matched pattern
@@ -54,7 +54,7 @@ CustomFusionRewriter::CustomFusionRewriter(
 // instruction has external users and does not have a replacement returns empty
 // optional.
 static std::optional<absl::flat_hash_set<HloInstruction*>>
-GetPatternReplacements(const CustomFusionPattern::Match& match) {
+GetPatternReplacements(const CustomKernelFusionPattern::Match& match) {
   absl::flat_hash_set<HloInstruction*> requires_replacement;
   absl::flat_hash_set<HloInstruction*> instructions_set(
       match.instructions().begin(), match.instructions().end());
@@ -68,7 +68,7 @@ GetPatternReplacements(const CustomFusionPattern::Match& match) {
         continue;
       }
 
-      VLOG(3) << "Custom fusion intermediate result " << instr->name()
+      VLOG(3) << "Custom kernel fusion intermediate result " << instr->name()
               << " has users outside of a matched pattern: " << user->name();
       return std::nullopt;
     }
@@ -77,10 +77,10 @@ GetPatternReplacements(const CustomFusionPattern::Match& match) {
   return requires_replacement;
 }
 
-// Returns instructions that have to become custom fusion parameters. Returns an
-// error if matched pattern can't be outlined as a fusion.
+// Returns instructions that have to become custom kernel fusion parameters.
+// Returns an error if matched pattern can't be outlined as a fusion.
 static absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
-    const CustomFusionPattern::Match& match) {
+    const CustomKernelFusionPattern::Match& match) {
   absl::InlinedVector<HloInstruction*, 4> captures;
 
   absl::flat_hash_set<HloInstruction*> instructions_set(
@@ -98,9 +98,10 @@ static absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   return captures;
 }
 
-// Creates custom fusion computation and moves all matched instructions into it.
+// Creates custom kernel fusion computation and moves all matched instructions
+// into it.
 static absl::StatusOr<HloComputation*> CreateFusionBody(
-    HloModule* module, const CustomFusionPattern::Match& match,
+    HloModule* module, const CustomKernelFusionPattern::Match& match,
     absl::Span<HloInstruction* const> captures) {
   HloComputation::Builder builder(match.config().name());
 
@@ -133,14 +134,14 @@ static absl::StatusOr<HloComputation*> CreateFusionBody(
 
   HloInstruction* root = builder.last_added_instruction();
 
-  // If custom fusion requires a workspace we add a custom call that allocates
-  // workspace and return a tuple of "real" result and a workspace.
+  // If custom kernel fusion requires a workspace we add a custom call that
+  // allocates workspace and return a tuple of "real" result and a workspace.
   if (match.workspace_size_bytes() > 0) {
     auto workspace_shape =
         ShapeUtil::MakeShape(PrimitiveType::U8, {match.workspace_size_bytes()});
     HloInstruction* workspace =
         builder.AddInstruction(HloInstruction::CreateCustomCall(
-            workspace_shape, {}, CustomFusionPattern::kWorkspace, "",
+            workspace_shape, {}, CustomKernelFusionPattern::kWorkspace, "",
             CustomCallApiVersion::API_VERSION_TYPED_FFI));
     builder.AddInstruction(HloInstruction::CreateTuple({root, workspace}));
   }
@@ -149,10 +150,10 @@ static absl::StatusOr<HloComputation*> CreateFusionBody(
 }
 
 static absl::StatusOr<HloInstruction*> CreateFusionInstruction(
-    HloModule* module, const CustomFusionPattern::Match& match,
+    HloModule* module, const CustomKernelFusionPattern::Match& match,
     absl::Span<HloInstruction* const> captures, HloComputation* body) {
-  // We'll be replacing the root operation of a custom fusion with a fusion
-  // instruction calling fusion computation.
+  // We'll be replacing the root operation of a custom kernel fusion with a
+  // fusion instruction calling fusion computation.
   HloInstruction* root = match.root();
   HloComputation* parent = root->parent();
 
@@ -178,10 +179,10 @@ static absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       HloInstruction::CreateGetTupleElement(fusion, 0));
 }
 
-absl::StatusOr<bool> CustomFusionRewriter::Run(
+absl::StatusOr<bool> CustomKernelFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  std::vector<CustomFusionPattern::Match> matches;
+  std::vector<CustomKernelFusionPattern::Match> matches;
 
   // Collect all potential custom fusion matches in the module.
   for (HloComputation* computation : module->computations()) {
@@ -193,8 +194,8 @@ absl::StatusOr<bool> CustomFusionRewriter::Run(
 
   if (matches.empty()) return false;
 
-  for (const CustomFusionPattern::Match& match : matches) {
-    VLOG(2) << "Matched custom fusion " << match.config().name()
+  for (const CustomKernelFusionPattern::Match& match : matches) {
+    VLOG(2) << "Matched custom kernel fusion " << match.config().name()
             << "; root instruction: " << match.instructions().back()->name();
 
     auto replacememts = GetPatternReplacements(match);
@@ -209,7 +210,7 @@ absl::StatusOr<bool> CustomFusionRewriter::Run(
         CreateFusionInstruction(module, match, captures, fusion_body));
 
     VLOG(2) << "Added a fusion instruction: " << fusion->name()
-            << " for custom fusion " << match.config().name()
+            << " for custom kernel fusion " << match.config().name()
             << " (instruction count = " << match.instructions().size() << ")";
 
     for (HloInstruction* instr : *replacememts) {
@@ -227,8 +228,8 @@ absl::StatusOr<bool> CustomFusionRewriter::Run(
               << " with: " << replacement->name();
     }
 
-    VLOG(2) << "Replace custom fusion root instruction " << match.root()->name()
-            << "with " << fusion->name();
+    VLOG(2) << "Replace custom kernel fusion root instruction "
+            << match.root()->name() << "with " << fusion->name();
     HloComputation* parent = match.root()->parent();
     TF_RETURN_IF_ERROR(parent->ReplaceInstruction(match.root(), fusion));
   }

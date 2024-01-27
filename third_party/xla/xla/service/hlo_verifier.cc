@@ -299,9 +299,10 @@ Status ShapeVerifier::HandleOptimizationBarrier(HloInstruction* hlo) {
   return CheckShape(hlo, hlo->operand(0)->shape());
 }
 
-bool ShapeVerifier::ShapesSame(const Shape& a, const Shape& b,
-                               bool minor_to_major_only,
-                               bool ignore_memory_space, bool ignore_tiles) {
+bool ShapeVerifier::ShapesSame(
+    const Shape& a, const Shape& b, bool minor_to_major_only,
+    bool ignore_memory_space, bool ignore_tiles,
+    bool ignore_trailing_padding_alignment_in_elements) {
   if (!opts_.layout_sensitive) {
     return ShapeUtil::Compatible(a, b);
   }
@@ -314,6 +315,9 @@ bool ShapeVerifier::ShapesSame(const Shape& a, const Shape& b,
   }
   if (ignore_tiles) {
     equal.IgnoreTilesInLayout();
+  }
+  if (ignore_trailing_padding_alignment_in_elements) {
+    equal.IgnoreTailPaddingAlignmentInElements();
   }
   return equal(a, b);
 }
@@ -939,14 +943,14 @@ Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
   if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return Internal(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
-        hlo->shape().ToString());
+        hlo->shape().ToString(true));
   }
   if (!ShapeUtil::Compatible(hlo->operand(0)->shape(),
                              hlo->shape().tuple_shapes(0))) {
     return Internal(
         "Expected state shape to match between input and output for "
         "RngBitGenerator. Got %s vs. %s",
-        hlo->operand(0)->shape().ToString(),
+        hlo->operand(0)->shape().ToString(true),
         hlo->shape().tuple_shapes(0).ToString());
   }
   return OkStatus();
@@ -1285,7 +1289,7 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
           custom_call->operand_shapes_with_layout()[i];
       TF_RET_CHECK(ShapeUtil::Compatible(custom_call->operand(i)->shape(),
                                          operand_shape_with_layout))
-          << custom_call->operand(i)->shape().ToString() << " operand "
+          << custom_call->operand(i)->shape().ToString(true) << " operand "
           << operand_shape_with_layout.ToString();
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
@@ -1572,8 +1576,8 @@ Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
     return Internal(
         "The %s expects the shape of operand and output to match (%s vs %s).",
         HloOpcodeString(async_update->opcode()),
-        async_update->operand(0)->shape().ToString(),
-        async_update->shape().ToString());
+        async_update->operand(0)->shape().ToString(true),
+        async_update->shape().ToString(true));
   }
   TF_RETURN_IF_ERROR(
       CheckAsyncOpComputationShapes(async_update, async_update->shape()));
@@ -1589,8 +1593,8 @@ Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
     return Internal(
         "The %s expects the shape of output to match the async shape at index "
         "{1} (%s vs %s).",
-        HloOpcodeString(async_done->opcode()), async_done->shape().ToString(),
-        root_shape.ToString());
+        HloOpcodeString(async_done->opcode()),
+        async_done->shape().ToString(true), root_shape.ToString(true));
   }
   return CheckAsyncOpOperand(async_done);
 }
@@ -1919,7 +1923,8 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   if (!ShapesSame(computation->root_instruction()->shape(),
                   result_layout.shape(),
                   /*minor_to_major_only=*/false, /*ignore_memory_space=*/false,
-                  /*ignore_tiles=*/true)) {
+                  /*ignore_tiles=*/true,
+                  /*ignore_trailing_padding_alignment_in_elements=*/true)) {
     return Internal(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
@@ -1943,7 +1948,8 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     if (!ShapesSame(parameter->shape(), layout.parameter_shape(i),
                     /*minor_to_major_only=*/false,
                     /*ignore_memory_space=*/false,
-                    /*ignore_tiles=*/true)) {
+                    /*ignore_tiles=*/true,
+                    /*ignore_trailing_padding_alignment_in_elements=*/true)) {
       return Internal(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "

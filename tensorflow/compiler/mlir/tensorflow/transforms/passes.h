@@ -80,6 +80,8 @@ CreateTFFunctionalControlFlowToCFG();
 // their region based counterparts.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFFunctionalControlFlowToRegions();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFFunctionalControlFlowToRegions(
+    bool allow_passthrough_args);
 
 // Transforms region bases control flow operations in the TensorFlow dialect to
 // their functional counterparts.

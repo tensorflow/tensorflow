@@ -305,6 +305,7 @@ class DebugOptions:
   xla_gpu_enable_async_collective_permute: bool
   xla_gpu_enable_async_all_to_all: bool
   xla_gpu_enable_async_reduce_scatter: bool
+  xla_gpu_cuda_data_dir: str
   xla_detailed_logging: bool
   xla_enable_dumping: bool
 
@@ -845,6 +846,7 @@ class GSPMDSharding(XLACompatibleSharding):
       op_sharding: Union[OpSharding, HloSharding],
       *,
       memory_kind: Optional[str] = None,
+      _device_list: Optional[DeviceList] = None,
   ): ...
   _devices: Tuple[Device, ...]
   _hlo_sharding: HloSharding

@@ -25,8 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -49,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -61,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -321,15 +319,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                       const DataServiceParams& data_service_params)
         : DatasetIterator<Dataset>(params),
           data_service_client_(data_service_params),
-          buffer_size_(std::make_shared<model::SharedState>(
-              // Give it a value of 1 if it is autotuned to make the parameter
-              // not tunable by Autotune because it will be directly set by the
-              // `data_service_client_` when number of tasks changes.
-              params.dataset->max_outstanding_requests_ == model::kAutotune
-                  ? 1
-                  : params.dataset->max_outstanding_requests_,
-              std::make_shared<mutex>(),
-              std::make_shared<condition_variable>())) {}
+          mu_(std::make_shared<mutex>()),
+          buffer_size_parameter_(
+              model::MakeNonTunableParameter(model::kBufferSize, 1)) {}
 
     ~Iterator() override {
       data_service_client_.Cancel();
@@ -350,7 +342,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       auto ctx_factory = [ctx, this]() {
         return std::make_unique<DataServiceIteratorContext>(
-            ctx, this, buffer_size_, model_node());
+            ctx, this, model_node(), mu_, buffer_size_parameter_);
       };
       TF_ASSIGN_OR_RETURN(GetNextResult result,
                           data_service_client_.GetNext(ctx_factory));
@@ -362,12 +354,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeAsyncKnownRatioNode(
-          std::move(args),
-          /*ratio=*/1,
-          {model::MakeParameter(model::kBufferSize, buffer_size_,
-                                /*min=*/1,
-                                /*max=*/std::numeric_limits<double>::max())});
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1,
+                                            {buffer_size_parameter_});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -389,12 +378,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
      public:
       DataServiceIteratorContext(
           IteratorContext* ctx, Iterator* iterator,
-          std::shared_ptr<model::SharedState> buffer_size,
-          std::shared_ptr<model::Node> node)
+          std::shared_ptr<model::Node> node, std::shared_ptr<mutex> mu,
+          std::shared_ptr<model::Parameter> buffer_size_parameter)
           : ctx_(*ctx),
             iterator_(iterator),
             node_(node),
-            buffer_size_(buffer_size) {}
+            mu_(mu),
+            buffer_size_parameter_(buffer_size_parameter) {}
       ~DataServiceIteratorContext() override = default;
       DataServiceIteratorContext(const DataServiceIteratorContext&) = delete;
       DataServiceIteratorContext& operator=(const DataServiceIteratorContext&) =
@@ -476,8 +466,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 << max_outstanding_requests << " to "
                 << new_outstanding_requests << ". Requested value is "
                 << requested_outstanding_requests;
-        mutex_lock l(*buffer_size_->mu);
-        buffer_size_->value = new_outstanding_requests;
+        mutex_lock l(*mu_);
+        buffer_size_parameter_->value = new_outstanding_requests;
         return new_outstanding_requests;
       }
 
@@ -485,12 +475,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       IteratorContext ctx_;
       Iterator* iterator_ = nullptr;
       const std::shared_ptr<model::Node> node_;
-      const std::shared_ptr<model::SharedState> buffer_size_;
+      const std::shared_ptr<mutex> mu_;
+      std::shared_ptr<model::Parameter> buffer_size_parameter_;
       double element_size_cache_ = 0.0;
     };
 
     DataServiceClient data_service_client_;
-    const std::shared_ptr<model::SharedState> buffer_size_;
+    const std::shared_ptr<mutex> mu_;
+    const std::shared_ptr<model::Parameter> buffer_size_parameter_;
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
     friend class DataServiceIteratorContext;

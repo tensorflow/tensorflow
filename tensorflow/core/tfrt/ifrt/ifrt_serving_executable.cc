@@ -150,7 +150,7 @@ IfrtServingExecutable::ConvertTensorToArray(
       !hlo_sharding.IsTileMaximal()) {
     return absl::UnimplementedError(absl::StrCat(
         "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
-        hlo_sharding.ToProto()));
+        hlo_sharding.ToString()));
   }
 
   VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
@@ -245,7 +245,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   for (const auto& tensor : inputs) {
     input_shapes.push_back(tensor.shape());
   }
-  Key key(input_shapes);
+  Key key = {input_shapes};
 
   xla::ifrt::Promise<absl::StatusOr<CachedExecutableBundle>> promise;
   xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>> future;
@@ -342,7 +342,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     // IFRT's return does not contain sufficient information; so we use
     // sharding spec from metadata.
     VLOG(2) << "Output sharding: " << array_for_copy->sharding().DebugString();
-    VLOG(2) << "Metadata sharding: " << metadata_retval.sharding();
+
     TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(
                                                metadata_retval.sharding()));
 

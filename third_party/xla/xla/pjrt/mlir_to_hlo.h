@@ -60,6 +60,8 @@ StatusOr<std::string> SerializeUsingVersionedStablehlo(
 // back to StableHLO.
 // If module is not a portable artifact, this method is identity. Only fails
 // on portable artifacts that are outside of the compatibility window.
+// `ParseMlirModuleString` uses this method, and should be preferred to directly
+// calling `UpgradeVersionedStablehlo` where possible.
 Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module);
 
 }  // namespace xla

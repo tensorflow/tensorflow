@@ -665,7 +665,8 @@ GraphExecutor::ImportAndCompileClientGraph(
   // If the module contains a Restore op, then there should be one input,
   // and it should specify the checkpoint for variable restore.
   std::string checkpoint_path;
-  if (mlir::tf_saved_model::IsRestoreGraph(module.get())) {
+  if (options_.compile_options.backend_compiler &&
+      mlir::tf_saved_model::IsRestoreGraph(module.get())) {
     if (inputs.size() != 1) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Expected 1 input for restore graph, but got ", inputs.size(), "."));

@@ -116,7 +116,7 @@ Status HostOffloader::HandlePipelineForwardCustomCall(
     dynamic_update_slice = dynamic_update_slice->users()[0];
   }
   if (dynamic_update_slice->opcode() != HloOpcode::kDynamicUpdateSlice) {
-    return InternalError(
+    return Internal(
         "Expecting only bitcasts between custom call (%s) and dynamic update "
         "slice (%s)",
         custom_call->name(), dynamic_update_slice->name());
@@ -144,7 +144,7 @@ Status HostOffloader::HandlePipelineForwardCustomCall(
       if (absl::c_find(kAllowedPositionOpcodes,
                        position.instruction->opcode()) ==
           kAllowedPositionOpcodes.end()) {
-        return InternalError(
+        return Internal(
             "DynamicUpdateSlice %s's position %s is not supported. Not going "
             "to offload this one",
             dynamic_update_slice->name(), position.instruction->name());
@@ -167,7 +167,7 @@ Status HostOffloader::HandlePipelineForwardCustomCall(
   }
 
   if (broadcast_instruction == nullptr) {
-    return InternalError(
+    return Internal(
         "The destination buffer of %s was not created by a broadcast; cannot "
         "offload. Has defining position(s) [%s]",
         dynamic_update_slice->name(),

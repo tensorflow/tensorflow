@@ -150,9 +150,12 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/grappler:graph_topology_view",
         "//tensorflow/core/grappler/utils:traversal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

@@ -640,7 +640,7 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
 ; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] poison, align 4
   )"
                                          : R"(
-; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [1 x [2 x float]]]
+; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [2 x float]]
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);

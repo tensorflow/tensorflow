@@ -41,6 +41,11 @@ struct ReductionDimensions {
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
   Vector3 dimensions;
+
+  bool operator==(const ReductionDimensions& other) const {
+    return is_row_reduction == other.is_row_reduction &&
+           dimensions == other.dimensions;
+  }
 };
 
 // Returns true if using the reduction emitter is estimated to be faster than
@@ -77,6 +82,10 @@ bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
 // Whether the instruction is a reduction hero for the given root.
 bool IsRealReductionHero(const HloInstruction& root,
                          const HloInstruction& hero);
+
+// Whether `reduction_hero` is compatible with `first_reduce`.
+bool AreReductionsMultiOutputFusionCompatible(
+    const HloInstruction* reduce_hero, const HloInstruction* first_reduce);
 
 }  // namespace gpu
 }  // namespace xla

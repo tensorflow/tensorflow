@@ -136,21 +136,24 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
       earliest_scheduled.push_back(instr);
       scheduled.insert(instr);
     };
+
     for (HloInstruction* instr : input.instructions()) {
-      if (is_scheduled(instr)) {
-        continue;
-      }
+      if (is_scheduled(instr)) continue;
 
       add_to_schedule(instr);
 
       // Schedule any successor that should be scheduled as early as possible if
       // all of its producers and control_predecessors have been scheduled.
       for (HloInstruction* user : instr->users()) {
+        if (is_scheduled(user)) continue;
+
         if (ShouldScheduleSuccessor(*user, is_scheduled)) {
           add_to_schedule(user);
         }
       }
       for (HloInstruction* successor : instr->control_successors()) {
+        if (is_scheduled(successor)) continue;
+
         if (ShouldScheduleSuccessor(*successor, is_scheduled)) {
           add_to_schedule(successor);
         }
@@ -170,20 +173,22 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
     };
     for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
          it++) {
-      if (is_scheduled(*it)) {
-        continue;
-      }
+      if (is_scheduled(*it)) continue;
 
       add_to_schedule(*it);
 
       // Schedule any predecessor that should be scheduled as late as possible
       // if all of its users and control_successors have been scheduled.
       for (HloInstruction* operand : (*it)->operands()) {
+        if (is_scheduled(operand)) continue;
+
         if (ShouldSchedulePredecessor(*operand, is_scheduled)) {
           add_to_schedule(operand);
         }
       }
       for (HloInstruction* predecessor : (*it)->control_predecessors()) {
+        if (is_scheduled(predecessor)) continue;
+
         if (ShouldSchedulePredecessor(*predecessor, is_scheduled)) {
           add_to_schedule(predecessor);
         }
@@ -194,6 +199,12 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
   HloInstructionSequence result;
   absl::c_for_each(latest_scheduled,
                    [&](HloInstruction* i) { result.push_back(i); });
+
+  // Schedule post-processing can't introduce new instructions.
+  CHECK(input.instructions().size() == result.size())
+      << "schedule as early or late post-processing changed schedule size from "
+      << input.instructions().size() << " to " << result.size();
+
   return result;
 }
 
@@ -202,25 +213,35 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
 HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     const HloInstructionSequence& input) {
   HloInstructionSequence result;
-  auto is_synchronous_op = [](const HloInstruction* instr) {
+
+  // Returns true if `inst` is a synchronous version of async collective start
+  // operation (marked with `is_sync` attribute).
+  auto is_sync_start = [](const HloInstruction* instr) {
     return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
            IsSyncCollective(instr);
   };
+
   for (HloInstruction* instr : input.instructions()) {
-    if (is_synchronous_op(instr)) {
-      continue;
-    }
-    if (hlo_query::IsAsyncCollectiveDoneOp(instr,
-                                           /*include_send_recv=*/true)) {
-      // Place the start op just before the done op if its synchronous.
+    // Skip synchronous start instruction as it will be scheduled later when
+    // we'll process corresponding done instruction.
+    if (is_sync_start(instr)) continue;
+
+    // Find a start instruction corresponding to done and schedule it right
+    // before a done if it's a synchronous version.
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr, true)) {
       HloInstruction* start = instr->mutable_operand(0);
-      if (is_synchronous_op(start)) {
-        result.push_back(start);
-      }
+      if (is_sync_start(start)) result.push_back(start);
     }
+
     result.push_back(instr);
   }
+
+  // Schedule post-processing can't introduce new instructions.
+  CHECK(input.instructions().size() == result.size())
+      << "sync collectives post-processing changed schedule size from "
+      << input.instructions().size() << " to " << result.size();
+
   return result;
 }
 

@@ -17,19 +17,25 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/statusor.h"
 
@@ -38,6 +44,7 @@ namespace tf2xla {
 namespace v2 {
 
 using ::tensorflow::monitoring::testing::CellReader;
+using ::testing::TestWithParam;
 using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
@@ -106,6 +113,7 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;
+  metadata_proto.add_retvals();
   bool use_tuple_args = true;
   std::vector<ShardingAndIndex> arg_core_mapping;
   std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
@@ -129,6 +137,89 @@ TEST(LegalizeTFTest, RecordsStreamzForSuccessfulLegalizeWithMlirBridge) {
 
   // May have been filtered so check for lack of failure instead of success.
   EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 0);
+}
+
+TEST(LegalizeTFTest, MatMul) {
+  static constexpr char kMatMulModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @main() -> (tensor<5x11xf32>) {
+      %arg0 = "tf.Const"() {value = dense<-3.0> : tensor<5x7xf32>} : () -> tensor<5x7xf32>
+      %arg1 = "tf.Const"() {value = dense<-3.0> : tensor<11x7xf32>} : () -> tensor<11x7xf32>
+
+      %1 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = true} : (tensor<5x7xf32>, tensor<11x7xf32>) -> tensor<5x11xf32>
+
+      func.return %1 : tensor<5x11xf32>
+    }
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          kMatMulModuleStr,
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
+}
+
+struct MatMulTestCase {
+  std::string mat_mul_method;
+};
+
+using BatchMatMulTest = TestWithParam<MatMulTestCase>;
+
+TEST_P(BatchMatMulTest, BatchMatMul) {
+  const MatMulTestCase& test_case = GetParam();
+  static constexpr char kMatMulModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @main() -> (tensor<1x4x4xf32>) {
+      %%arg0 = "tf.Const"() {value = dense<-3.0> : tensor<1x4x2xf32>} : () -> tensor<1x4x2xf32>
+      %%arg1 = "tf.Const"() {value = dense<-3.0> : tensor<1x2x4xf32>} : () -> tensor<1x2x4xf32>
+
+      %%1 = "tf.%s"(%%arg0, %%arg1) {T = f32, adj_x = false, adj_y = false, grad_x = false, grad_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<1x2x4xf32>) -> tensor<1x4x4xf32>
+
+      func.return %%1 : tensor<1x4x4xf32>
+    }
+  })";
+  std::string mat_mul_method =
+      absl::StrFormat(kMatMulModuleStr, test_case.mat_mul_method);
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          mat_mul_method.c_str(),
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BatchMatMulTest, BatchMatMulTest,
+    ::testing::ValuesIn<MatMulTestCase>({
+        {"BatchMatMul"},
+        {"BatchMatMulV2"},
+        {"BatchMatMulV3"},
+    }),
+    [](const ::testing::TestParamInfo<BatchMatMulTest::ParamType>& info) {
+      return info.param.mat_mul_method;
+    });
+
+TEST(LegalizeTFTest, DumpsProducedHLO) {
+  Env* env = Env::Default();
+  std::string test_dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", test_dir.c_str(), /*overwrite=*/1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+
+  std::vector<std::string> files;
+  TF_ASSERT_OK(env->GetChildren(test_dir, &files));
+  int original_files_size = files.size();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          kMlirModuleStr,
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
+
+  // Due to the shared test of this infrastructure, we just need to make sure
+  // that the dumped file size is greater than what was originally inside
+  // the test directory.
+  TF_ASSERT_OK(env->GetChildren(test_dir, &files));
+  EXPECT_THAT(files.size(), ::testing::Gt(original_files_size));
+  setenv("TF_DUMP_GRAPH_PREFIX", test_dir.c_str(), /*overwrite=*/0);
 }
 
 TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {

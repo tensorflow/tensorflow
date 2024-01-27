@@ -26,6 +26,10 @@ function is_linux_gpu_job() {
   [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*gpu.* ]]
 }
 
+function is_linux_cpu_arm64_job() {
+  [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/arm64/.*cpu.* ]]
+}
+
 # Pull the container (in case it was updated since the instance started) and
 # store its SHA in the Sponge log.
 docker pull "$DOCKER_IMAGE"
@@ -39,40 +43,43 @@ docker run --name xla -w /tf/xla -itd --rm \
     "$DOCKER_IMAGE" \
     bash
 
-# bazelrc Files currently come from https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools
-RC_FILE="/usertools/cpu.bazelrc"
-TARGET_FILTER=""
 TAGS_FILTER="-no_oss,-oss_excluded,-oss_serial"
 ADDITIONAL_FLAGS=""
-RBE_CONFIG=""
+RBE_FLAGS=""
 
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
-    RC_FILE="/usertools/gpu.bazelrc"
-    RBE_CONFIG="rbe_linux_cuda_nvcc"
+    RBE_FLAGS="--config=rbe_linux_cuda_nvcc"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
 else
     TAGS_FILTER="$TAGS_FILTER,-gpu,-requires-gpu-nvidia"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=nonccl"
-    RBE_CONFIG="rbe_linux_cpu"
+
+    if is_linux_cpu_arm64_job ; then
+        TAGS_FILTER="$TAGS_FILTER,-no_aarch64"
+        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --action_env PYTHON_BIN_PATH=/usr/bin/python3.11 --python_path=/usr/bin/python3.11"
+    else
+        RBE_FLAGS="--config=rbe_linux_cpu"
+    fi
 fi
 
 # Build & test XLA
-docker exec xla bazel --bazelrc=$RC_FILE \
+docker exec xla bazel \
         test \
         --build_tag_filters=$TAGS_FILTER  \
         --test_tag_filters=$TAGS_FILTER \
+        --test_output=errors \
         --keep_going \
         --features=layering_check \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \
-        --config=$RBE_CONFIG \
+        $RBE_FLAGS \
         --jobs=150 \
         --nobuild_tests_only \
         $ADDITIONAL_FLAGS \
-        -- //xla/... //build_tools/... $TARGET_FILTER
+        -- //xla/... //build_tools/...
 
 
 # Print build time statistics, including critical path.

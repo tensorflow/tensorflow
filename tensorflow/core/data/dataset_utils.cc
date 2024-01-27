@@ -1011,7 +1011,7 @@ REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<50>,
                             AllTasks);
-REGISTER_DATASET_EXPERIMENT("log_filenames", RandomJobSamplePercentage<0>,
+REGISTER_DATASET_EXPERIMENT("log_filenames", RandomJobSamplePercentage<50>,
                             AllTasks);
 }  // namespace
 }  // namespace data

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
-#define XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
+#ifndef XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_PATTERN_H_
+#define XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_PATTERN_H_
 
 #include <cstdint>
 #include <functional>
@@ -35,28 +35,30 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// CustomFusionPattern
+// CustomKernelFusionPattern
 //===----------------------------------------------------------------------===//
 
-// Custom fusion pattern matches HLO instruction to custom kernels.
-class CustomFusionPattern {
+// Custom kernel fusion pattern matches HLO instruction to custom kernels.
+class CustomKernelFusionPattern {
  public:
-  // A name of a custom call that can be added to a custom fusion body to
-  // allocate a workspace buffer require for the custom fusion implementation.
-  static constexpr const char *kWorkspace = "__custom_fusion$workspace";
+  // A name of a custom call that can be added to a custom kernel fusion body to
+  // allocate a workspace buffer require for the custom kernel fusion
+  // implementation.
+  static constexpr const char *kWorkspace = "__custom_kernel_fusion$workspace";
 
-  virtual ~CustomFusionPattern() = default;
+  virtual ~CustomKernelFusionPattern() = default;
 
-  // Matched sequence of instructions that can be handled by a custom fusion.
+  // Matched sequence of instructions that can be handled by a custom kernel
+  // fusion.
   class Match {
    public:
     Match(CustomFusionConfig config, std::vector<HloInstruction *> instructions,
           int64_t workspace_size_bytes = 0);
 
     // If some of operations matched by a pattern have users outside of the
-    // custom fusion, pattern can optionally provide a replacement that can be
-    // derived from the fusion instruction result, or from other instructions in
-    // the parent computation.
+    // custom kernel fusion, pattern can optionally provide a replacement that
+    // can be derived from the fusion instruction result, or from other
+    // instructions in the parent computation.
     using Replacement =
         std::function<absl::StatusOr<HloInstruction *>(HloFusionInstruction *)>;
 
@@ -85,30 +87,32 @@ class CustomFusionPattern {
   };
 
   // Returns custom fusion config and a list of instructions that matched to a
-  // custom fusion (one or more custom kernels). Custom fusion pass will outline
-  // matched instructions into a custom fusion operation if possible.
+  // custom kernel fusion (one or more custom kernels). Custom kernel fusion
+  // pass will outline matched instructions into a custom kernel fusion
+  // operation if possible.
   //
-  // TODO(ezhulenev): Today the last instruction defines custom fusion root
-  // (results), however we need to add support for custom fusion that can return
-  // intermediate result, and custom fusions that require an extra workspace.
+  // TODO(ezhulenev): Today the last instruction defines custom kernel fusion
+  // root (results), however we need to add support for custom kernel fusion
+  // that can return intermediate result, and custom kernel fusions that require
+  // an extra workspace.
   virtual std::optional<Match> TryMatch(const se::DeviceDescription &device,
                                         HloInstruction *instr) const = 0;
 };
 
 //===----------------------------------------------------------------------===//
-// CustomFusionPatternRegistry
+// CustomKernelFusionPatternRegistry
 //===----------------------------------------------------------------------===//
 
-class CustomFusionPatternRegistry {
+class CustomKernelFusionPatternRegistry {
  public:
-  // Returns a pointer to a default custom fusion pattern registry, which is a
-  // global static registry.
-  static CustomFusionPatternRegistry *Default();
+  // Returns a pointer to a default custom kernel fusion pattern registry, which
+  // is a global static registry.
+  static CustomKernelFusionPatternRegistry *Default();
 
-  std::vector<CustomFusionPattern::Match> Match(
+  std::vector<CustomKernelFusionPattern::Match> Match(
       const se::DeviceDescription &device, HloInstruction *instr) const;
 
-  void Add(std::unique_ptr<CustomFusionPattern> pattern);
+  void Add(std::unique_ptr<CustomKernelFusionPattern> pattern);
 
   template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
   void Emplace() {
@@ -122,7 +126,7 @@ class CustomFusionPatternRegistry {
   }
 
  private:
-  std::vector<std::unique_ptr<CustomFusionPattern>> patterns_;
+  std::vector<std::unique_ptr<CustomKernelFusionPattern>> patterns_;
 };
 
 }  // namespace xla::gpu
@@ -133,12 +137,12 @@ class CustomFusionPatternRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION_PATTERN_(PATTERN, N) \
   XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)
 
-#define XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)   \
-  ABSL_ATTRIBUTE_UNUSED static const bool                  \
-      xla_custom_fusion_pattern_##N##_registered_ = [] {   \
-        ::xla::gpu::CustomFusionPatternRegistry::Default() \
-            ->Emplace<PATTERN>();                          \
-        return true;                                       \
+#define XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)         \
+  ABSL_ATTRIBUTE_UNUSED static const bool                        \
+      xla_custom_fusion_pattern_##N##_registered_ = [] {         \
+        ::xla::gpu::CustomKernelFusionPatternRegistry::Default() \
+            ->Emplace<PATTERN>();                                \
+        return true;                                             \
       }()
 
-#endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_PATTERN_H_
+#endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_PATTERN_H_

@@ -147,16 +147,17 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 
     // If a while operand is used by a slicing instruction, avoid fusing
     // invariant value into the loop.
-    if (absl::c_any_of(init_value->users(), [](const HloInstruction* use) {
-          switch (use->opcode()) {
-            case HloOpcode::kDynamicSlice:
-            case HloOpcode::kGather:
-            case HloOpcode::kSlice:
-              return true;
-            default:
-              return false;
-          }
-        })) {
+    if (absl::c_any_of(invariant_body_gte->users(),
+                       [](const HloInstruction* use) {
+                         switch (use->opcode()) {
+                           case HloOpcode::kDynamicSlice:
+                           case HloOpcode::kGather:
+                           case HloOpcode::kSlice:
+                             return true;
+                           default:
+                             return false;
+                         }
+                       })) {
       continue;
     }
 

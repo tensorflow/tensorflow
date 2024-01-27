@@ -243,3 +243,40 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status",
     ],
 )
+
+cc_library(
+    name = "mlir_bridge_pass_util",
+    srcs = ["mlir_bridge_pass_util.cc"],
+    hdrs = ["mlir_bridge_pass_util.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:function_body",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:status",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "mlir_bridge_pass_util_test",
+    srcs = ["mlir_bridge_pass_util_test.cc"],
+    deps = [
+        ":mlir_bridge_pass_util",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:enable_tf2_utils",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)

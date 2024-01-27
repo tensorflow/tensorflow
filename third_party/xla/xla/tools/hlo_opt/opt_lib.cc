@@ -127,6 +127,10 @@ StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
   TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  DebugOptions d = input_module->config().debug_options();
+  d.set_xla_embed_ir_in_executable(true);
+  input_module->mutable_config().set_debug_options(d);
+
   if (input_module->has_schedule()) {
     return input_module;
   }
@@ -136,9 +140,6 @@ StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
       std::unique_ptr<HloModule> optimized_module,
       compiler->RunHloPasses(std::move(input_module), executor, opts));
 
-  DebugOptions d = optimized_module->config().debug_options();
-  d.set_xla_embed_ir_in_executable(true);
-  optimized_module->mutable_config().set_debug_options(d);
   return optimized_module;
 }
 

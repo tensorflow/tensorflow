@@ -23,9 +23,9 @@ limitations under the License.
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/custom_fusion_rewriter.h"
+#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/types.h"
 #include "tsl/platform/test.h"
@@ -68,11 +68,11 @@ TEST_F(CutlassFusionTest, RowMajorGemm) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -108,11 +108,11 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -158,11 +158,11 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -217,11 +217,11 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceMultipleUses) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -338,7 +338,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
     bc.1 = bf16[1,8,8]{2,1,0} bitcast(dot.1)
     r.1 = bf16[2,8,8]{2,1,0} dynamic-update-slice(p1.1, bc.1, p2, p3, p3)
     workspace = u8[1024]{0} custom-call(),
-      custom_call_target="__custom_fusion$workspace",
+      custom_call_target="__custom_kernel_fusion$workspace",
       api_version=API_VERSION_TYPED_FFI
     ROOT tuple = (bf16[2,8,8]{2,1,0}, u8[1024]{0}) tuple(r.1, workspace)
   }

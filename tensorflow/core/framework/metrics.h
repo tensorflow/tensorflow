@@ -247,6 +247,9 @@ void RecordUnusedOutput(const string& op_name);
 void RecordPipelineProcessingTime(const string& id,
                                   double pipeline_processing_time_usec);
 
+// Increments the count of binaries loaded from the persistent cache.
+void UpdatePersistentCacheLoadCount();
+
 // Updates the metrics stored about time spent building graphs.
 //
 // By "GraphBuild", we refer to building a client graph, which is a sub-graph of

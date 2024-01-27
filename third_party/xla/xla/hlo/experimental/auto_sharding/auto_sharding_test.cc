@@ -1059,13 +1059,8 @@ ENTRY %entry {
   auto* conv = FindInstruction(module.get(), "convolution");
   ASSERT_NE(gather, nullptr);
   ASSERT_NE(conv, nullptr);
-  EXPECT_THAT(std::make_tuple(gather, conv),
-              AnyOf(FieldsAre(op::Sharding("{devices=[4,1,1]0,1,2,3}"),
-                              op::Sharding("{devices=[4,1,1]0,1,2,3}")),
-                    FieldsAre(op::Sharding("{replicated}"),
-                              op::Sharding("{devices=[1,1,4]0,1,2,3}")),
-                    FieldsAre(op::Sharding("{replicated}"),
-                              op::Sharding("{devices=[4,1,1]0,1,2,3}"))));
+  EXPECT_THAT(gather, op::Sharding("{devices=[1,4,1]0,1,2,3}"));
+  EXPECT_THAT(conv, op::Sharding("{devices=[1,4,1]0,1,2,3}"));
   auto gather_sharding = gather->sharding();
   TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
   auto conv_sharding = conv->sharding();

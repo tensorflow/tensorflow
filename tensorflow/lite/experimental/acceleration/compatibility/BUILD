@@ -50,8 +50,10 @@ cc_library(
     srcs = ["canonicalize_value.cc"],
     hdrs = ["canonicalize_value.h"],
     deps = [
+        ":devicedb",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -60,6 +62,7 @@ cc_test(
     srcs = ["canonicalize_value_test.cc"],
     deps = [
         ":canonicalize_value",
+        ":devicedb",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -431,6 +431,15 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.19.3-1.tar.gz"),
     )
 
+    # Note that we are currently taking NVTX headers from a NCCL release to get nvToolsExtPayload.h
+    tf_http_archive(
+        name = "nvtx_archive",
+        build_file = "//third_party:nvtx/BUILD",
+        sha256 = "1c5474553afedb88e878c772f13d6f90b9226b3f2971dfa6f873adb9443100c2",
+        strip_prefix = "nccl-2.19.3-1/src/include/nvtx3",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.19.3-1.tar.gz"),
+    )
+
     java_import_external(
         name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",

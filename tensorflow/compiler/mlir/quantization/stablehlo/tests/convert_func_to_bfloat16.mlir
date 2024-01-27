@@ -47,7 +47,7 @@ func.func @reduce_window_f32(%arg0: tensor<2x3x1x3xf32>) -> tensor<2x3x1x3xf32> 
     ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
       %2 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
       stablehlo.return %2 : tensor<f32>
-    }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>} : (tensor<2x3x1x3xf32>, tensor<f32>) -> tensor<2x3x1x3xf32>
+  }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = array<i64: 1, 3, 3, 1>} : (tensor<2x3x1x3xf32>, tensor<f32>) -> tensor<2x3x1x3xf32>
   return %1 : tensor<2x3x1x3xf32>
 }
 

@@ -150,9 +150,11 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
 #if GOOGLE_CUDA || TF_HIPBLASLT
   absl::Status EmitCublasLtMatmulThunk(mlir::Operation* op);
+  absl::Status EmitCublasLtMatmulThunk(const HloCustomCallInstruction* instr);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
   absl::Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
+  absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
   absl::Status EmitConvolutionReorderThunk(mlir::Operation* op);
   absl::Status EmitNormThunk(mlir::Operation* op);
   absl::Status EmitFusedMHAThunk(mlir::Operation* op);
@@ -427,21 +429,12 @@ class IrEmitterUnnested : public IrEmitter {
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
+          hlo_for_lmhlo,
+      std::optional<int64_t> trip_count);
 
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
-      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info);
-
-  // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
-  // sequence from the 'body' sub-computation of the while instruction.
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
-      const HloInstruction* instr, int64_t loop_limit);
-
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
-      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-      int64_t loop_limit,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
+      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
+      std::optional<int64_t> trip_count);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
@@ -457,11 +450,12 @@ class IrEmitterUnnested : public IrEmitter {
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // Maps async start ops to their executors so done can access the thunk.
-  // Executor may be null if the start op is degenerate (so not emitted).
+  // Maps async start ops to their async events so we can emit done thunk
+  // sharing events with corresponding start thunk. Async events may be null if
+  // the start op is degenerate (so not emitted).
   absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*>,
-                      NcclCollectiveThunk::AsyncExecutor*>
-      async_executors_;
+                      std::shared_ptr<NcclCollectiveThunk::AsyncEvents>>
+      collectives_async_events_;
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;

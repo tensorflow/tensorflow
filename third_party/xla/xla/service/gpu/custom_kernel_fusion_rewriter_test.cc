@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/custom_fusion_rewriter.h"
+#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 
 #include <cstdint>
 #include <optional>
@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -31,10 +31,10 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// Simple pattern matchers for testing custom fusion rewriter.
+// Simple pattern matchers for testing custom kernel_fusion rewriter.
 //===----------------------------------------------------------------------===//
 
-struct SimpleGemmPattern : public CustomFusionPattern {
+struct SimpleGemmPattern : public CustomKernelFusionPattern {
   explicit SimpleGemmPattern(int64_t workspace = 0) : workspace(workspace) {}
 
   std::optional<Match> TryMatch(const se::DeviceDescription& device,
@@ -52,9 +52,9 @@ struct SimpleGemmPattern : public CustomFusionPattern {
 
 //===----------------------------------------------------------------------===//
 
-class CustomFusionRewriterTest : public HloTestBase {};
+class CustomKernelFusionRewriterTest : public HloTestBase {};
 
-TEST_F(CustomFusionRewriterTest, SimpleGemm) {
+TEST_F(CustomKernelFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(
     HloModule test
 
@@ -84,15 +84,15 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
-TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
+TEST_F(CustomKernelFusionRewriterTest, SimpleGemmWithWorkspace) {
   const char* hlo = R"(
     HloModule test
 
@@ -111,7 +111,7 @@ TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK:   [[DOT:%[^ ]+]] = f16[15,17]{1,0} dot([[P0]], [[P1]]),
     ; CHECK:     lhs_contracting_dims={1}, rhs_contracting_dims={0}
     ; CHECK:   [[WORKSPACE:%[^ ]+]] = u8[1024]{0} custom-call(),
-    ; CHECK:     custom_call_target="__custom_fusion$workspace"
+    ; CHECK:     custom_call_target="__custom_kernel_fusion$workspace"
     ; CHECK:   ROOT [[TUPLE:%[^ ]+]] = (f16[15,17]{1,0}, u8[1024]{0})
     ; CHECK:     tuple([[DOT]], [[WORKSPACE]])
     ; CHECK: }
@@ -127,11 +127,11 @@ TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>(1024);
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 

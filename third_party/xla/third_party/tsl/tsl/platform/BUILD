@@ -58,8 +58,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":errors",
+        ":macros",
         ":status",
         ":stringpiece",
+        ":types",
     ],
 )
 

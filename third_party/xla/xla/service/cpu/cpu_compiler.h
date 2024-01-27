@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/cpu/xla_framework.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -44,7 +45,6 @@ namespace xla {
 namespace cpu {
 
 class CpuExecutable;
-class XlaFrameworkMapping;
 
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
@@ -98,10 +98,10 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
 class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
-  CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    std::string_view obj_file,
-                                    std::string_view mlir_module,
-                                    XlaFrameworkMapping xla_framework_mapping);
+  CpuXlaRuntimeAotCompilationResult(
+      HloModuleProto hlo, std::string_view obj_file,
+      std::string_view mlir_module,
+      const XlaFrameworkMapping& xla_framework_mapping);
 
   explicit CpuXlaRuntimeAotCompilationResult(
       XlaRuntimeCpuExecutableProto executable)

@@ -1,8 +1,7 @@
-// RUN: hlo_to_llvm_ir --ptx %s | FileCheck %s
-// RUN: hlo_to_llvm_ir --ptx --sm=50 %s | FileCheck %s --check-prefix=CHECK-SM50
-// RUN: hlo_to_llvm_ir --ptx --sm=60 %s | FileCheck %s --check-prefix=CHECK-SM60
-// RUN: hlo_to_llvm_ir --ptx --sm=70 %s | FileCheck %s --check-prefix=CHECK-SM70
-// RUN: hlo_to_llvm_ir --ptx --sm=86 %s | FileCheck %s --check-prefix=CHECK-SM86
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/p100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM60
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/v100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM70
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a6000.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM86
 
 // CHECK-LABEL: .entry wrapped_reduce_odd_row
 // CHECK-NOT: ld.global.nc.v2.f32
@@ -90,10 +89,6 @@ ENTRY %main {
 
 // SM dependent tests
 
-// CHECK-SM50-LABEL: .entry wrapped_reduce_exp
-// CHECK-SM50-NOT: ld.global.nc.v2.f32
-// CHECK-SM50-COUNT-8: ld.global.nc.f32
-
 // CHECK-SM60: .entry wrapped_exp
 // CHECK-SM60-LABEL: .entry wrapped_reduce_exp
 // CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
@@ -132,10 +127,6 @@ ENTRY %main {
 
 HloModule ReduceTileFit, is_scheduled=true
 
-// CHECK-SM50-LABEL: .entry wrapped_reduce_tile_fit
-// CHECK-SM50-NOT: ld.global.nc.v2.f32
-// CHECK-SM50-COUNT-8: ld.global.nc.f32
-
 // CHECK-SM60-LABEL: .entry wrapped_reduce_tile_fit
 // CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
@@ -163,10 +154,6 @@ ENTRY %main {
 // -----
 
 HloModule ReducePower2, is_scheduled=true
-
-// CHECK-SM50-LABEL: .entry wrapped_reduce_pow_2
-// CHECK-SM50-NOT: ld.global.nc.v2.f32
-// CHECK-SM50-COUNT-8: ld.global.nc.f32
 
 // CHECK-SM60-LABEL: .entry wrapped_reduce_pow_2
 // CHECK-SM60-COUNT-4: ld.global.nc.v2.f32

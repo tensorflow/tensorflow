@@ -1,4 +1,5 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -44,20 +45,24 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        ":custom_call_thunk",
         "//xla:shape_util",
         "//xla:status",
         "//xla:types",
         "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
+        "//xla/service:computation_placer",
         "//xla/service:custom_call_status_internal",
         "//xla/service:custom_call_status_public_headers",
+        "//xla/service:global_device_id",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique",
+        "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu:thunk",
@@ -92,14 +97,15 @@ cc_library(
         ":conditional_thunk",
         ":copy_thunk",
         ":custom_call_thunk",
+        ":gemm_thunk",
         ":kernel_thunk",
         ":memset_thunk",
+        ":replica_id_thunk",
         ":sequential_thunk",
         ":while_thunk",
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
-        "//xla/service/gpu:gemm_thunk",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
         "@com_google_absl//absl/container:inlined_vector",
@@ -123,6 +129,7 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
@@ -177,6 +184,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
@@ -219,6 +227,7 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
@@ -277,6 +286,29 @@ cc_library(
 )
 
 cc_library(
+    name = "cub_sort_thunk",
+    srcs = if_gpu_is_configured(["cub_sort_thunk.cc"]),
+    hdrs = if_gpu_is_configured(["cub_sort_thunk.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = if_gpu_is_configured([
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor:device_memory",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "@local_tsl//tsl/platform:errors",
+    ] + ["//xla/service/gpu:cub_sort_kernel_" + suffix for suffix in get_cub_sort_kernel_types()]),
+)
+
+cc_library(
     name = "custom_call_thunk",
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
@@ -332,24 +364,6 @@ cc_library(
 )
 
 cc_library(
-    name = "for_thunk",
-    srcs = ["for_thunk.cc"],
-    hdrs = ["for_thunk.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":sequential_thunk",
-        "//xla:status",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:thunk",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
     name = "fused_mha_thunk",
     srcs = ["fused_mha_thunk.cc"],
     hdrs = ["fused_mha_thunk.h"],
@@ -362,6 +376,22 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "gemm_thunk",
+    srcs = ["gemm_thunk.cc"],
+    hdrs = ["gemm_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

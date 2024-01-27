@@ -909,6 +909,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     return compile_options_;
   }
 
+  absl::StatusOr<std::string> FingerprintExecutable() const override;
+
  protected:
   bool parameter_is_tupled_arguments() const {
     return parameter_is_tupled_arguments_;

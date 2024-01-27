@@ -93,7 +93,8 @@ absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
   }
 
   if (absl::Status pass_run_status = RunPasses(
-          /*name=*/export_opts.debug_name,
+          /*name=*/
+          export_opts.debug_name,
           /*add_passes_func=*/
           [dup_constants = export_opts.duplicate_shape_determining_constants](
               mlir::PassManager &pm) { AddExportPasses(pm, dup_constants); },
@@ -163,7 +164,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantQatStepName, /*add_passes_func=*/
+      /*name=*/
+      kTfQuantQatStepName, /*add_passes_func=*/
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizeQatPasses(pm, quantization_options, kTfQuantQatStepName);
       },
@@ -243,7 +245,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
                                          *module_ref, QuantizationConfig()));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/
+        /*name=*/
+        kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
         },
@@ -325,12 +328,19 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
+    QuantizationConfig quantization_config{};
+    // When targeting server TPUs quantized types should be unpacked into
+    // integer ops.
+    quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(
+        true);
+
     PostCalibrationComponent post_calibration_component(context.get());
     TF_ASSIGN_OR_RETURN(*module_ref, post_calibration_component.Run(
-                                         *module_ref, QuantizationConfig()));
+                                         *module_ref, quantization_config));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
+        /*name=*/
+        kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPostCalibrationPasses(
               pm, quantization_options, kTfQuantPtqPostCalibrationStepName);
@@ -405,7 +415,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
+      /*name=*/
+      kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizePtqDynamicRangePasses(pm, quantization_options,
                                          kTfQuantPtqDynamicRangeStepName);
@@ -484,13 +495,14 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       /*run_tf_to_stablehlo=*/false,
       /*deserialize_xla_call_module=*/false));
 
-  TF_RETURN_IF_ERROR(
-      RunPasses(/*name=*/kTfQuantWeightOnlyStepName, /*add_passes_func=*/
-                [&quantization_options](mlir::PassManager &pm) {
-                  AddQuantizeWeightOnlyPasses(pm, quantization_options,
-                                              kTfQuantWeightOnlyStepName);
-                },
-                *context, *module_ref));
+  TF_RETURN_IF_ERROR(RunPasses(
+      kTfQuantWeightOnlyStepName,
+      /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizeWeightOnlyPasses(pm, quantization_options,
+                                    kTfQuantWeightOnlyStepName);
+      },
+      *context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());

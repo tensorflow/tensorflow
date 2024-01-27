@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/cub_sort_thunk.h"
+#include "xla/service/gpu/runtime3/cub_sort_thunk.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,8 +31,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cub_sort_kernel.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"

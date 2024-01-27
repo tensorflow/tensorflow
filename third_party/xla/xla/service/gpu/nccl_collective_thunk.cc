@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,15 +37,19 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
@@ -193,8 +196,35 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
                                          NcclApi* nccl_api, bool is_sync)
     : Thunk(kind, thunk_info),
       nccl_api_(nccl_api),
-      async_(is_sync ? std::make_unique<AsyncExecutor>() : nullptr) {}
+      async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
+absl::StatusOr<NcclComm::Lock> GetNcclComm(
+    const Thunk::CollectiveExecuteParams& params,
+    const Thunk::CollectiveCliques& collective_cliques,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t stream_id) {
+  GlobalDeviceId global_device_id = params.global_device_id;
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<GlobalDeviceId> participants,
+      GetParticipatingDevices(global_device_id, *params.device_assn,
+                              replica_groups, group_mode));
+
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != params.device_assn->replica_count())) {
+    return InvalidArgument(
+        "Partial replica groups are not allowed when using NCCL_COMM_ID "
+        "environment configuration.");
+  }
+
+  NcclCliqueKey clique_key(std::move(participants), stream_id);
+  std::optional<int64_t> rank = clique_key.rank(global_device_id);
+
+  return collective_cliques.GetComm(std::move(clique_key), *rank);
+}
+
+// TODO(ezhulenev): This is a deprecated code path and should be removed after
+// all users in legacy XLA runtime are removed.
 absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -307,6 +337,34 @@ Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
   return OkStatus();
 }
 
+absl::Status NcclCollectiveThunk::AsyncEvents::Initialize(
+    se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mu_);
+  if (events_.contains(executor)) return absl::OkStatus();
+
+  se::Event event(executor);
+  if (!event.Init()) {
+    return absl::InternalError(
+        "Failed to initialize collective operation async completion event");
+  }
+
+  events_.try_emplace(executor, std::move(event));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<se::Event*> NcclCollectiveThunk::AsyncEvents::GetEvent(
+    se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mu_);
+
+  auto event = events_.find(executor);
+  if (event == events_.end()) {
+    return absl::InternalError(
+        "Collective operation async completion event not initialized");
+  }
+
+  return &event->second;
+}
+
 absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
                                           ResourceRequests& resource_requests) {
   const CollectiveExecuteParams* collectives = params.collective_params;
@@ -334,42 +392,57 @@ absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
       num_local_participants);
 }
 
+absl::Status NcclCollectiveThunk::Initialize(const InitializeParams& params) {
+  if (async_events_) {
+    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
+  }
+  return absl::OkStatus();
+}
+
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
   const int64_t stream_id = GetStreamId();
   TF_ASSIGN_OR_RETURN(
       NcclComm::Lock comm,
-      LockNcclComm(params.collective_params, config().replica_groups,
-                   config().group_mode, config().op_id, stream_id,
-                   /*enable_clique_optimization=*/false));
+      GetNcclComm(*params.collective_params, *params.collective_cliques,
+                  config().replica_groups, config().group_mode, stream_id));
 
-  // Run the collective on main stream or using the async executor.
-  absl::Status status = [&]() {
-    if (!IsAsync()) {
-      return RunNcclCollective(params, *params.stream, *comm);
-    }
-    return async_->Execute(
-        [this](const ExecuteParams& params, se::Stream& stream,
-               NcclApi::NcclCommHandle comm) {
-          return RunNcclCollective(params, stream, comm);
-        },
-        params, *comm, GetAsyncStreamKind());
-  }();
-  TF_RETURN_IF_ERROR(status);
+  se::StreamExecutor* executor = params.stream->parent();
+  int64_t async_stream_idx = static_cast<int64_t>(GetAsyncStreamKind());
+
+  if (IsAsync()) {
+    // Launch collective operation on an async stream.
+    se::Stream& async_stream = *params.async_comms_streams[async_stream_idx];
+
+    // Wait for main compute stream to make sure all buffers are ready.
+    async_stream.ThenWaitFor(params.stream);
+
+    TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, *comm));
+
+    // Record collective operation completion.
+    TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
+    async_stream.ThenRecordEvent(event);
+
+  } else {
+    // Launch collective operation on a main stream.
+    TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, *comm));
+  }
 
   // Block host on the first call to ensure that all devices have allocated the
   // required buffers for their communicators before allowing any device to
   // continue enqueuing operations. Otherwise, the allocations can cause
   // deadlock in the CUDA driver (b/215649390).
+  //
+  // TODO(ezhulenev): This can be removed with shared cliques acquisition.
   if (first_call_to_execute_) {
     se::Stream* stream = IsAsync()
-                             ? params.async_comms_streams[static_cast<int64_t>(
-                                   GetAsyncStreamKind())]
+                             ? params.async_comms_streams[async_stream_idx]
                              : params.stream;
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
+
   return absl::OkStatus();
 }
 
@@ -385,52 +458,17 @@ std::string NcclCollectiveThunk::GetDeviceString(
                          collective_params.local_device_ordinal);
 }
 
-absl::Status NcclCollectiveThunk::AsyncExecutor::Execute(
-    absl::FunctionRef<Status(const ExecuteParams&, se::Stream&,
-                             NcclApi::NcclCommHandle)>
-        fn,
-    const ExecuteParams& params, NcclApi::NcclCommHandle comm,
-    AsyncStreamKind stream_kind) {
-  se::Stream& async_comms_stream =
-      *params.async_comms_streams[static_cast<int64_t>(stream_kind)];
-  // Wait until compute inputs are ready.
-  async_comms_stream.ThenWaitFor(params.stream);
-
-  TF_RETURN_IF_ERROR(fn(params, async_comms_stream, comm));
-
-  // Create an event on the async stream for the completion of the collective.
-  se::Event done_event(async_comms_stream.parent());
-  TF_RET_CHECK(done_event.Init());
-  async_comms_stream.ThenRecordEvent(&done_event);
-
-  int device_ordinal = async_comms_stream.parent()->device_ordinal();
-  absl::MutexLock lock(&mu_);
-  auto [_, was_inserted] =
-      done_events_.insert({device_ordinal, std::move(done_event)});
-  TF_RET_CHECK(was_inserted) << "done event has not been consumed";
-  return absl::OkStatus();
-}
-
-absl::Status NcclCollectiveThunk::AsyncExecutor::Await(
-    const ExecuteParams& params) {
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  auto done_event = [this, device_ordinal] {
-    absl::MutexLock lock(&mu_);
-    return done_events_.extract(device_ordinal);
-  }();
-  TF_RET_CHECK(done_event) << "done event not found";
-  params.stream->ThenWaitFor(&done_event.mapped());
-  return absl::OkStatus();
-}
-
 NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    NcclCollectiveThunk::AsyncExecutor& async)
-    : Thunk(kind, std::move(thunk_info)), async_(async) {}
+    std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events)
+    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
 
 absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  return async_.Await(params);
+  se::StreamExecutor* executor = params.stream->parent();
+  TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
+  params.stream->ThenWaitFor(event);
+  return absl::OkStatus();
 }
 
 absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {

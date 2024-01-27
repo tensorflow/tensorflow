@@ -781,6 +781,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/types:Dialect",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",

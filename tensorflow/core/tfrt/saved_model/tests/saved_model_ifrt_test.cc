@@ -19,9 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#define EIGEN_USE_THREADS
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/python/ifrt/client.h"

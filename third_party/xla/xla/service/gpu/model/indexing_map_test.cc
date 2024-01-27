@@ -31,6 +31,8 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::UnorderedElementsAre;
 
 class IndexingMapTest : public HloTestBase {
  public:
@@ -47,11 +49,45 @@ TEST_F(IndexingMapTest, ComposeWithPermutation) {
                        Domain::FromUpperBounds({4}, {4})};
 
   auto composed = ComposeIndexingMaps(producer, consumer);
-  EXPECT_THAT(
-      composed,
-      MatchIndexingMap(
-          "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)", ElementsAre(MatchRange(0, 3)),
-          ElementsAre(MatchRange(0, 1), MatchRange(0, 1), MatchRange(0, 3))));
+  EXPECT_THAT(composed,
+              MatchIndexingMap(
+                  "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)",
+                  MatchDomain(ElementsAre(MatchRange(0, 3)),
+                              ElementsAre(MatchRange(0, 1), MatchRange(0, 1),
+                                          MatchRange(0, 3)))));
+}
+
+TEST_F(IndexingMapTest, ComposeWithRestrictedRange) {
+  IndexingMap producer{
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)", &mlir_context_),
+      Domain::FromUpperBounds({5, 6}, {7, 2})};
+
+  IndexingMap consumer{ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+                       Domain::FromUpperBounds({10}, {8})};
+
+  auto composed = ComposeIndexingMaps(producer, consumer);
+  EXPECT_THAT(composed,
+              MatchIndexingMap(
+                  "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)",
+                  MatchDomain(ElementsAre(MatchRange(0, 4)),
+                              ElementsAre(MatchRange(0, 5), MatchRange(0, 1),
+                                          MatchRange(0, 7)))));
+}
+
+TEST_F(IndexingMapTest, ComposeWithAddedConstraint) {
+  IndexingMap producer{ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+                       Domain::FromUpperBounds({2}, {})};
+
+  IndexingMap consumer{ParseAffineMap("(d0) -> (d0 mod 8)", &mlir_context_),
+                       Domain::FromUpperBounds({100}, {})};
+
+  auto composed = ComposeIndexingMaps(producer, consumer);
+  EXPECT_THAT(composed,
+              MatchIndexingMap("(d0) -> (d0 mod 8)",
+                               MatchDomainWithGenericConstraints(
+                                   ElementsAre(MatchRange(0, 99)), IsEmpty(),
+                                   UnorderedElementsAre(MatchExprRange(
+                                       "d0 mod 8", MatchRange(0, 1))))));
 }
 
 TEST_F(IndexingMapTest, SimplifyConstantDims) {

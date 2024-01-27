@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 
 #include <cstdint>
 #include <memory>
@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -31,26 +32,28 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// CustomFusionPattern::Match
+// CustomKernelFusionPattern::Match
 //===----------------------------------------------------------------------===//
 
-CustomFusionPattern::Match::Match(CustomFusionConfig config,
-                                  std::vector<HloInstruction*> instructions,
-                                  int64_t workspace_size_bytes)
+CustomKernelFusionPattern::Match::Match(
+    CustomFusionConfig config, std::vector<HloInstruction*> instructions,
+    int64_t workspace_size_bytes)
     : config_(std::move(config)),
       instructions_(std::move(instructions)),
       workspace_size_bytes_(workspace_size_bytes) {}
 
-void CustomFusionPattern::Match::AddReplacement(HloInstruction* instr,
-                                                Replacement replacement) {
+void CustomKernelFusionPattern::Match::AddReplacement(HloInstruction* instr,
+                                                      Replacement replacement) {
   replacements_[instr] = std::move(replacement);
 }
 
-bool CustomFusionPattern::Match::HasReplacement(HloInstruction* instr) const {
+bool CustomKernelFusionPattern::Match::HasReplacement(
+    HloInstruction* instr) const {
   return replacements_.contains(instr);
 }
 
-absl::StatusOr<HloInstruction*> CustomFusionPattern::Match::BuildReplacement(
+absl::StatusOr<HloInstruction*>
+CustomKernelFusionPattern::Match::BuildReplacement(
     HloInstruction* instr, HloFusionInstruction* fusion) const {
   if (auto it = replacements_.find(instr); it != replacements_.end()) {
     return it->second(fusion);
@@ -61,17 +64,19 @@ absl::StatusOr<HloInstruction*> CustomFusionPattern::Match::BuildReplacement(
 }
 
 //===----------------------------------------------------------------------===//
-// CustomFusionPatternRegistry
+// CustomKernelFusionPatternRegistry
 //===----------------------------------------------------------------------===//
 
-CustomFusionPatternRegistry* CustomFusionPatternRegistry::Default() {
-  static auto* registry = new CustomFusionPatternRegistry();
+CustomKernelFusionPatternRegistry*
+CustomKernelFusionPatternRegistry::Default() {
+  static auto* registry = new CustomKernelFusionPatternRegistry();
   return registry;
 }
 
-std::vector<CustomFusionPattern::Match> CustomFusionPatternRegistry::Match(
-    const se::DeviceDescription& device, HloInstruction* instr) const {
-  std::vector<CustomFusionPattern::Match> matches;
+std::vector<CustomKernelFusionPattern::Match>
+CustomKernelFusionPatternRegistry::Match(const se::DeviceDescription& device,
+                                         HloInstruction* instr) const {
+  std::vector<CustomKernelFusionPattern::Match> matches;
   for (auto& pattern : patterns_) {
     if (auto matched = pattern->TryMatch(device, instr); matched.has_value())
       matches.push_back(std::move(*matched));
@@ -79,8 +84,8 @@ std::vector<CustomFusionPattern::Match> CustomFusionPatternRegistry::Match(
   return matches;
 }
 
-void CustomFusionPatternRegistry::Add(
-    std::unique_ptr<CustomFusionPattern> pattern) {
+void CustomKernelFusionPatternRegistry::Add(
+    std::unique_ptr<CustomKernelFusionPattern> pattern) {
   patterns_.push_back(std::move(pattern));
 }
 

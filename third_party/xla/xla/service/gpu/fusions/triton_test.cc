@@ -71,11 +71,10 @@ TEST_F(TritonFusionTest, TritonSoftmaxFusion) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused =
       AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto emitter_fused,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis_fused}));
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
   auto triton_fusion = dynamic_cast<TritonFusion*>(emitter_fused.get());
   ASSERT_NE(triton_fusion, nullptr);
   auto launch_dims = triton_fusion->launch_dimensions();
@@ -84,11 +83,10 @@ TEST_F(TritonFusionTest, TritonSoftmaxFusion) {
   EXPECT_EQ(launch_dims->num_threads_per_block(), 32);
 
   auto analysis_consumer = AnalyzeFusion(*root, device_info);
-  ASSERT_NE(analysis_consumer, std::nullopt);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto emitter_consumer,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis_consumer}));
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_consumer}));
   ASSERT_NE(dynamic_cast<TritonFusion*>(emitter_consumer.get()), nullptr);
 }
 

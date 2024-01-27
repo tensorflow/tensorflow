@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -779,6 +780,30 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
   }
   return Internal("unexpected epilogue value");
+}
+
+absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+      return se::gpu::BlasLt::Epilogue::kDefault;
+    case GemmBackendConfig::RELU:
+      return se::gpu::BlasLt::Epilogue::kReLU;
+    case GemmBackendConfig::GELU:
+      return se::gpu::BlasLt::Epilogue::kGELU;
+    case GemmBackendConfig::GELU_AUX:
+      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
+    case GemmBackendConfig::BIAS:
+      return se::gpu::BlasLt::Epilogue::kBias;
+    case GemmBackendConfig::BIAS_RELU:
+      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
+    case GemmBackendConfig::BIAS_GELU:
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
+    case GemmBackendConfig::BIAS_GELU_AUX:
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
+    default:
+      return Internal("unexpected epilogue value");
+  }
 }
 
 }  // namespace gpublas_lt

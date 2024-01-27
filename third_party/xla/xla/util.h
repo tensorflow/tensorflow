@@ -55,7 +55,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -211,13 +210,6 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 // propagated upwards.
 Status AddStatus(Status prior, absl::string_view context);
 Status AppendStatus(Status prior, absl::string_view context);
-
-template <typename... Args>
-Status InternalError(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
 
 // This macro defines the arguments to be used as an error
 // message to be passed to absl::StrFormat, and returns a status in the
@@ -774,37 +766,6 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
-
-// A class for storing either an owned thread pool or a non-owning pointer to an
-// external thread pool.
-class MaybeOwningThreadPool {
- public:
-  // Gets or creates a thread pool.
-  //
-  // See the code for the logic.
-  static MaybeOwningThreadPool GetOrCreate(
-      int parallelism, tsl::thread::ThreadPool* default_thread_pool,
-      int default_parallelism);
-
-  // Not owning (nullptr).
-  MaybeOwningThreadPool();
-  // Not owning.
-  explicit MaybeOwningThreadPool(tsl::thread::ThreadPool* thread_pool);
-  // Owning.
-  explicit MaybeOwningThreadPool(
-      std::unique_ptr<tsl::thread::ThreadPool> thread_pool);
-  tsl::thread::ThreadPool* get();
-  const tsl::thread::ThreadPool* get() const;
-  tsl::thread::ThreadPool* operator->();
-  const tsl::thread::ThreadPool* operator->() const;
-  explicit operator bool() const;
-  bool operator!() const;
-
- private:
-  std::variant<tsl::thread::ThreadPool*,
-               std::unique_ptr<tsl::thread::ThreadPool>>
-      thread_pool_;
-};
 
 }  // namespace xla
 

@@ -431,6 +431,7 @@ cc_library(
         "cpu_compiler_pure",
         ":executable_proto_cc",
         ":target_machine_features",
+        ":xla_framework",
         "//xla:cpu_function_runtime",
         "//xla:status",
         "//xla:statusor",
@@ -446,7 +447,6 @@ cc_library(
         "//xla/service:llvm_compiler",
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_platform_id",
-        "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:Target",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -1284,6 +1284,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_instruction_fusion",
         "//xla:shape_util",

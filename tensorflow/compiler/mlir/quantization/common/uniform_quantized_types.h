@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UNIFORM_QUANTIZED_TYPES_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UNIFORM_QUANTIZED_TYPES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_UNIFORM_QUANTIZED_TYPES_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_UNIFORM_QUANTIZED_TYPES_H_
 
 #include <cstdint>
 
@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
@@ -78,7 +79,13 @@ bool IsI32F32UniformQuantizedType(Type type);
 // `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
 bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type);
 
+// Returns true if a type is quantized tensor type.
+bool IsQuantizedTensorType(Type type);
+
+// Returns true if all operands and results are quantized.
+bool IsOpFullyQuantized(Operation* op);
+
 }  // namespace quant
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UNIFORM_QUANTIZED_TYPES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_UNIFORM_QUANTIZED_TYPES_H_

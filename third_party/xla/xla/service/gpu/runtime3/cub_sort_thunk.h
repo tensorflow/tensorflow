@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
-#define XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_CUB_SORT_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_CUB_SORT_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -23,8 +23,6 @@ limitations under the License.
 
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 
@@ -83,4 +81,4 @@ absl::Status RunCubSort(PrimitiveType type,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_CUB_SORT_THUNK_H_

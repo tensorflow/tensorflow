@@ -2418,21 +2418,6 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-void Model::MaybeSyncStateValuesToValues(Model::ModelParameters* parameters) {
-  for (auto& [node_name, parameter] : *parameters) {
-    // We only sync state values to values for `DataService` nodes because the
-    // `buffer_size` parameter is set by the `DataServiceClient` directly.
-    if (!absl::StartsWith(node_name, kDataService)) {
-      continue;
-    }
-    if (parameter->name != kBufferSize) {
-      continue;
-    }
-    mutex_lock l(*parameter->state->mu);
-    parameter->value = parameter->state->value;
-  }
-}
-
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
   Node::NodeVector nodes =
       snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
@@ -2626,7 +2611,6 @@ void Model::OptimizeHillClimbHelper(
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  MaybeSyncStateValuesToValues(&parameters);
   if (parameters.empty()) {
     VLOG(2) << "There are no tunable parameters.";
     return;

@@ -193,6 +193,7 @@ cc_library(
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_cost_analysis",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

@@ -30,6 +30,7 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::RunPasses;
 
@@ -39,19 +40,23 @@ PostCalibrationComponent::PostCalibrationComponent(
 
 absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
-  TF_RETURN_IF_ERROR(
-      RunPasses(/*name=*/kName,
-                /*add_passes_func=*/[this](PassManager& pm) { AddPasses(pm); },
-                *ctx_, module_op));
+  TF_RETURN_IF_ERROR(RunPasses(
+      kName, /*add_passes_func=*/
+      [&config, this](PassManager& pm) {
+        AddPasses(pm, config.pipeline_config());
+      },
+      *ctx_, module_op));
   return module_op;
 }
 
-void PostCalibrationComponent::AddPasses(OpPassManager& pm) const {
+void PostCalibrationComponent::AddPasses(
+    OpPassManager& pm, const PipelineConfig& pipeline_config) const {
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass());
-  pm.addPass(createOptimizeGraphPass());
-  AddStablehloQuantToIntPasses(pm);
+  if (pipeline_config.unpack_quantized_types()) {
+    AddStablehloQuantToIntPasses(pm);
+  }
   AddCallModuleSerializationPasses(pm);
 }
 

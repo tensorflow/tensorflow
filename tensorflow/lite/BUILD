@@ -1371,6 +1371,9 @@ tflite_cc_shared_object(
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
         ],
+        "//tensorflow:ios": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+        ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",

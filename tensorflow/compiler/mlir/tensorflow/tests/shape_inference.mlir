@@ -1436,6 +1436,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<*xi32>
   }
 
+  // CHECK-LABEL: func @xla_gather_with_fold
+  // CHECK-SAME: (%arg0: tensor<1x1x9xi32>, %arg1: tensor<1xi32>) -> tensor<1x1x8xi32>
+  func.func @xla_gather_with_fold(%arg0: tensor<1x1x9xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
+    %cst = "tf.Const"() {value = dense<[1, 1, 8]> : tensor<3xi32>} : () -> tensor<3xi32>
+    %slice_size = "tf.Identity"(%cst) : (tensor<3xi32>) -> tensor<3xi32>
+    %0 = "tf.XlaGather"(%arg0, %arg1, %slice_size) {dimension_numbers = "\0A\03\00\01\02\1A\01\02", indices_are_sorted = true} : (tensor<1x1x9xi32>, tensor<1xi32>, tensor<3xi32>) -> tensor<*xi32>
+    func.return %0 : tensor<*xi32>
+  }
+
   // CHECK:      func private @sum_reducer3(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT:   %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:   return %0 : tensor<f32>

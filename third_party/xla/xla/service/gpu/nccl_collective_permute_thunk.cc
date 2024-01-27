@@ -212,16 +212,16 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
-  GlobalDeviceId global_device_id = params.collective_params.global_device_id;
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
   TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.collective_params.device_assn->LogicalIdForDevice(
+                      params.collective_params->device_assn->LogicalIdForDevice(
                           global_device_id));
   const int64_t current_id =
       config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
-  std::string device_string = GetDeviceString(params.collective_params);
+  std::string device_string = GetDeviceString(*params.collective_params);
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);

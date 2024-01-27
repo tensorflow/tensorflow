@@ -31,6 +31,10 @@ namespace tensorflow {
 namespace metrics {
 namespace {
 
+auto* persistent_cache_load_count = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/core/persistent_cache_load_count",
+    "The number of times a binary is loaded from the persistent cache.");
+
 auto* graph_runs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_runs",
     "The number of graph executions used to collect "
@@ -703,6 +707,12 @@ void RecordGraphOutputTensors(const size_t size) {
 void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica) {
   xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
       ->IncrementBy(1);
+}
+
+void UpdatePersistentCacheLoadCount() {
+  static auto* persistent_cache_load_count_cell =
+      persistent_cache_load_count->GetCell();
+  persistent_cache_load_count_cell->IncrementBy(1);
 }
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {

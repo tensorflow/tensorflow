@@ -514,6 +514,7 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -559,6 +560,7 @@ TEST_F(RemoteTensorHandleTest, SetRemoteTensorHandleShapeTwice) {
       /* device_mgr_owned=*/false, /* rendezvous=*/nullptr,
       /* cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -616,6 +618,7 @@ TEST_F(RemoteTensorHandleTest, SetRemoteMirrorShapeTwice) {
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -666,6 +669,7 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceSameDevice) {
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -697,6 +701,7 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceDifferentDevice) {
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -733,6 +738,7 @@ TEST(TensorHandle_LocalTest, TensorFromDeviceInvalidDevice) {
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
@@ -767,6 +773,7 @@ TEST(TensorHandle_ResourceShapeMirror, CreateAndCheckMirror) {
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr, /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/true);
+  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
 
   tensorflow::DataType dtype = DT_RESOURCE;
   TensorShape shape = {};

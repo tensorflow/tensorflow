@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_test_utils.h"
 
+#include <cctype>
+#include <cstddef>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -79,6 +81,27 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
   return mlir::parseAttribute(full_affine_map_string, context)
       .cast<AffineMapAttr>()
       .getValue();
+}
+
+bool ApproximateMatch(std::string_view lhs, std::string_view rhs) {
+  size_t lhs_length = lhs.size();
+  size_t rhs_length = rhs.size();
+  size_t l = 0, r = 0;
+  while (l < lhs_length && r < rhs_length) {
+    while (l < lhs_length && std::isspace(lhs[l])) {
+      ++l;
+    }
+    while (r < rhs_length && std::isspace(rhs[r])) {
+      ++r;
+    }
+    if (l == lhs_length || r == rhs_length) {
+      continue;
+    }
+    if (lhs[l++] != rhs[r++]) {
+      return false;
+    }
+  }
+  return l == lhs_length && r == rhs_length;
 }
 
 }  // namespace gpu

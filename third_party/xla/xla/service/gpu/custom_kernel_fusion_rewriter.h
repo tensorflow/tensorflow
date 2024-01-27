@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_CUSTOM_FUSION_REWRITER_H_
-#define XLA_SERVICE_GPU_CUSTOM_FUSION_REWRITER_H_
+#ifndef XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_REWRITER_H_
+#define XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -22,16 +22,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
-// Pattern matches HLO instruction to custom fusions (hand written CUDA C++
-// kernels, e.g. custom GEMMs implemented with CUTLASS) and rewrites them into
-// fusion instructions and fusion computations.
+// Pattern matches HLO instruction to custom kernel fusions (hand written CUDA
+// C++ kernels, e.g. custom GEMMs implemented with CUTLASS) and rewrites them
+// into fusion instructions and fusion computations.
 //
 // Example: pattern matching dot operation into CUTLASS gemm
 //
@@ -60,13 +60,16 @@ namespace xla::gpu {
 //                      custom_fusion_config: {"name":"cutlass_gemm"}}
 //  }
 //
-class CustomFusionRewriter : public HloModulePass {
+class CustomKernelFusionRewriter : public HloModulePass {
  public:
-  explicit CustomFusionRewriter(const se::DeviceDescription* device,
-                                const CustomFusionPatternRegistry* patterns =
-                                    CustomFusionPatternRegistry::Default());
+  explicit CustomKernelFusionRewriter(
+      const se::DeviceDescription* device,
+      const CustomKernelFusionPatternRegistry* patterns =
+          CustomKernelFusionPatternRegistry::Default());
 
-  absl::string_view name() const override { return "custom-fusion-rewriter"; }
+  absl::string_view name() const override {
+    return "custom-kernel-fusion-rewriter";
+  }
 
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -74,9 +77,9 @@ class CustomFusionRewriter : public HloModulePass {
 
  private:
   const se::DeviceDescription* device_;
-  const CustomFusionPatternRegistry* patterns_;
+  const CustomKernelFusionPatternRegistry* patterns_;
 };
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_CUSTOM_FUSION_REWRITER_H_
+#endif  // XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_REWRITER_H_

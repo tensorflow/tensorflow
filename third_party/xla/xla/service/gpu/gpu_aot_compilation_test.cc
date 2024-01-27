@@ -29,21 +29,15 @@ limitations under the License.
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/statusor.h"
-
-#if GOOGLE_CUDA
-#include "xla/service/gpu/nvptx_compiler.h"
-#elif TF_USE_ROCM
-#include "xla/service/gpu/amdgpu_compiler.h"
-#endif
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 using GpuAotCompilationTest = HloTestBase;
 
-TEST_F(GpuAotCompilationTest, LoadExecutableFromAotCompilation) {
+TEST_F(GpuAotCompilationTest, ExportAndLoadExecutable) {
   const absl::string_view hlo_string = R"(
 HloModule Test
 
@@ -66,55 +60,8 @@ ENTRY main {
   // Compile AOT.
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
   AotCompilationOptions aot_options(compiler->PlatformId());
-  // ToDo: Remove after unification of AOT compiler
-  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
-    return;
-  }
-
   aot_options.set_executor(stream_exec);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      compiler->CompileAheadOfTime(std::move(module_group), aot_options));
 
-  // Serialize-deserialize AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          aot_results[0]->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> aot_result,
-      compiler->LoadAotCompilationResult(serialized_aot_result));
-
-  // Load Executable from AOT compilation result.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          aot_result->LoadExecutable(compiler, stream_exec));
-}
-
-TEST_F(GpuAotCompilationTest, LoadExecutableForThunkRuntime) {
-  const absl::string_view hlo_string = R"(
-HloModule Test
-
-ENTRY main {
-  a = f32[100, 200]{1,0} parameter(0)
-  ROOT b = f32[100, 200]{0,1} copy(a)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
-  module->mutable_config().set_debug_options(debug_options);
-
-  auto compiler = backend().compiler();
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::MultiPlatformManager::PlatformWithName(name));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
-
-  // Compile AOT.
-  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
-  AotCompilationOptions aot_options(compiler->PlatformId());
-  aot_options.set_executor(stream_exec);
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler->CompileAheadOfTime(std::move(module_group), aot_options));
@@ -156,11 +103,6 @@ ENTRY main {
   // Stream executor is not passed as an option.
   Compiler::TargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
-  // ToDo: Remove after unification of AOT compiler
-  if (!aot_options.debug_options().xla_gpu_enable_xla_runtime_executable()) {
-    return;
-  }
-
   aot_options.set_target_config(gpu_target_config);
 
   TF_ASSERT_OK_AND_ASSIGN(

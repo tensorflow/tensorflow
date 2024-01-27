@@ -25,8 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -110,6 +109,9 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
 // NcclCollectiveThunk
 //===----------------------------------------------------------------------===//
 
+// Forward declare.
+class NcclCollectiveDoneThunk;
+
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
@@ -126,37 +128,36 @@ class NcclCollectiveThunk : public Thunk {
     mlir::Value destination_value;
   };
 
-  class AsyncExecutor {
-   public:
-    // Executes the function on the async communications stream and records a
-    // completion event.
-    absl::Status Execute(
-        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&,
-                                 NcclApi::NcclCommHandle)>
-            fn,
-        const ExecuteParams& params, NcclApi::NcclCommHandle comm,
-        AsyncStreamKind stream_kind);
-    // Blocks the compute stream until async communication is complete.
-    absl::Status Await(const ExecuteParams& params);
+  // Completion events for asynchronous collective operations (operations
+  // launched on a dedicated stream that is synchronized with main compute
+  // stream only when needed).
+  class AsyncEvents {
+   private:
+    friend class NcclCollectiveThunk;
+    friend class NcclCollectiveDoneThunk;
+
+    absl::Status Initialize(se::StreamExecutor* executor);
+    absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
 
    private:
     absl::Mutex mu_;
-    // Store done events (by device ordinal) for the done thunk to wait on.
-    absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
+    absl::node_hash_map<se::StreamExecutor*, se::Event> events_
+        ABSL_GUARDED_BY(mu_);
   };
 
   // Logging support.
   static std::string GetDeviceString(
       const Thunk::CollectiveExecuteParams& params);
 
-  AsyncExecutor* async_executor() { return async_.get(); }
-
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;
+
+  absl::Status Initialize(const InitializeParams& params) override;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   NcclApi* nccl_api() const { return nccl_api_; }
+  std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
 
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,
@@ -168,15 +169,15 @@ class NcclCollectiveThunk : public Thunk {
   }
 
  private:
-  bool IsAsync() const { return async_ != nullptr; }
+  bool IsAsync() const { return async_events_ != nullptr; }
   int64_t GetStreamId() const {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
-  NcclApi* nccl_api_;
-
   bool first_call_to_execute_ = true;
-  std::unique_ptr<AsyncExecutor> async_;  // null if not async.
+
+  NcclApi* nccl_api_;
+  std::shared_ptr<AsyncEvents> async_events_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -185,14 +186,17 @@ class NcclCollectiveThunk : public Thunk {
 
 class NcclCollectiveDoneThunk : public Thunk {
  public:
-  NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
-                          NcclCollectiveThunk::AsyncExecutor& async);
+  NcclCollectiveDoneThunk(
+      Thunk::Kind kind, ThunkInfo thunk_info,
+      std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  NcclCollectiveThunk::AsyncExecutor& async_;
+  std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events_;
 };
+
+//===----------------------------------------------------------------------===//
 
 absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
@@ -234,6 +238,14 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
+absl::StatusOr<NcclComm::Lock> GetNcclComm(
+    const Thunk::CollectiveExecuteParams& params,
+    const Thunk::CollectiveCliques& collective_cliques,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t stream_id);
+
+// TODO(ezhulenev): This is a deprecated code path and should be removed after
+// all users in legacy XLA runtime are removed.
 absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,

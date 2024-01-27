@@ -155,7 +155,6 @@ limitations under the License.
 #include "xla/service/cpu/runtime/xfeed.h"
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/target_machine_features.h"
-#include "xla/service/cpu/xla_framework.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dot_decomposer.h"
 #include "xla/service/dump.h"
@@ -357,7 +356,7 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 
 CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
     HloModuleProto hlo, std::string_view obj_file, std::string_view mlir_module,
-    XlaFrameworkMapping xla_framework_mapping) {
+    const XlaFrameworkMapping& xla_framework_mapping) {
   XlaRuntimeExecutableProto xla_runtime_executable;
   *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
   xla_runtime_executable.set_obj_file(std::string(obj_file));

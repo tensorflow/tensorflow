@@ -150,10 +150,8 @@ class PjRtDevice {
   }
 
   // TODO(b/314368788): Remove `int local_hardware_id()` and rename this
-  // function to `local_device_id()`. Make this function pure virtual.
-  virtual PjRtLocalHardwareId local_hardware_id_typed() const {
-    return PjRtLocalHardwareId(local_hardware_id());
-  }
+  // function to `local_hardware_id()`.
+  virtual PjRtLocalHardwareId local_hardware_id_typed() const = 0;
 
   // The index of the process that this device belongs to, i.e. is addressable
   // from. This is not always identical to PjRtClient::process_index() in a
@@ -165,7 +163,10 @@ class PjRtDevice {
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
   // be dense, and -1 if undefined.
-  virtual int local_hardware_id() const = 0;
+  ABSL_DEPRECATED("Use local_hardware_id_typed() instead")
+  virtual int local_hardware_id() const {
+    return local_hardware_id_typed().value();
+  }
 
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
@@ -519,22 +520,22 @@ class PjRtClient {
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
-  virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const = 0;
-  // TODO(b/314368788): Replace the above function with this function.
-  virtual StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const {
-    return LookupDevice(global_device_id.value());
+  ABSL_DEPRECATED("Use LookupDevice(PjRtGlobalDeviceId) instead")
+  virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const {
+    return LookupDevice(PjRtGlobalDeviceId(device_id));
   }
+  virtual StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const = 0;
 
   // Return an addressable PjRtDevice for a given
   // PjRtDevice::local_hardware_id().
+  ABSL_DEPRECATED("Use LookupAddressableDevice(PjRtLocalDeviceId) instead")
   virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const = 0;
-  // TODO(b/314368788): Replace the above function with this function.
-  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const {
-    return LookupAddressableDevice(local_device_id.value());
+      int local_hardware_id) const {
+    return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
   }
+  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const = 0;
 
   // Return all memory spaces owned by the client.
   // The memory spaces are in no particular order.
@@ -753,6 +754,43 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtMemorySpace* memory_space) = 0;
+
+  // Creates a shapeless buffer on the device that can be partitioned into
+  // multiple PjRtBuffer. This class is an Arena version of
+  // `AsyncHostToDeviceTransferManager`.
+  // As a low-level interface, the user must make sure that invocations of
+  // `Slice` match properly with the writes from `TransferRawDataToSubBuffer`.
+  //
+  // For the intended application to Arena allocation / transfer, the user can
+  // use `GetOnDeviceSizeInBytes` to calculate the offsets for the host buffers
+  // that need to be transferred.
+  class PjRtRawDeviceBuffer {
+   public:
+    virtual ~PjRtRawDeviceBuffer() = default;
+
+    // Transfers data to the device buffer. Data should already be in the
+    // device layout.
+    virtual Status TransferRawDataToSubBuffer(
+        const void* data, int64_t offset, int64_t transfer_size,
+        bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) = 0;
+
+    // The resulting buffer becomes ready when all transfers complete.
+    virtual StatusOr<std::unique_ptr<PjRtBuffer>> Slice(
+        int64_t offset, PrimitiveType type, absl::Span<int64_t const> dims,
+        const Layout& layout) = 0;
+  };
+  // Creates a raw device buffer of a given size in bytes.
+  virtual StatusOr<std::unique_ptr<PjRtRawDeviceBuffer>> CreateRawDeviceBuffer(
+      int64_t size, PjRtDevice* device) {
+    return Unimplemented("CreateRawDeviceBuffer is not implemented.");
+  }
+
+  // On-device bytes required for a PjRt buffer with these `Shape` attributes.
+  virtual StatusOr<int64_t> GetOnDeviceSizeInBytes(
+      PrimitiveType type, absl::Span<int64_t const> dims,
+      const Layout& layout) {
+    return Unimplemented("GetOnDeviceSizeInBytes is not implemented.");
+  };
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -62,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -175,6 +178,15 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
   manager.addPass(mlir::CreateBreakUpIslandsPass());
 
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+
+  if (VLOG_IS_ON(2)) {
+    llvm::StringRef module_name = llvm::StringRef();
+    constexpr const char* kDebugGroupBridgePhase2 =
+        "v1_prepare_and_export_to_library";
+    internal::EnablePassIRPrinting(manager, kDebugGroupBridgePhase2,
+                                   module_name);
+  }
+
   auto prepare_status = manager.run(module);
   auto diag_handler_status = diag_handler.ConsumeStatus();
   // There are cases where the scoped diagnostic handler catches a failure that

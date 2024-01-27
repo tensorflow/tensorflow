@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
@@ -43,22 +45,26 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-FailureOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
-    MLIRContext* context, StringRef serialized_stablehlo_module) {
+absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
+    StringRef serialized_stablehlo_module) {
   // StableHLO module is empty often because the XlaCallModuleOp is already
   // deserialized, e.g. after invoking XlaCallModuleDeserializationPass. We
   // don't handle this situation.
-  if (serialized_stablehlo_module.empty()) return failure();
+  if (serialized_stablehlo_module.empty()) {
+    return absl::InvalidArgumentError("StableHLO module is empty.");
+  }
 
+  MLIRContext context;
   OwningOpRef<ModuleOp> stablehlo_module_op =
       mlir::stablehlo::deserializePortableArtifact(serialized_stablehlo_module,
-                                                   context);
+                                                   &context);
 
   // Convert the StableHLO module to bfloat16.
-  PassManager pm(context);
+  PassManager pm(&context);
   pm.addNestedPass<func::FuncOp>(createConvertFuncToBfloat16Pass());
   if (failed(pm.run(stablehlo_module_op.get()))) {
-    return failure();
+    return absl::InternalError(
+        "Failed to convert StableHLO module to bfloat16.");
   }
 
   std::string bytecode;
@@ -66,7 +72,7 @@ FailureOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
   if (failed(mlir::stablehlo::serializePortableArtifact(
           stablehlo_module_op.get(), mlir::stablehlo::getCurrentVersion(),
           os))) {
-    return failure();
+    return absl::InternalError("Failed to serialize StableHLO module.");
   }
   return bytecode;
 }
@@ -95,9 +101,11 @@ void ConvertXlaCallModuleOpToBfloat16Pass::runOnOperation() {
 
   auto result = func_op->walk([&](TF::XlaCallModuleOp op) {
     // Converts the serialized StableHLO module to bfloat16.
-    auto result = ConvertSerializedStableHloModuleToBfloat16(
-        &getContext(), op.getModuleAttr());
-    if (failed(result)) {
+    auto result =
+        ConvertSerializedStableHloModuleToBfloat16(op.getModuleAttr());
+    if (!result.ok()) {
+      llvm::errs() << "Failed to convert StableHLO module to bfloat16: "
+                   << result.status().message();
       return WalkResult::interrupt();
     }
     op.setModuleAttr(StringAttr::get(&getContext(), *result));

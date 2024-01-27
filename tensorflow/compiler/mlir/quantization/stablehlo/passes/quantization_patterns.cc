@@ -48,8 +48,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -61,6 +61,7 @@ namespace {
 
 using ::mlir::quant::TryCast;
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::BroadcastInDimOp;
 using ::mlir::stablehlo::ConcatenateOp;
 using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
@@ -79,13 +80,16 @@ bool IsQuantizedTensorType(const Type type) {
          type.cast<TensorType>().getElementType().isa<QuantizedType>();
 }
 
-// Returns dynamically broadcasted user op of an input op. Returns null if
-// the op is not dynamically broadcasted or not the intended type.
-// Dynamic shapes usually has the following pattern. In the example below,
-// the input operand would be stablehlo.convolution op, and return value would
-// be stablehlo.add op.
+// Returns broadcasted user op of an input op. Returns null if
+// the op is not broadcasted or not the intended type.
+// Supports both static broadcast and dynamic broadcast.
 // Note that the patterns below differ from lifted patterns as
 // ShapeLegalizeToHloPass is ran prior to running this pass.
+//
+// Dynamically broadcasted bias due to unknown input batch size
+// usually has the following pattern. In the example below,
+// the input operand would be stablehlo.convolution op, and return value would
+// be stablehlo.add op.
 //
 // ```
 // %0 = stablehlo.constant dense<3>
@@ -103,8 +107,28 @@ bool IsQuantizedTensorType(const Type type) {
 // %7 = stablehlo.dynamic_broadcast_in_dims %arg2, %6
 // %8 = stablehlo.add %3, %7
 // ```
+//
+// Statically broadcasted bias will be broadcasted to match the accumulation.
+// ```
+// %3 = stablehlo.convolution(%%arg0, %%arg1) :
+//          (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<?x3x4x2xf32>
+// %4 = stablehlo.broadcast_in_dims %arg2, %3
+// %5 = stablehlo.add %3, %4
+// ```
 template <typename T>
-Operation* GetDynamicallyBroadcastedUserOp(Operation* op) {
+Operation* GetBroadcastedUserOp(Operation* op) {
+  // Broadcast bias for known input shape.
+  auto broadcast_in_dims_op =
+      TryCast<BroadcastInDimOp>(op->getNextNode(),
+                                /*name=*/"broadcast_in_dims_op");
+  if (succeeded(broadcast_in_dims_op)) {
+    auto target_op = TryCast<T>((*broadcast_in_dims_op)->getNextNode(),
+                                /*name=*/"target_op");
+    if (succeeded(target_op)) {
+      return *target_op;
+    }
+  }
+  // Broadcast bias for unknown input shape.
   FailureOr<GetDimensionSizeOp> get_dimension_size_op =
       TryCast<GetDimensionSizeOp>(op->getNextNode(),
                                   /*name=*/"get_dimension_size_op");
@@ -211,6 +235,9 @@ void SetQuantizedFunctionType(PatternRewriter& rewriter,
 }
 
 // Creates a UniformQuantize op and sets it as return op.
+// The requantize scale and zero point should be determined from the
+// entry_func_op's output, containing information on layerStats of the
+// entire function.
 void CreateAndReturnUniformQuantizeOp(PatternRewriter& rewriter, Operation& op,
                                       func::FuncOp entry_func_op,
                                       const Type func_result_type) {
@@ -230,25 +257,26 @@ void CreateAndReturnQuantizedBiasPattern(
     GemmStyleOp gemm_style_op, double result_scale) {
   Value bias_op = op->getOperand(1);
   Value add_op_result = op->getResult(0);
-  // For bias add with dynamic shape, quantize the broadcasted bias.
-  if (auto dynamic_bcast_op =
-          cast_or_null<DynamicBroadcastInDimOp>(bias_op.getDefiningOp())) {
-    const UniformQuantizedType dynamic_bcast_quantized_element_type =
-        CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
-                                         *rewriter.getContext(), result_scale,
-                                         /*zero_point=*/0);
 
-    Value dynamic_bcast_op_result = dynamic_bcast_op->getResult(0);
-    auto dynamic_bcast_op_result_type =
-        dynamic_bcast_op_result.getType().cast<RankedTensorType>();
-    const ArrayRef<int64_t> dynamic_bcast_shape =
-        dynamic_bcast_op_result_type.getShape();
-
-    const TensorType new_dynamic_bcast_op_result_type =
-        dynamic_bcast_op_result_type.cloneWith(
-            dynamic_bcast_shape, gemm_style_quantized_element_type);
-    dynamic_bcast_op_result.setType(new_dynamic_bcast_op_result_type);
+  // Broadcast bias value if unmatched with output shape.
+  auto bcast_op = TryCast<BroadcastInDimOp>(bias_op.getDefiningOp(),
+                                            /*name=*/"broadcast_in_dims_op");
+  if (failed(bcast_op)) {
+    bcast_op = TryCast<DynamicBroadcastInDimOp>(
+        bias_op.getDefiningOp(),
+        /*name=*/"dynamic_broadcast_in_dims_op");
   }
+  if (succeeded(bcast_op)) {
+    Value bcast_op_result = (*bcast_op)->getResult(0);
+    auto bcast_op_result_type =
+        bcast_op_result.getType().cast<RankedTensorType>();
+    const ArrayRef<int64_t> bcast_shape = bcast_op_result_type.getShape();
+
+    const TensorType new_bcast_op_result_type = bcast_op_result_type.cloneWith(
+        bcast_shape, gemm_style_quantized_element_type);
+    bcast_op_result.setType(new_bcast_op_result_type);
+  }
+
   const auto add_op_result_type =
       add_op_result.getType().cast<RankedTensorType>();
   const ArrayRef<int64_t> add_op_shape = add_op_result_type.getShape();
@@ -346,13 +374,16 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 
   Operation* next_op = gemm_style_op->getNextNode();
 
+  // If activation exists, omit clipping op.
+  // Since out_scale and out_zp are computed based on clipped range,
+  // explicit activation clipping op is not required.
   if (isa<AddOp>(next_op) && gemm_style_op->hasOneUse()) {
     // bias fusion
     CreateAndReturnQuantizedBiasPattern(
         next_op, rewriter, entry_func_op, func_result_type,
         gemm_style_quantized_element_type, gemm_style_op, result_scale);
   } else if (auto add_op = cast_or_null<AddOp>(
-                 GetDynamicallyBroadcastedUserOp<AddOp>(gemm_style_op))) {
+                 GetBroadcastedUserOp<AddOp>(gemm_style_op))) {
     // dynamic bias fusion
     rewriter.setInsertionPointAfter(add_op);
     CreateAndReturnQuantizedBiasPattern(

@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -144,6 +143,11 @@ static bool IsCommand(const HloInstruction* hlo,
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return config.contains(DebugOptions::FUSION);
 
+  if (hlo->opcode() == HloOpcode::kPartitionId ||
+      hlo->opcode() == HloOpcode::kReplicaId) {
+    return config.contains(DebugOptions::FUSION);
+  }
+
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
     return IsCommand(custom_call, config);
 
@@ -183,6 +187,22 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
   return false;
 }
 
+static bool IsAsyncDoneCommand(const HloInstruction* hlo,
+                               const CommandBufferConfig& config) {
+  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
+      hlo->opcode() == HloOpcode::kAllGatherDone) {
+    return config.contains(DebugOptions::COLLECTIVES);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncDone) {
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+      return config.contains(DebugOptions::COLLECTIVES);
+    }
+  }
+
+  return false;
+}
+
 // Finds an async-done HLO operation corresponding on an async-start one.
 static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
   if (start->opcode() == HloOpcode::kAllReduceStart ||
@@ -203,11 +223,12 @@ static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
                       const CommandBufferConfig& config) {
-  return absl::c_all_of(computation->instructions(),
-                        [&](const HloInstruction* inst) {
-                          return IsNoOp(inst) || IsConstant(inst) ||
-                                 IsParameter(inst) || IsCommand(inst, config);
-                        });
+  return absl::c_all_of(
+      computation->instructions(), [&](const HloInstruction* inst) {
+        return IsNoOp(inst) || IsConstant(inst) || IsParameter(inst) ||
+               IsCommand(inst, config) || IsAsyncStartCommand(inst, config) ||
+               IsAsyncDoneCommand(inst, config);
+      });
 }
 
 //===----------------------------------------------------------------------===//
@@ -579,9 +600,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
-  static constexpr auto kRequireTracing = {DebugOptions::CUBLAS,
-                                           DebugOptions::CUDNN,
-                                           DebugOptions::CUSTOM_CALL};
+  static constexpr auto kRequireTracing = {
+      DebugOptions::CUBLAS, DebugOptions::CUDNN, DebugOptions::CUSTOM_CALL};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {

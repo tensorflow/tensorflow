@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -80,6 +80,18 @@ std::string AffineMapPrinter::ToString(AffineMap affine_map) const {
     PrintExprImpl(expr, /*add_parentheses=*/false, ss);
   });
   ss << ')';
+  return s;
+}
+
+void AffineMapPrinter::Print(std::ostream& out,
+                             mlir::AffineExpr affine_expr) const {
+  out << ToString(affine_expr);
+}
+
+std::string AffineMapPrinter::ToString(mlir::AffineExpr affine_expr) const {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  PrintExprImpl(affine_expr, /*add_parentheses=*/false, ss);
   return s;
 }
 

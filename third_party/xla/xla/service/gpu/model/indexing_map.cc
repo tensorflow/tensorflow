@@ -52,6 +52,51 @@ int64_t FloorDiv(int64_t dividend, int64_t divisor) {
          (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
 }
 
+int64_t CeilDiv(int64_t dividend, int64_t divisor) {
+  return dividend / divisor +
+         (((dividend >= 0) == (divisor >= 0) && dividend % divisor) ? 1 : 0);
+}
+
+// Computes intersection of two ranges.
+Range Intersect(const Range& lhs, const Range& rhs) {
+  return Range{std::max(lhs.lower_bound, rhs.lower_bound),
+               std::min(lhs.upper_bound, rhs.upper_bound)};
+}
+
+// Attempts to parse an expression dim_or_symbol * factor + shift.
+bool ParseLinearFunction(AffineExpr expr, AffineExpr* symbol_or_dim,
+                         int64_t* factor, int64_t* shift) {
+  AffineExpr residual = expr;
+  *shift = 0;
+  *factor = 1;
+  if (auto binop = mlir::dyn_cast<AffineBinaryOpExpr>(residual)) {
+    if (binop.getKind() == AffineExprKind::Add) {
+      auto constant = mlir::dyn_cast<AffineConstantExpr>(binop.getRHS());
+      if (!constant) {
+        return false;
+      }
+      *shift = constant.getValue();
+      residual = binop.getLHS();
+    }
+  }
+  if (auto binop = mlir::dyn_cast<AffineBinaryOpExpr>(residual)) {
+    if (binop.getKind() == AffineExprKind::Mul) {
+      auto constant = mlir::dyn_cast<AffineConstantExpr>(binop.getRHS());
+      if (!constant) {
+        return false;
+      }
+      *factor = constant.getValue();
+      residual = binop.getLHS();
+    }
+  }
+  if (residual.getKind() == AffineExprKind::DimId ||
+      residual.getKind() == AffineExprKind::SymbolId) {
+    *symbol_or_dim = residual;
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 std::string Range::ToString() const {
@@ -62,7 +107,7 @@ std::string Range::ToString() const {
 }
 
 void Range::Print(std::ostream& out) const {
-  out << '[' << lower_bound << ", " << upper_bound << ")";
+  out << '[' << lower_bound << ", " << upper_bound << "]";
 }
 
 std::ostream& operator<<(std::ostream& out, const Range& range) {
@@ -91,6 +136,51 @@ Domain Domain::FromUpperBounds(absl::Span<const int64_t> dim_upper_bounds,
   return domain;
 }
 
+void Domain::AddConstraint(mlir::AffineExpr expr, const Range& range) {
+  if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
+    Range& current_range = dim_ranges_[dim_expr.getPosition()];
+    current_range = Intersect(current_range, range);
+    return;
+  }
+  if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
+    Range& current_range = symbol_ranges_[symbol_expr.getPosition()];
+    current_range = Intersect(current_range, range);
+    return;
+  }
+  // TODO(b/322131639): Add a proper Constraints simplifier that will apply
+  // simplification rules until it converges. For example, it should have a rule
+  // for `symbol_or_dim floorDiv divisor`.
+
+  // Try to parse a linear function of type symbol_or_dim * factor + shift.
+  AffineExpr symbol_or_dim;
+  int64_t factor, shift;
+  if (ParseLinearFunction(expr, &symbol_or_dim, &factor, &shift)) {
+    Range new_range = factor > 0
+                          ? Range{CeilDiv(range.lower_bound - shift, factor),
+                                  FloorDiv(range.upper_bound - shift, factor)}
+                          : Range{CeilDiv(range.upper_bound - shift, factor),
+                                  FloorDiv(range.lower_bound - shift, factor)};
+    AddConstraint(symbol_or_dim, new_range);
+    return;
+  }
+  auto [it, inserted] = expr_ranges_.insert({expr, range});
+  if (!inserted) {
+    it->second = Intersect(it->second, range);
+  }
+}
+
+bool Domain::IsKnownEmpty() const {
+  auto is_infeasible = [](const Range& range) {
+    return range.lower_bound > range.upper_bound;
+  };
+  return llvm::any_of(dim_ranges_, is_infeasible) ||
+         llvm::any_of(symbol_ranges_, is_infeasible) ||
+         llvm::any_of(expr_ranges_,
+                      [&](const std::pair<AffineExpr, Range>& item) {
+                        return is_infeasible(item.second);
+                      });
+}
+
 std::string Domain::ToString(const AffineMapPrinter& printer) const {
   std::string s;
   std::stringstream ss(s);
@@ -100,12 +190,25 @@ std::string Domain::ToString(const AffineMapPrinter& printer) const {
 
 void Domain::Print(std::ostream& out, const AffineMapPrinter& printer) const {
   for (const auto& [index, range] : llvm::enumerate(dim_ranges_)) {
-    out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in "
-        << range << '\n';
+    out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in ";
+    range.Print(out);
+    out << '\n';
   }
   for (const auto& [index, range] : llvm::enumerate(symbol_ranges_)) {
-    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in " << range
-        << '\n';
+    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
+    range.Print(out);
+    out << '\n';
+  }
+  std::vector<std::string> expr_range_strings;
+  for (const auto& [expr, range] : expr_ranges_) {
+    std::stringstream ss(expr_range_strings.emplace_back());
+    printer.Print(ss, expr);
+    ss << " in ";
+    range.Print(ss);
+  }
+  std::sort(expr_range_strings.begin(), expr_range_strings.end());
+  for (const auto& expr_range_string : expr_range_strings) {
+    out << expr_range_string << "\n";
   }
 }
 
@@ -194,7 +297,7 @@ std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
 void IndexingMap::Print(std::ostream& out,
                         const AffineMapPrinter& printer) const {
   printer.Print(out, affine_map);
-  out << " with domain\n";
+  out << "\ndomain:\n";
   domain.Print(out, printer);
   out << "\n";
 }
@@ -270,10 +373,26 @@ std::optional<IndexingMap> ComposeIndexingMaps(
     }
     combined_symbol_ranges_.push_back(symbol_range);
   }
+
   IndexingMap composed_indexing_map{
       std::move(composed_map), Domain{consumer_map->domain.GetDimensionRanges(),
                                       combined_symbol_ranges_}};
   composed_indexing_map.Simplify();
+
+  RangeEvaluator consumer_range_evaluator(&consumer_map->domain);
+  // Add constraints for consumer's codomain w.r.t. producer's domain.
+  for (auto [index, expr] :
+       llvm::enumerate(consumer_map->affine_map.getResults())) {
+    Range consumer_result_range =
+        consumer_range_evaluator.ComputeExpressionRange(expr);
+    Range producer_dim_range = producer_map->domain.GetDimensionRange(index);
+    // If the constraint is always satisfied, we skip it.
+    if (consumer_result_range.upper_bound <= producer_dim_range.upper_bound &&
+        consumer_result_range.lower_bound >= producer_dim_range.lower_bound) {
+      continue;
+    }
+    composed_indexing_map.domain.AddConstraint(expr, producer_dim_range);
+  }
   return composed_indexing_map;
 }
 

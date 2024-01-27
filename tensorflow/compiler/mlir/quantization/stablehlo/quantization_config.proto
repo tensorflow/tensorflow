@@ -47,6 +47,15 @@ message TfSavedModelConfig {
   repeated string tags = 1;
 }
 
+// Configures the graph transformation pipeline for quantization.
+message PipelineConfig {
+  // When set to True, unpacks ops with uniform quantized types into operations
+  // without uniform quantized types (mostly i8 or i32). Useful when the target
+  // hardware performs better with integer ops.
+  // Default value: true
+  optional bool unpack_quantized_types = 1;
+}
+
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
 // Next ID: 4
@@ -58,4 +67,7 @@ message QuantizationConfig {
 
   // TF SavedModel specific information for the input model.
   TfSavedModelConfig tf_saved_model = 2;
+
+  // Configures the graph transformation pipeline for quantization.
+  PipelineConfig pipeline_config = 3;
 }
