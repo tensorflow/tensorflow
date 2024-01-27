@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla::internal {
 
 void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
-                        absl::Duration warn_stuck_timeout,
+                        size_t num_threads, absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
   if (ready.WaitForNotificationWithTimeout(warn_stuck_timeout)) {
     return;
@@ -33,7 +33,9 @@ void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
 
   LOG(ERROR) << "This thread has been waiting for `" << name << "` for "
              << absl::ToInt64Seconds(warn_stuck_timeout)
-             << " seconds and may be stuck.";
+             << " seconds and may be stuck. Expected " << num_threads
+             << " threads to join the rendezvous, but not all of them arrived"
+             << " on time.";
 
   if (ready.WaitForNotificationWithTimeout(terminate_timeout)) {
     LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
@@ -41,10 +43,12 @@ void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
     return;
   }
 
-  LOG(ERROR)
-      << "Termination timeout for `" << name << "` of "
-      << absl::ToInt64Seconds(terminate_timeout)
-      << " seconds exceeded. Exiting to ensure a consistent program state.";
+  LOG(ERROR) << "Termination timeout for `" << name << "` of "
+             << absl::ToInt64Seconds(terminate_timeout)
+             << " seconds exceeded. Exiting to ensure a consistent program"
+             << " state. Expected " << num_threads
+             << " threads to join the rendezvous, but not all of them arrived"
+             << " on time.";
   std::exit(42);
 }
 

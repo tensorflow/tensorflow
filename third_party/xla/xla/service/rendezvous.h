@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -175,7 +174,7 @@ class RendezvousMap {
 };
 
 void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
-                        absl::Duration warn_stuck_timeout,
+                        size_t num_threads, absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout);
 }  // namespace internal
 
@@ -220,8 +219,8 @@ RendezvousResultType<R> RendezvousSingle(std::string_view name, const K& key,
   if (id < num_threads - 1) {
     // Threads arriving before the last one wait for a result to be computed by
     // the last joining thread.
-    internal::AwaitAndLogIfStuck(state->ready, name, warn_stuck_timeout,
-                                 terminate_timeout);
+    internal::AwaitAndLogIfStuck(state->ready, name, num_threads,
+                                 warn_stuck_timeout, terminate_timeout);
   } else {
     // Last thread to arrive executes the function and completes rendezvous by
     // making result available to all participants. All other participants will
