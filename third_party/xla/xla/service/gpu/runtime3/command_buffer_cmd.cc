@@ -627,6 +627,11 @@ absl::Status ForCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase loop_counter =
       params.buffer_allocations->GetDeviceAddress(loop_counter_);
 
+  VLOG(5) << "ForCmd: num_iterations=" << num_iterations_
+          << "; body_commands=" << body_commands_.size();
+  VLOG(5) << "  loop_counter: " << loop_counter_ << " ("
+          << loop_counter.opaque() << ")";
+
   return command_buffer->For(params.executor, num_iterations_,
                              se::DeviceMemory<int32_t>(loop_counter),
                              ConditionBuilder(&body_commands_, &params));

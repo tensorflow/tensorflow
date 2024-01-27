@@ -364,24 +364,6 @@ cc_library(
 )
 
 cc_library(
-    name = "for_thunk",
-    srcs = ["for_thunk.cc"],
-    hdrs = ["for_thunk.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":sequential_thunk",
-        "//xla:status",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:thunk",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
     name = "fused_mha_thunk",
     srcs = ["fused_mha_thunk.cc"],
     hdrs = ["fused_mha_thunk.h"],

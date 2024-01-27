@@ -71,7 +71,6 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime3/conditional_thunk.h"
-#include "xla/service/gpu/runtime3/for_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -206,9 +205,6 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
            cond_thunk->branch_thunks()) {
         ForAllThunks(fn, &branch_thunks->thunks());
       }
-    } else if (thunk->kind() == Thunk::kFor) {
-      auto* for_thunk = tensorflow::down_cast<ForThunk*>(thunk.get());
-      ForAllThunks(fn, &for_thunk->body_thunk_sequence()->thunks());
     } else if (thunk->kind() == Thunk::kSequential) {
       auto* sequential_thunk =
           tensorflow::down_cast<SequentialThunk*>(thunk.get());

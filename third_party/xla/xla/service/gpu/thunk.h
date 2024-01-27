@@ -87,7 +87,6 @@ class Thunk {
     kCustomCall,
     kCustomKernel,
     kFft,
-    kFor,
     kGemm,
     kInfeed,
     kKernel,

@@ -130,7 +130,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/runtime3/fft_thunk.h"
-#include "xla/service/gpu/runtime3/for_thunk.h"
 #include "xla/service/gpu/runtime3/fused_mha_thunk.h"
 #include "xla/service/gpu/runtime3/gemm_thunk.h"
 #include "xla/service/gpu/runtime3/infeed_thunk.h"
@@ -3043,42 +3042,26 @@ absl::Status IrEmitterUnnested::EmitWhile(
                    .isInteger(/*width=*/1))
       << "While condition computation must return bool";
 
-  // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  //
-  // If Xla runtime is enabled we always lower to `lmhlo.while` operation and
-  // rely on `lmhlo-to-gpu-runtime` to lower while loops with known trip counts
-  // to `scf.for` loops.
-  if (while_op.getTripCount() &&
-      !IsXlaRuntimeExecutableEnabled(
-          ir_emitter_context_->hlo_module().config())) {
-    TF_ASSIGN_OR_RETURN(
-        auto thunk,
-        BuildForThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
-                      *while_op.getTripCount(), hlo_for_lmhlo));
-    AddThunkToThunkSequence(std::move(thunk));
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        auto thunk,
-        BuildWhileThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
-                        hlo_for_lmhlo));
-    AddThunkToThunkSequence(std::move(thunk));
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto thunk,
+      BuildWhileThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
+                      hlo_for_lmhlo, while_op.getTripCount()));
+  AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
 
 absl::Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto config,
                       instr->backend_config<xla::WhileLoopBackendConfig>());
-  if (config.has_known_trip_count()) {
-    int64_t trip_count = config.known_trip_count().n();
-    TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(instr, trip_count));
-    AddThunkToThunkSequence(std::move(thunk));
-    return absl::OkStatus();
-  }
+
+  std::optional<int64_t> trip_count = std::nullopt;
+  if (config.has_known_trip_count()) trip_count = config.known_trip_count().n();
 
   TF_ASSIGN_OR_RETURN(
       auto thunk,
-      BuildWhileThunk(instr, Thunk::ThunkInfo::WithProfileAnnotation(instr)));
+      BuildWhileThunk(instr, Thunk::ThunkInfo::WithProfileAnnotation(instr),
+                      trip_count));
+
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -3866,7 +3849,8 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
 absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
     const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
+        hlo_for_lmhlo,
+    std::optional<int64_t> trip_count) {
   // Generate thunk sequence for while 'condition'.
   mlir::Region* condition = &while_op.getCond();
   auto ir_emitter_condition = IrEmitterUnnested::Create(ir_emitter_context_);
@@ -3890,11 +3874,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
   return std::unique_ptr<Thunk>(
       new WhileThunk(thunk_info, cond_result_slice,
                      ir_emitter_condition->ConsumeThunkSequence(),
-                     ir_emitter_body->ConsumeThunkSequence()));
+                     ir_emitter_body->ConsumeThunkSequence(), trip_count));
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
-    const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info) {
+    const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
+    std::optional<int64_t> trip_count) {
   HloComputation* condition = instr->while_condition();
   HloComputation* body = instr->while_body();
 
@@ -3912,31 +3897,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
 
   return std::unique_ptr<Thunk>(new WhileThunk(
       thunk_info, pred, ir_emitter_condition->ConsumeThunkSequence(),
-      ir_emitter_body->ConsumeThunkSequence()));
-}
-
-absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
-    const HloInstruction* instr, int64_t loop_limit) {
-  HloComputation* body = instr->while_body();
-  auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
-  TF_RETURN_IF_ERROR(ir_emitter_body->EmitHloComputation(body));
-  return std::unique_ptr<Thunk>(
-      new ForThunk(Thunk::ThunkInfo::WithProfileAnnotation(instr), loop_limit,
-                   ir_emitter_body->ConsumeThunkSequence()));
-}
-
-absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
-    mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-    const int64_t loop_limit,
-    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
-  // Generate thunk sequence for while 'body' (will be used a For loop body).
-  auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
-  TF_RETURN_IF_ERROR(
-      ir_emitter_body->EmitLmhloRegion(&while_op.getBody(), hlo_for_lmhlo));
-
-  return std::unique_ptr<Thunk>(new ForThunk(
-      thunk_info, loop_limit, ir_emitter_body->ConsumeThunkSequence()));
+      ir_emitter_body->ConsumeThunkSequence(), trip_count));
 }
 
 absl::Status IrEmitterUnnested::EmitTargetElementLoop(

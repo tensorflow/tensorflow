@@ -206,7 +206,6 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclSend);
     CASE(kNcclRecv);
     CASE(kFft);
-    CASE(kFor);
     CASE(kGemm);
     CASE(kInfeed);
     CASE(kKernel);

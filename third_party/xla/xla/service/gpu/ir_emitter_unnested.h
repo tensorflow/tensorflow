@@ -429,21 +429,12 @@ class IrEmitterUnnested : public IrEmitter {
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
+          hlo_for_lmhlo,
+      std::optional<int64_t> trip_count);
 
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
-      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info);
-
-  // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
-  // sequence from the 'body' sub-computation of the while instruction.
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
-      const HloInstruction* instr, int64_t loop_limit);
-
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
-      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-      int64_t loop_limit,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
+      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
+      std::optional<int64_t> trip_count);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
