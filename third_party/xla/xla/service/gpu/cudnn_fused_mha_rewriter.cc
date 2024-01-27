@@ -54,6 +54,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -1860,6 +1864,9 @@ absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
         comp->parent()->config().debug_options();
     const auto cudnn_version =
         GetRealCuDNNVersion(cudnn_version_, stream_executor_);
+#if CUDA_VERSION < 12000
+    return false;
+#endif
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
             compute_capability_, cudnn_version,
