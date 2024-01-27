@@ -441,4 +441,47 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
                             std::nullopt);
 }
 
+TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main.9 {
+      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
+      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
+      %slice.14 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %add.0 = f16[1,8,8]{2,1,0} add(%slice.13, %slice.14)
+      %bitcast.41 = f16[8,8]{1,0} bitcast(%add.0)
+      %slice.15 = f16[1,8,8]{2,1,0} slice(%p1), slice={[0:1], [0:8], [0:8]}
+      %slice.16 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %add.1 = f16[1,8,8]{2,1,0} add(%slice.15, %slice.16)
+      %bitcast.42 = f16[8,8]{1,0} bitcast(%add.1)
+
+      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+    }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(),
+                            std::nullopt);
+}
+
 }  // namespace xla::gpu

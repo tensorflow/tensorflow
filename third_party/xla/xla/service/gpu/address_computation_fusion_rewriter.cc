@@ -60,9 +60,11 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
           const HloInstruction* cur = &node.instruction();
           maybe_sliced_operand_chain.push_back(
               const_cast<HloInstruction*>(cur));
-          // TODO(vuson): lift this restriction by considering fusing other uses
-          // of the operand to reuse the address computation. Only worth it if
-          // other uses are also custom calls though.
+          // TODO(vuson): lift the first restriction by considering fusing other
+          // uses of the operand to reuse the address computation. Only worth it
+          // if other uses are also custom calls though.
+          // TODO(vuson): lift the second restriction by considering fusing the
+          // non-noop instructions to the computation if possible.
           return cur->user_count() > 1 || !IsNoOp(cur) ||
                  IsContiguousSlice(*cur);
         });
