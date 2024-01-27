@@ -238,6 +238,9 @@ class ComputationIdCmd : public CommandBufferCmd {
 
   ComputationIdCmd(BufferAllocation::Slice dest, Kind kind);
 
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          Thunk::ExecutableSource source) override;
+
   absl::Status Record(const RecordParams& params,
                       se::CommandBuffer* command_buffer) override;
 
@@ -246,6 +249,18 @@ class ComputationIdCmd : public CommandBufferCmd {
  private:
   BufferAllocation::Slice dest_;
   Kind kind_;
+
+  // Command sequence can be recorded concurrently for multiple command buffers
+  // on different stream executors and we need to synchronize mutable state.
+  absl::Mutex mutex_;
+
+  // TODO(ezhulenev): This is a workaround for CUDA graphs + conditional nodes
+  // bug that will be fixed in CUDA 12.4.1 release: currently it's impossible to
+  // update a memset node inside a conditional graph. Instead of using memset
+  // node we replace it with a kernel launch node of CUDA kernels doing 1D
+  // memset. This should be removed when bug is fixed in CUDA.
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
+      memset_kernels_ ABSL_GUARDED_BY(mutex_);
 };
 
 //===----------------------------------------------------------------------===//
