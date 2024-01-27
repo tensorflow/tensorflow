@@ -1373,9 +1373,6 @@ ReductionFusion::ComputeReductionCodegenInfo(
     return WarpSize();
   }();
 
-  TilingScheme::IndexingOrder indexing_order =
-      reduction_dimensions.is_row_reduction ? TilingScheme::StridedIndexingX
-                                            : TilingScheme::LinearIndexingX;
   int vector_size = CanVectorizeReduction(analysis, reduction_dimensions,
                                           num_threads_x, reduction_tiling)
                         ? 2
@@ -1388,7 +1385,7 @@ ReductionFusion::ComputeReductionCodegenInfo(
   VLOG(2) << "Using virtual thread scaling: " << virtual_thread_scaling_factor;
 
   TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
-                             num_threads, indexing_order, vector_size,
+                             num_threads, vector_size,
                              virtual_thread_scaling_factor);
   bool reduction_is_race_free = ReductionIsRaceFree(
       hero_reduction->GetModule()->config(), reduction_dimensions);

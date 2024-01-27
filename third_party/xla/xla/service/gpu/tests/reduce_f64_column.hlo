@@ -96,7 +96,7 @@ ENTRY e {
 // CHECK:         %[[VAL_60:.*]] = add nuw nsw i32 %[[VAL_57]], 1
 // CHECK:         store i32 %[[VAL_60]], ptr %[[VAL_11]], align 4
 // CHECK:         %[[VAL_61:.*]] = icmp eq i32 %[[VAL_57]], 0
-// CHECK:         %[[VAL_62:.*]] = mul i32 %[[VAL_57]], 1
+// CHECK:         %[[VAL_62:.*]] = mul i32 %[[VAL_57]], 32
 // CHECK:         %[[VAL_63:.*]] = add i32 %[[VAL_62]], 0
 // CHECK:         %[[VAL_64:.*]] = add i32 %[[VAL_63]], %[[VAL_54]]
 // CHECK:         %[[VAL_65:.*]] = icmp ult i32 %[[VAL_64]], 32

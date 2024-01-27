@@ -88,7 +88,6 @@ TilingScheme ComputeTransposeTilingScheme(
       /*dims_in_elems=*/tiled_shape,
       /*tile_sizes=*/tile_sizes,
       /*num_threads=*/num_threads,
-      /*indexing_order=*/TilingScheme::LinearIndexingX,
       /*vector_size=*/1,
       /*scaling_factor=*/1);
 }

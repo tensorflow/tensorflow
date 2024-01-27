@@ -65,7 +65,7 @@ ENTRY main {
 // CHECK:         %[[VAL_43:.*]] = add nuw nsw i32 %[[VAL_40]], 1
 // CHECK:         store i32 %[[VAL_43]], ptr %[[VAL_2]], align 4
 // CHECK:         %[[VAL_44:.*]] = icmp eq i32 %[[VAL_40]], 0
-// CHECK:         %[[VAL_45:.*]] = mul i32 %[[VAL_40]], 1
+// CHECK:         %[[VAL_45:.*]] = mul i32 %[[VAL_40]], 32
 // CHECK:         %[[VAL_46:.*]] = add i32 %[[VAL_45]], 0
 // CHECK:         %[[VAL_47:.*]] = add i32 %[[VAL_46]], %[[VAL_37]]
 // CHECK:         %[[VAL_48:.*]] = icmp ult i32 %[[VAL_47]], %[[VAL_25]]
@@ -96,7 +96,7 @@ ENTRY main {
 // CHECK:         %[[VAL_64:.*]] = add nuw nsw i32 %[[VAL_61]], 1
 // CHECK:         store i32 %[[VAL_64]], ptr %[[VAL_0]], align 4
 // CHECK:         %[[VAL_65:.*]] = icmp eq i32 %[[VAL_61]], 0
-// CHECK:         %[[VAL_66:.*]] = mul i32 %[[VAL_61]], 1
+// CHECK:         %[[VAL_66:.*]] = mul i32 %[[VAL_61]], 32
 // CHECK:         %[[VAL_67:.*]] = add i32 %[[VAL_66]], 0
 // CHECK:         %[[VAL_68:.*]] = add i32 %[[VAL_67]], %[[VAL_37]]
 // CHECK:         %[[VAL_69:.*]] = icmp ult i32 %[[VAL_68]], %[[VAL_23]]

@@ -39,37 +39,19 @@ class TilingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
 
-  enum IndexingOrder {
-    // Thread reads consecutive elements.
-    LinearIndexingX,
-    // Thread reads strided elements while keeping memory coalescing.
-    StridedIndexingX,
-  };
-
   TilingScheme(Vector3 dims_in_elems, Vector3 tile_sizes, Vector3 num_threads,
-               IndexingOrder indexing_order, int vector_size,
-               int scaling_factor)
+               int vector_size, int scaling_factor)
       : dims_in_elems_(dims_in_elems),
         tile_sizes_per_thread_(tile_sizes),
         tile_sizes_per_block_{num_threads[0] * tile_sizes[0],
                               num_threads[1] * tile_sizes[1],
                               num_threads[2] * tile_sizes[2]},
         num_threads_(num_threads),
-        indexing_order_(indexing_order),
         vector_size_(vector_size),
         thread_id_virtual_scaling_(scaling_factor) {
     CHECK_EQ(tile_sizes[2] % vector_size_, 0)
         << "tile sizes = " << absl::StrJoin(tile_sizes, ", ")
         << "; vector size = " << vector_size_;
-  }
-
-  static std::string IndexingOrderToString(IndexingOrder order) {
-    switch (order) {
-      case LinearIndexingX:
-        return "linear";
-      case StridedIndexingX:
-        return "strided";
-    }
   }
 
   std::string ToString() const {
@@ -80,8 +62,6 @@ class TilingScheme {
                          absl::StrJoin(tile_sizes_per_thread_, ", ")),
          absl::StrFormat("num_threads = {%s}",
                          absl::StrJoin(num_threads_, ", ")),
-         absl::StrFormat("indexing_order = %s",
-                         IndexingOrderToString(indexing_order_)),
          absl::StrFormat("vector_size = %d", vector_size_),
          absl::StrFormat("thread_id_virtual_scaling = %d",
                          thread_id_virtual_scaling_)},
@@ -126,7 +106,6 @@ class TilingScheme {
            thread_id_virtual_scaling_;
   }
 
-  IndexingOrder GetIndexingOrder() const { return indexing_order_; }
   int GetVectorSize() const { return vector_size_; }
 
   // Scaling factor for transforming physical threadId to logical.
@@ -147,8 +126,6 @@ class TilingScheme {
 
   // Number of threads implicitly assigned to each dimension.
   Vector3 num_threads_;
-
-  IndexingOrder indexing_order_;
 
   // Vector size for dimension X.
   int vector_size_;

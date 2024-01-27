@@ -44,19 +44,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// Gets the output offset as calculated from thread_id.x (to be applied to the
-// offset calculated from block_id and thread_id.y).
-llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
-                             llvm::Value* thread_id_x, llvm::Type* index_ty,
-                             llvm::IRBuilder<>* b) {
-  int64_t multiplier =
-      tiling_scheme.GetIndexingOrder() == TilingScheme::StridedIndexingX
-          ? tiling_scheme.GetVectorSize()
-          : tiling_scheme.GetThreadTileSize()[TilingScheme::DimX];
-  return b->CreateMul(thread_id_x,
-                      llvm::ConstantInt::get(index_ty, multiplier));
-}
-
 void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
                  const TilingScheme& tiling_scheme, int dim,
                  std::array<llvm::Value*, 3> tile_idx,
@@ -83,10 +70,7 @@ void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
     recurse();
   } else if (dim == TilingScheme::DimX) {
     int64_t vector_size = tiling_scheme.GetVectorSize();
-    int64_t stride =
-        tiling_scheme.GetIndexingOrder() == TilingScheme::StridedIndexingX
-            ? tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX]
-            : 1;
+    int64_t stride = tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX];
     int64_t last_dim_size = tiling_scheme.GetThreadTileSize()[2] / vector_size;
 
     auto make_loop = [&](bool emit_bounds_checks) {
@@ -110,13 +94,16 @@ void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
                 constant(1), body);
       };
     };
-    // Most tiles will be full, so we emit a single bounds checks for those.
-    auto* is_full_tile = b->CreateICmpEQ(
-        constant(tiling_scheme.GetBlockTileSize()[dim]), tile_dimensions[dim]);
-    // TODO(jreiffers): Always check for full tiles, iff the block count is > 1.
-    if (stride > 1) {
+    if (stride > 1 && last_dim_size > 1) {
+      // Most tiles will be full, so we emit a single bounds check for those.
+      auto* is_full_tile =
+          b->CreateICmpEQ(constant(tiling_scheme.GetBlockTileSize()[dim]),
+                          tile_dimensions[dim]);
       ksl.If("is_full_tile", is_full_tile, make_loop(false), make_loop(true));
     } else {
+      // TODO(jreiffers): If last_dim_size is 1, we don't need the bounds check
+      // and actually we don't need any loop. That's a special case of the TODO
+      // above.
       make_loop(true)();
     }
   } else {
@@ -221,8 +208,8 @@ absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
       builder->CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x")};
   std::array<llvm::Value*, 3> start_offsets{
       constant(0), thread_ids[TilingScheme::DimY],
-      GetStartOffsetX(tiling_scheme, thread_ids[TilingScheme::DimX], index_ty,
-                      builder)};
+      builder->CreateMul(thread_ids[TilingScheme::DimX],
+                         constant(tiling_scheme.GetVectorSize()))};
   std::array<llvm::Value*, 3> strides{
       constant(1),
       constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimY]),
