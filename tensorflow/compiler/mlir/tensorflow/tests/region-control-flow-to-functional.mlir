@@ -960,3 +960,33 @@ func.func @testGeneratorDatasetRegionWithComplexBlocks(%arg0: tensor<4xf32>, %ar
   }) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", metadata = "", operandSegmentSizes = array<i32: 1, 2, 1>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string]} : (tensor<4xf32>, tensor<3xf32>, tensor<!tf_type.resource>, tensor<2xf32>) -> tensor<!tf_type.variant>
   return
 }
+
+// -----
+
+func.func private @tf.WhileRegion_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
+  %1 = builtin.unrealized_conversion_cast to tensor<i32>
+  %2 = builtin.unrealized_conversion_cast to tensor<f32>
+  return %1, %2 : tensor<i32>, tensor<f32>
+}
+func.func private @tf.WhileRegion_cond(%arg0: tensor<i32>) -> tensor<i1> {
+  %0 = builtin.unrealized_conversion_cast to tensor<i1>
+  return %0 : tensor<i1>
+}
+// CHECK-LABEL: testNameCollision
+func.func @testNameCollision(%arg0: tensor<i32>) {
+  %1 = builtin.unrealized_conversion_cast to tensor<i32>
+  %2 = builtin.unrealized_conversion_cast to tensor<f32>
+  // CHECK: "tf.While"
+  // CHECK-SAME: body = @tf.WhileRegion_body_1
+  // CHECK-SAME: cond = @tf.WhileRegion_cond_0
+  %3:2 = "tf.WhileRegion"(%1, %2) <{is_stateless = false}> ({
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<f32>):
+    %8 = func.call @tf.WhileRegion_cond(%arg1) : (tensor<i32>) -> tensor<i1>
+    "tf.Yield"(%8, %arg1, %arg2) : (tensor<i1>, tensor<i32>, tensor<f32>) -> ()
+  }, {
+  ^bb0(%arg1: tensor<i32>, %arg2: tensor<f32>):
+    %8:2 = func.call @tf.WhileRegion_body(%arg1, %arg2) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+    "tf.Yield"(%8#0, %8#1) : (tensor<i32>, tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+  return
+}

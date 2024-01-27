@@ -183,7 +183,7 @@ StringRef ExtractSingleBlockRegion(
   }
 
   ModuleOp module = region.getParentOfType<ModuleOp>();
-  auto builder = OpBuilder::atBlockBegin(module.getBody());
+  OpBuilder builder(module.getContext());
   auto loc = region.getParentOp()->getLoc();
   Block& entry = region.front();
   int num_region_arguments = entry.getNumArguments();
@@ -236,8 +236,9 @@ StringRef ExtractSingleBlockRegion(
 
   outlined_func.setPrivate();
 
-  // Uniquify the function name.
-  symbol_table.getSymbolTable(module).insert(outlined_func);
+  // Uniquify the function name, and insert into module.
+  symbol_table.getSymbolTable(module).insert(outlined_func,
+                                             module.getBody()->begin());
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
