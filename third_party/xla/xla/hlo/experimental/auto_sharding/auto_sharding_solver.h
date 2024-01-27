@@ -119,6 +119,11 @@ bool CheckEquivalent(const AutoShardingSolverRequest& request,
                      const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
                      NodeStrategyIdx first, NodeStrategyIdx second);
 
+// For every node, examine each sharding strategy to see if it is equivalent to
+// another (which, if so, would allow the reusing of strategy variables).
+std::vector<std::vector<NodeStrategyIdx>> StratFollow(
+    const AutoShardingSolverRequest& request);
+
 }  // namespace spmd
 }  // namespace xla
 
