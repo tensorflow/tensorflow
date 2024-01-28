@@ -232,10 +232,6 @@ tf_py_strict_test(
     # }),
     # copybara:uncomment_end
     shard_count = 8,
-    tags = [
-        # TODO(b/315392620): Fix this.
-        "notsan",
-    ],
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
