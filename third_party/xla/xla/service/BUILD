@@ -873,7 +873,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
-    tags = ["no_aarch64"],
+    tags = ["no_arm64"],
     deps = [
         "//xla:literal",
         "//xla:protobuf_util",
@@ -7033,7 +7033,7 @@ cc_library(
 xla_cc_test(
     name = "lockable_test",
     srcs = ["lockable_test.cc"],
-    tags = ["no_aarch64"],
+    tags = ["no_arm64"],
     deps = [
         ":lockable",
         "@com_google_absl//absl/synchronization",
