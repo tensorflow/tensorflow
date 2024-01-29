@@ -612,17 +612,21 @@ AutoShardingSolverResult CallORToolsSolver(
     solver->SetTimeLimit(
         absl::Seconds(request.solver_timeout().solver_timeout_in_seconds()));
   }
+  if (request.enable_output()) {
+    solver->EnableOutput();
+  }
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
           << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
           << "Time limit: " << solver->time_limit() << "\n"
-          << "Number variables for ILP: " << solver->NumVariables() << "\n"
+          << "Aliases: " << request.aliases_size() << "\n"
           << "Unique nodes: " << unique_nodes << "\n"
           << "Unique edges: " << unique_edges << "\n"
           << "Total instructions: " << request.num_nodes() << "\n"
           << "Memory budget: " << request.memory_budget() / (1024 * 1024 * 1024)
           << "GB\n"
+          << "Number variables for ILP: " << solver->NumVariables() << "\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
           << "Deterministic mode: " << request.deterministic_mode() << "\n"
           << "Module name: " << request.module_name();

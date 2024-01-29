@@ -68,4 +68,5 @@ message AutoShardingSolverRequest {
   bool deterministic_mode = 27;
   string module_name = 24;
   string request_name = 30;
+  bool enable_output = 31;
 }
