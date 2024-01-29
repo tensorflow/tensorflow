@@ -58,6 +58,13 @@ class MixedTypeTest : public GpuCodegenTest,
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // We are testing Triton, remove cuBLAS fallback for these tests.
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
+  }
 };
 
 TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
