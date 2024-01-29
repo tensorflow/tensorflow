@@ -248,6 +248,7 @@ cc_library(
     name = "mlir_bridge_pass_util",
     srcs = ["mlir_bridge_pass_util.cc"],
     hdrs = ["mlir_bridge_pass_util.h"],
+    visibility = ["//tensorflow/compiler/tf2xla:__pkg__"],
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:core_cpu_base",
