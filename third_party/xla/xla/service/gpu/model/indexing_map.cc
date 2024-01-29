@@ -100,8 +100,7 @@ bool ParseLinearFunction(AffineExpr expr, AffineExpr* symbol_or_dim,
 }  // namespace
 
 std::string Range::ToString() const {
-  std::string s;
-  std::stringstream ss(s);
+  std::stringstream ss;
   Print(ss);
   return ss.str();
 }
@@ -182,8 +181,7 @@ bool Domain::IsKnownEmpty() const {
 }
 
 std::string Domain::ToString(const AffineMapPrinter& printer) const {
-  std::string s;
-  std::stringstream ss(s);
+  std::stringstream ss;
   Print(ss, printer);
   return ss.str();
 }
@@ -200,15 +198,18 @@ void Domain::Print(std::ostream& out, const AffineMapPrinter& printer) const {
     out << '\n';
   }
   std::vector<std::string> expr_range_strings;
+  expr_range_strings.reserve(expr_ranges_.size());
   for (const auto& [expr, range] : expr_ranges_) {
-    std::stringstream ss(expr_range_strings.emplace_back());
+    std::stringstream ss;
     printer.Print(ss, expr);
     ss << " in ";
     range.Print(ss);
+    ss << '\n';
+    expr_range_strings.push_back(ss.str());
   }
   std::sort(expr_range_strings.begin(), expr_range_strings.end());
   for (const auto& expr_range_string : expr_range_strings) {
-    out << expr_range_string << "\n";
+    out << expr_range_string;
   }
 }
 
@@ -288,8 +289,7 @@ bool operator==(const Domain& lhs, const Domain& rhs) {
 }
 
 std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
-  std::string s;
-  std::stringstream ss(s);
+  std::stringstream ss;
   Print(ss, printer);
   return ss.str();
 }
@@ -361,9 +361,9 @@ std::optional<IndexingMap> ComposeIndexingMaps(
   // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
   // symbols(consumer_map)]. In that order we are adding the symbol ranges while
   // skipping the symbols that are unused.
-  std::vector<Range> combined_symbol_ranges_;
-  combined_symbol_ranges_.reserve(producer_map->domain.GetSymbolCount() +
-                                  consumer_map->domain.GetSymbolCount());
+  std::vector<Range> combined_symbol_ranges;
+  combined_symbol_ranges.reserve(producer_map->domain.GetSymbolCount() +
+                                 consumer_map->domain.GetSymbolCount());
   int64_t symbol_id = 0;
   for (const Range& symbol_range :
        llvm::concat<const Range>(producer_map->domain.GetSymbolRanges(),
@@ -371,12 +371,12 @@ std::optional<IndexingMap> ComposeIndexingMaps(
     if (unused_symbols_bit_vector[symbol_id++]) {
       continue;
     }
-    combined_symbol_ranges_.push_back(symbol_range);
+    combined_symbol_ranges.push_back(symbol_range);
   }
 
   IndexingMap composed_indexing_map{
       std::move(composed_map), Domain{consumer_map->domain.GetDimensionRanges(),
-                                      combined_symbol_ranges_}};
+                                      combined_symbol_ranges}};
   composed_indexing_map.Simplify();
 
   RangeEvaluator consumer_range_evaluator(&consumer_map->domain);
@@ -385,7 +385,8 @@ std::optional<IndexingMap> ComposeIndexingMaps(
        llvm::enumerate(consumer_map->affine_map.getResults())) {
     Range consumer_result_range =
         consumer_range_evaluator.ComputeExpressionRange(expr);
-    Range producer_dim_range = producer_map->domain.GetDimensionRange(index);
+    Range producer_dim_range =
+        producer_map->domain.GetDimensionRange(static_cast<int64_t>(index));
     // If the constraint is always satisfied, we skip it.
     if (consumer_result_range.upper_bound <= producer_dim_range.upper_bound &&
         consumer_result_range.lower_bound >= producer_dim_range.lower_bound) {

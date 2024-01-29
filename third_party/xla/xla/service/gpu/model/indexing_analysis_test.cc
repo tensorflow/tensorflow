@@ -35,6 +35,7 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
+using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -79,8 +80,8 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
       fusion_adaptor, /*output_id=*/0, &mlir_context_);
-  EXPECT_THAT(*grouped_indexing,
-              UnorderedElementsAre(
+  EXPECT_THAT(grouped_indexing,
+              Optional(UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingString(R"(
                     (d0, d1) -> (d0, d1)
                     domain:
@@ -104,7 +105,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
                         domain:
                         d0 in [0, 999]
                         d1 in [0, 999]
-                      )")))));
+                      )"))))));
 }
 
 TEST_F(IndexingAnalysisTest, ElementwiseOp) {
@@ -974,12 +975,14 @@ TEST_F(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
                             domain:
                             d0 in [0, 3]
                             d1 in [0, 7]
+                            d0 * 8 + d1 in [0, 1]
                           )")),
                           ElementsAre(MatchIndexingString(R"(
                             (d0, d1) -> (d0 * 8 + d1 - 2)
                             domain:
                             d0 in [0, 3]
                             d1 in [0, 7]
+                            d0 * 8 + d1 in [2, 31]
                           )"))));
 }
 
