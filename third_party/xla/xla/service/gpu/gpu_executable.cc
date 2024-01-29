@@ -99,7 +99,16 @@ namespace xla {
 namespace gpu {
 
 bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
-  return config.debug_options().xla_gpu_enable_xla_runtime_executable();
+  bool enabled = config.debug_options().xla_gpu_enable_xla_runtime_executable();
+  if (enabled) {
+    LOG(WARNING)
+        << "XLA:GPU uses deprecated xla runtime by setting "
+           "--xla_gpu_enable_xla_runtime_executable flag to true. This flag "
+           "together with the deprecated code will be removed soon. Please "
+           "check that your workloads can run with default XLA runtime and if "
+           "not report bugs to XLA team ASAP.";
+  }
+  return enabled;
 }
 
 namespace {
