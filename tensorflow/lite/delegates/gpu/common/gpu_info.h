@@ -264,20 +264,23 @@ struct MaliInfo {
 };
 
 enum class PowerVRGpu {
+  kUnknown,
+  // Newer generation of IMG gpus
+  // Starting with B-series - all RTE with the exception of BXM:
+  kDXT,
+  kCXT,
+  kBXT,
+  kBXS,
+  kBXM,
+  kBXE,
+  // RTZ
+  kAXT,
+  kAXM,
+  kAXE,
+  // Older generation of rogue IMG gpus - all RTZ:
+  kRogue,
   kRogueGm9xxx,
   kRogueGe8xxx,
-  kRogue,
-  // New generation of IMG gpus after 2019:
-  kAXE,
-  kAXM,
-  kAXT,
-  kBXE,
-  kBXM,
-  kBXS,
-  kBXT,
-  kCXT,
-  kDXT,
-  kUnknown,
 };
 
 struct PowerVRInfo {
