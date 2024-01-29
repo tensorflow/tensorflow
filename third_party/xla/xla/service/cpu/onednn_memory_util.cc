@@ -96,10 +96,8 @@ StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
   // Allocate MemrefInfo on the stack
   llvm::Value* memref_info_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
       memref_info_type, "memref.info", &builder);
-  llvm::Value* memref_life_start =
-      builder.CreateLifetimeStart(memref_info_ptr, builder.getInt64(-1));
-  llvm::Value* memref_store =
-      builder.CreateStore(memref_info_val, memref_info_ptr);
+  builder.CreateLifetimeStart(memref_info_ptr, builder.getInt64(-1));
+  builder.CreateStore(memref_info_val, memref_info_ptr);
 
   return {&builder, memref_info_ptr};
 }

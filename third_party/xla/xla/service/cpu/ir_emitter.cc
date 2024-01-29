@@ -2548,9 +2548,8 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   llvm::Value* nargs_val = b_.getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
-  llvm::Value* nargs_life_start =
-      b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
-  llvm::Value* nargs_store = b_.CreateStore(nargs_val, nargs_ptr);
+  b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  b_.CreateStore(nargs_val, nargs_ptr);
   args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
   // Insert ExecutableRunOptions.
@@ -2586,9 +2585,8 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "matmul.args", &b_);
-  llvm::Value* args_life_start =
-      b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
-  llvm::Value* args_store = b_.CreateStore(args_val, args_ptr);
+  b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  b_.CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
@@ -2630,9 +2628,8 @@ Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
   llvm::Value* nargs_val = b_.getInt64(nargs);
   llvm::Value* nargs_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
-  llvm::Value* nargs_life_start =
-      b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
-  llvm::Value* nargs_store = b_.CreateStore(nargs_val, nargs_ptr);
+  b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  b_.CreateStore(nargs_val, nargs_ptr);
   args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
 
   // Insert ExecutableRunOptions.
@@ -2665,9 +2662,8 @@ Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
 
   llvm::Value* args_ptr =
       llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", &b_);
-  llvm::Value* args_life_start =
-      b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
-  llvm::Value* args_store = b_.CreateStore(args_val, args_ptr);
+  b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  b_.CreateStore(args_val, args_ptr);
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
@@ -2696,7 +2692,6 @@ Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
   auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
 
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   EmitCallToFunc(runtime::kOneDnnSoftmaxSymbolName,
                  {
                      GetExecutableRunOptionsArgument(),
