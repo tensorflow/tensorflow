@@ -169,7 +169,7 @@ limitations under the License.
 #include "tsl/protobuf/dnn.pb.h"
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
-#include "xla/service/gpu/gpublas_lt_matmul_thunk.h"
+#include "xla/service/gpu/runtime3/gpublas_lt_matmul_thunk.h"
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

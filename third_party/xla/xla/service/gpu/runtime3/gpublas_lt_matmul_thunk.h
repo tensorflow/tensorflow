@@ -13,18 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPUBLAS_LT_MATMUL_THUNK_H_
-#define XLA_SERVICE_GPU_GPUBLAS_LT_MATMUL_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_GPUBLAS_LT_MATMUL_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_GPUBLAS_LT_MATMUL_THUNK_H_
 
-#include <memory>
 #include <optional>
-#include <utility>
 
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -82,4 +79,4 @@ class CublasLtMatmulThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPUBLAS_LT_MATMUL_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_GPUBLAS_LT_MATMUL_THUNK_H_

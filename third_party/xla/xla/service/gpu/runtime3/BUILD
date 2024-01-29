@@ -396,6 +396,25 @@ cc_library(
 )
 
 cc_library(
+    name = "gpublas_lt_matmul_thunk",
+    srcs = if_gpu_is_configured(["gpublas_lt_matmul_thunk.cc"]),
+    hdrs = if_gpu_is_configured(["gpublas_lt_matmul_thunk.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = if_gpu_is_configured([
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:thunk",
+        "//xla:status",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor",
+        "@local_tsl//tsl/platform:logging",
+    ]),
+)
+
+cc_library(
     name = "infeed_thunk",
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],
