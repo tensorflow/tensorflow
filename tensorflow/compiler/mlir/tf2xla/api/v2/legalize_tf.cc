@@ -167,9 +167,9 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     return *compilation_result;
   }
 
-  VLOG(1)
-      << "Failed to compile MLIR computation to XLA HLO using "
-         "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
+  VLOG(1) << "Failed to compile MLIR computation to XLA HLO using Combined "
+             "MLIR and XlaBuilder Bridge. Falling back to MLIR tf2xla Bridge. "
+          << combined_bridge_status.status();
   tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
                           combined_bridge_status.status().ToString())
       .IgnoreError();
@@ -182,7 +182,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
   if (mlir_bridge_status.ok()) {
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
-               "tf2xla bridge";
+               "tf2xla Bridge";
     IncrementTfMlirBridgeSecondPhaseCounter(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
 
@@ -193,10 +193,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   } else if (mlir_bridge_status.status() ==
              CompileToHloGraphAnalysisFailedError()) {
     VLOG(1) << "Filtered out MLIR computation to XLA HLO using MLIR tf2xla "
-               "bridge. Falling back to Combined Bridge.";
+               "Bridge. Could not generate HLO.";
   } else {
-    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using "
-               "MLIR Bridge. Falling back to Combined Bridge.";
+    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using MLIR "
+               "tf2xla Bridge. Could not generate HLO. "
+            << mlir_bridge_status.status();
     tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_PHASE2_MLIR_BRIDGE",
                             mlir_bridge_status.status().ToString())
         .IgnoreError();
