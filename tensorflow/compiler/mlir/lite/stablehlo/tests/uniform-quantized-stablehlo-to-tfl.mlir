@@ -668,3 +668,67 @@ func.func @float_concatenate(%arg0: tensor<3x2xf32>, %arg1: tensor<1x2xf32>) -> 
 
 // CHECK-NOT: tfl.concatenation
 // CHECK: stablehlo.concatenate
+
+// -----
+
+// Test that a quantized stablehlo.pad without interior padding is converted to
+// tfl.padv2.
+
+// CHECK-LABEL: pad_without_interior_padding
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @pad_without_interior_padding(
+    %arg0: tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<4x5x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = stablehlo.pad %arg0, %arg1, low = [0, 1], high = [2, 1], interior = [0, 0] : (
+    tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<4x5x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<4x5x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK: %[[PADDING:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[[0, 2], [1, 1]]> : tensor<2x2xi32>
+// CHECK: %[[PAD:.*]] = "tfl.padv2"(%[[ARG0]], %[[PADDING]], %[[ARG1]]) : (tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<2x2xi32>, tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<4x5x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[PAD]]
+
+// -----
+
+// Test that a quantized stablehlo.pad with interior padding is converted to
+// tfl.dilate and tfl.padv2.
+
+// CHECK-LABEL: pad_with_interior_padding
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @pad_with_interior_padding(
+    %arg0: tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<5x9x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = stablehlo.pad %arg0, %arg1, low = [0, 1], high = [2, 1], interior = [1, 2] : (
+    tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>,
+    tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<5x9x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<5x9x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK: %[[PADDING:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[[0, 2], [1, 1]]> : tensor<2x2xi32>
+// CHECK: %[[INTERIOR:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[1, 2]> : tensor<2xi32>
+// CHECK: %[[DILATE:.*]] = "tfl.dilate"(%[[ARG0]], %[[INTERIOR]], %[[ARG1]]) : (tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<2xi32>, tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<3x7x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: %[[PAD:.*]] = "tfl.padv2"(%[[DILATE]], %[[PADDING]], %[[ARG1]]) : (tensor<3x7x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<2x2xi32>, tensor<!quant.uniform<i8:f32, 2.000000e+00:-1>>) -> tensor<5x9x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[PAD]]
+
+// -----
+
+// Test that a float stablehlo.pad is not converted to tfl.padv2.
+
+// CHECK-LABEL: float_pad
+func.func @float_pad(%arg0: tensor<2x3xf32>, %arg1: tensor<f32>) -> tensor<4x5xf32> {
+  %0 = stablehlo.pad %arg0, %arg1, low = [0, 1], high = [2, 1], interior = [0, 0] : (tensor<2x3xf32>, tensor<f32>) -> tensor<4x5xf32>
+  return %0 : tensor<4x5xf32>
+}
+
+// CHECK-NOT: tfl.padv2
+// CHECK: stablehlo.pad
