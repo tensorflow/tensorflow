@@ -118,7 +118,7 @@ absl::Status RunSend(NcclApi* nccl_api,
   // Send source buffer to target peer if needed.
   if (target_id) {
     TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
-                                      buffer.element_type, *target_id, comm,
+                                      buffer.element_count, *target_id, comm,
                                       &stream));
   }
 
