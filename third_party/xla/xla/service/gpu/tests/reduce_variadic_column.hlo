@@ -237,20 +237,18 @@ ENTRY main {
 // CHECK:         %[[VAL_157:.*]] = getelementptr inbounds [5 x [200 x [300 x float]]], ptr %[[VAL_158:.*]], i32 0, i32 %[[VAL_85]], i32 %[[VAL_155]], i32 %[[VAL_156]]
 // CHECK:         %[[VAL_159:.*]] = load float, ptr %[[VAL_157]], align 4, !invariant.load !3
 // CHECK:         store float %[[VAL_159]], ptr %[[VAL_40]], align 4
-// CHECK:         %[[VAL_160:.*]] = getelementptr inbounds float, ptr %[[VAL_39]], i32 0
 // CHECK:         %[[VAL_161:.*]] = getelementptr inbounds [5 x [200 x [300 x float]]], ptr %[[VAL_162:.*]], i32 0, i32 %[[VAL_85]], i32 %[[VAL_155]], i32 %[[VAL_156]]
 // CHECK:         %[[VAL_163:.*]] = load float, ptr %[[VAL_161]], align 4, !invariant.load !3
 // CHECK:         store float %[[VAL_163]], ptr %[[VAL_38]], align 4
-// CHECK:         %[[VAL_164:.*]] = getelementptr inbounds float, ptr %[[VAL_37]], i32 0
 // CHECK:         %[[VAL_165:.*]] = getelementptr inbounds [2 x ptr], ptr %[[VAL_33]], i64 0, i64 0
 // CHECK:         store ptr %[[VAL_31]], ptr %[[VAL_165]], align 8
 // CHECK:         %[[VAL_166:.*]] = getelementptr inbounds [2 x ptr], ptr %[[VAL_33]], i64 0, i64 1
 // CHECK:         store ptr %[[VAL_32]], ptr %[[VAL_166]], align 8
-// CHECK:         call void @[[ADD]](ptr %[[VAL_160]], ptr %[[VAL_164]], ptr %[[VAL_40]], ptr %[[VAL_38]], ptr %[[VAL_33]])
+// CHECK:         call void @[[ADD]](ptr %[[VAL_39]], ptr %[[VAL_37]], ptr %[[VAL_40]], ptr %[[VAL_38]], ptr %[[VAL_33]])
 // CHECK:         %[[VAL_167:.*]] = load float, ptr %[[VAL_31]], align 4
 // CHECK:         %[[VAL_168:.*]] = load float, ptr %[[VAL_32]], align 4
-// CHECK:         store float %[[VAL_167]], ptr %[[VAL_160]], align 4
-// CHECK:         store float %[[VAL_168]], ptr %[[VAL_164]], align 4
+// CHECK:         store float %[[VAL_167]], ptr %[[VAL_39]], align 4
+// CHECK:         store float %[[VAL_168]], ptr %[[VAL_37]], align 4
 // CHECK:         br label %[[VAL_146]], !llvm.loop !9
 // CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_146]]
 // CHECK:         br label %[[VAL_87]]
@@ -281,20 +279,18 @@ ENTRY main {
 // CHECK:         %[[VAL_184:.*]] = getelementptr inbounds [5 x [200 x [300 x float]]], ptr %[[VAL_158]], i32 0, i32 %[[VAL_85]], i32 %[[VAL_182]], i32 %[[VAL_183]]
 // CHECK:         %[[VAL_185:.*]] = load float, ptr %[[VAL_184]], align 4, !invariant.load !3
 // CHECK:         store float %[[VAL_185]], ptr %[[VAL_40]], align 4
-// CHECK:         %[[VAL_186:.*]] = getelementptr inbounds float, ptr %[[VAL_39]], i32 0
 // CHECK:         %[[VAL_187:.*]] = getelementptr inbounds [5 x [200 x [300 x float]]], ptr %[[VAL_162]], i32 0, i32 %[[VAL_85]], i32 %[[VAL_182]], i32 %[[VAL_183]]
 // CHECK:         %[[VAL_188:.*]] = load float, ptr %[[VAL_187]], align 4, !invariant.load !3
 // CHECK:         store float %[[VAL_188]], ptr %[[VAL_38]], align 4
-// CHECK:         %[[VAL_189:.*]] = getelementptr inbounds float, ptr %[[VAL_37]], i32 0
 // CHECK:         %[[VAL_190:.*]] = getelementptr inbounds [2 x ptr], ptr %[[VAL_29]], i64 0, i64 0
 // CHECK:         store ptr %[[VAL_27]], ptr %[[VAL_190]], align 8
 // CHECK:         %[[VAL_191:.*]] = getelementptr inbounds [2 x ptr], ptr %[[VAL_29]], i64 0, i64 1
 // CHECK:         store ptr %[[VAL_28]], ptr %[[VAL_191]], align 8
-// CHECK:         call void @[[ADD]](ptr %[[VAL_186]], ptr %[[VAL_189]], ptr %[[VAL_40]], ptr %[[VAL_38]], ptr %[[VAL_29]])
+// CHECK:         call void @[[ADD]](ptr %[[VAL_39]], ptr %[[VAL_37]], ptr %[[VAL_40]], ptr %[[VAL_38]], ptr %[[VAL_29]])
 // CHECK:         %[[VAL_192:.*]] = load float, ptr %[[VAL_27]], align 4
 // CHECK:         %[[VAL_193:.*]] = load float, ptr %[[VAL_28]], align 4
-// CHECK:         store float %[[VAL_192]], ptr %[[VAL_186]], align 4
-// CHECK:         store float %[[VAL_193]], ptr %[[VAL_189]], align 4
+// CHECK:         store float %[[VAL_192]], ptr %[[VAL_39]], align 4
+// CHECK:         store float %[[VAL_193]], ptr %[[VAL_37]], align 4
 // CHECK:         br label %[[VAL_171]]
 // CHECK:       intra_warp_reduce_write-true:                     ; preds = %[[VAL_81]]
 // CHECK:         %[[VAL_196:.*]] = load float, ptr %[[VAL_39]], align 4

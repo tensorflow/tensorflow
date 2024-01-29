@@ -225,10 +225,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_175:.*]] = getelementptr inbounds [10000 x %[[VAL_1]]], ptr %[[VAL_176:.*]], i32 0, i32 %[[VAL_174]]
 // CHECK:         %[[VAL_177:.*]] = load %[[VAL_1]], ptr %[[VAL_175]], align 1, !invariant.load !3
 // CHECK:         store %[[VAL_1]] %[[VAL_177]], ptr %[[VAL_30]], align 1
-// CHECK:         %[[VAL_178:.*]] = getelementptr inbounds %[[VAL_1]], ptr %[[VAL_29]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_178]], ptr %[[VAL_30]], ptr %[[VAL_26]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_29]], ptr %[[VAL_30]], ptr %[[VAL_26]])
 // CHECK:         %[[VAL_179:.*]] = load %[[VAL_1]], ptr %[[VAL_26]], align 1
-// CHECK:         store %[[VAL_1]] %[[VAL_179]], ptr %[[VAL_178]], align 1
+// CHECK:         store %[[VAL_1]] %[[VAL_179]], ptr %[[VAL_29]], align 1
 // CHECK:         %[[VAL_180:.*]] = mul i32 %[[VAL_166]], 1280
 // CHECK:         %[[VAL_181:.*]] = add i32 %[[VAL_180]], 1
 // CHECK:         %[[VAL_182:.*]] = add i32 %[[VAL_181]], %[[VAL_189]]
@@ -237,10 +236,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_185:.*]] = getelementptr inbounds [10000 x %[[VAL_1]]], ptr %[[VAL_176]], i32 0, i32 %[[VAL_184]]
 // CHECK:         %[[VAL_186:.*]] = load %[[VAL_1]], ptr %[[VAL_185]], align 1, !invariant.load !3
 // CHECK:         store %[[VAL_1]] %[[VAL_186]], ptr %[[VAL_30]], align 1
-// CHECK:         %[[VAL_187:.*]] = getelementptr inbounds %[[VAL_1]], ptr %[[VAL_29]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_187]], ptr %[[VAL_30]], ptr %[[VAL_25]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_29]], ptr %[[VAL_30]], ptr %[[VAL_25]])
 // CHECK:         %[[VAL_188:.*]] = load %[[VAL_1]], ptr %[[VAL_25]], align 1
-// CHECK:         store %[[VAL_1]] %[[VAL_188]], ptr %[[VAL_187]], align 1
+// CHECK:         store %[[VAL_1]] %[[VAL_188]], ptr %[[VAL_29]], align 1
 // CHECK:         br label %[[VAL_164]], !llvm.loop !7
 // CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_164]]
 // CHECK:         br label %[[VAL_64]]
@@ -276,10 +274,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_210:.*]] = getelementptr inbounds [10000 x %[[VAL_1]]], ptr %[[VAL_176]], i32 0, i32 %[[VAL_209]]
 // CHECK:         %[[VAL_211:.*]] = load %[[VAL_1]], ptr %[[VAL_210]], align 1, !invariant.load !3
 // CHECK:         store %[[VAL_1]] %[[VAL_211]], ptr %[[VAL_30]], align 1
-// CHECK:         %[[VAL_212:.*]] = getelementptr inbounds %[[VAL_1]], ptr %[[VAL_29]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_212]], ptr %[[VAL_30]], ptr %[[VAL_23]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_29]], ptr %[[VAL_30]], ptr %[[VAL_23]])
 // CHECK:         %[[VAL_213:.*]] = load %[[VAL_1]], ptr %[[VAL_23]], align 1
-// CHECK:         store %[[VAL_1]] %[[VAL_213]], ptr %[[VAL_212]], align 1
+// CHECK:         store %[[VAL_1]] %[[VAL_213]], ptr %[[VAL_29]], align 1
 // CHECK:         br label %[[VAL_202]]
 // CHECK:       x_in_tile-true15:                                 ; preds = %[[VAL_202]]
 // CHECK:         %[[VAL_214:.*]] = add i32 %[[VAL_61]], %[[VAL_65]]
@@ -287,10 +284,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_216:.*]] = getelementptr inbounds [10000 x %[[VAL_1]]], ptr %[[VAL_176]], i32 0, i32 %[[VAL_215]]
 // CHECK:         %[[VAL_217:.*]] = load %[[VAL_1]], ptr %[[VAL_216]], align 1, !invariant.load !3
 // CHECK:         store %[[VAL_1]] %[[VAL_217]], ptr %[[VAL_30]], align 1
-// CHECK:         %[[VAL_218:.*]] = getelementptr inbounds %[[VAL_1]], ptr %[[VAL_29]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_218]], ptr %[[VAL_30]], ptr %[[VAL_22]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_29]], ptr %[[VAL_30]], ptr %[[VAL_22]])
 // CHECK:         %[[VAL_219:.*]] = load %[[VAL_1]], ptr %[[VAL_22]], align 1
-// CHECK:         store %[[VAL_1]] %[[VAL_219]], ptr %[[VAL_218]], align 1
+// CHECK:         store %[[VAL_1]] %[[VAL_219]], ptr %[[VAL_29]], align 1
 // CHECK:         br label %[[VAL_191]]
 // CHECK:       intra_warp_reduce_write-true:                     ; preds = %[[VAL_67]]
 // CHECK:         %[[VAL_222:.*]] = load %[[VAL_1]], ptr %[[VAL_29]], align 1

@@ -184,10 +184,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_126:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_127:.*]], i32 0, i32 %[[VAL_125]]
 // CHECK:         %[[VAL_128:.*]] = load float, ptr %[[VAL_126]], align 4, !invariant.load !5
 // CHECK:         store float %[[VAL_128]], ptr %[[VAL_46]], align 4
-// CHECK:         %[[VAL_129:.*]] = getelementptr inbounds float, ptr %[[VAL_45]], i32 0
-// CHECK:         call void @[[MIN]](ptr %[[VAL_129]], ptr %[[VAL_46]], ptr %[[VAL_42]])
+// CHECK:         call void @[[MIN]](ptr %[[VAL_45]], ptr %[[VAL_46]], ptr %[[VAL_42]])
 // CHECK:         %[[VAL_130:.*]] = load float, ptr %[[VAL_42]], align 4
-// CHECK:         store float %[[VAL_130]], ptr %[[VAL_129]], align 4
+// CHECK:         store float %[[VAL_130]], ptr %[[VAL_45]], align 4
 // CHECK:         %[[VAL_131:.*]] = mul i32 %[[VAL_117]], 2048
 // CHECK:         %[[VAL_132:.*]] = add i32 %[[VAL_131]], 1
 // CHECK:         %[[VAL_133:.*]] = add i32 %[[VAL_132]], %[[VAL_114]]
@@ -196,10 +195,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_136:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_127]], i32 0, i32 %[[VAL_135]]
 // CHECK:         %[[VAL_137:.*]] = load float, ptr %[[VAL_136]], align 4, !invariant.load !5
 // CHECK:         store float %[[VAL_137]], ptr %[[VAL_46]], align 4
-// CHECK:         %[[VAL_138:.*]] = getelementptr inbounds float, ptr %[[VAL_45]], i32 0
-// CHECK:         call void @[[MIN]](ptr %[[VAL_138]], ptr %[[VAL_46]], ptr %[[VAL_41]])
+// CHECK:         call void @[[MIN]](ptr %[[VAL_45]], ptr %[[VAL_46]], ptr %[[VAL_41]])
 // CHECK:         %[[VAL_139:.*]] = load float, ptr %[[VAL_41]], align 4
-// CHECK:         store float %[[VAL_139]], ptr %[[VAL_138]], align 4
+// CHECK:         store float %[[VAL_139]], ptr %[[VAL_45]], align 4
 // CHECK:         br label %[[VAL_115]], !llvm.loop !10
 // CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_115]]
 // CHECK:         br label %[[VAL_80]]
@@ -235,10 +233,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_161:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_127]], i32 0, i32 %[[VAL_160]]
 // CHECK:         %[[VAL_162:.*]] = load float, ptr %[[VAL_161]], align 4, !invariant.load !5
 // CHECK:         store float %[[VAL_162]], ptr %[[VAL_46]], align 4
-// CHECK:         %[[VAL_163:.*]] = getelementptr inbounds float, ptr %[[VAL_45]], i32 0
-// CHECK:         call void @[[MIN]](ptr %[[VAL_163]], ptr %[[VAL_46]], ptr %[[VAL_39]])
+// CHECK:         call void @[[MIN]](ptr %[[VAL_45]], ptr %[[VAL_46]], ptr %[[VAL_39]])
 // CHECK:         %[[VAL_164:.*]] = load float, ptr %[[VAL_39]], align 4
-// CHECK:         store float %[[VAL_164]], ptr %[[VAL_163]], align 4
+// CHECK:         store float %[[VAL_164]], ptr %[[VAL_45]], align 4
 // CHECK:         br label %[[VAL_153]]
 // CHECK:       x_in_tile-true15:                                 ; preds = %[[VAL_153]]
 // CHECK:         %[[VAL_165:.*]] = add i32 %[[VAL_77]], %[[VAL_81]]
@@ -246,10 +243,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_167:.*]] = getelementptr inbounds [300000 x float], ptr %[[VAL_127]], i32 0, i32 %[[VAL_166]]
 // CHECK:         %[[VAL_168:.*]] = load float, ptr %[[VAL_167]], align 4, !invariant.load !5
 // CHECK:         store float %[[VAL_168]], ptr %[[VAL_46]], align 4
-// CHECK:         %[[VAL_169:.*]] = getelementptr inbounds float, ptr %[[VAL_45]], i32 0
-// CHECK:         call void @[[MIN]](ptr %[[VAL_169]], ptr %[[VAL_46]], ptr %[[VAL_38]])
+// CHECK:         call void @[[MIN]](ptr %[[VAL_45]], ptr %[[VAL_46]], ptr %[[VAL_38]])
 // CHECK:         %[[VAL_170:.*]] = load float, ptr %[[VAL_38]], align 4
-// CHECK:         store float %[[VAL_170]], ptr %[[VAL_169]], align 4
+// CHECK:         store float %[[VAL_170]], ptr %[[VAL_45]], align 4
 // CHECK:         br label %[[VAL_142]]
 // CHECK:       intra_warp_reduce_write-true:
 // CHECK:         %[[VAL_173:.*]] = load float, ptr %[[VAL_45]], align 4

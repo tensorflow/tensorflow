@@ -423,7 +423,6 @@ class ReductionFusion::ReductionGroupEmitter {
       int output_idx) const;
 
   void GenerateElementForReducer(const HloReduceInstruction* reduction,
-                                 llvm::Value* partial_result_index,
                                  const llvm_ir::IrArray::Index& index) const;
 
   absl::Status EmitExtraOutputsForReduce(
@@ -1046,9 +1045,9 @@ void ReductionFusion::ReductionGroupEmitter::
 }
 
 // Generate a single element of the tile (update the accumulator state) for a
-// given reducer of index `i`.
+// given reducer.
 void ReductionFusion::ReductionGroupEmitter::GenerateElementForReducer(
-    const HloReduceInstruction* reduction, llvm::Value* partial_result_index,
+    const HloReduceInstruction* reduction,
     const llvm_ir::IrArray::Index& index) const {
   HloComputation* reducer = reduction->to_apply();
   auto* builder = reduction_emitter_.builder_;
@@ -1060,18 +1059,13 @@ void ReductionFusion::ReductionGroupEmitter::GenerateElementForReducer(
     const auto& state = GetCalculationStateFor(reduction, red_idx);
 
     llvm::AllocaInst* input_address = state.input_address;
-    llvm::AllocaInst* partial_reduction_result_address =
-        state.partial_result_address;
     llvm_ir::IrArray::Index input_index = GetUnnormalizedIndex(
         index, reduction->operand(0)->shape(), builder,
         reduction_emitter_.reduction_codegen_info_.GetTilingScheme()
             .GetShape());
     llvm::Value* const input_ir_value = *state.input_gen(input_index);
     builder->CreateStore(input_ir_value, input_address);
-    llvm::Value* partial_result_address = builder->CreateInBoundsGEP(
-        partial_reduction_result_address->getAllocatedType(),
-        partial_reduction_result_address, {partial_result_index});
-    reduction_accumulators.push_back(partial_result_address);
+    reduction_accumulators.push_back(state.partial_result_address);
     reduction_input_value.push_back(input_address);
   }
 
@@ -1141,20 +1135,12 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
               const llvm_ir::IrArray::Index& tile_index,
               std::array<llvm::Value*, 3> tile_dimensions) {
             auto emit_element = [&](std::array<llvm::Value*, 3> index_in_tile) {
-              llvm_ir::IrArray::Index index =
-                  tile_index.AddOffset(index_in_tile, builder_);
-              llvm::Value* partial_result_index =
-                  reduction_codegen_info_.IsRowReduction()
-                      ? builder_->getInt32(0)
-                      : builder_->CreateSub(
-                            index_in_tile[TilingScheme::DimX],
-                            thread_id_info.start_offsets[TilingScheme::DimX]);
+              auto index = tile_index.AddOffset(index_in_tile, builder_);
 
               // Emit code to generate the input and perform the reduction
               // computation for each reduction instruction.
               for (const HloReduceInstruction* reduce : heroes) {
-                group_emitter.GenerateElementForReducer(
-                    reduce, partial_result_index, index);
+                group_emitter.GenerateElementForReducer(reduce, index);
               }
 
               // Emit code to generate the output for the non-reduction

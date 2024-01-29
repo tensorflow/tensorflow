@@ -201,7 +201,6 @@ ENTRY e {
 // CHECK:       x_in_tile-true:                                   ; preds = %[[VAL_59]]
 // CHECK:         %[[VAL_139:.*]] = add i32 %[[VAL_44]], %[[VAL_48]]
 // CHECK:         %[[VAL_140:.*]] = add i32 %[[VAL_45]], %[[VAL_64]]
-// CHECK:         %[[VAL_142:.*]] = sub i32 %[[VAL_64]], %[[VAL_54]]
 // CHECK:         %[[VAL_143:.*]] = getelementptr inbounds [1024 x [1024 x i8]], ptr %[[VAL_144:.*]], i32 0, i32 %[[VAL_139]], i32 %[[VAL_140]]
 // CHECK:         %[[VAL_145:.*]] = load i8, ptr %[[VAL_143]], align 1, !invariant.load !9
 // CHECK:         %[[VAL_146:.*]] = getelementptr inbounds [1024 x [1024 x double]], ptr %[[VAL_147:.*]], i32 0, i32 %[[VAL_139]], i32 %[[VAL_140]]
@@ -211,10 +210,9 @@ ENTRY e {
 // CHECK:         %[[VAL_152:.*]] = trunc i8 %[[VAL_145]] to i1
 // CHECK:         %[[VAL_153:.*]] = select i1 %[[VAL_152]], double %[[VAL_148]], double %[[VAL_151]]
 // CHECK:         store double %[[VAL_153]], ptr %[[VAL_14]], align 8
-// CHECK:         %[[VAL_154:.*]] = getelementptr inbounds double, ptr %[[VAL_13]], i32 %[[VAL_142]]
-// CHECK:         call void @[[ADD]](ptr %[[VAL_154]], ptr %[[VAL_14]], ptr %[[VAL_10]])
+// CHECK:         call void @[[ADD]](ptr %[[VAL_13]], ptr %[[VAL_14]], ptr %[[VAL_10]])
 // CHECK:         %[[VAL_155:.*]] = load double, ptr %[[VAL_10]], align 8
-// CHECK:         store double %[[VAL_155]], ptr %[[VAL_154]], align 8
+// CHECK:         store double %[[VAL_155]], ptr %[[VAL_13]], align 8
 // CHECK:         br label %[[VAL_56]]
 // CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_50]]
 // CHECK:         %[[VAL_156:.*]] = add i32 %[[VAL_43]], 0

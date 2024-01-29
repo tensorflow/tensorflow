@@ -158,10 +158,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_108:.*]] = getelementptr inbounds [131072 x [1024 x float]], ptr %[[VAL_109:.*]], i32 0, i32 %[[VAL_106]], i32 %[[VAL_107]]
 // CHECK:         %[[VAL_110:.*]] = load float, ptr %[[VAL_108]], align 4, !invariant.load !7
 // CHECK:         store float %[[VAL_110]], ptr %[[VAL_29]], align 4
-// CHECK:         %[[VAL_111:.*]] = getelementptr inbounds float, ptr %[[VAL_28]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_111]], ptr %[[VAL_29]], ptr %[[VAL_25]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_28]], ptr %[[VAL_29]], ptr %[[VAL_25]])
 // CHECK:         %[[VAL_112:.*]] = load float, ptr %[[VAL_25]], align 4
-// CHECK:         store float %[[VAL_112]], ptr %[[VAL_111]], align 4
+// CHECK:         store float %[[VAL_112]], ptr %[[VAL_28]], align 4
 // CHECK:         %[[VAL_113:.*]] = mul i32 %[[VAL_99]], 128
 // CHECK:         %[[VAL_114:.*]] = add i32 %[[VAL_113]], 1
 // CHECK:         %[[VAL_115:.*]] = add i32 %[[VAL_114]], %[[VAL_96]]
@@ -170,10 +169,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_118:.*]] = getelementptr inbounds [131072 x [1024 x float]], ptr %[[VAL_109]], i32 0, i32 %[[VAL_116]], i32 %[[VAL_117]]
 // CHECK:         %[[VAL_119:.*]] = load float, ptr %[[VAL_118]], align 4, !invariant.load !7
 // CHECK:         store float %[[VAL_119]], ptr %[[VAL_29]], align 4
-// CHECK:         %[[VAL_120:.*]] = getelementptr inbounds float, ptr %[[VAL_28]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_120]], ptr %[[VAL_29]], ptr %[[VAL_24]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_28]], ptr %[[VAL_29]], ptr %[[VAL_24]])
 // CHECK:         %[[VAL_121:.*]] = load float, ptr %[[VAL_24]], align 4
-// CHECK:         store float %[[VAL_121]], ptr %[[VAL_120]], align 4
+// CHECK:         store float %[[VAL_121]], ptr %[[VAL_28]], align 4
 // CHECK:         br label %[[VAL_97]], !llvm.loop !8
 // CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_97]]
 // CHECK:         br label %[[VAL_62]]
@@ -209,10 +207,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_143:.*]] = getelementptr inbounds [131072 x [1024 x float]], ptr %[[VAL_109]], i32 0, i32 %[[VAL_141]], i32 %[[VAL_142]]
 // CHECK:         %[[VAL_144:.*]] = load float, ptr %[[VAL_143]], align 4, !invariant.load !7
 // CHECK:         store float %[[VAL_144]], ptr %[[VAL_29]], align 4
-// CHECK:         %[[VAL_145:.*]] = getelementptr inbounds float, ptr %[[VAL_28]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_145]], ptr %[[VAL_29]], ptr %[[VAL_22]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_28]], ptr %[[VAL_29]], ptr %[[VAL_22]])
 // CHECK:         %[[VAL_146:.*]] = load float, ptr %[[VAL_22]], align 4
-// CHECK:         store float %[[VAL_146]], ptr %[[VAL_145]], align 4
+// CHECK:         store float %[[VAL_146]], ptr %[[VAL_28]], align 4
 // CHECK:         br label %[[VAL_135]]
 // CHECK:       x_in_tile-true15:                                 ; preds = %[[VAL_135]]
 // CHECK:         %[[VAL_147:.*]] = add i32 %[[VAL_59]], %[[VAL_63]]
@@ -220,10 +217,9 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_149:.*]] = getelementptr inbounds [131072 x [1024 x float]], ptr %[[VAL_109]], i32 0, i32 %[[VAL_147]], i32 %[[VAL_148]]
 // CHECK:         %[[VAL_150:.*]] = load float, ptr %[[VAL_149]], align 4, !invariant.load !7
 // CHECK:         store float %[[VAL_150]], ptr %[[VAL_29]], align 4
-// CHECK:         %[[VAL_151:.*]] = getelementptr inbounds float, ptr %[[VAL_28]], i32 0
-// CHECK:         call void @[[SUM]](ptr %[[VAL_151]], ptr %[[VAL_29]], ptr %[[VAL_21]])
+// CHECK:         call void @[[SUM]](ptr %[[VAL_28]], ptr %[[VAL_29]], ptr %[[VAL_21]])
 // CHECK:         %[[VAL_152:.*]] = load float, ptr %[[VAL_21]], align 4
-// CHECK:         store float %[[VAL_152]], ptr %[[VAL_151]], align 4
+// CHECK:         store float %[[VAL_152]], ptr %[[VAL_28]], align 4
 // CHECK:         br label %[[VAL_124]]
 // CHECK:       intra_warp_reduce_write-true:                     ; preds = %[[VAL_65]]
 // CHECK:         %[[VAL_155:.*]] = load float, ptr %[[VAL_28]], align 4
