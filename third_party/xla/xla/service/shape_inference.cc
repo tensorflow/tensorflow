@@ -3918,8 +3918,9 @@ Status ValidateScatterDimensionNumbers(
   }
 
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.
-  if (dim_numbers.scatter_dims_to_operand_dims_size() !=
-      scatter_indices_shape[dim_numbers.index_vector_dim()]) {
+  if (!CompatibleDimensionSizes(
+          dim_numbers.scatter_dims_to_operand_dims_size(),
+          scatter_indices_shape[dim_numbers.index_vector_dim()])) {
     return InvalidArgument(
         "Scatter op has %d elements in scatter_dims_to_operand_dims and the "
         "bound of dimension index_vector_dim=%d of scatter_indices is %d. "
@@ -4051,8 +4052,9 @@ Status ValidateScatterDimensionNumbers(
       if (scatter_dims_seen == scatter_dim_numbers.index_vector_dim()) {
         ++scatter_dims_seen;
       }
-      if (updates_shape.dimensions(i) !=
-          expanded_scatter_indices_shape[scatter_dims_seen]) {
+      if (!CompatibleDimensionSizes(
+              updates_shape.dimensions(i),
+              expanded_scatter_indices_shape[scatter_dims_seen])) {
         return InvalidArgument(
             "Bounds of the scatter dimensions of updates must be same as the "
             "bounds of the corresponding dimensions of scatter indices. For "

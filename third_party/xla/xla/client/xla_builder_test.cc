@@ -2138,6 +2138,43 @@ TEST(XlaBuilderTest, UnboundedReshapeUnsupportedInferredShape) {
                    "Reshaping with unbounded result shape is not supported.")));
 }
 
+TEST(XlaBuilderTest, UnboundedScatter) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape input, ParseShape("f32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_indices, ParseShape("s32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape updates, ParseShape("f32[?, ?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, ?]"));
+
+  XlaComputation update_computation;
+  {
+    std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
+    XlaOp arg0 = Parameter(sub_builder.get(), 0,
+                           ShapeUtil::MakeScalarShape(F32), "arg0");
+    XlaOp arg1 = Parameter(sub_builder.get(), 1,
+                           ShapeUtil::MakeScalarShape(F32), "arg1");
+    Add(arg0, arg1);
+    TF_ASSERT_OK_AND_ASSIGN(update_computation, sub_builder->Build());
+  }
+
+  ScatterDimensionNumbers dimension_numbers;
+  dimension_numbers.add_update_window_dims(2);
+  dimension_numbers.add_update_window_dims(3);
+  dimension_numbers.add_inserted_window_dims(0);
+  dimension_numbers.add_scatter_dims_to_operand_dims(1);
+  dimension_numbers.add_scatter_dims_to_operand_dims(0);
+  dimension_numbers.set_index_vector_dim(2);
+
+  Scatter(Parameter(&b, 0, input, "input"),
+          Parameter(&b, 1, scatter_indices, "scatter_indices"),
+          Parameter(&b, 2, updates, "updates"), update_computation,
+          dimension_numbers, /*indices_are_sorted=*/false,
+          /*unique_indices=*/false);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedSelect) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("pred[1, ?, 2, ?, <=2, ?, ?]"));
