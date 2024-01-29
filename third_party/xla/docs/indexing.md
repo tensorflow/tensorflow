@@ -107,9 +107,9 @@ struct IndexingMap {
 
 `dim_ranges` encodes the **inclusive** box constraints for the dimension
 parameters $\boldsymbol{d}$ of the indexing map, which usually coincide with the
-shape of the output tensor for ops like transpose-reduce-elementwise-dot, but
+shape of the output tensor for ops like transpose, reduce, elementwise, dot, but
 there are some exceptions like
-[HloConcatenateInstruction](https://github.com/openxla/xla/blob/578b6df240be94c3c84129fd83f34487efc623a5/xla/hlo/ir/hlo_instructions.h#L927).
+[HloConcatenateInstruction](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#concatenate).
 
 `symbol_ranges` encode possible values that $\boldsymbol {s}$ parameters can
 take.
@@ -237,7 +237,7 @@ The input to output maps:
     Dom}(input)$
 -   init_i -> output_j: $() \mapsto (s_0)$ for $\boldsymbol{s} \in [0, 9]$
 
-for $i, j = 0, \ldots, {\rm INPUT\_COUNT}$.
+for $i, j = 0, \ldots, INPUT\\_COUNT$.
 
 ### Slice
 
@@ -308,9 +308,9 @@ The input to output map:
 
 #### Generic reshape
 
-These are the reshape ops that cannot be represented as either expand or
+These are the reshape ops that cannot be represented as a single expand or
 collapse shape. They can be only represented as a composition of 2 or more
-reshapes.
+expand or collapse shapes.
 
 ##### Example 1: Linearization-delinearization.
 
