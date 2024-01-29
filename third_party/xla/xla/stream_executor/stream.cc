@@ -503,26 +503,6 @@ Stream &Stream::ThenBatchNormalizationBackward(
   return *this;
 }
 
-Stream &Stream::ThenConvolve(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<float> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<float> *output) {
-  if (ok()) {
-    CheckError(ConvolveWithAlgorithm(
-                   dnn::ConvolutionKind::FORWARD, input_descriptor, input_data,
-                   filter_descriptor, filter_data, output_descriptor, *output,
-                   convolution_descriptor,
-                   /*scratch_allocator=*/nullptr, dnn::AlgorithmConfig(),
-                   /*output_profile_result=*/nullptr)
-                   .ok());
-  }
-  return *this;
-}
-
 Stream &Stream::ThenNormalizeWithDimensions(
     const dnn::NormalizeDescriptor &normalize_descriptor,
     const dnn::BatchDescriptor &dimensions,

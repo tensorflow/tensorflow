@@ -317,14 +317,6 @@ class Stream {
       DeviceMemory<uint8_t> *reserve_space_data,
       ScratchAllocator *workspace_allocator);
 
-  Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
-                       const DeviceMemory<float> &input_data,
-                       const dnn::FilterDescriptor &filter_descriptor,
-                       const DeviceMemory<float> &filter_data,
-                       const dnn::ConvolutionDescriptor &convolution_descriptor,
-                       const dnn::BatchDescriptor &output_descriptor,
-                       DeviceMemory<float> *output);
-
   template <typename InputType, typename OutputType>
   absl::Status ConvolveWithAlgorithm(
       dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
