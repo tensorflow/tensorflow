@@ -17,7 +17,6 @@ from typing import Mapping
 
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
 from tensorflow.compiler.mlir.quantization.stablehlo.python import pywrap_quantization
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -103,18 +102,6 @@ def quantize_saved_model(
       config.tf_saved_model.tags
   ).meta_info_def.function_aliases
 
-  # Create a signature key -> `RepresentativeDatasetFile` mapping.
-  # `RepresentativeDatsetFile` should be serialized for `static_range_ptq` due
-  # to pywrap protobuf compatibility requirements.
-  tfrecord_file_path: str = (
-      config.static_range_ptq_preset.representative_datasets[0].tf_record.path
-  )
-  dataset_file_map = {
-      'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
-          tfrecord_file_path=tfrecord_file_path
-      ).SerializeToString()
-  }
-
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
   pywrap_quantization.static_range_ptq(
       src_saved_model_path,
@@ -124,5 +111,4 @@ def quantize_saved_model(
       signature_def_map_serialized=signature_def_map_serialized,
       function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
-      representative_dataset_file_map_serialized=dataset_file_map,
   )

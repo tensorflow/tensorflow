@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -77,7 +78,6 @@ using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
-using ::tensorflow::quantization::RepresentativeDatasetFile;
 using ::tensorflow::quantization::RunPasses;
 using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
 
@@ -105,7 +105,8 @@ absl::StatusOr<SmallVector<AssetFileDef>> RunExportPasses(
   }
 
   if (absl::Status pass_run_status = RunPasses(
-          /*name=*/export_opts.debug_name,
+          /*name=*/
+          export_opts.debug_name,
           /*add_passes_func=*/
           [dup_constants = export_opts.duplicate_shape_determining_constants](
               PassManager& pm) { AddExportPasses(pm, dup_constants); },
@@ -229,9 +230,6 @@ StaticRangePtqComponent::StaticRangePtqComponent(
     const absl::string_view src_saved_model_path,
     std::vector<std::string> signature_keys,
     std::unordered_set<std::string> tags,
-    absl::flat_hash_map<std::string,
-                        tensorflow::quantization::RepresentativeDatasetFile>
-        representative_dataset_file_map,
     absl::flat_hash_map<std::string, SignatureDef> signature_def_map,
     absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases)
     : ctx_(ctx) {
@@ -244,7 +242,7 @@ StaticRangePtqComponent::StaticRangePtqComponent(
       ctx_, py_function_library, src_saved_model_path,
       std::move(function_aliases), std::move(tags),
       std::move(signature_def_map), std::move(signature_keys),
-      std::move(representative_dataset_file_map), calibration_options);
+      calibration_options);
   sub_components_[2] = std::make_unique<PostCalibrationComponent>(ctx_);
 }
 
@@ -267,9 +265,7 @@ absl::Status QuantizeStaticRangePtq(
     const std::vector<std::string>& signature_keys,
     const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
     const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
-    const PyFunctionLibrary& py_function_library,
-    const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
-        representative_dataset_file_map) {
+    const PyFunctionLibrary& py_function_library) {
   std::unordered_set<std::string> tags;
   tags.insert(quantization_config.tf_saved_model().tags().begin(),
               quantization_config.tf_saved_model().tags().end());
@@ -283,8 +279,7 @@ absl::Status QuantizeStaticRangePtq(
 
   StaticRangePtqComponent static_range_ptq_component(
       ctx.get(), &py_function_library, src_saved_model_path, signature_keys,
-      tags, representative_dataset_file_map, signature_def_map,
-      function_aliases);
+      tags, signature_def_map, function_aliases);
   TF_ASSIGN_OR_RETURN(module_op, static_range_ptq_component.Run(
                                      module_op, quantization_config));
 
