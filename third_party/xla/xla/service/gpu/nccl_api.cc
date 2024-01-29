@@ -282,6 +282,8 @@ class DefaultNcclApi final : public NcclApi {
                                               int32_t rank) final;
 
   absl::Status CommAbort(NcclCommHandle comm) final;
+  absl::Status CommFinalize(NcclCommHandle comm) final;
+  absl::Status CommDestroy(NcclCommHandle comm) final;
 
   absl::StatusOr<int32_t> CommCount(NcclCommHandle comm) final;
 
@@ -361,6 +363,16 @@ absl::StatusOr<NcclApi::NcclCommHandle> DefaultNcclApi::CommInitRank(
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {
   VLOG(1) << "Abort NCCL communicator: " << comm;
   return XLA_NCCL_STATUS(ncclCommAbort(Cast(comm)));
+}
+
+absl::Status DefaultNcclApi::CommFinalize(NcclCommHandle comm) {
+  VLOG(1) << "Finalize NCCL communicator: " << comm;
+  return XLA_NCCL_STATUS(ncclCommFinalize(Cast(comm)));
+}
+
+absl::Status DefaultNcclApi::CommDestroy(NcclCommHandle comm) {
+  VLOG(1) << "Destroy NCCL communicator: " << comm;
+  return XLA_NCCL_STATUS(ncclCommDestroy(Cast(comm)));
 }
 
 absl::StatusOr<int32_t> DefaultNcclApi::CommCount(NcclCommHandle comm) {
