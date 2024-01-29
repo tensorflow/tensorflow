@@ -49,8 +49,8 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/stream_executor/temporary_device_memory.h"
-#include "xla/stream_executor/temporary_memory_manager.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -1254,9 +1254,6 @@ class Stream {
   RocmComputeCapability GetRocmComputeCapability() const {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
-  // Returns the (internal usage) temporary-memory-allocation manager associated
-  // with this stream.
-  internal::TemporaryMemoryManager *temporary_memory_manager();
 
   // Returns a debugging string "[stream=0x...,impl=0x...]".
   std::string DebugStreamPointers() const;
@@ -1332,6 +1329,13 @@ class Stream {
                     "without DNN support";
   }
 
+  // Allocates an array without type parameterization, so that the
+  // implementation can live in the source file. Without this base allocation
+  // method, we incur a circular dependency between the StreamExecutor
+  // definition and this class' definition.
+  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
+      uint64_t element_count, uint64 element_size);
+
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
 
@@ -1356,12 +1360,6 @@ class Stream {
   // be reused.
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
       ABSL_GUARDED_BY(mu_);
-
-  // Streams can allocate temporary memories to help with work they enqueue
-  // (e.g. for scratch memory spaces). This member tracks those allocations and
-  // notes when they can be reclaimed -- reclamation is attempted when
-  // BlockHostUntilDone() is called.
-  internal::TemporaryMemoryManager temporary_memory_manager_;
 
   // Non-extended BLAS interface requires alpha/beta to be floats when input
   // type is Eigen::half. However, for consistency purposes it is convenient
@@ -1440,11 +1438,12 @@ inline absl::Status Stream::ThenLaunch(
 template <typename T>
 inline absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
 Stream::AllocateTemporaryArray(uint64_t element_count) {
-  return temporary_memory_manager_.AllocateArray<T>(element_count);
-}
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<TemporaryDeviceMemoryBase> temporary_memory,
+      AllocateArrayBase(element_count, sizeof(T)));
 
-inline internal::TemporaryMemoryManager *Stream::temporary_memory_manager() {
-  return &temporary_memory_manager_;
+  return std::unique_ptr<TemporaryDeviceMemory<T>>(
+      reinterpret_cast<TemporaryDeviceMemory<T> *>(temporary_memory.release()));
 }
 
 template <>

@@ -35,9 +35,6 @@ limitations under the License.
 namespace stream_executor {
 
 class Stream;
-namespace internal {
-class TemporaryMemoryManager;
-}
 
 // Untyped base class (analogous to a void*) for temporary device memory
 // allocations associated with a stream.
@@ -53,27 +50,13 @@ class TemporaryDeviceMemoryBase {
   // Precondition: !IsFinalized()
   const DeviceMemoryBase& device_memory() const;
 
-  // Returns true iff the temporary memory is still allocated.
-  //
-  // Note: this is a polling call, no guarantee is made that the temporary
-  // memory is still allocated after the call has completed.
-  bool IsAllocated() const;
-
- private:
-  friend class internal::TemporaryMemoryManager;
-  friend class TemporaryDeviceMemoryTest;
-
   // Note: construction DCHECKs that the memory is known-allocated in the
   // stream's temporary-allocation-manager.
-  TemporaryDeviceMemoryBase(Stream* parent, DeviceMemoryBase device_memory,
-                            uint64_t allocation_generation);
+  TemporaryDeviceMemoryBase(Stream* parent, DeviceMemoryBase device_memory);
 
+ private:
   // The device memory region that has allocated.
   DeviceMemoryBase device_memory_;
-
-  // The generation counter value for the temporary memory record in the
-  // temporary memory manager.
-  uint64_t allocation_generation_;
 
   // The stream that this temporary memory was allocated for.
   Stream* parent_;

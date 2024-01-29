@@ -20,9 +20,7 @@ limitations under the License.
 namespace stream_executor {
 
 TemporaryDeviceMemoryBase::~TemporaryDeviceMemoryBase() {
-  parent_->temporary_memory_manager()->MarkFinalized(device_memory_,
-                                                     allocation_generation_,
-                                                     /*must_exist=*/false);
+  parent_->parent()->Deallocate(&device_memory_);
 }
 
 DeviceMemoryBase* TemporaryDeviceMemoryBase::mutable_device_memory() {
@@ -33,18 +31,8 @@ const DeviceMemoryBase& TemporaryDeviceMemoryBase::device_memory() const {
   return device_memory_;
 }
 
-bool TemporaryDeviceMemoryBase::IsAllocated() const {
-  return parent_->temporary_memory_manager()->HasAllocated(
-      device_memory_, allocation_generation_);
-}
-
 TemporaryDeviceMemoryBase::TemporaryDeviceMemoryBase(
-    Stream* parent, DeviceMemoryBase device_memory,
-    uint64_t allocation_generation)
-    : device_memory_(device_memory),
-      allocation_generation_(allocation_generation),
-      parent_(parent) {
-  DCHECK(IsAllocated());
-}
+    Stream* parent, DeviceMemoryBase device_memory)
+    : device_memory_(device_memory), parent_(parent) {}
 
 }  // namespace stream_executor
