@@ -22,11 +22,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
 
@@ -54,6 +56,16 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, SendOp op,
     : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
                           /*is_sync=*/false),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
+      buffer_(buffer) {}
+
+NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+                             const HloSendInstruction* instr,
+                             int64_t replica_count, int64_t partition_count,
+                             const Buffer& buffer)
+    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
+                          /*is_sync=*/false),
+      config_(GetNcclP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
+                                          replica_count, partition_count)),
       buffer_(buffer) {}
 
 /*static*/ NcclP2PConfig NcclSendThunk::GetNcclP2PConfig(

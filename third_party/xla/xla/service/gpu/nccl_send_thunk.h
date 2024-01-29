@@ -41,6 +41,9 @@ class NcclSendThunk : public NcclCollectiveThunk {
   NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, mlir::lmhlo::SendOp op,
                 int64_t replica_count, int64_t partition_count,
                 const Buffer& buffer);
+  NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+                const HloSendInstruction* instr, int64_t replica_count,
+                int64_t partition_count, const Buffer& buffer);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }

@@ -67,6 +67,7 @@ struct NcclCollectiveConfig {
   template <typename OpT>
   void SetCollectiveOpKindAndID(OpT op);
   void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
+  void SetCollectiveOpKindAndID(const HloSendRecvInstruction* instr);
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
