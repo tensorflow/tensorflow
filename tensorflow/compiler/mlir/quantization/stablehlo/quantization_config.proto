@@ -31,11 +31,18 @@ message RepresentativeDatasetConfig {
 // Minimal user input about representative datasets is required. Representative
 // datasets are required for static-range PTQ to retrieve quantization
 // statistics via calibration.
-// Next ID: 2
+// Next ID: 3
 message StaticRangePtqPreset {
   // Configures representative dataset. Each item corresponds to a
   // representative dataset used to calibrate a function.
   repeated RepresentativeDatasetConfig representative_datasets = 1;
+
+  // NOTE: This field will be deprecated.
+  // Granularity should be controlled in custom configuration, deprecating
+  // this field once available.
+  // If set true, enable channel-wise quantization for all supported ops.
+  // This value is true by default.
+  bool enable_per_channel_quantization = 2;
 }
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
