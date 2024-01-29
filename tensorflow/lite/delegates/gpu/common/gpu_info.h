@@ -399,6 +399,7 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
+  bool dedicated_local_memory;
 
   // The row pitch alignment size in pixels for 2D images created from a buffer.
   // The value must be a power of 2.

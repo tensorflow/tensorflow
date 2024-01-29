@@ -309,6 +309,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
   info.opencl_info.max_work_group_size_z = max_work_group_sizes.z;
   info.opencl_info.max_work_group_total_size =
       GetDeviceInfo<size_t>(id, CL_DEVICE_MAX_WORK_GROUP_SIZE);
+  info.opencl_info.dedicated_local_memory =
+      (GetDeviceInfo<cl_device_local_mem_type>(id, CL_DEVICE_LOCAL_MEM_TYPE) ==
+       CL_LOCAL);
 
   info.opencl_info.base_addr_align_in_bits =
       GetDeviceInfo<cl_uint>(id, CL_DEVICE_MEM_BASE_ADDR_ALIGN);
