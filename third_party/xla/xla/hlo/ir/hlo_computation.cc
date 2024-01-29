@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -54,30 +55,44 @@ namespace xla {
 
 using absl::StrCat;
 
-enum VisitState { kVisiting, kVisited };
+enum VisitState { kNew = 0, kVisiting = 1, kVisited = 2 };
 
-// VisitMap is a HloInstruction visitation map that uses an inline array to
-// store up to a certain number of unique elements, but upgrades itself
-// automatically to be backed by a real map when it runs out of space.
 class HloComputation::VisitMap {
  public:
   VisitMap() = default;
-  explicit VisitMap(int capacity);
+  explicit VisitMap(int capacity) : size_(capacity) {
+    int num_words = (capacity + 31) / 32;
+    bits_.resize(num_words);
+    bit_ptr_ = bits_.empty() ? nullptr : bits_.data();
+  }
 
-  // Inserts a given element into the map, provided an element with
-  // the same key hasn't already been inserted. It returns the boolean that
-  // indicates whether the element was inserted or not, along with a mutable
-  // reference to the element value inside the map.
-  std::pair<VisitState&, bool> insert(
-      std::pair<const HloInstruction*, VisitState>);
+  // A handle is a dense index used to identify a particular node.
+  using Handle = uint32_t;
+
+  // Returns the current VisitState for the instruction with handle "h"
+  VisitState GetState(Handle h) const {
+    DCHECK_LT(h, size_);
+    uint32_t word = (h / 32);
+    uint32_t shift = (h % 32) << 1;
+    return static_cast<VisitState>((bit_ptr_[word] >> shift) & 0x3);
+  }
+
+  // Sets the VisitState for the instruction with Handle "h" to "new_state"
+  void SetState(Handle h, VisitState new_state) {
+    DCHECK_LT(h, size_);
+    uint32_t word = (h / 32);
+    uint32_t shift = (h % 32) << 1;
+    uint64_t mask = ~(3ull << shift);
+    uint64_t val = static_cast<uint64_t>(new_state);
+    bit_ptr_[word] = (bit_ptr_[word] & mask) | (val << shift);
+  }
 
  private:
-  static const int kMaxInlined = 16;
-  static const int kUsingMap = -1;
-
-  int size_ = 0;
-  std::pair<const HloInstruction*, VisitState> array_[kMaxInlined];
-  absl::flat_hash_map<const HloInstruction*, VisitState> map_;
+  // bits_ stores VisitState entries (2 bits per entry, packed 32 entries per
+  // 64-bit word)
+  absl::InlinedVector<uint64_t, 1> bits_;
+  uint64_t* bit_ptr_ = nullptr;  //
+  int size_ = 0;  // Number of entries.  bits_ holds at least 2 * this many bits
 };
 
 std::unique_ptr<HloComputation> HloComputation::Builder::Build(
@@ -180,7 +195,9 @@ HloInstruction* HloComputation::AddInstructionInternal(
   info.inst_ = pinst;
   VLOG(2) << "Adding instruction " << pinst << " " << pinst->name()
           << " from computation " << name() << " opcode " << info.opcode();
-  instruction_indices_[pinst] = instructions_.size();
+  uint32_t index = instructions_.size();
+  instruction_indices_[pinst] = index;
+  pinst->index_in_parent_ = index;
   instructions_.push_back(info);
   return pinst;
 }
@@ -423,6 +440,7 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   info->inst_ =
       nullptr;  // Leave a hole: this is no longer part of "instructions()"
   instruction_indices_.erase(inst_it);
+  instruction->index_in_parent_ = ~0u;
   return OkStatus();
 }
 
@@ -477,15 +495,18 @@ void HloComputation::ForEachInstructionPostOrderImpl(
   while (!dfs_stack->empty()) {
     HloInstruction& current = *dfs_stack->back();
 
-    auto [state, was_inserted] = visited.insert({&current, kVisiting});
-    if (!was_inserted) {  // We've already seen this instruction.
+    VisitMap::Handle h = current.index_in_parent_;
+    VisitState state = visited.GetState(h);
+    if (state == kNew) {
+      visited.SetState(h, kVisiting);
+    } else {
       dfs_stack->pop_back();
       if (state != kVisited) {
         DCHECK_EQ(current.parent(), this)
             << "Instruction " << current.name()
             << " is not in the current computation (" << name() << ").";
         func(&current);
-        state = kVisited;
+        visited.SetState(h, kVisited);
       }
       continue;
     }
@@ -506,7 +527,15 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     // processed first. This will produce a more natural ordering and a nicer
     // result for things like HLO stringification.
     const HloInstruction::InstructionVector& operands = current.operands();
-    dfs_stack->insert(dfs_stack->end(), operands.rbegin(), operands.rend());
+
+    for (auto it = operands.rbegin(); it != operands.rend(); ++it) {
+      HloInstruction* operand = *it;
+      if (visited.GetState(operand->index_in_parent_) != kVisited) {
+        dfs_stack->push_back(operand);
+      } else {
+        // Already fully visited, so we avoid pushing onto the stack
+      }
+    }
 
     const PtrVec<HloInstruction*>& predecessors =
         current.control_predecessors();
@@ -559,7 +588,8 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
     HloInstruction& postorder_root) const {
   std::vector<HloInstruction*> post_order;
-  VisitMap visited;
+  VisitMap visited(instructions_.size());
+
   std::vector<HloInstruction*> dfs_stack_scratch;
   ComputeInstructionPostOrder(&postorder_root, ComputeChannelDependencies(),
                               visited, post_order, &dfs_stack_scratch);
@@ -574,9 +604,10 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
     const ChannelDependencies& channel_dependencies) const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
-  VisitMap visited(instruction_count());
+  VisitMap visited(instructions_.size());
   std::vector<HloInstruction*> dfs_stack_scratch;
   dfs_stack_scratch.reserve(instruction_count());
+
   for (const auto& instruction : instructions()) {
     if (instruction->users().empty()) {
       ComputeInstructionPostOrder(instruction, channel_dependencies, visited,
@@ -653,7 +684,7 @@ HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
 
 void HloComputation::ForEachInstructionPostOrder(
     absl::FunctionRef<void(HloInstruction*)> func) const {
-  VisitMap visited(instruction_count());
+  VisitMap visited(instructions_.size());
   std::vector<HloInstruction*> dfs_stack_scratch;
   dfs_stack_scratch.reserve(instruction_count());
   auto channel_dependencies = ComputeChannelDependencies();
@@ -1592,7 +1623,6 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
 
   context.MapComputation(this, result.get());
   result->SetExecutionThread(execution_thread());
-
   return result;
 }
 
@@ -1617,44 +1647,6 @@ bool HloComputation::CanExpandIntoSingleInstruction() const {
       instructions(), [root = root_instruction()](const HloInstruction* instr) {
         return root == instr || instr->opcode() == HloOpcode::kParameter;
       });
-}
-
-HloComputation::HloComputation::VisitMap::VisitMap(int capacity) {
-  if (capacity <= kMaxInlined) return;  // already reserved
-  size_ = kUsingMap;
-  map_.reserve(capacity);
-}
-
-std::pair<VisitState&, bool> HloComputation::HloComputation::VisitMap::insert(
-    std::pair<const HloInstruction*, VisitState> x) {
-  if (size_ == kUsingMap) {
-    // Using map.
-    auto [it, was_inserted] = map_.insert(std::move(x));
-    return {it->second, was_inserted};
-  }
-
-  // Using array.
-  for (int i = 0; i < size_; ++i) {
-    if (array_[i].first == x.first) {  // already inserted
-      return {array_[i].second, false};
-    }
-  }
-
-  // See if there's space in array.
-  if (size_ < kMaxInlined) {
-    array_[size_] = std::move(x);
-    return {array_[size_++].second, true};
-  }
-
-  // Convert to a map.
-  for (int i = 0; i < kMaxInlined; ++i) {
-    map_.insert(std::move(array_[i]));
-  }
-  size_ = kUsingMap;
-
-  auto [it, inserted] = map_.insert(std::move(x));
-  DCHECK_EQ(inserted, true);
-  return {it->second, true};
 }
 
 }  // namespace xla
