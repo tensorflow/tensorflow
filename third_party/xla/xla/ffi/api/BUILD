@@ -78,6 +78,7 @@ xla_cc_test(
         "//xla/ffi:ffi_api",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status_matchers",

@@ -27,9 +27,13 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
 namespace xla::ffi {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, StaticRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
@@ -53,8 +57,8 @@ TEST(FfiTest, WrongNumArgs) {
   builder.AddBufferArg(se::DeviceMemoryBase(nullptr), PrimitiveType::F32, {});
   auto call_frame = builder.Build();
 
-  auto handler = Ffi::Bind().Arg<Buffer>().Arg<Buffer>().To(
-      [](Buffer, Buffer) { return absl::OkStatus(); });
+  auto handler = Ffi::Bind().Arg<BufferBase>().Arg<BufferBase>().To(
+      [](BufferBase, BufferBase) { return absl::OkStatus(); });
 
   auto status = Call(*handler, call_frame);
 
@@ -307,7 +311,7 @@ TEST(FfiTest, DecodingErrors) {
       "Failed to decode all FFI handler operands (bad operands at: 0, 1, 3)");
 }
 
-TEST(FfiTest, BufferArgument) {
+TEST(FfiTest, BufferBaseArgument) {
   std::vector<float> storage(4, 0.0f);
   se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
 
@@ -315,17 +319,72 @@ TEST(FfiTest, BufferArgument) {
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
   auto call_frame = builder.Build();
 
-  auto fn = [&](Buffer buffer) {
+  auto fn = [&](BufferBase buffer) {
     EXPECT_EQ(buffer.dtype, PrimitiveType::F32);
     EXPECT_EQ(buffer.data.opaque(), storage.data());
     EXPECT_EQ(buffer.dimensions.size(), 2);
     return absl::OkStatus();
   };
 
-  auto handler = Ffi::Bind().Arg<Buffer>().To(fn);
+  auto handler = Ffi::Bind().Arg<BufferBase>().To(fn);
   auto status = Call(*handler, call_frame);
 
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, TypedAndRankedBufferArgument) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto fn = [&](BufferR2<PrimitiveType::F32> buffer) {
+    EXPECT_EQ(buffer.data.opaque(), storage.data());
+    EXPECT_EQ(buffer.dimensions.size(), 2);
+    return absl::OkStatus();
+  };
+
+  auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::F32>>().To(fn);
+  auto status = Call(*handler, call_frame);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, WrongRankBufferArgument) {
+  std::vector<int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferR1<PrimitiveType::F32>>().To(
+      [](auto) { return absl::OkStatus(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(status,
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+}
+
+TEST(FfiTest, WrongTypeBufferArgument) {
+  std::vector<int32_t> storage(4, 0.0);
+  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+
+  CallFrameBuilder builder;
+  builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::F32>>().To(
+      [](auto) { return absl::OkStatus(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected f32 but got s32")));
 }
 
 TEST(FfiTest, RemainingArgs) {
@@ -338,8 +397,8 @@ TEST(FfiTest, RemainingArgs) {
 
   auto fn = [&](RemainingArgs args) {
     EXPECT_EQ(args.size(), 1);
-    EXPECT_TRUE(args.get<Buffer>(0).has_value());
-    EXPECT_FALSE(args.get<Buffer>(1).has_value());
+    EXPECT_TRUE(args.get<BufferBase>(0).has_value());
+    EXPECT_FALSE(args.get<BufferBase>(1).has_value());
     return absl::OkStatus();
   };
 
