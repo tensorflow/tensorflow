@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
@@ -1478,7 +1479,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  absl::Span<const XlaCompiler::Argument> args,
                                  CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(name, kDebugGroupMain)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
                                flib_runtime_->GetFunctionLibraryDefinition());
