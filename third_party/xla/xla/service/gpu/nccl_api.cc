@@ -277,9 +277,9 @@ class DefaultNcclApi final : public NcclApi {
  public:
   absl::StatusOr<NcclCliqueId> GetUniqueId() final;
 
-  absl::StatusOr<NcclCommHandle> CommInitRank(int32_t nranks,
-                                              const NcclCliqueId& clique_id,
-                                              int32_t rank) final;
+  absl::StatusOr<OwnedNcclComm> CommInitRank(int32_t nranks,
+                                             const NcclCliqueId& clique_id,
+                                             int32_t rank) final;
 
   absl::Status CommAbort(NcclCommHandle comm) final;
   absl::Status CommFinalize(NcclCommHandle comm) final;
@@ -344,7 +344,7 @@ absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
   return NcclCliqueId(id.internal);
 }
 
-absl::StatusOr<NcclApi::NcclCommHandle> DefaultNcclApi::CommInitRank(
+absl::StatusOr<NcclApi::OwnedNcclComm> DefaultNcclApi::CommInitRank(
     int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) {
   VLOG(1) << "Initialize NCCL communicator for rank #" << rank << " of "
           << nranks << "; hash(id)=" << absl::HashOf(clique_id.data());
@@ -357,7 +357,7 @@ absl::StatusOr<NcclApi::NcclCommHandle> DefaultNcclApi::CommInitRank(
   XLA_NCCL_RETURN_IF_ERROR(
       ncclCommInitRank(&comm, nranks, AsNcclUniqueId(clique_id), rank));
 
-  return Cast(comm);
+  return OwnedNcclComm(Cast(comm), NcclCommDeleter{this});
 }
 
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {

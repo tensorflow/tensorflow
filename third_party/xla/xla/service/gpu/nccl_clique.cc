@@ -221,7 +221,7 @@ struct InitializationState {
   InitializationState(NcclCliqueId clique_id, Ranks ranks);
 
   NcclCliqueId clique_id;
-  absl::node_hash_map<int32_t, absl::StatusOr<NcclApi::NcclCommHandle>> comms;
+  absl::node_hash_map<int32_t, absl::StatusOr<NcclApi::OwnedNcclComm>> comms;
 
   // Signals when all participants updated entries in `comms`.
   std::unique_ptr<absl::Barrier> ready;
@@ -281,13 +281,11 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
           << " rank #" << rank << " of " << nranks
           << "; num_local_participants=" << num_local_participants;
 
-  // TODO(ezhulenev): Currently we leak this comm handle on error path. We
-  // need an OwnedNcclCommHandle with a custom deleter.
-  absl::StatusOr<NcclApi::NcclCommHandle> comm =
+  absl::StatusOr<NcclApi::OwnedNcclComm> comm =
       NcclApi::Default()->CommInitRank(nranks, state->clique_id, rank);
 
   if (comm.ok()) {
-    state->comms[rank] = *comm;
+    state->comms[rank] = std::move(*comm);
   } else {
     state->comms[rank] = comm.status();
   }
@@ -307,12 +305,12 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     // Create NCCL communicators from handles.
     absl::node_hash_map<int32_t, NcclComm> communicators;
-    for (const auto& [rank, comm] : state->comms) {
+    for (auto& [rank, comm] : state->comms) {
       if (*comm == nullptr) {
         return absl::InternalError(absl::StrFormat(
             "uninitialized NCCL communicator for rank %d", rank));
       }
-      communicators.try_emplace(rank, *comm);
+      communicators.try_emplace(rank, comm->release());
     }
 
     VLOG(3) << "Completed NCCL clique initialization for a clique "

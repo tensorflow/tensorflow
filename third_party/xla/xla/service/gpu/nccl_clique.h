@@ -73,6 +73,10 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
 // NcclComm
 //===----------------------------------------------------------------------===//
 
+// TODO(b/319655685): Lockable NcclComm should be deleted and NcclClique should
+// become the owner of all communicators making up a clique and responsible for
+// synchronizing access to communicators.
+
 TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
 
 struct NcclCommName {
