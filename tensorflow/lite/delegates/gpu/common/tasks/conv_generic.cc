@@ -1557,11 +1557,18 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     }
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
-    if (definition.precision == CalculationsPrecision::F32_F16) {
-      conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    if (!gpu_info.IsApiOpenCl() ||
+        (gpu_info.IsApiOpenCl() &&
+         gpu_info.opencl_info.dedicated_local_memory)) {
+      if (definition.precision == CalculationsPrecision::F32_F16) {
+        conv_params.weights_upload_type =
+            WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      } else {
+        conv_params.weights_upload_type =
+            WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+      }
     } else {
-      conv_params.weights_upload_type =
-          WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     }
     if (dst_depth % 8 == 0 || dst_depth >= 32) {
       conv_params.block_size.w = 8;
