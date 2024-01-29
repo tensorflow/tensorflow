@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -74,17 +74,32 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     mlir::MLIRContext* ctx);
 
-// Groups indexing maps by instructions.
 using IndexingMapSet = absl::flat_hash_set<std::optional<IndexingMap>>;
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
+
+// Computes indexing for every instruction within a fusion cluster.
 std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, int output_id,
     mlir::MLIRContext* ctx);
 
-// Computes a transpose indexing map.
-mlir::AffineMap ComputeTransposeIndexingMap(
-    absl::Span<const int64_t> permutation, mlir::MLIRContext* mlir_context);
+// Groups indexing maps by instructions.
+absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
+GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
+                             const HloInstruction* instr);
+
+// Creates an indexing map from the physical layout of the tensor to its logical
+// layout. If it is an identity, return std::nullopt.
+std::optional<IndexingMap> GetIndexingMapFromPhysicalLayoutToLogical(
+    const Shape& shape, mlir::MLIRContext* ctx);
+
+// Creates an indexing map from the logical layout of the tensor to its physical
+// layout. If it is an identity, return std::nullopt.
+std::optional<IndexingMap> GetIndexingMapFromLogicalToPhysicalLayout(
+    const Shape& shape, mlir::MLIRContext* ctx);
+
+// Returns the shape of the output of the instruction.
+const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
 }  // namespace gpu
 }  // namespace xla

@@ -17,17 +17,21 @@ limitations under the License.
 
 #include <cctype>
 #include <cstddef>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -38,7 +42,7 @@ using ::mlir::AffineMapAttr;
 
 HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
     HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int output_id) {
+    absl::string_view hlo_string, int output_id, bool use_physical_layout) {
   auto module = test_base->ParseAndReturnVerifiedModule(hlo_string);
   EXPECT_TRUE(module.ok());
 
@@ -52,12 +56,42 @@ HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
       return {};
     }
   }
-  return ComputeOutputToInputIndexing(root, output_id, mlir_context);
+  HloInstructionIndexing indexing =
+      ComputeOutputToInputIndexing(root, output_id, mlir_context);
+
+  if (!use_physical_layout) return indexing;
+
+  std::optional<IndexingMap> output_permutation =
+      GetIndexingMapFromPhysicalLayoutToLogical(GetOutputShape(root, output_id),
+                                                mlir_context);
+
+  for (const auto& [operand_id, indexing_maps] :
+       llvm::enumerate(indexing.indexing_maps)) {
+    std::optional<IndexingMap> operand_permutation =
+        GetIndexingMapFromLogicalToPhysicalLayout(
+            root->operand(operand_id)->shape(), mlir_context);
+
+    absl::flat_hash_set<std::optional<IndexingMap>> operand_indexing_maps;
+    for (const std::optional<IndexingMap>& indexing_map : indexing_maps) {
+      auto normalized_indexing_map = indexing_map;
+      if (output_permutation.has_value()) {
+        normalized_indexing_map =
+            ComposeIndexingMaps(normalized_indexing_map, output_permutation);
+      }
+      if (operand_permutation.has_value()) {
+        normalized_indexing_map =
+            ComposeIndexingMaps(operand_permutation, normalized_indexing_map);
+      }
+      operand_indexing_maps.insert(normalized_indexing_map);
+    }
+    indexing.indexing_maps[operand_id] = operand_indexing_maps;
+  }
+  return indexing;
 }
 
 HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
     HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int input_id) {
+    absl::string_view hlo_string, int input_id, bool use_physical_layout) {
   auto module = test_base->ParseAndReturnVerifiedModule(hlo_string);
   EXPECT_TRUE(module.ok());
 
@@ -71,7 +105,37 @@ HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
       return {};
     }
   }
-  return ComputeInputToOutputIndexing(root, input_id, mlir_context);
+  HloInstructionIndexing indexing =
+      ComputeInputToOutputIndexing(root, input_id, mlir_context);
+
+  if (!use_physical_layout) return indexing;
+
+  std::optional<IndexingMap> input_permutation =
+      GetIndexingMapFromPhysicalLayoutToLogical(
+          root->operand(input_id)->shape(), mlir_context);
+
+  for (const auto& [output_id, indexing_maps] :
+       llvm::enumerate(indexing.indexing_maps)) {
+    std::optional<IndexingMap> operand_permutation =
+        GetIndexingMapFromLogicalToPhysicalLayout(
+            GetOutputShape(root, output_id), mlir_context);
+
+    absl::flat_hash_set<std::optional<IndexingMap>> operand_indexing_maps;
+    for (const std::optional<IndexingMap>& indexing_map : indexing_maps) {
+      auto normalized_indexing_map = indexing_map;
+      if (input_permutation.has_value()) {
+        normalized_indexing_map =
+            ComposeIndexingMaps(normalized_indexing_map, input_permutation);
+      }
+      if (operand_permutation.has_value()) {
+        normalized_indexing_map =
+            ComposeIndexingMaps(operand_permutation, normalized_indexing_map);
+      }
+      operand_indexing_maps.insert(normalized_indexing_map);
+    }
+    indexing.indexing_maps[output_id] = operand_indexing_maps;
+  }
+  return indexing;
 }
 
 AffineMap ParseAffineMap(absl::string_view serialized_affine_map,

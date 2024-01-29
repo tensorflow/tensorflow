@@ -88,11 +88,13 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
     HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int output_id = 0);
+    absl::string_view hlo_string, int output_id = 0,
+    bool use_physical_layout = false);
 
 HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
     HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int input_id = 0);
+    absl::string_view hlo_string, int input_id = 0,
+    bool use_physical_layout = false);
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                                mlir::MLIRContext* context);

@@ -52,16 +52,17 @@ class CoalescingTest : public HloTestBase {
     }
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
-    auto grouped_indexing_maps = ComputeGroupedOutputToInputIndexing(
-        *fusion_adaptor, /*output_id=*/0, &mlir_context_);
-    EXPECT_TRUE(grouped_indexing_maps.has_value());
+    auto output_to_input_indexing =
+        ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_);
+    auto grouped_indexing_maps =
+        GroupIndexingMapsByProducers(output_to_input_indexing, root);
 
     std::vector<bool> actual_results;
     actual_results.reserve(expected_results.size());
     for (auto [operand_id, is_coalesced] : llvm::enumerate(expected_results)) {
       auto* operand = root->operand(operand_id);
       actual_results.push_back(IsReadCoalesced(
-          operand, root, *grouped_indexing_maps, &mlir_context_));
+          operand, root, grouped_indexing_maps, &mlir_context_));
     }
     EXPECT_THAT(actual_results, ElementsAreArray(expected_results));
   }

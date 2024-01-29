@@ -41,6 +41,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -310,9 +312,7 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
                                                reduce->dimensions().end());
 
   const Shape& input_shape = reduce->operand(output_id)->shape();
-  const Shape& output_shape = reduce->shape().IsTuple()
-                                  ? ShapeUtil::GetSubshape(reduce->shape(), {0})
-                                  : reduce->shape();
+  const Shape& output_shape = GetOutputShape(reduce, 0);
 
   std::vector<int64_t> parallel_dims_sizes;
   int64_t output_dim_id = 0;
@@ -355,9 +355,7 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
   absl::flat_hash_set<int64_t> reduce_dims_ids(reduce->dimensions().begin(),
                                                reduce->dimensions().end());
   const Shape& input_shape = reduce->operand(input_id)->shape();
-  const Shape& output_shape = reduce->shape().IsTuple()
-                                  ? ShapeUtil::GetSubshape(reduce->shape(), {0})
-                                  : reduce->shape();
+  const Shape& output_shape = GetOutputShape(reduce, 0);
   int64_t output_rank = output_shape.rank();
 
   int64_t output_dim_id = 0;
@@ -607,6 +605,13 @@ HloInstructionIndexing ComputeOutputToInputSliceOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
+AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                      MLIRContext* mlir_context) {
+  return AffineMap::getPermutationMap(
+      std::vector<unsigned>(permutation.begin(), permutation.end()),
+      mlir_context);
+}
+
 HloInstructionIndexing ComputeOutputToInputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
   AffineMap inverse_permutation = ComputeTransposeIndexingMap(
@@ -692,8 +697,46 @@ HloInstructionIndexing ComputeInputToOutputBitcastOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
 }
 
+// Converts a layout to a dimensions transposition necessary to get to that
+// layout from identity.
+std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
+  std::vector<int64_t> out(l.minor_to_major().begin(),
+                           l.minor_to_major().end());
+  absl::c_reverse(out);
+  return out;
+}
+
 }  // namespace
 
+// Creates an indexing map from the physical layout of the tensor to its logical
+// layout. If it is an identity, return std::nullopt.
+std::optional<IndexingMap> GetIndexingMapFromPhysicalLayoutToLogical(
+    const Shape& shape, MLIRContext* ctx) {
+  if (shape.rank() == 0 ||
+      LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return std::nullopt;
+  }
+  return IndexingMap{
+      ComputeTransposeIndexingMap(
+          InversePermutation(ToTransposeDimensions(shape.layout())), ctx),
+      Domain::FromUpperBounds(
+          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape)
+              .dimensions(),
+          {})};
+}
+
+// Creates an indexing map from the logical layout of the tensor to its physical
+// layout. If it is an identity, return std::nullopt.
+std::optional<IndexingMap> GetIndexingMapFromLogicalToPhysicalLayout(
+    const Shape& shape, MLIRContext* ctx) {
+  if (shape.rank() == 0 ||
+      LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return std::nullopt;
+  }
+  return IndexingMap{
+      ComputeTransposeIndexingMap(ToTransposeDimensions(shape.layout()), ctx),
+      Domain::FromUpperBounds(shape.dimensions(), {})};
+}
 
 bool HloInstructionIndexing::Simplify() {
   bool any_simplified = false;
@@ -758,6 +801,12 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
+const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id) {
+  return instr->shape().IsTuple()
+             ? ShapeUtil::GetSubshape(instr->shape(), {output_id})
+             : instr->shape();
+}
+
 GroupedByOpIndexingMap GroupIndexingMapsByProducers(
     const HloInstructionIndexing& indexing, const HloInstruction* instr) {
   GroupedByOpIndexingMap result;
@@ -767,13 +816,6 @@ GroupedByOpIndexingMap GroupIndexingMapsByProducers(
                                               indexing_maps.end());
   }
   return result;
-}
-
-AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
-                                      MLIRContext* mlir_context) {
-  return AffineMap::getPermutationMap(
-      std::vector<unsigned>(permutation.begin(), permutation.end()),
-      mlir_context);
 }
 
 std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
@@ -805,7 +847,6 @@ std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
       }
     }
   }
-
   return grouped_indexing_maps;
 }
 
