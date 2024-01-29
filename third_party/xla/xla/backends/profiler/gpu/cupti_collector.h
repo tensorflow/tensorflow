@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_COLLECTOR_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_COLLECTOR_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/container/fixed_array.h"
@@ -23,8 +24,6 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -36,16 +35,16 @@ struct MemcpyDetails {
   size_t num_bytes;
   // The destination device for peer-2-peer communication (memcpy). The source
   // device is implicit: it's the current device.
-  tsl::uint32 destination;
+  uint32_t destination;
   // Whether or not the memcpy is asynchronous.
   bool async;
   // This contains CUpti_ActivityMemcpyKind for activity event (on device).
   // For events from other CuptiTracerEventSource, it is always 0.
-  tsl::int8 copy_kind;
+  int8_t copy_kind;
   // CUpti_ActivityMemoryKind of source.
-  tsl::int8 src_mem_kind;
+  int8_t src_mem_kind;
   // CUpti_ActivityMemoryKind of destination.
-  tsl::int8 dst_mem_kind;
+  int8_t dst_mem_kind;
 
   // ID of the hardware channel on which this operation ran.
   uint32_t channel_id = -1;
@@ -57,9 +56,9 @@ struct MemAllocDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  tsl::int8 mem_kind;
+  int8_t mem_kind;
   // The virtual address of allocation. 0 if it is a free operation.
-  tsl::uint64 address;
+  uint64_t address;
 };
 
 using MemFreeDetails = MemAllocDetails;
@@ -73,20 +72,20 @@ using MemoryResidencyDetails = MemAllocDetails;
 // cudaHostRegister
 struct HostRegisterDetails {
   size_t num_bytes;
-  tsl::uint64 address;
+  uint64_t address;
   unsigned int flags;
 };
 
 // cudaHostUnregister
 struct HostUnregisterDetails {
-  tsl::uint64 address;
+  uint64_t address;
 };
 
 struct MemsetDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
   // The CUpti_ActivityMemoryKind value for this activity event.
-  tsl::int8 mem_kind;
+  int8_t mem_kind;
   // Whether or not the memset is asynchronous.
   bool async;
 
@@ -98,23 +97,23 @@ struct MemsetDetails {
 
 struct KernelDetails {
   // The number of registers used in this kernel.
-  tsl::uint32 registers_per_thread;
+  uint32_t registers_per_thread;
   // The amount of shared memory space used by a thread block.
-  tsl::uint32 static_shared_memory_usage;
+  uint32_t static_shared_memory_usage;
   // The amount of dynamic memory space used by a thread block.
-  tsl::uint32 dynamic_shared_memory_usage;
+  uint32_t dynamic_shared_memory_usage;
   // X-dimension of a thread block.
-  tsl::uint32 block_x;
+  uint32_t block_x;
   // Y-dimension of a thread block.
-  tsl::uint32 block_y;
+  uint32_t block_y;
   // Z-dimension of a thread block.
-  tsl::uint32 block_z;
+  uint32_t block_z;
   // X-dimension of a grid.
-  tsl::uint32 grid_x;
+  uint32_t grid_x;
   // Y-dimension of a grid.
-  tsl::uint32 grid_y;
+  uint32_t grid_y;
   // Z-dimension of a grid.
-  tsl::uint32 grid_z;
+  uint32_t grid_z;
 
   // ID of the hardware channel on which this operation ran.
   uint32_t channel_id = -1;
@@ -166,13 +165,13 @@ enum class CuptiTracerEventSource {
 };
 
 struct CuptiTracerEvent {
-  static constexpr tsl::uint32 kInvalidThreadId =
+  static constexpr uint32_t kInvalidThreadId =
       std::numeric_limits<uint32_t>::max();
-  static constexpr tsl::uint32 kInvalidCorrelationId =
+  static constexpr uint32_t kInvalidCorrelationId =
       std::numeric_limits<uint32_t>::max();
-  static constexpr tsl::uint64 kInvalidContextId =
+  static constexpr uint64_t kInvalidContextId =
       std::numeric_limits<uint64_t>::max();
-  static constexpr tsl::uint64 kInvalidStreamId =
+  static constexpr uint64_t kInvalidStreamId =
       std::numeric_limits<uint64_t>::max();
   CuptiTracerEventType type = CuptiTracerEventType::Unsupported;
   CuptiTracerEventSource source = CuptiTracerEventSource::Invalid;
@@ -184,11 +183,11 @@ struct CuptiTracerEvent {
   // where serialization happens.
   absl::string_view annotation;
   absl::string_view nvtx_range;
-  tsl::uint64 start_time_ns = 0;
-  tsl::uint64 end_time_ns = 0;
-  tsl::uint32 device_id = 0;
-  tsl::uint32 correlation_id = kInvalidCorrelationId;
-  tsl::uint32 thread_id = kInvalidThreadId;
+  uint64_t start_time_ns = 0;
+  uint64_t end_time_ns = 0;
+  uint32_t device_id = 0;
+  uint32_t correlation_id = kInvalidCorrelationId;
+  uint32_t thread_id = kInvalidThreadId;
   int64_t context_id = kInvalidContextId;
   int64_t stream_id = kInvalidStreamId;
   union {
@@ -215,13 +214,13 @@ struct CuptiTracerCollectorOptions {
   // Maximum number of events to collect from callback API; if -1, no limit.
   // if 0, the callback API is enabled to build a correlation map, but no
   // events are collected.
-  tsl::uint64 max_callback_api_events = 2 * 1024 * 1024;
+  uint64_t max_callback_api_events = 2 * 1024 * 1024;
   // Maximum number of events to collect from activity API; if -1, no limit.
-  tsl::uint64 max_activity_api_events = 2 * 1024 * 1024;
+  uint64_t max_activity_api_events = 2 * 1024 * 1024;
   // Maximum number of annotation strings that we can accommodate.
-  tsl::uint64 max_annotation_strings = 1024 * 1024;
+  uint64_t max_annotation_strings = 1024 * 1024;
   // Number of GPUs involved.
-  tsl::uint32 num_gpus;
+  uint32_t num_gpus;
 };
 
 class AnnotationMap {
@@ -231,12 +230,12 @@ class AnnotationMap {
     absl::string_view nvtx_range;
   };
 
-  explicit AnnotationMap(tsl::uint64 max_size, tsl::uint32 num_gpus)
+  explicit AnnotationMap(uint64_t max_size, uint32_t num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
-  void Add(tsl::uint32 device_id, tsl::uint32 correlation_id,
+  void Add(uint32_t device_id, uint32_t correlation_id,
            const absl::string_view annotation,
            const absl::string_view nvtx_range);
-  AnnotationInfo LookUp(tsl::uint32 device_id, tsl::uint32 correlation_id);
+  AnnotationInfo LookUp(uint32_t device_id, uint32_t correlation_id);
 
  private:
   struct PerDeviceAnnotationMap {
@@ -247,9 +246,9 @@ class AnnotationMap {
     // an use the reference to the string in the map.
     absl::node_hash_set<std::string> annotations;
     absl::node_hash_set<std::string> nvtx_ranges;
-    absl::flat_hash_map<tsl::uint32, AnnotationInfo> correlation_map;
+    absl::flat_hash_map<uint32_t, AnnotationInfo> correlation_map;
   };
-  const tsl::uint64 max_size_;
+  const uint64_t max_size_;
   absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;
 
   AnnotationMap(const AnnotationMap&) = delete;
@@ -266,12 +265,12 @@ class CuptiTraceCollector {
   // Producer side functions (i.e. called by CuptiTracer).
   virtual void AddEvent(CuptiTracerEvent&& event) = 0;
   virtual void OnEventsDropped(const std::string& reason,
-                               tsl::uint32 num_events) = 0;
+                               uint32_t num_events) = 0;
   virtual void Flush() = 0;
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual bool Export(tensorflow::profiler::XSpace* space,
-                      tsl::uint64 end_gpu_ns) {
+                      uint64_t end_gpu_ns) {
     return true;
   }
   virtual std::string ReportNumEventsIfDropped() { return ""; }
@@ -289,8 +288,8 @@ class CuptiTraceCollector {
 };
 
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
-    const CuptiTracerCollectorOptions& options,
-    const tsl::uint64 start_walltime_ns, const tsl::uint64 start_gputime_ns);
+    const CuptiTracerCollectorOptions& options, uint64_t start_walltime_ns,
+    uint64_t start_gputime_ns);
 
 }  // namespace profiler
 }  // namespace xla

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_INTERFACE_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_INTERFACE_H_
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -60,7 +60,7 @@ class CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) = 0;
 
-  virtual CUptiResult GetDeviceId(CUcontext context, tsl::uint32* deviceId) = 0;
+  virtual CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) = 0;
 
   virtual CUptiResult GetTimestamp(uint64_t* timestamp) = 0;
 

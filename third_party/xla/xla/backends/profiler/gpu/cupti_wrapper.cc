@@ -56,8 +56,7 @@ CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
                                         func_buffer_completed);
 }
 
-CUptiResult CuptiWrapper::GetDeviceId(CUcontext context,
-                                      tsl::uint32* deviceId) {
+CUptiResult CuptiWrapper::GetDeviceId(CUcontext context, uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
 }
 

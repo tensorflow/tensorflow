@@ -38,11 +38,11 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 
+using absl::OkStatus;
+using absl::Status;
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XSpace;
-using tsl::OkStatus;
 using tsl::ReadBoolFromEnvVar;
-using tsl::Status;
 
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
@@ -155,8 +155,8 @@ Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
-  tsl::uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
-  tsl::uint64 start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
+  uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
+  uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
@@ -213,7 +213,7 @@ Status GpuTracer::CollectData(XSpace* space) {
         space->add_warnings(std::move(events_dropped));
       }
       if (cupti_collector_) {
-        tsl::uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
+        uint64_t end_gpu_ns = CuptiTracer::GetTimestamp();
         cupti_collector_->Export(space, end_gpu_ns);
       }
       return OkStatus();

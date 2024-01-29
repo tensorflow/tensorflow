@@ -55,7 +55,7 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
-  CUptiResult GetDeviceId(CUcontext context, tsl::uint32* deviceId) override;
+  CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
 
