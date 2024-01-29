@@ -60,8 +60,7 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
 // in the `input_array`.
 //
 absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
-    xla::ifrt::Client& ifrt_client,
-    tsl::RCReference<xla::ifrt::Array> input_array,
+    xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceList& device_list,
     const Eigen::ThreadPoolDevice& thread_pool_device);

@@ -475,19 +475,22 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
 }
 
 absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
-    xla::ifrt::Client& ifrt_client,
-    tsl::RCReference<xla::ifrt::Array> input_array,
+    xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceList& device_list,
     const Eigen::ThreadPoolDevice& thread_pool_device) {
   TF_ASSIGN_OR_RETURN(tensorflow::DataType data_type,
-                      ToTensorDataType(input_array->dtype()));
-  tensorflow::TensorShape tensor_shape = ToTensorShape(input_array->shape());
+                      ToTensorDataType(input_array.dtype()));
+  tensorflow::TensorShape tensor_shape = ToTensorShape(input_array.shape());
+
+  VLOG(2) << "Create tensor from array based on sharding: "
+          << hlo_sharding.ToString();
+
   if (hlo_sharding.IsReplicated()) {
     VLOG(1) << "Fast path for replication";
     // fast path for replication.
     TF_ASSIGN_OR_RETURN(auto fully_replicated_array,
-                        input_array->FullyReplicatedShard(
+                        input_array.FullyReplicatedShard(
                             xla::ifrt::ArrayCopySemantics::kDonateInput));
 
     if (fully_replicated_array->shape() != ToIfrtShape(tensor_shape)) {
@@ -495,7 +498,6 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
           "Not fully replicated output. Expected ", tensor_shape.DebugString(),
           " but got ", fully_replicated_array->shape().DebugString()));
     }
-
     tensorflow::Tensor output_tensor(data_type, tensor_shape);
     TF_RETURN_IF_ERROR(
         fully_replicated_array
@@ -504,7 +506,26 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
                                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
             .Await());
     return output_tensor;
+  } else if (hlo_sharding.IsTileMaximal()) {
+    // Maximal implies single device
+    VLOG(1) << "Fast path for maximal";
+    TF_ASSIGN_OR_RETURN(
+        std::vector<tsl::RCReference<xla::ifrt::Array>> disassembled_array,
+        input_array.DisassembleIntoSingleDeviceArrays(
+            xla::ifrt::ArrayCopySemantics::kDonateInput));
+
+    int64_t device_id = hlo_sharding.GetUniqueDevice();
+
+    tensorflow::Tensor output_tensor(data_type, tensor_shape);
+    TF_RETURN_IF_ERROR(
+        disassembled_array[device_id]
+            ->CopyToHostBuffer(output_tensor.data(),
+                               /*byte_strides=*/std::nullopt,
+                               xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            .Await());
+    return output_tensor;
   }
+
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), hlo_sharding);
 
@@ -525,7 +546,7 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<tsl::RCReference<xla::ifrt::Array>> disassembled_array,
-      input_array->DisassembleIntoSingleDeviceArrays(
+      input_array.DisassembleIntoSingleDeviceArrays(
           xla::ifrt::ArrayCopySemantics::kDonateInput));
 
   if (index_domains.size() != disassembled_array.size()) {

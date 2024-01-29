@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -90,7 +91,9 @@ xla::HloSharding PartialTile(absl::Span<const int64_t> dims) {
   return xla::HloSharding::PartialTile(xla::TileAssignment(dims));
 }
 xla::HloSharding Replicate() { return xla::HloSharding::Replicate(); }
-// TODO(b/319045348): add maximal sharding test
+xla::HloSharding Maximal(int64_t device_index = 0) {
+  return xla::HloSharding::AssignDevice(device_index);
+}
 
 TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   constexpr int kMaxParallelism = 16;
@@ -125,8 +128,10 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
+  tsl::RCReference<xla::ifrt::Array> assembled_array;
+
   TF_ASSERT_OK_AND_ASSIGN(
-      auto assembled_array,
+      assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
           ToIfrtShape(GetParam().expected_out_tensor.shape()),
           std::move(ifrt_sharding), absl::MakeSpan(split_arrays),
@@ -134,16 +139,39 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
-      MakeTensorFromArray(*client, assembled_array, GetParam().sharding,
+      MakeTensorFromArray(*client, *assembled_array, GetParam().sharding,
                           device_list, device));
 
   EXPECT_THAT(GetParam().expected_out_tensor, TensorEq(output_tensor));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    HloShardingConcatTests, ReshardToTensorTest,
+    HloShardingTests, ReshardToTensorTest,
     ::testing::ValuesIn<ReshardToTensorTestParam>(
         {
+            // Maximal
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({3}, TensorShape({})),
+                    },
+                .expected_out_tensor = test::AsTensor<int32_t>({3},
+                                                               TensorShape({})),
+                .device_indices = {0},
+                .sharding = Maximal(0),
+            },
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({3}, TensorShape({})),
+                        test::AsTensor<int32_t>({4}, TensorShape({})),
+                    },
+                .expected_out_tensor = test::AsTensor<int32_t>({4},
+                                                               TensorShape({})),
+                .device_indices = {0, 1},
+                .sharding = Maximal(1),
+            },
+
             // Full replication.
             {
                 .split_tensors =
