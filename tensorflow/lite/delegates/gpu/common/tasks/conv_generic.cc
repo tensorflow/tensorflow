@@ -1545,13 +1545,17 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
       conv_params.src_depth_loop_size = 4;
     }
   } else if (gpu_info.IsPowerVR()) {
-    if (different_weights_for_height) {
+    if (gpu_info.IsCL30OrHigher()) {
+      work_group_size_ =
+          int3(gpu_info.opencl_info.preferred_work_group_size_multiple, 1, 1);
+    } else {
       work_group_size_ = int3(32, 1, 1);
+    }
+    if (different_weights_for_height) {
       work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     } else {
       conv_params.linear_spatial = true;
-      work_group_size_ = int3(32, 1, 1);
       work_group_launch_order_ = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
