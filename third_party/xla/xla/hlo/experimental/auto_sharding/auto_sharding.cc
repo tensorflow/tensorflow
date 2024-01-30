@@ -1708,6 +1708,7 @@ AutoShardingSolverResult CallSolver(
     request.add_instruction_names(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
     AutoShardingSolverRequest_Costs ci, di, mi, pi;
+    AutoShardingSolverRequest_Names strategy_names;
     std::optional<HloSharding> default_strategy;
     auto iter = sharding_propagation_solution.find(instruction_name);
     if (iter != sharding_propagation_solution.end()) {
@@ -1728,6 +1729,7 @@ AutoShardingSolverResult CallSolver(
                    cost_graph.extra_node_costs_[node_idx][j]);
       mi.add_costs(strategy.memory_cost);
       pi.add_costs(default_strategy && sharding == *default_strategy ? 0 : 1);
+      strategy_names.add_names(sharding.ToString());
     }
     if (option.use_sharding_propagation_for_default_shardings &&
         *std::min_element(pi.costs().begin(), pi.costs().end()) > 0) {
@@ -1740,6 +1742,7 @@ AutoShardingSolverResult CallSolver(
     request.mutable_communication_costs()->Add(std::move(di));
     request.mutable_memory_costs()->Add(std::move(mi));
     request.mutable_departure_costs()->Add(std::move(pi));
+    request.mutable_strategy_names()->Add(std::move(strategy_names));
   }
   LOG(INFO) << "Total nodes without default: " << num_nodes_without_default;
 

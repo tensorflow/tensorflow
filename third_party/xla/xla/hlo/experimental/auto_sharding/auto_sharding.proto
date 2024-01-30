@@ -31,6 +31,9 @@ message AutoShardingSolverRequest {
   message Edges {
     repeated int64 edges = 1;
   }
+  message Names {
+    repeated string names = 1;
+  }
   message SolverTimeout {
     int64 solver_timeout_in_seconds = 1;
   }
@@ -56,6 +59,7 @@ message AutoShardingSolverRequest {
   repeated Pair aliases = 14;
   repeated Costs value_costs = 15;
   repeated string instruction_names = 16;
+  repeated Names strategy_names = 32;
   optional SolverTimeout solver_timeout = 17;
   optional Coeff overbudget_coeff = 18;
   optional Coeff makespan_coeff = 19;
