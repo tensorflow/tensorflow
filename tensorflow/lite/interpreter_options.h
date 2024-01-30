@@ -25,12 +25,6 @@ namespace tflite {
 /// WARNING: This is an experimental API and subject to change.
 class InterpreterOptions {
  public:
-  InterpreterOptions()
-      : experimental_preserve_all_tensors_(false),
-        experimental_ensure_dynamic_tensors_are_released_(false),
-        experimental_optimize_memory_for_large_tensors_(0),
-        experimental_disable_delegate_clustering_(false) {}
-
   /// Preserving all intermediates tensors for debugging.
   /// WARNING: This is an experimental API and subject to change.
   void SetPreserveAllTensors(bool value = true) {
@@ -110,10 +104,10 @@ class InterpreterOptions {
   }
 
  private:
-  bool experimental_preserve_all_tensors_;
-  bool experimental_ensure_dynamic_tensors_are_released_;
-  int experimental_optimize_memory_for_large_tensors_;
-  bool experimental_disable_delegate_clustering_;
+  bool experimental_preserve_all_tensors_ = false;
+  bool experimental_ensure_dynamic_tensors_are_released_ = false;
+  int experimental_optimize_memory_for_large_tensors_ = 0;
+  bool experimental_disable_delegate_clustering_ = false;
   bool experimental_cache_constant_cast_op_ = false;
 };
 
