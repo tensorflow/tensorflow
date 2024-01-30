@@ -19,7 +19,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "dnnl.hpp"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/public/session.h"
 #include "tsl/platform/status.h"

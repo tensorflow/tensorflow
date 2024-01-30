@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -73,6 +74,12 @@ class FusedBatchMatMulOpTestBase : public OpsTestBase {
       const FusedOpsAndTensors& fused_ops_and_tensors, Tensor* result,
       bool adj_x, bool adj_y, string input_quant_mode, string output_quant_mode,
       bool requantize, float output_min, float output_max)>;
+
+  bool HasQuantizationSupport() {
+    return TestCPUFeature(port::CPUFeature::AVX_VNNI_INT8) ||
+           TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
+           TestCPUFeature(port::CPUFeature::AMX_INT8);
+  }
 
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
   // of 'fetch' node into the outputs. Optional `add_nodes` parameter
@@ -436,6 +443,9 @@ class FusedBatchMatMulOpTestBase : public OpsTestBase {
   }
 
   void VerifyQuantizedBatchMatMul(std::vector<string> fused_ops) {
+    if (!HasQuantizationSupport()) {
+      GTEST_SKIP() << "oneDNN based Quantized ops are not enabled on this CPU.";
+    }
     const GraphRunner run_default =
         [&](const Tensor& x, const Tensor& y,
             const FusedOpsAndTensors& fused_ops_and_tensors, Tensor* result,

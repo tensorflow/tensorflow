@@ -1941,11 +1941,11 @@ REGISTER_OP("_QuantizedBatchMatMul")
     // The following attributes T1, T2, Tfusion, and Tout are members of Tinputs
     // and Toutputs, used here for type constraints in the templatized OpKernel
     // registrations.
-    .Attr("T1: quantizedtype")  // 0-th input    
+    .Attr("T1: quantizedtype")  // 0-th input
     .Attr("T2: quantizedtype")  // 1st input
     // Currently, restricting all additional inputs of same type.
     .Attr("U: {bfloat16, float, quantizedtype} = DT_FLOAT")
-    .Attr("Tout: {bfloat16, float, quantizedtype} = DT_FLOAT")  // 0-th output  
+    .Attr("Tout: {bfloat16, float, quantizedtype} = DT_FLOAT")  // 0-th output
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .Attr("fused_ops: list(string) = []")
