@@ -311,6 +311,23 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, IotaCustomOutputLayout) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,4,3]{1,2,0} iota(), iota_dimension=2
+  ROOT out = abs(a)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[iota_2:%[^ ]+]] = f32[2,3,4]{2,1,0} iota(), iota_dimension=1
+// CHECK: [[abs_3:%[^ ]+]] = f32[2,3,4]{2,1,0} abs([[iota_2]])
+// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[2,4,3]{1,2,0} bitcast([[abs_3]])
+)");
+}
+
 TEST_F(LayoutNormalizationTest, Concatenate) {
   const char* hlo = R"(
 HloModule module
