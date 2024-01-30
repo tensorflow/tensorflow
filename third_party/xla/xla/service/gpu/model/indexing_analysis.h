@@ -89,14 +89,14 @@ GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
                              const HloInstruction* instr);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
-// layout. If it is an identity, return std::nullopt.
-std::optional<IndexingMap> GetIndexingMapFromPhysicalLayoutToLogical(
-    const Shape& shape, mlir::MLIRContext* ctx);
+// layout.
+IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
+                                                      mlir::MLIRContext* ctx);
 
 // Creates an indexing map from the logical layout of the tensor to its physical
-// layout. If it is an identity, return std::nullopt.
-std::optional<IndexingMap> GetIndexingMapFromLogicalToPhysicalLayout(
-    const Shape& shape, mlir::MLIRContext* ctx);
+// layout.
+IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
+                                                      mlir::MLIRContext* ctx);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);

@@ -694,13 +694,10 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
 
 }  // namespace
 
-// Creates an indexing map from the physical layout of the tensor to its logical
-// layout. If it is an identity, return std::nullopt.
-std::optional<IndexingMap> GetIndexingMapFromPhysicalLayoutToLogical(
-    const Shape& shape, MLIRContext* ctx) {
-  if (shape.rank() == 0 ||
-      LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    return std::nullopt;
+IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
+                                                      MLIRContext* ctx) {
+  if (shape.rank() == 0) {
+    return IndexingMap(AffineMap::get(ctx), {}, {});
   }
   return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(
@@ -710,13 +707,10 @@ std::optional<IndexingMap> GetIndexingMapFromPhysicalLayoutToLogical(
       {});
 }
 
-// Creates an indexing map from the logical layout of the tensor to its physical
-// layout. If it is an identity, return std::nullopt.
-std::optional<IndexingMap> GetIndexingMapFromLogicalToPhysicalLayout(
-    const Shape& shape, MLIRContext* ctx) {
-  if (shape.rank() == 0 ||
-      LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
-    return std::nullopt;
+IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
+                                                      MLIRContext* ctx) {
+  if (shape.rank() == 0) {
+    return IndexingMap(AffineMap::get(ctx), {}, {});
   }
   return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(ToTransposeDimensions(shape.layout()), ctx),
