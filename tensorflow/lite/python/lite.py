@@ -1030,27 +1030,27 @@ class TFLiteConverterBase:
 
     if quant_mode.is_post_training_float16_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16
       )
 
     if quant_mode.is_post_training_dynamic_range_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE
       )
 
     if quant_mode.is_post_training_int8_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER
       )
 
     if quant_mode.is_post_training_int16x8_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16
       )
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
+        conversion_metdata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):
@@ -2023,7 +2023,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   """  # fmt: skip
 
   # pylint: disable=useless-super-delegation
-  def __init__(self, funcs, trackable_obj=None):
+  def __init__(self, funcs, trackable_obj=None, supported_types=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -2036,6 +2036,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
         maintained by the user (e.g. `from_saved_model`).
     """
     super(TFLiteConverterV2, self).__init__(funcs, trackable_obj)
+    if supported_types is not None:
+      self.target_spec.supported_types = supported_types
 
   @classmethod
   def from_concrete_functions(cls, funcs, trackable_obj=None):
