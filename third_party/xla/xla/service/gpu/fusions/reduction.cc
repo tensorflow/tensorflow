@@ -130,15 +130,6 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
   return WarpSize() / reduced_dimension_size;
 }
 
-int64_t NearestPowerOfTwo(int64_t v) {
-  if (v < 0) {
-    return 0;
-  }
-  int64_t upper = absl::bit_ceil<uint64_t>(v);
-  int64_t lower = upper >> 1;
-  return upper - v < v - lower ? upper : lower;
-}
-
 // Divides `num_reduces` reduces into groups. Different groups will be executed
 // in parallel. Generally speaking, we'd like to run the reduce instructions
 // in parallel without incurring too much recomputation overhead. The current
@@ -1327,7 +1318,6 @@ ReductionFusion::ComputeReductionCodegenInfo(
            << reduction_dimensions.dimensions[2];
   Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
 
-  int64_t fan_out = analysis.fusion_roots().size();
   int64_t num_threads_y =
       reduction_dimensions.is_row_reduction ? 1 : WarpSize();
   int64_t num_threads_x = [&] {
@@ -1335,12 +1325,8 @@ ReductionFusion::ComputeReductionCodegenInfo(
       if (RowReductionGetRowsPerWarp(reduction_dimensions.dimensions[2]) > 1) {
         return reduction_dimensions.dimensions[2];
       }
-      // Use 512 as default block size (threads per block) for row reductions.
-      // For multi-output fusions, reduce the block size further to decrease
-      // register pressure when multiple outputs are computed by each thread.
-      int64_t max_block_size = std::max(
-          MinThreadsXRowReduction(hero_reduction->GetModule()->config()),
-          static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
+      int64_t max_block_size =
+          MinThreadsXRowReduction(hero_reduction->GetModule()->config());
       return std::min(max_block_size,
                       RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
                                             reduction_tiling[2]),
