@@ -248,4 +248,26 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }
 
+TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
+  struct TestState : public CommandBufferCmd::State {
+    int32_t value = 0;
+  };
+
+  // We need a fake command buffer pointer to use as a key.
+  CommandBufferCmd* cmd = reinterpret_cast<CommandBufferCmd*>(0x1234567);
+
+  CommandBufferCmd::StateManager state_manager;
+
+  auto* state0 = state_manager.GetOrNull<TestState>(cmd);
+  ASSERT_EQ(state0, nullptr);
+
+  auto* state1 = state_manager.GetOrCreate<TestState>(cmd);
+  ASSERT_EQ(state1->value, 0);
+  state1->value += 42;
+
+  auto* state2 = state_manager.GetOrCreate<TestState>(cmd);
+  ASSERT_EQ(state2->value, 42);
+  ASSERT_EQ(state1, state2);
+}
+
 }  // namespace xla::gpu

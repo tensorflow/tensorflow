@@ -213,7 +213,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
       params.collective_params,
-      params.collective_cliques};
+      params.collective_cliques,
+      &cmd_buffer->state};
 
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()

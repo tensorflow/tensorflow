@@ -68,6 +68,10 @@ class CommandBufferThunk : public Thunk {
     absl::Mutex mutex;
     se::CommandBuffer command_buffer ABSL_GUARDED_BY(mutex);
 
+    // A manager for an external state attached by commands in a command
+    // sequence to a command buffer.
+    CommandBufferCmd::StateManager state ABSL_GUARDED_BY(mutex);
+
     // TODO(ezhulenev): We need to move command buffer allocations all the way
     // up to the GpuExecutable as we can have Allocate and Free commands in
     // different command buffers. Consider making it a part of
