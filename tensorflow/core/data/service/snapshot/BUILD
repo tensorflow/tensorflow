@@ -408,6 +408,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data:serialization_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

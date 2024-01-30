@@ -360,6 +360,30 @@ class DistributedSaveLoadTest(
         else num_chunks * num_repetitions)
     self.assertEqual(self.evaluate(dataset.cardinality()), expected_cardinality)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_repetitions=[50])))
+  def test_snapshot_chunks_order(self, num_repetitions: int):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, snapshot_max_chunk_size_bytes=1)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(1)
+    dataset = dataset.repeat(num_repetitions)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    dataset = load_op._ListSnapshotChunksDataset(snapshot_dir.full_path)
+    while self.evaluate(dataset.cardinality()) == dataset_ops.UNKNOWN:
+      time.sleep(.1)
+
+    chunk_indices = [
+        int(os.path.basename(str(chunk)).split("_")[2])
+        for chunk in self.getDatasetOutput(dataset)]
+    self.assertEqual(chunk_indices, sorted(chunk_indices),
+                     "Snapshot chunks should be sorted by chunk indices.")
+
 
 class SaveLoadCheckpointTest(
     data_service_test_base.TestBase,
