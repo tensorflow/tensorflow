@@ -1892,7 +1892,11 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
 
     std::vector<AlgorithmDesc> algorithms;
     auto* stream = context->op_device_context()->stream();
-    CHECK(stream->parent()->GetRnnAlgorithms(&algorithms));
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("No DNN found");
+    }
+    CHECK(dnn->GetRnnAlgorithms(&algorithms));
     if (algorithms.empty()) {
       LOG(WARNING) << "No Rnn algorithm found";
       return OkStatus();

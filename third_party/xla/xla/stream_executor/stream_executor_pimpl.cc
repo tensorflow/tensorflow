@@ -173,15 +173,6 @@ int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
-bool StreamExecutor::GetRnnAlgorithms(
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetRnnAlgorithms(out_algorithms);
-}
-
 bool StreamExecutor::GetBlasGemmAlgorithms(
     Stream* stream, std::vector<blas::AlgorithmType>* out_algorithms) {
   blas::BlasSupport* blas_support = AsBlas();

@@ -279,9 +279,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  // Returns the list of supported algorithms for rnn operation.
-  bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc>* out_algorithms);
-
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(Stream* stream,
                              std::vector<blas::AlgorithmType>* out_algorithms);
