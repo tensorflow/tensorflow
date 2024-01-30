@@ -89,7 +89,7 @@ UniformQuantizedPerAxisType GetPerChannelType(QuantType quant_type) {
 void GetQuantizationParams(OpBuilder &builder, Location loc,
                            QuantType quant_type, Value &scales,
                            Value &zero_points, bool output_zero_point_in_fp,
-                           DenseIntElementsAttr &broadcast_dims) {
+                           DenseI64ArrayAttr &broadcast_dims) {
   // Get scales/zero points for per-tensor and per-axis quantization cases.
   if (auto *quant_per_tensor_type =
           std::get_if<UniformQuantizedType>(&quant_type)) {
@@ -140,8 +140,8 @@ void GetQuantizationParams(OpBuilder &builder, Location loc,
                        builder.getI32Type()),
                    zero_points_vec));
     }
-    broadcast_dims = DenseIntElementsAttr::get(
-        RankedTensorType::get({1}, builder.getI64Type()),
+    broadcast_dims = DenseI64ArrayAttr::get(
+        builder.getContext(),
         {static_cast<int64_t>(quant_per_channel_type.getQuantizedDimension())});
   }
 }
@@ -256,9 +256,8 @@ Value ApplyMergedScalesAndZps(OpBuilder &builder, Location loc,
                                           merged_scale_double.end()),
         merged_zp_float(merged_zp_double.begin(), merged_zp_double.end());
 
-    auto broadcast_dims = DenseIntElementsAttr::get(
-        RankedTensorType::get({1}, builder.getI64Type()),
-        {quantized_dimension});
+    auto broadcast_dims =
+        DenseI64ArrayAttr::get(builder.getContext(), {quantized_dimension});
     Value merged_scale = builder.create<mhlo::ConstantOp>(
         loc, DenseFPElementsAttr::get(
                  RankedTensorType::get({channel_size}, builder.getF32Type()),
@@ -367,7 +366,7 @@ class ConvertUniformQuantizeOp
                                         ConversionPatternRewriter &rewriter,
                                         QuantType quant_type) const {
     Value scales, zero_points;
-    DenseIntElementsAttr broadcast_dims;
+    DenseI64ArrayAttr broadcast_dims;
     GetQuantizationParams(rewriter, op->getLoc(), quant_type, scales,
                           zero_points, /*output_zero_point_in_fp=*/true,
                           broadcast_dims);
@@ -425,7 +424,7 @@ class ConvertUniformDequantizeOp
       return failure();
     }
     Value scales, zero_points;
-    DenseIntElementsAttr broadcast_dims;
+    DenseI64ArrayAttr broadcast_dims;
     GetQuantizationParams(rewriter, op->getLoc(), *quant_type, scales,
                           zero_points,
                           /*output_zero_point_in_fp=*/false, broadcast_dims);
@@ -583,8 +582,7 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
               zps_vec));
       add_result = rewriter.create<chlo::BroadcastSubOp>(
           op->getLoc(), add_result, zps,
-          DenseIntElementsAttr::get(
-              RankedTensorType::get({1}, rewriter.getI64Type()),
+          rewriter.getDenseI64ArrayAttr(
               {static_cast<int64_t>(quant_type.getQuantizedDimension())}));
     }
     rewriter.replaceOp(op, add_result);

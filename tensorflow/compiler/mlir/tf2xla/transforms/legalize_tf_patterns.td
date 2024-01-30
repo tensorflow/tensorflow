@@ -75,7 +75,7 @@ def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
           (CHLO_BroadcastCompareOp
            (MHLO_AbsOp:$abs (MHLO_SubtractOp $x, $y)),
            (CastValueToElementType $result, (MHLO_ConstantOp $tolerance), $abs),
-           (NullDenseIntElementsAttr),
+           (NullDenseI64ArrayAttr),
            CHLO_ComparisonDirectionValue<"LT">,
            (CHLO_DEFAULT_COMPARISON_TYPE))>;
 
@@ -158,18 +158,18 @@ def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
         (CHLO_BroadcastCompareOp
          (CHLO_BroadcastCompareOp:$l_cmp $l,
           (MHLO_ConstantOp:$l_zeros (GetScalarOfType<0> $l)),
-          (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LT">,
+          (NullDenseI64ArrayAttr), CHLO_ComparisonDirectionValue<"LT">,
           (CHLO_DEFAULT_COMPARISON_TYPE)),
          (CHLO_BroadcastCompareOp:$r_cmp $r,
           (MHLO_ConstantOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LT">,
+          (NullDenseI64ArrayAttr), CHLO_ComparisonDirectionValue<"LT">,
           (CHLO_DEFAULT_COMPARISON_TYPE)),
          (BinBroadcastDimensions $l_cmp, $r_cmp), CHLO_ComparisonDirectionValue<"NE">,
          (CHLO_DEFAULT_COMPARISON_TYPE)),
-        (NullDenseIntElementsAttr)),
+        (NullDenseI64ArrayAttr)),
        (CHLO_BroadcastSubOp $div,
         (MHLO_ConstantOp:$ones (GetScalarOfType<1> $div)),
-        (NullDenseIntElementsAttr)), $div),
+        (NullDenseI64ArrayAttr)), $div),
       [(SignedIntTensor $l)]>;
 
 // FloorDiv of unsigned is just div.
@@ -189,19 +189,19 @@ def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
         (CHLO_BroadcastCompareOp
          (CHLO_BroadcastRemOp:$rem $l, $r, (BinBroadcastDimensions $l, $r)),
          (MHLO_ConstantOp:$l_zeros (GetScalarOfType<0> $l)),
-         (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"NE">,
+         (NullDenseI64ArrayAttr), CHLO_ComparisonDirectionValue<"NE">,
          (CHLO_DEFAULT_COMPARISON_TYPE)),
         (CHLO_BroadcastCompareOp
          (CHLO_BroadcastCompareOp:$r_cmp $r,
           (MHLO_ConstantOp:$r_zeros (GetScalarOfType<0> $r)),
-          (NullDenseIntElementsAttr), CHLO_ComparisonDirectionValue<"LT">,
+          (NullDenseI64ArrayAttr), CHLO_ComparisonDirectionValue<"LT">,
           (CHLO_DEFAULT_COMPARISON_TYPE)),
          (CHLO_BroadcastCompareOp:$rem_cmp $rem, $r_zeros,
           (BinBroadcastDimensions $rem, $r_zeros), CHLO_ComparisonDirectionValue<"LT">,
           (CHLO_DEFAULT_COMPARISON_TYPE)),
          (BinBroadcastDimensions $r_cmp, $rem_cmp), CHLO_ComparisonDirectionValue<"NE">,
          (CHLO_DEFAULT_COMPARISON_TYPE)),
-        (NullDenseIntElementsAttr)),
+        (NullDenseI64ArrayAttr)),
        (CHLO_BroadcastAddOp $r,
         $rem, (BinBroadcastDimensions $r, $rem)), $rem),
       [(TensorOf<[I8, I16, I32, I64, F16, F32, F64]> $l)]>;
@@ -694,13 +694,13 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                 (CHLO_BroadcastAddOp:$threshold
                  (MHLO_LogOp (MHLO_ConstantOp (EpsilonValue $features))),
                  (MHLO_ConstantOp (GetScalarOfType<2> $features)),
-                 (NullDenseIntElementsAttr)
+                 (NullDenseI64ArrayAttr)
                 ),
                 (MHLO_SelectOp:$output
                  (CHLO_BroadcastCompareOp
                   $features,
                   (MHLO_NegOp $threshold),
-                  (NullDenseIntElementsAttr),
+                  (NullDenseI64ArrayAttr),
                   CHLO_ComparisonDirectionValue<"GT">,
                   (CHLO_DEFAULT_COMPARISON_TYPE)
                  ),
@@ -709,7 +709,7 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                   (CHLO_BroadcastCompareOp
                    $features,
                    $threshold,
-                   (NullDenseIntElementsAttr),
+                   (NullDenseI64ArrayAttr),
                    CHLO_ComparisonDirectionValue<"LT">,
                    (CHLO_DEFAULT_COMPARISON_TYPE)
                   ),

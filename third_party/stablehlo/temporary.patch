@@ -164,6 +164,92 @@ diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/Por
  
  // Get the current StableHLO version.
  //
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -23,6 +23,7 @@
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Traits.h"
++#include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Transforms/InliningUtils.h"
+@@ -165,7 +166,7 @@
+   auto broadcastDimensionsAttr = op->getAttr("broadcast_dimensions");
+   if (broadcastDimensionsAttr &&
+       !hlo::isLegalNumpyRankedBroadcast(
+-          lhs, rhs, hlo::getI64Array(broadcastDimensionsAttr))) {
++          lhs, rhs, broadcastDimensionsAttr.cast<mlir::DenseI64ArrayAttr>())) {
+     // Note: It is unclear whether the general specification of explicit
+     // broadcast_dimensions on binary ops is a feature we want to carry
+     // forward. While it can technically be implemented for ranked-dynamic,
+@@ -212,7 +213,7 @@
+ 
+ void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
+                                Value lhs, Value rhs,
+-                               Attribute broadcastDimensions,
++                               DenseI64ArrayAttr broadcastDimensions,
+                                chlo::ComparisonDirection comparisonDirection,
+                                chlo::ComparisonType compareType) {
+   build(builder, result, lhs, rhs, broadcastDimensions,
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -101,7 +101,7 @@
+     HLO_Tensor:$rhs,
+     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+     // padded rank-broadcast semantics if omitted.
+-    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
++    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
+   );
+ 
+   let results = (outs HLO_Tensor);
+@@ -313,7 +313,7 @@
+     HLO_FpTensor:$rhs,
+     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+     // padded rank-broadcast semantics if omitted.
+-    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
++    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
+   );
+   let results = (outs HLO_FpTensor);
+ }
+@@ -331,7 +331,7 @@
+     HLO_PredOrIntTensor:$rhs,
+     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+     // padded rank-broadcast semantics if omitted.
+-    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
++    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
+   );
+ }
+ 
+@@ -448,7 +448,7 @@
+     HLO_FpTensor:$rhs,
+     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+     // padded rank-broadcast semantics if omitted.
+-    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
++    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
+   );
+   let results = (outs HLO_ComplexTensor);
+ }
+@@ -755,7 +755,7 @@
+   let arguments = (ins
+     HLO_Tensor:$lhs,
+     HLO_Tensor:$rhs,
+-    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions,
++    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions,
+     CHLO_ComparisonDirectionAttr:$comparison_direction,
+     OptionalAttr<CHLO_ComparisonTypeAttr>:$compare_type
+   );
+@@ -763,7 +763,7 @@
+ 
+   let builders = [
+     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
+-      "Attribute":$broadcast_dimensions,
++      "DenseI64ArrayAttr":$broadcast_dimensions,
+       "::mlir::chlo::ComparisonDirection":$comparison_direction,
+       CArg<"::mlir::chlo::ComparisonType",
+       "::mlir::chlo::ComparisonType::NOTYPE">:$compare_type)>,
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
