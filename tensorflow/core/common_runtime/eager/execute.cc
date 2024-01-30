@@ -116,6 +116,10 @@ auto* function_compile_counter =
                                 "The number of times that TF function is "
                                 "called for different compilation options.",
                                 "device", "compilation_option");
+auto* top_level_jit_compilation_counter = monitoring::Counter<1>::New(
+    "/tensorflow/core/tf_top_level_jit_compilation",
+    "The number of times a top-level JIT-compiled function is called.",
+    "device");
 
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
@@ -565,6 +569,7 @@ Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
     return OkStatus();
   }
 
+  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
   string compilation_option = kDisabled;
   if (!compile_with_xla) {
     bool nested_jit_compile;
@@ -588,9 +593,11 @@ Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
         compilation_option = kEnabled;
       }
     }
+  } else {
+    // Top-level JIT compilation
+    top_level_jit_compilation_counter->GetCell(device_type)->IncrementBy(1);
   }
 
-  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
   if (device_type == tensorflow::DEVICE_TPU || compile_with_xla) {
     compilation_option = kEnabled;
   }
