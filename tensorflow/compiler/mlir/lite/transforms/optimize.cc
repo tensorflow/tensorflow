@@ -1249,6 +1249,12 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     auto fc_op = dyn_cast_or_null<TFL::FullyConnectedOp>(
         mul_op.getLhs().getDefiningOp());
     if (!fc_op) return failure();
+
+    // Check if FullyConnected has only one use, that is the LHS of Mul Op.
+    // Otherwise this will duplicate the fullyconnected op to serve the
+    // remaining uses.
+    if (!fc_op->hasOneUse()) return failure();
+
     Value filter = fc_op.getFilter();
     Value bias = fc_op.getBias();
     ElementsAttr cst_tmp;

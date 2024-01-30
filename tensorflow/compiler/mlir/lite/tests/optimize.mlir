@@ -377,6 +377,28 @@ func.func @DontFuseMulIntoFullyConnectedForLargeFilter(%arg0: tensor<128x256000x
 }
 
 
+// CHECK-LABEL: @skipFuseMulIntoFullyConnected
+func.func @skipFuseMulIntoFullyConnected(%arg0: tensor<4x2xf32>) -> (tensor<1x8xf32>, tensor<4x2xf32>) {
+  %cst0 = arith.constant dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>
+  %cst1 = arith.constant dense<2.0> : tensor<2xf32>
+  %cst2 = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %cst3 = arith.constant dense<[1, 8]> : tensor<2xi32>
+
+  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %1 = "tfl.reshape"(%0, %cst3) : (tensor<4x2xf32>, tensor<2xi32>) -> tensor<1x8xf32>
+  %2 = "tfl.mul"(%0, %cst2) {fused_activation_function = "RELU6"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+
+  func.return %1, %2 : tensor<1x8xf32>, tensor<4x2xf32>
+  // CHECK:  %cst = arith.constant dense<{{\[}}[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>
+  // CHECK:  %cst_0 = arith.constant dense<2.000000e+00> : tensor<2xf32>
+  // CHECK:  %cst_1 = arith.constant dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>
+  // CHECK:  %cst_2 = arith.constant dense<[1, 8]> : tensor<2xi32>
+  // CHECK:  %0 = "tfl.fully_connected"(%arg0, %cst, %cst_0) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  // CHECK:  %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4x2xf32>, tensor<2xi32>) -> tensor<1x8xf32>
+  // CHECK:  %2 = tfl.mul(%0, %cst_1) {fused_activation_function = "RELU6"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  // CHECK:  return %1, %2 : tensor<1x8xf32>, tensor<4x2xf32>
+}
+
 // CHECK-LABEL: @fuseAddIntoFollowingFullyConnectedWithQDQs
 func.func @fuseAddIntoFollowingFullyConnectedWithQDQs(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
   %cst2 = arith.constant dense<1.5> : tensor<f32>
