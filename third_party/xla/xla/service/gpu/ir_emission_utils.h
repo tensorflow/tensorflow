@@ -220,9 +220,12 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
 // Checks if the instruction is elementwise and only has a single user. If
-// a fusion adaptor is provided, only checks for users within the fusion.
+// a fusion adaptor is provided, only checks for users within the fusion. If
+// `add_single_user_check` is true, then it is also checked whether `instr` has
+// at most 1 user.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
-                    const HloFusionAdaptor* fusion = nullptr);
+                    const HloFusionAdaptor* fusion = nullptr,
+                    bool add_single_user_check = false);
 
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);

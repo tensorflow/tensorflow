@@ -300,6 +300,37 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionHeroAlsoUsedAsNonHero) {
   EXPECT_EQ(result2.name(), "reduce.0");
 }
 
+TEST_F(IrEmissionUtilsTest, DoNotFindTransposeHeroEpilogueFusionTwoRootUsers) {
+  const char* hlo = R"(
+    HloModule module
+
+    fused_computation {
+      param_0 = f32[64,32]{1,0} parameter(0)
+      transpose = f32[32,64]{1,0} transpose(param_0), dimensions={1,0}
+      bitcast.1 = f32[1,32,64]{2,1,0} bitcast(transpose)
+      sign.1 = f32[1,32,64]{2,1,0} sign(bitcast.1)
+      ROOT tuple.12 = (f32[1,32,64]{2,1,0}, f32[1,32,64]{2,1,0}) tuple(bitcast.1, sign.1)
+    }
+
+    ENTRY main.7749 {
+      Arg_2.1 = f32[64,32]{1,0} parameter(0)
+      ROOT fusion = (f32[1,32,64]{2,1,0}, f32[1,32,64]{2,1,0}) fusion(Arg_2.1), kind=kInput, calls=fused_computation
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  auto fusion = HloFusionAdaptor::ForInstruction(r);
+  const auto& result =
+      FindNonTrivialHero(fusion->GetRoots()[0].instruction(), *fusion);
+  EXPECT_EQ(result.name(), "bitcast.1");
+  const auto& result2 =
+      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  EXPECT_EQ(result2.name(), "sign.1");
+}
+
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateBinaryOp) {
   const char* hlo = R"(
 HloModule module

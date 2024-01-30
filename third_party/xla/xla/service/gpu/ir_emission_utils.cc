@@ -994,11 +994,28 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
 }
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
-                    const HloFusionAdaptor* fusion) {
+                    const HloFusionAdaptor* fusion,
+                    bool add_single_user_check) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
     return false;
+  }
+
+  if (add_single_user_check) {
+    // Check that intermediate `instr` doesn't have multiple users. If we have a
+    // fusion, only consider users within the fusion.
+    // TODO(akuegel): Figure out why we still need this check for transpose
+    // fusions.
+    int64_t num_users =
+        fusion ? absl::c_count_if(HloInstructionAdaptor{*instr}.GetUsers(),
+                                  [&](auto user) {
+                                    return fusion->ContainsInstruction(user);
+                                  })
+               : instr->user_count();
+    if (num_users > 1) {
+      return false;
+    }
   }
 
   if (instr->IsElementwise()) {
@@ -1044,7 +1061,11 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
       return TraversalResult::kSkip;
     }
 
-    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
+    // We set add_single_user_check to true because it could be that it causes
+    // problems if we have more than one user in a transpose fusion.
+    // TODO(akuegel): Verify and possibly fix this.
+    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3,
+                        /*fusion=*/nullptr, /*add_single_user_check=*/true)) {
       return TraversalResult::kSkip;
     }
     return TraversalResult::kAdvance;
@@ -1056,10 +1077,14 @@ static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
 
   // Make sure that no non-elementwise op is reachable from the transpose.
   auto is_nontrivial = [](HloInstructionAdaptor node) {
+    // We set add_single_user_check to true because it could be that it causes
+    // problems if we have more than one user in a transpose fusion.
+    // TODO(akuegel): Verify and possibly fix this.
     return node.instruction().opcode() != HloOpcode::kTuple &&
            node.instruction().opcode() != HloOpcode::kParameter &&
            !IsIntermediate(&node.instruction(),
-                           /*allowed_operand_count=*/3);
+                           /*allowed_operand_count=*/3, /*fusion=*/nullptr,
+                           /*add_single_user_check=*/true);
   };
   bool visit_operands = false;
   if (HloAnyOf(hero->GetUsers(), fusion, is_nontrivial, visit_operands)) {
@@ -1096,6 +1121,9 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
   };
   if (auto concatenate = FindNonTrivialHero(hero, fusion, is_concatenate)) {
     return concatenate->instruction();
+  }
+  if (hero.opcode() != HloOpcode::kReduce) {
+    return instr;
   }
   return hero.instruction();
 }
