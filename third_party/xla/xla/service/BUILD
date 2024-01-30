@@ -873,7 +873,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
-    tags = ["no_arm64"],
+    tags = ["no_aarch64"],
     deps = [
         "//xla:literal",
         "//xla:protobuf_util",

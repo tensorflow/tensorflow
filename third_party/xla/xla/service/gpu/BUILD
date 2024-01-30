@@ -2467,7 +2467,7 @@ xla_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     tags = [
-        "no_arm64",
+        "no_aarch64",
         "nomsan",
     ],
     deps = [
