@@ -93,11 +93,28 @@ class InterpreterOptions {
     experimental_disable_delegate_clustering_ = value;
   }
 
+  // If set to `true`, the CAST op will cache its output when its input is a
+  // constant tensor.
+  //
+  // WARNING: This is an experimental API and subject to change.
+  void SetCacheConstantCastOp(bool value) {
+    experimental_cache_constant_cast_op_ = value;
+  }
+
+  // If `true`, the CAST op will cache its output when its input is a constant
+  // tensor.
+  //
+  // WARNING: This is an experimental API and subject to change.
+  bool GetCacheConstantCastOp() const {
+    return experimental_cache_constant_cast_op_;
+  }
+
  private:
   bool experimental_preserve_all_tensors_;
   bool experimental_ensure_dynamic_tensors_are_released_;
   int experimental_optimize_memory_for_large_tensors_;
   bool experimental_disable_delegate_clustering_;
+  bool experimental_cache_constant_cast_op_ = false;
 };
 
 }  // namespace tflite

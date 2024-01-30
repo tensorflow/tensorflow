@@ -433,6 +433,9 @@ class Subgraph {
   void SetOptions(InterpreterOptions* options) { options_ = options; }
 
   // WARNING: This is an experimental API and subject to change.
+  const InterpreterOptions* GetOptions() const { return options_; }
+
+  // WARNING: This is an experimental API and subject to change.
   // True if all intermediates tensors should be preserved for debugging.
   bool ShouldPreserveAllTensors() const {
     return (options_ && options_->GetPreserveAllTensors());

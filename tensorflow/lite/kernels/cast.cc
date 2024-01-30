@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -27,29 +29,11 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 namespace cast {
+
+namespace {
+
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-
-  // TODO(ahentz): these two checks would make the new implementation
-  // incompatible with some existing models, where params is not specified. It
-  // is OK not to have them because toco would have set input and output types
-  // to match the parameters.
-  // auto* params = reinterpret_cast<TfLiteCastParams*>(node->builtin_data);
-  // TF_LITE_ENSURE_EQ(context, input->type, params->in_data_type);
-  // TF_LITE_ENSURE_EQ(context, output->type, params->out_data_type);
-
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
-}
 
 template <typename FromT, typename ToT>
 void copyCast(const FromT* in, ToT* out, int num_elements) {
@@ -213,14 +197,8 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
   return kTfLiteOk;
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input;
-  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context,
-                    GetOutputSafe(context, node, kOutputTensor, &output));
-  const int num_elements = NumElements(input);
-  TF_LITE_ENSURE_EQ(context, num_elements, NumElements(output));
+TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
+                      TfLiteTensor* output, const int num_elements) {
   switch (input->type) {
     case kTfLiteInt64:
       return copyToTensor(context, input->data.i64, output, num_elements);
@@ -260,11 +238,90 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");
   }
+  return kTfLiteError;
 }
+
+struct OpData {
+  bool cached_output = false;
+};
+
+void* Init(TfLiteContext* context, const char* /*buffer*/, size_t /*length*/) {
+  return new OpData();
+}
+
+void Free(TfLiteContext* context, void* op_data) {
+  delete reinterpret_cast<OpData*>(op_data);
+}
+
+bool OutputCachingEnabled(const TfLiteContext* context) {
+  if (context && context->impl_) {
+    const InterpreterOptions* options =
+        reinterpret_cast<Subgraph*>(context->impl_)->GetOptions();
+    if (options) {
+      return options->GetCacheConstantCastOp();
+    }
+  }
+  return false;
+}
+
+bool ShouldCacheOutput(const TfLiteContext* context,
+                       const TfLiteTensor* input) {
+  return OutputCachingEnabled(context) && IsConstantTensor(input);
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+
+  // TODO(ahentz): these two checks would make the new implementation
+  // incompatible with some existing models, where params is not specified. It
+  // is OK not to have them because toco would have set input and output types
+  // to match the parameters.
+  // auto* params = reinterpret_cast<TfLiteCastParams*>(node->builtin_data);
+  // TF_LITE_ENSURE_EQ(context, input->type, params->in_data_type);
+  // TF_LITE_ENSURE_EQ(context, output->type, params->out_data_type);
+
+  if (ShouldCacheOutput(context, input)) {
+    output->allocation_type = kTfLiteArenaRwPersistent;
+  }
+
+  TF_LITE_ENSURE_OK(
+      context,
+      context->ResizeTensor(context, output, TfLiteIntArrayCopy(input->dims)));
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const int num_elements = NumElements(input);
+  TF_LITE_ENSURE_EQ(context, num_elements, NumElements(output));
+
+  OpData& op_data = *reinterpret_cast<OpData*>(node->user_data);
+  if (ShouldCacheOutput(context, input)) {
+    if (op_data.cached_output) {
+      return kTfLiteOk;
+    }
+    op_data.cached_output = true;
+  }
+  return EvalImpl(context, input, output, num_elements);
+}
+
+}  // namespace
 }  // namespace cast
 
 TfLiteRegistration* Register_CAST() {
-  static TfLiteRegistration r = {nullptr, nullptr, cast::Prepare, cast::Eval};
+  static TfLiteRegistration r = {cast::Init, cast::Free, cast::Prepare,
+                                 cast::Eval};
   return &r;
 }
 
