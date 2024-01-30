@@ -734,13 +734,13 @@ class ConvertNonTrivialConvOp
 
     // Mirror the filter in the spatial dimensions.
     mlir::Value reverse_filter_in = conv_op.getRhs();
-    // If the kernel is with format [0,1,i,o] we transpose it to [0,1,o,i]
-    // as the TF->TFL pass anticipates this and the kernel format information
-    // will be lost once we legalize to TF
-    if (isKernelFormatHWIO(dnums)) {
+    // If the kernel is with format anythoing other than HWOI, we
+    // transpose it to [0,1,o,i] as the TF->TFL pass anticipates this and the
+    // kernel format information will be lost once we legalize to TF
+    if (!isKernelFormatHWOI(dnums)) {
       SmallVector<int64_t, 4> permutation;
-      for (int64_t dim : dnums.getInputSpatialDimensions()) {
-        permutation.push_back(dim - 1);
+      for (int64_t dim : dnums.getKernelSpatialDimensions()) {
+        permutation.push_back(dim);
       }
       permutation.push_back(dnums.getKernelOutputFeatureDimension());
       permutation.push_back(dnums.getKernelInputFeatureDimension());
@@ -753,10 +753,11 @@ class ConvertNonTrivialConvOp
               permutation));
       reverse_filter_in = filter_transposed;
     }
-    mhlo::ReverseOp filter;
-    filter = rewriter.create<mhlo::ReverseOp>(
-        conv_op.getLoc(), reverse_filter_in,
-        rewriter.getI64TensorAttr(dnums.getKernelSpatialDimensions()));
+
+    // Lets hard-code the reverse indexes to be {0, 1} as the expectation is
+    // that the kernel is always in HWOI format, with the above code.
+    mhlo::ReverseOp filter = rewriter.create<mhlo::ReverseOp>(
+        conv_op.getLoc(), reverse_filter_in, rewriter.getI64TensorAttr({0, 1}));
 
     // if output is not in [b, 0, 1, f] format, insert transpose to go back
     if (dnums.getOutputBatchDimension() != 0 ||
@@ -914,12 +915,6 @@ class ConvertNonTrivialConvOp
     return true;
   }
 
-  bool isKernelFormatHWIO(mhlo::ConvDimensionNumbersAttr dnums) const {
-    int64_t num_spatial_dims = dnums.getKernelSpatialDimensions().size();
-    return dnums.getKernelInputFeatureDimension() == num_spatial_dims &&
-           dnums.getKernelOutputFeatureDimension() == num_spatial_dims + 1;
-  }
-
   bool isKernelFormatHWOI(mhlo::ConvDimensionNumbersAttr dnums) const {
     int64_t num_spatial_dims = dnums.getKernelSpatialDimensions().size();
     return dnums.getKernelInputFeatureDimension() == num_spatial_dims + 1 &&
@@ -967,17 +962,6 @@ class ConvertNonTrivialConvOp
                      [](int64_t v) { return v < 0; })) {
       return rewriter.notifyMatchFailure(conv_op,
                                          "doesn't support negative pads");
-    }
-
-    // Checks kernel dimensions.
-    if (!isKernelFormatHWIO(dnums) && !isKernelFormatHWOI(dnums))
-      return rewriter.notifyMatchFailure(
-          conv_op, "requires kernel format [0, 1, o, i] or [0, 1, i, o]");
-    auto kernel_spatial_dimensions = dnums.getKernelSpatialDimensions();
-    for (auto p : llvm::enumerate(kernel_spatial_dimensions)) {
-      if (p.value() != p.index())
-        return rewriter.notifyMatchFailure(
-            conv_op, "requires kernel format [0, 1, o, i] or [0, 1, i, o]");
     }
 
     return success();
