@@ -173,26 +173,6 @@ int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
-absl::Status StreamExecutor::GetGraphConvolveRunners(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& output_descriptor,
-    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    const NumericOptions& numeric_options,
-    std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
-    std::string serialized_graph) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-  return dnn_support->GetGraphConvolveRunners(
-      kind, input_type, output_type, stream, input_descriptor,
-      filter_descriptor, output_descriptor, convolution_descriptor,
-      use_fallback, numeric_options, out_exec_plans, serialized_graph);
-}
-
 absl::Status StreamExecutor::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType bias_type,

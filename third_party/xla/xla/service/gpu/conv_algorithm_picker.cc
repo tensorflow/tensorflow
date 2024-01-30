@@ -186,7 +186,11 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(stream_exec->GetGraphConvolveRunners(
+      auto dnn = stream_exec->AsDnn();
+      if (dnn == nullptr) {
+        return absl::InvalidArgumentError("No DNN in stream executor.");
+      }
+      TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
           kind, input_type, output_type, stream, config.input_descriptor,
           config.filter_descriptor, config.output_descriptor, config.conv_desc,
           use_fallback, numeric_options, &runners, config.serialized_graph));

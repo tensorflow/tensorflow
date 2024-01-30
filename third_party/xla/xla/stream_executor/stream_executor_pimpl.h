@@ -279,17 +279,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  absl::Status GetGraphConvolveRunners(
-      dnn::ConvolutionKind kind, dnn::DataType input_type,
-      dnn::DataType output_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
-      std::string serialized_graph);
-
   absl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType bias_type,
