@@ -119,7 +119,6 @@ struct TilingThreadIdInfo {
 
   std::array<llvm::Value*, 3> thread_ids;
   std::array<llvm::Value*, 3> start_offsets;
-  std::array<llvm::Value*, 3> strides;
 
   // Lane id: `thread_id % WarpSize`
   llvm::Value* lane_id;
@@ -188,11 +187,6 @@ void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
 absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty, const TileGenerator& tile_element_generator);
-
-llvm_ir::IrArray::Index GetUnnormalizedIndex(
-    const llvm_ir::IrArray::Index& normalized_shape_index,
-    const Shape& unnormalized_shape, llvm::IRBuilder<>* builder,
-    absl::Span<const int64_t> dims_in_elems);
 
 }  // namespace gpu
 }  // namespace xla

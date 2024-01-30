@@ -108,7 +108,8 @@ void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
     }
   } else {
     ksl.For(absl::StrCat("loop", dim), thread_id_info.start_offsets[dim],
-            tile_dimensions[dim], thread_id_info.strides[dim],
+            tile_dimensions[dim],
+            constant(tiling_scheme.GetThreadsPerBlock()[dim]),
             [&](llvm::Value* i) {
               tile_idx[dim] = i;
               recurse();
@@ -160,7 +161,6 @@ llvm::Value* EmitThreadId(llvm::IRBuilder<>* builder, int64_t threads_per_block,
 absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty) {
-  using TS = TilingScheme;
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
@@ -189,16 +189,11 @@ absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
   std::array<llvm::Value*, 3> start_offsets{
       thread_id_z, thread_id_y,
       builder->CreateMul(thread_id_x, constant(tiling_scheme.GetVectorSize()))};
-  std::array<llvm::Value*, 3> strides{
-      constant(num_threads[TilingScheme::DimZ]),
-      constant(num_threads[TilingScheme::DimY]),
-      constant(1)  // Not really, see EmitTileRec.
-  };
 
   auto* lane_id =
       builder->CreateURem(thread_id, constant(WarpSize()), "lane_id");
-  return TilingThreadIdInfo{thread_id, thread_ids, start_offsets,
-                            strides,   lane_id,    block_id};
+  return TilingThreadIdInfo{thread_id, thread_ids, start_offsets, lane_id,
+                            block_id};
 }
 
 }  // namespace
@@ -255,39 +250,6 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
 
   tile_generator(thread_id_info, tile_origin, tile_dimensions);
   return {{tile_dimensions, tile_origin, thread_id_info}};
-}
-
-llvm_ir::IrArray::Index GetUnnormalizedIndex(
-    const llvm_ir::IrArray::Index& normalized_shape_index,
-    const Shape& unnormalized_shape, llvm::IRBuilder<>* builder,
-    absl::Span<const int64_t> dims_in_elems) {
-  CHECK_EQ(normalized_shape_index.size(), 3);
-  // If the normalization only add a new dimensions of size 1,
-  // generate simpler indexing. LLVM doesn't always simplify the more
-  // complicated indexing and this prevents it from vectorizing some
-  // cases. We do this only for major_to_minor memory layout.
-  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
-      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[1] &&
-      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[2] &&
-      unnormalized_shape.layout().minor_to_major(1) == 0) {
-    CHECK_EQ(normalized_shape_index.dims()[0], 1);
-    auto multidim = normalized_shape_index.multidim();
-    return llvm_ir::IrArray::Index({multidim[1], multidim[2]},
-                                   unnormalized_shape,
-                                   normalized_shape_index.GetType());
-  }
-  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
-      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[2] &&
-      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[1] &&
-      unnormalized_shape.layout().minor_to_major(1) == 1) {
-    CHECK_EQ(normalized_shape_index.dims()[0], 1);
-    auto multidim = normalized_shape_index.multidim();
-    return llvm_ir::IrArray::Index({multidim[2], multidim[1]},
-                                   unnormalized_shape,
-                                   normalized_shape_index.GetType());
-  }
-  return normalized_shape_index.SourceIndexOfBitcast(
-      ShapeUtil::MakeShape(F32, dims_in_elems), unnormalized_shape, builder);
 }
 
 }  // namespace gpu

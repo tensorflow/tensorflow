@@ -1040,10 +1040,8 @@ void ReductionFusion::ReductionGroupEmitter::GenerateElementForReducer(
     const auto& state = GetCalculationStateFor(reduction, red_idx);
 
     llvm::AllocaInst* input_address = state.input_address;
-    llvm_ir::IrArray::Index input_index = GetUnnormalizedIndex(
-        index, reduction->operand(0)->shape(), builder,
-        reduction_emitter_.reduction_codegen_info_.GetTilingScheme()
-            .GetShape());
+    auto input_index =
+        index.SourceIndexOfBitcast(reduction->operand(0)->shape(), builder);
     llvm::Value* const input_ir_value = *state.input_gen(input_index);
     builder->CreateStore(input_ir_value, input_address);
     reduction_accumulators.push_back(state.partial_result_address);

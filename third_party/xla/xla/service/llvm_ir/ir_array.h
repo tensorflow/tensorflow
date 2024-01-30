@@ -165,6 +165,9 @@ class IrArray {
     // to `shape`, returns the source index.
     Index SourceIndexOfBitcast(const Shape& shape, const Shape& operand_shape,
                                llvm::IRBuilder<>* builder) const;
+    // Same as above, but for bitcasts from `operand_shape` to `this->dims`.
+    Index SourceIndexOfBitcast(const Shape& operand_shape,
+                               llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a broadcast from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
