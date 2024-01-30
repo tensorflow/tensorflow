@@ -25,7 +25,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -200,15 +200,9 @@ class BatchMatMulMkl : public OpKernel {
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
-    if (this->fusion_data_.size() > 0) {
-      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
-                           out->flat<Toutput>().data(), *params,
-                           scratch_pad.Get(), this->fusion_data_);
-    } else {
-      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
-                           out->flat<Toutput>().data(), *params,
-                           scratch_pad.Get());
-    }
+    matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
+                         out->flat<Toutput>().data(), *params,
+                         scratch_pad.Get(), this->fusion_data_);
   }
 
   engine cpu_engine_ = engine(engine::kind::cpu, 0);
@@ -627,7 +621,7 @@ class QuantizedBatchMatMulOp
           const float rhs_scale = range_rhs / max_int8_rhs;
 #ifndef ENABLE_ONEDNN_V3
           const float output_scale = lhs_scale * rhs_scale;
-          params.post_op_params.push_back({"output_scale", {output_scale}});
+          params.post_op_params.push_back({"output_scale", { output_scale }});
 #else
           const float dst_scale = 1.0;
           params.post_op_params.push_back({"lhs_scale", {lhs_scale}});

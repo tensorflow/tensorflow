@@ -814,7 +814,7 @@ class MklMatMulPrimitive : public MklPrimitive {
   void Execute(const std::shared_ptr<stream>& stream, const Tlhs* a_data,
                const Trhs* b_data, const Toutput* c_data,
                const MklMatMulParams& matmul_params, void* sp_data,
-               const std::vector<void*>& binary_op_fusions_data = {}) {
+               const std::vector<void*>& binary_op_fusions_data) {
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
@@ -1208,7 +1208,8 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   std::shared_ptr<stream> cpu_stream;
 
   cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
-  matmul_prim->Execute(cpu_stream, a, b, c, params, scratch_pad.Get());
+  matmul_prim->Execute(cpu_stream, a, b, c, params, scratch_pad.Get(),
+                       {} /*empty fusion*/);
 }
 
 }  // anonymous namespace
