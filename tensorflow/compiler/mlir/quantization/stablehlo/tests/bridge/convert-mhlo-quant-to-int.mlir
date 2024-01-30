@@ -304,6 +304,78 @@ func.func @add_different_res_type(
 
 // -----
 
+// CHECK-LABEL: func @add_per_channel
+func.func @add_per_channel(
+    %arg0: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5:3,5.8952903030815205E-5:2}>>,
+    %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5:3,5.8952903030815205E-5:2}>>
+  ) -> tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5:3,5.8952903030815205E-5:2}>> {
+  // CHECK: %[[ADD:.*]] = mhlo.add {{.*}} : tensor<?x3x4x2xi32>
+  // CHECK: %[[ZPS:.*]] = mhlo.constant dense<[3, 2]> : tensor<2xi32>
+  // CHECK: %[[BCAST_SUB:.*]] = chlo.broadcast_subtract %[[ADD]], %[[ZPS]]
+  // CHECK-SAME: {broadcast_dimensions = dense<3> : tensor<1xi64>}
+  // CHECK-SAME: (tensor<?x3x4x2xi32>, tensor<2xi32>) -> tensor<?x3x4x2xi32>
+  // CHECK: return %[[BCAST_SUB]] : tensor<?x3x4x2xi32>
+  %11 = mhlo.add %arg0, %arg1 : tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5:3,5.8952903030815205E-5:2}>>
+  return %11 : tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5:3,5.8952903030815205E-5:2}>>
+}
+
+// -----
+
+// CHECK-LABEL: func @add_per_channel_no_zp
+func.func @add_per_channel_no_zp(
+    %arg0: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
+    %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  ) -> tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>> {
+  // CHECK: %[[ADD:.*]] = mhlo.add {{.*}} : tensor<?x3x4x2xi32>
+  // CHECK: return %[[ADD]] : tensor<?x3x4x2xi32>
+  %11 = mhlo.add %arg0, %arg1 : tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  return %11 : tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+}
+
+// -----
+
+func.func @add_per_channel_i8(
+    %arg0: tensor<?x3x4x2x!quant.uniform<i8:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
+    %arg1: tensor<?x3x4x2x!quant.uniform<i8:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  ) -> tensor<?x3x4x2x!quant.uniform<i8:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>> {
+  // expected-error@+2 {{Per-channel quantized AddOp requires i32 storage type}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
+  %11 = mhlo.add %arg0, %arg1 : tensor<?x3x4x2x!quant.uniform<i8:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  return %11 : tensor<?x3x4x2x!quant.uniform<i8:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+}
+
+// -----
+
+func.func @add_per_channel_different_quant_types(
+    %arg0: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
+    %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {1.1:2,0.4:-3}>>
+  ) -> tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>> {
+  // expected-error@+2 {{Per-channel quantized AddOp requires the same quantized element type for all operands and results}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
+  %11 = mhlo.add %arg0, %arg1 : (
+      tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
+      tensor<?x3x4x2x!quant.uniform<i32:f32:3, {1.1:2,0.4:-3}>>
+    ) -> tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  return %11 : tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+}
+
+// -----
+
+func.func @add_per_channel_per_tensor_mix(
+    %arg0: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
+    %arg1: tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+  ) -> tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>> {
+  // expected-error@+2 {{Per-channel quantized AddOp requires the same quantized element type for all operands and results}}
+  // expected-error@+1 {{failed to legalize operation 'mhlo.add' that was explicitly marked illegal}}
+  %11 = mhlo.add %arg0, %arg1 : (
+      tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>,
+      tensor<?x3x4x2x!quant.uniform<i32:f32:3, {2.9455460163317514E-5,5.8952903030815205E-5}>>
+    ) -> tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>>
+  return %11 : tensor<?x3x4x2x!quant.uniform<i32:f32, 1.1:2>>
+}
+
+// -----
+
 // CHECK-LABEL: func @requantize
 func.func @requantize(
     %arg0: tensor<?x?x!quant.uniform<i8:f32, 1.000000e+01:3>>
