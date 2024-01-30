@@ -111,34 +111,32 @@ class AutoMixedPrecisionTest : public GrapplerTest {
 #endif
     if (gpu_available_) {
       virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));
-    } else {
-      if( num_gpus > 0) {
-        DeviceProperties device_properties;
-        device_properties.set_type("GPU");
+    } else if( num_gpus > 0) {
+      DeviceProperties device_properties;
+      device_properties.set_type("GPU");
 #if GOOGLE_CUDA
-        device_properties.mutable_environment()->insert({"architecture", "7"});
-        device_properties.mutable_environment()->insert({"cuda", "9010"});
+      device_properties.mutable_environment()->insert({"architecture", "7"});
+      device_properties.mutable_environment()->insert({"cuda", "9010"});
 #else
-        device_properties.mutable_environment()->insert(
-            {"architecture", "gfx906"});
+      device_properties.mutable_environment()->insert(
+          {"architecture", "gfx906"});
 #endif
-        virtual_cluster_.reset(
-            new VirtualCluster({{"/GPU:1", device_properties}}));
-      } else {
-	// When no GPUs are available, try running on CPU.
-        DeviceProperties device_properties;
-        device_properties.set_type("CPU");
-        virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 0));
-      }
+      virtual_cluster_.reset(
+          new VirtualCluster({{"/GPU:1", device_properties}}));
+    } else {
+      // When no GPUs are available, try running on CPU.
+      DeviceProperties device_properties;
+      device_properties.set_type("CPU");
+      virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 0));
     }
     TF_CHECK_OK(virtual_cluster_->Provision());
 
-    run_fp16_on_cpu_ = false;
+    bool run_fp16_on_cpu = false;
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-    run_fp16_on_cpu_ = IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF);
+    run_fp16_on_cpu = IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
-    skip_test_ = !gpu_available_ && (!IsMKLEnabled() || !run_fp16_on_cpu_);
+    skip_test_ = !gpu_available_ && (!IsMKLEnabled() || !run_fp16_on_cpu);
   }
 
   void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
@@ -233,7 +231,6 @@ class AutoMixedPrecisionTest : public GrapplerTest {
   std::unique_ptr<Cluster> virtual_cluster_;
   bool gpu_available_;
   bool skip_test_;
-  bool run_fp16_on_cpu_;
 };
 
 TEST_F(AutoMixedPrecisionTest, NoOp) {
