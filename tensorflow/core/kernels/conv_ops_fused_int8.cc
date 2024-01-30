@@ -580,7 +580,9 @@ void operator()(
     profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
-    TF_CHECK_OK(stream->parent()->GetFusedConvolveRunners(
+    auto dnn = stream->parent()->AsDnn();
+    CHECK_NE(dnn, nullptr);
+    TF_CHECK_OK(dnn->GetFusedConvolveRunners(
         use_cudnn_frontend, se::dnn::ConvolutionKind::FORWARD, type, bias_type,
         type, conv_scale, side_input_scale, /*leakyrelu_alpha=*/0.0, stream,
         conv_input_desc, filter_desc, bias_desc, output_desc, conv_desc,
@@ -628,7 +630,9 @@ void operator()(
     } else {
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
           fallback_runners;
-      TF_CHECK_OK(stream->parent()->GetFusedConvolveRunners(
+      auto dnn = stream->parent()->AsDnn();
+      CHECK_NE(dnn, nullptr);
+      TF_CHECK_OK(dnn->GetFusedConvolveRunners(
           use_cudnn_frontend, se::dnn::ConvolutionKind::FORWARD, type,
           bias_type, type, conv_scale, side_input_scale, leakyrelu_alpha,
           stream, conv_input_desc, filter_desc, bias_desc, output_desc,

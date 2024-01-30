@@ -96,7 +96,11 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
     auto element_type = se::dnn::ToDataType<T>::value;
-    TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("No DNN in stream executor.");
+    }
+    TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
         CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
         element_type, element_type, conv_scale, side_input_scale,
         leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
@@ -147,7 +151,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
           << params.ToString();
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
           fallback_runners;
-      TF_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
           CudnnUseFrontend(), se::dnn::ConvolutionKind::FORWARD, element_type,
           element_type, element_type, conv_scale, side_input_scale,
           leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,

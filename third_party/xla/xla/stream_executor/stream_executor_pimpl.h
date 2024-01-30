@@ -279,20 +279,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  absl::Status GetFusedConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_input_scale,
-      double side_input_scale, double leakyrelu_alpha, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, dnn::ActivationMode activation_mode,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
-
   absl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
