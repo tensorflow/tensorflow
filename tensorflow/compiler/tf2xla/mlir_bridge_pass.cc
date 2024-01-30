@@ -222,50 +222,35 @@ MlirOptimizationPassState GetPassStateImpl(
   // gets skipped if it is disabled. Log such cases in this function. The cases
   // where the pass is enabled will only be logged during their execution to
   // prevent them from being counted twice.
-  if (run_replicated_bridge) {
-    switch (policy) {
-      case MlirBridgeRolloutPolicy::kEnabledByUser:
-        return MlirOptimizationPassState::Enabled;
-      case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
-        return MlirOptimizationPassState::FallbackEnabled;
-      case MlirBridgeRolloutPolicy::kDisabledByUser:
-        VLOG(1) << "Skipping MLIR TPU Bridge, disabled by user. "
-                   "Old bridge will evaluate.";
-        metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
-                                                     "disabled_by_user");
-        return MlirOptimizationPassState::Disabled;
-      case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
-        VLOG(1) << "Skipping MLIR TPU Bridge, disabled because "
-                   "graph has unsupported features. Old bridge will evaluate.";
-        metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
-                                                     "invalid_graph");
-        // We set `uses_uninitialized_resource_args` to false here because the
-        // first phase of the bridge is not affected by uninitialized resource
-        // args.
-        // For Invalid Graph Analysis we need to log here because Run will not
-        // be called.
-        LogGraphFeatures(graph, &function_library, config_proto,
-                         /*uses_uninitialized_resource_args=*/false,
-                         /*is_v1_compat=*/false);
-        return MlirOptimizationPassState::Disabled;
-    }
-  }
-  // TODO(b/277112519): Have uniform behavior for GPU/CPU and TPU
   switch (policy) {
     case MlirBridgeRolloutPolicy::kEnabledByUser:
       return MlirOptimizationPassState::Enabled;
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::FallbackEnabled;
-    case MlirBridgeRolloutPolicy::kDisabledByUser:
-      VLOG(1) << "Skipping MLIR CPU/GPU Bridge, disabled by user.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "v2", false,
-                                                   "disabled_by_user");
+    case MlirBridgeRolloutPolicy::kDisabledByUser: {
+      VLOG(1) << "Skipping MLIR "
+              << (run_replicated_bridge ? "Replicated" : "Non-Replicated")
+              << " Bridge, disabled by user. "
+                 "The fallback will evaluate.";
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          run_replicated_bridge ? "tpu" : "cpu/gpu", "v2", true,
+          "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
-    default:
-      // This case should never be hit. Added here to be consistent with OSS
-      // implementation.
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("cpu/gpu", "v2", false,
+    }
+    case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
+      // Graph analysis only runs on TPU graph.
+      VLOG(1) << "Skipping MLIR TPU Bridge, disabled because the "
+                 "graph has unsupported features. The fallback will evaluate.";
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
                                                    "invalid_graph");
+      // We set `uses_uninitialized_resource_args` to false here because the
+      // first phase of the bridge is not affected by uninitialized resource
+      // args.
+      // For Invalid Graph Analysis we need to log here because Run will not
+      // be called.
+      LogGraphFeatures(graph, &function_library, config_proto,
+                       /*uses_uninitialized_resource_args=*/false,
+                       /*is_v1_compat=*/false);
       return MlirOptimizationPassState::Disabled;
   }
 }
