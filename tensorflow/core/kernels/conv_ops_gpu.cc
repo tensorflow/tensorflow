@@ -279,7 +279,11 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
 
     const auto element_type = se::dnn::ToDataType<T>::value;
     std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
-    TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("No DNN in stream executor.");
+    }
+    TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
         CudnnUseFrontend(), kind, element_type, element_type, stream,
         input_desc, input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
         conv_desc, /*use_fallback=*/false, &rz_allocator, GetNumericOptions(),
@@ -324,7 +328,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
              "worked; trying fallback algorithms.  Conv: "
           << conv_parameters.ToString();
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> fallback_runners;
-      TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
           CudnnUseFrontend(), kind, element_type, element_type, stream,
           input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
           output_ptr, conv_desc, /*use_fallback=*/true, &rz_allocator,
