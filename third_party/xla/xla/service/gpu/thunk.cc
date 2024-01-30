@@ -204,7 +204,9 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclAllToAllStart);
     CASE(kNcclAllToAllDone);
     CASE(kNcclSend);
+    CASE(kNcclSendDone);
     CASE(kNcclRecv);
+    CASE(kNcclRecvDone);
     CASE(kFft);
     CASE(kGemm);
     CASE(kInfeed);

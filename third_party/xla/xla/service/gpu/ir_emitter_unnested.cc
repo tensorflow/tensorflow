@@ -121,6 +121,8 @@ limitations under the License.
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/nccl_recv_thunk.h"
+#include "xla/service/gpu/nccl_send_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd_emitter.h"
@@ -3927,6 +3929,21 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
   const HloInstruction* src = instr->operand(0);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(src, {}));
+  if (!instr->is_host_transfer()) {
+    const auto& hlo_config = ir_emitter_context_->hlo_module().config();
+    const int64_t replica_count = hlo_config.replica_count();
+    const int64_t partition_count = hlo_config.num_partitions();
+    const NcclCollectiveThunk::Buffer nccl_buffer = {
+        /*element_count=*/ShapeUtil::ElementsIn(src->shape()),
+        /*source_buffer=*/buffer,
+        /*destination_buffer=*/buffer};
+    auto thunk = std::make_unique<NcclSendThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
+        instr, replica_count, partition_count, nccl_buffer);
+    collectives_async_events_.try_emplace(instr, thunk->async_events());
+    AddThunkToThunkSequence(std::move(thunk));
+    return absl::OkStatus();
+  }
 
   AddThunkToThunkSequence(std::make_unique<SendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), src->shape(), buffer,
@@ -3942,6 +3959,10 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
   if (!instr->channel_id().has_value())
     return absl::InternalError("Unknown send done instruction channel id");
 
+  if (!instr->is_host_transfer()) {
+    return EmitNcclAsyncDone(Thunk::kNcclSendDone, instr);
+  }
+
   AddThunkToThunkSequence(std::make_unique<SendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
@@ -3952,9 +3973,24 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
 absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
   if (!instr->channel_id().has_value())
     return absl::InternalError("Unknown recv instruction channel id");
-
+  TF_RET_CHECK(instr->shape().IsTuple());
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(instr, {0}));
+  if (!instr->is_host_transfer()) {
+    const auto& hlo_config = ir_emitter_context_->hlo_module().config();
+    const int64_t replica_count = hlo_config.replica_count();
+    const int64_t partition_count = hlo_config.num_partitions();
+    const NcclCollectiveThunk::Buffer nccl_buffer = {
+        /*element_count=*/ShapeUtil::ElementsIn(instr->shape().tuple_shapes(0)),
+        /*source_buffer=*/buffer,
+        /*destination_buffer=*/buffer};
+    auto thunk = std::make_unique<NcclRecvThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
+        instr, replica_count, partition_count, nccl_buffer);
+    collectives_async_events_.try_emplace(instr, thunk->async_events());
+    AddThunkToThunkSequence(std::move(thunk));
+    return absl::OkStatus();
+  }
 
   AddThunkToThunkSequence(std::make_unique<RecvThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr),
@@ -3970,6 +4006,10 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
   if (!instr->channel_id().has_value())
     return absl::InternalError("Unknown recv done instruction channel id");
+
+  if (!instr->is_host_transfer()) {
+    return EmitNcclAsyncDone(Thunk::kNcclRecvDone, instr);
+  }
 
   AddThunkToThunkSequence(std::make_unique<RecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
