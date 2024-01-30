@@ -294,12 +294,18 @@ AutoShardingSolverResult CallORToolsSolver(
   MPVariable* makespan_var = nullptr;
 
   size_t unique_nodes = 0;
+  const auto strat_follow = StratFollow(request);
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (request.s_follow(node_idx) < 0) {
       unique_nodes += 1;
       // Creates variables for instructions that do not follow others.
-      solver->MakeBoolVarArray(request.s_len(node_idx),
-                               absl::StrCat("s[", node_idx, "]"), &s[node_idx]);
+      for (NodeStrategyIdx j = 0; j < request.s_len(node_idx); ++j) {
+        MPVariable* var =
+            strat_follow[node_idx][j] >= 0
+                ? s[node_idx][strat_follow[node_idx][j]]
+                : solver->MakeBoolVar(absl::StrCat("s[", node_idx, "]", j));
+        s[node_idx].push_back(var);
+      }
     }
   }
 
@@ -326,9 +332,26 @@ AutoShardingSolverResult CallORToolsSolver(
       continue;
     }
     unique_edges += 1;
-    solver->MakeBoolVarArray(
-        request.s_len(edge.first) * request.s_len(edge.second),
-        absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[edge_idx]);
+    for (NodeStrategyIdx j = 0; j < request.s_len(edge.first); ++j) {
+      for (NodeStrategyIdx k = 0; k < request.s_len(edge.second); ++k) {
+        NodeStrategyIdx j_follow = strat_follow[followed_edge.first][j] >= 0
+                                       ? strat_follow[followed_edge.first][j]
+                                       : j;
+        NodeStrategyIdx k_follow = strat_follow[followed_edge.second][k] >= 0
+                                       ? strat_follow[followed_edge.second][k]
+                                       : k;
+        EdgeStrategyIdx edge_strategy_idx =
+            j_follow * request.s_len(followed_edge.second) + k_follow;
+        MPVariable* var =
+            (strat_follow[followed_edge.first][j] >= 0 ||
+             strat_follow[followed_edge.second][k] >= 0)
+                ? e[edge_idx][edge_strategy_idx]
+                : solver->MakeBoolVar(absl::StrCat("e[", followed_edge.first,
+                                                   ",", followed_edge.second,
+                                                   "]", edge_strategy_idx));
+        e[edge_idx].push_back(var);
+      }
+    }
     edge_map.insert({followed_edge, edge_idx});
   }
 
@@ -344,7 +367,10 @@ AutoShardingSolverResult CallORToolsSolver(
   // Construct objective function.
   // Node costs
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+    absl::flat_hash_set<MPVariable*> visited_vars;
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+      if (visited_vars.contains(s[node_idx][j])) continue;
+      visited_vars.insert(s[node_idx][j]);
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       double coefficient = request.computation_costs(node_idx).costs(j) +
@@ -358,7 +384,10 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // Edge costs
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
+    absl::flat_hash_set<MPVariable*> visited_vars;
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+      if (visited_vars.contains(e[edge_idx][j])) continue;
+      visited_vars.insert(e[edge_idx][j]);
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       double coefficient = request.resharding_costs(edge_idx).costs(j);
@@ -427,7 +456,10 @@ AutoShardingSolverResult CallORToolsSolver(
         1.0, 1.0,
         absl::StrCat("sum(s[", node_idx, "][j] for j = [0 .. ",
                      s[node_idx].size(), ")) = 1"));
+    absl::flat_hash_set<MPVariable*> visited_vars;
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+      if (visited_vars.contains(s[node_idx][j])) continue;
+      visited_vars.insert(s[node_idx][j]);
       constraint->SetCoefficient(s[node_idx][j], 1.0);
     }
   }
@@ -445,7 +477,10 @@ AutoShardingSolverResult CallORToolsSolver(
                                     absl::StrCat("mem[", time_idx, "]"));
       if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
       for (NodeIdx node_idx : request.live(time_idx).nodes()) {
+        absl::flat_hash_set<MPVariable*> visited_vars;
         for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+          if (visited_vars.contains(s[node_idx][j])) continue;
+          visited_vars.insert(s[node_idx][j]);
           const double accumulated_coefficient =
               constraint->GetCoefficient(s[node_idx][j]);
           const double memory_cost = request.memory_costs(node_idx).costs(j);
@@ -455,7 +490,10 @@ AutoShardingSolverResult CallORToolsSolver(
       }
       if (request.live_edges().empty()) continue;
       for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
+        absl::flat_hash_set<MPVariable*> visited_vars;
         for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+          if (visited_vars.contains(e[edge_idx][j])) continue;
+          visited_vars.insert(e[edge_idx][j]);
           const double accumulated_coefficient =
               constraint->GetCoefficient(e[edge_idx][j]);
           const double memory_cost =
@@ -484,7 +522,10 @@ AutoShardingSolverResult CallORToolsSolver(
     MPConstraint* constraint = solver->MakeRowConstraint(
         1.0, 1.0,
         absl::StrCat("sum(e[", edge.first(), "][", edge.second(), "][*]) = 1"));
+    absl::flat_hash_set<MPVariable*> visited_vars;
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+      if (visited_vars.contains(e[edge_idx][j])) continue;
+      visited_vars.insert(e[edge_idx][j]);
       constraint->SetCoefficient(e[edge_idx][j], 1.0);
     }
   }
@@ -497,9 +538,12 @@ AutoShardingSolverResult CallORToolsSolver(
           -MPSolver::infinity(), 0,
           absl::StrCat("f for i = ", edge_idx, ", p = ", p));
       constraint->SetCoefficient(s[edge.first()][p], -1.0);
+      absl::flat_hash_set<MPVariable*> visited_vars;
       for (NodeStrategyIdx q = 0; q < s[edge.second()].size(); ++q) {
-        constraint->SetCoefficient(e[edge_idx][p * s[edge.second()].size() + q],
-                                   1.0);
+        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
+        if (visited_vars.contains(e[edge_idx][j])) continue;
+        visited_vars.insert(e[edge_idx][j]);
+        constraint->SetCoefficient(e[edge_idx][j], 1.0);
       }
     }
   }
@@ -512,9 +556,12 @@ AutoShardingSolverResult CallORToolsSolver(
           -MPSolver::infinity(), 0,
           absl::StrCat("g for i = ", edge_idx, ", q = ", q));
       constraint->SetCoefficient(s[edge.second()][q], -1.0);
+      absl::flat_hash_set<MPVariable*> visited_vars;
       for (NodeStrategyIdx p = 0; p < s[edge.first()].size(); ++p) {
-        constraint->SetCoefficient(e[edge_idx][p * s[edge.second()].size() + q],
-                                   1.0);
+        const EdgeStrategyIdx j = p * s[edge.second()].size() + q;
+        if (visited_vars.contains(e[edge_idx][j])) continue;
+        visited_vars.insert(e[edge_idx][j]);
+        constraint->SetCoefficient(e[edge_idx][j], 1.0);
       }
     }
   }
@@ -569,7 +616,10 @@ AutoShardingSolverResult CallORToolsSolver(
     std::vector<std::pair<const MPVariable*, double>> hint;
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       if (request.s_follow(node_idx) >= 0) continue;
+      absl::flat_hash_set<MPVariable*> visited_vars;
       for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+        if (visited_vars.contains(s[node_idx][j])) continue;
+        visited_vars.insert(s[node_idx][j]);
         double hint_val = (request.s_hint(node_idx) == j) ? 1.0 : 0.0;
         hint.push_back({s[node_idx][j], hint_val});
       }

@@ -86,6 +86,7 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        "@com_google_absl//absl/log:check",
         "@com_google_ortools//ortools/linear_solver",
     ],
 )
