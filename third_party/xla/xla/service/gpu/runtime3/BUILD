@@ -46,6 +46,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":custom_call_thunk",
+        ":nccl_all_gather_thunk",
         "//xla:shape_util",
         "//xla:status",
         "//xla:types",
@@ -101,6 +102,7 @@ cc_library(
         ":gemm_thunk",
         ":kernel_thunk",
         ":memset_thunk",
+        ":nccl_all_gather_thunk",
         ":replica_id_thunk",
         ":sequential_thunk",
         ":while_thunk",
@@ -473,6 +475,29 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "nccl_all_gather_thunk",
+    srcs = ["nccl_all_gather_thunk.cc"],
+    hdrs = ["nccl_all_gather_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:nccl_api",
+        "//xla/service/gpu:nccl_collective_thunks",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

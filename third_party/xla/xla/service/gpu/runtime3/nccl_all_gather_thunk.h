@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_NCCL_ALL_GATHER_THUNK_H_
-#define XLA_SERVICE_GPU_NCCL_ALL_GATHER_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_NCCL_ALL_GATHER_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_NCCL_ALL_GATHER_THUNK_H_
 
 #include <cstdint>
 #include <vector>
@@ -81,4 +81,4 @@ absl::Status RunAllGather(NcclApi* nccl_api,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_NCCL_ALL_GATHER_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_NCCL_ALL_GATHER_THUNK_H_

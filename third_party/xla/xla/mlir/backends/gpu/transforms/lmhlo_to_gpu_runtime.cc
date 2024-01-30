@@ -43,13 +43,13 @@ limitations under the License.
 #include "xla/mlir/runtime/utils/custom_calls.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_recv_thunk.h"
 #include "xla/service/gpu/nccl_send_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_gather_thunk.h"
 
 namespace xla {
 namespace gpu {

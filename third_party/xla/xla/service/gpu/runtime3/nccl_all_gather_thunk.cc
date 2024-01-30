@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nccl_all_gather_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_gather_thunk.h"
 
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -64,7 +62,7 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 
     if (!ShapeUtil::IsEffectivelyMostMajorDimension(
             shape, inst->all_gather_dimension())) {
-      return tsl::errors::Unimplemented(absl::StrFormat(
+      return absl::AbortedError(absl::StrFormat(
           "all-gather dim %u is not the most major in input shape %s",
           inst->all_gather_dimension(), shape.ToString(/*print_layout=*/true)));
     }
@@ -79,7 +77,7 @@ absl::Status CheckImplementable(AllGatherStartOp op) {
     Shape shape = GetShape(operand);
     if (!ShapeUtil::IsEffectivelyMostMajorDimension(
             shape, op.getAllGatherDimension())) {
-      return tsl::errors::Unimplemented(absl::StrFormat(
+      return absl::AbortedError(absl::StrFormat(
           "all-gather dim %u is not the most major in input shape %s",
           op.getAllGatherDimension(), shape.ToString(/*print_layout=*/true)));
     }
