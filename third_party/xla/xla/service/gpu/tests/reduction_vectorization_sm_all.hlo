@@ -32,7 +32,7 @@ ENTRY %main {
 // -----
 
 // CHECK-SM86-LABEL: .entry wrapped_reduce_small_row
-// CHECK-SM86: .reqntid 96, 1, 1
+// CHECK-SM86: .reqntid 256, 1, 1
 
 HloModule ReduceSmallRow, is_scheduled=true
 

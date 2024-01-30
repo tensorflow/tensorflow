@@ -40,15 +40,14 @@ class TilingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
   TilingScheme(Vector3 dims_in_elems, Vector3 tile_sizes, Vector3 num_threads,
-               int vector_size, int scaling_factor)
+               int vector_size)
       : dims_in_elems_(dims_in_elems),
         tile_sizes_per_thread_(tile_sizes),
         tile_sizes_per_block_{num_threads[0] * tile_sizes[0],
                               num_threads[1] * tile_sizes[1],
                               num_threads[2] * tile_sizes[2]},
         num_threads_(num_threads),
-        vector_size_(vector_size),
-        thread_id_virtual_scaling_(scaling_factor) {
+        vector_size_(vector_size) {
     CHECK_EQ(tile_sizes[2] % vector_size_, 0)
         << "tile sizes = " << absl::StrJoin(tile_sizes, ", ")
         << "; vector size = " << vector_size_;
@@ -62,9 +61,7 @@ class TilingScheme {
                          absl::StrJoin(tile_sizes_per_thread_, ", ")),
          absl::StrFormat("num_threads = {%s}",
                          absl::StrJoin(num_threads_, ", ")),
-         absl::StrFormat("vector_size = %d", vector_size_),
-         absl::StrFormat("thread_id_virtual_scaling = %d",
-                         thread_id_virtual_scaling_)},
+         absl::StrFormat("vector_size = %d", vector_size_)},
         ", ");
   }
 
@@ -95,21 +92,7 @@ class TilingScheme {
     return counts[0] * counts[1] * counts[2];
   }
 
-  // Number of physical blocks launched (with scaling applied).
-  int64_t GetNumBlocksPhysical() const {
-    return CeilOfRatio(GetNumBlocks(), thread_id_virtual_scaling_);
-  }
-
-  // Number of physical threads per block launched (with scaling applied).
-  int64_t GetNumThreadsPerBlockPhysical() const {
-    return num_threads_[0] * num_threads_[1] * num_threads_[2] *
-           thread_id_virtual_scaling_;
-  }
-
   int GetVectorSize() const { return vector_size_; }
-
-  // Scaling factor for transforming physical threadId to logical.
-  int GetThreadIdScalingFactor() const { return thread_id_virtual_scaling_; }
 
  private:
   // Number of blocks required to "cover" the given dimension.
@@ -129,15 +112,8 @@ class TilingScheme {
 
   // Vector size for dimension X.
   int vector_size_;
-
-  // Scaling apply to transform physical threadIdx into logical.
-  int64_t thread_id_virtual_scaling_ = 1;
 };
 
-// Contains threading information. Note that for performance we might apply
-// thread id "scaling" where the physical thread id (to achieve good SM
-// occupancy) will differ from logical thread id. This struct contains
-// logical thread ids, along with meta-information about the scaling applied.
 struct TilingThreadIdInfo {
   llvm::Value* thread_id;
 
@@ -150,9 +126,6 @@ struct TilingThreadIdInfo {
 
   // Block id.
   llvm::Value* block_id;
-
-  // The virtual scaling index: [0; thread_id_virtual_scaling).
-  llvm::Value* scaling_index;
 };
 
 struct TilingKernelInfo {

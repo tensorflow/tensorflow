@@ -55,182 +55,179 @@ ENTRY e {
 // CHECK-GCN:     %[[VAL_22:.*]] = call i32 @llvm.amdgcn.workitem.id.x
 // CHECK-PTX:     %[[VAL_23:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !4
 // CHECK-GCN:     %[[VAL_23:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
-// CHECK:         %[[VAL_24:.*]] = urem i32 %[[VAL_22]], 1024
-// CHECK:         %[[VAL_25:.*]] = udiv i32 %[[VAL_22]], 1024
-// CHECK:         %[[VAL_26:.*]] = mul i32 %[[VAL_23]], 1
-// CHECK:         %[[VAL_27:.*]] = add i32 %[[VAL_26]], %[[VAL_25]]
-// CHECK:         %[[VAL_28:.*]] = icmp ult i32 %[[VAL_27]], 32
-// CHECK:         br i1 %[[VAL_28]], label %[[VAL_29:.*]], label %[[VAL_30:.*]]
-// CHECK:       9:                                                ; preds = %[[VAL_17]]
-// CHECK:         %[[VAL_32:.*]] = udiv i32 %[[VAL_24]], 32
-// CHECK:         %[[VAL_31:.*]] = urem i32 %[[VAL_24]], 32
-// CHECK:         %[[VAL_54:.*]] = mul i32 %[[VAL_31]], 1
-// CHECK:         %[[VAL_33:.*]] = urem i32 %[[VAL_24]], 32
-// CHECK:         %[[VAL_34:.*]] = udiv i32 %[[VAL_27]], 1
-// CHECK:         %[[VAL_35:.*]] = urem i32 %[[VAL_34]], 32
-// CHECK:         %[[VAL_36:.*]] = udiv i32 %[[VAL_27]], 32
-// CHECK:         %[[VAL_37:.*]] = urem i32 %[[VAL_36]], 1
-// CHECK:         %[[VAL_38:.*]] = udiv i32 %[[VAL_27]], 32
-// CHECK:         %[[VAL_39:.*]] = icmp eq i32 %[[VAL_37]], 0
-// CHECK:         %[[VAL_40:.*]] = select i1 %[[VAL_39]], i32 1024, i32 4096
-// CHECK:         %[[VAL_43:.*]] = mul i32 %[[VAL_38]], 1
-// CHECK:         %[[VAL_44:.*]] = mul i32 %[[VAL_37]], 4096
-// CHECK:         %[[VAL_45:.*]] = mul i32 %[[VAL_35]], 32
-// CHECK:         store i32 %[[VAL_32]], ptr %[[VAL_12]], align 4
-// CHECK:         br label %[[VAL_46:.*]]
-// CHECK:       loop1.loop_header:                            ; preds = %[[VAL_47:.*]], %[[VAL_29]]
-// CHECK:         %[[VAL_48:.*]] = load i32, ptr %[[VAL_12]], align 4
-// CHECK:         %[[VAL_49:.*]] = icmp uge i32 %[[VAL_48]], %[[VAL_40]]
-// CHECK:         br i1 %[[VAL_49]], label %[[VAL_50:.*]], label %[[VAL_51:.*]]
-// CHECK:       loop1.loop_body:                              ; preds = %[[VAL_46]]
-// CHECK:         %[[VAL_52:.*]] = add nuw nsw i32 %[[VAL_48]], 32
-// CHECK:         store i32 %[[VAL_52]], ptr %[[VAL_12]], align 4
-// CHECK:         %[[VAL_53:.*]] = icmp eq i32 %[[VAL_48]], %[[VAL_32]]
+// CHECK:         %[[VAL_24:.*]] = udiv i32 %[[VAL_22]], 1024
+// CHECK:         %[[VAL_25:.*]] = urem i32 %[[VAL_22]], 1024
+// CHECK:         %[[VAL_26:.*]] = udiv i32 %[[VAL_25]], 32
+// CHECK:         %[[VAL_27:.*]] = urem i32 %[[VAL_22]], 32
+// CHECK:         %[[VAL_28:.*]] = mul i32 %[[VAL_27]], 1
+// CHECK:         %[[VAL_29:.*]] = urem i32 %[[VAL_22]], 32
+// CHECK:         %[[VAL_30:.*]] = udiv i32 %[[VAL_23]], 1
+// CHECK:         %[[VAL_31:.*]] = urem i32 %[[VAL_30]], 32
+// CHECK:         %[[VAL_32:.*]] = udiv i32 %[[VAL_23]], 32
+// CHECK:         %[[VAL_33:.*]] = urem i32 %[[VAL_32]], 1
+// CHECK:         %[[VAL_34:.*]] = udiv i32 %[[VAL_23]], 32
+// CHECK:         %[[VAL_35:.*]] = icmp eq i32 %[[VAL_33]], 0
+// CHECK:         %[[VAL_36:.*]] = select i1 %[[VAL_35]], i32 1024, i32 4096
+// CHECK:         %[[VAL_37:.*]] = mul i32 %[[VAL_34]], 1
+// CHECK:         %[[VAL_38:.*]] = mul i32 %[[VAL_33]], 4096
+// CHECK:         %[[VAL_39:.*]] = mul i32 %[[VAL_31]], 32
+// CHECK:         store i32 %[[VAL_26]], ptr %[[VAL_12]], align 4
+// CHECK:         br label %[[VAL_40:.*]]
+// CHECK:       loop1.loop_header:                                ; preds = %[[VAL_41:.*]], %[[VAL_17]]
+// CHECK:         %[[VAL_42:.*]] = load i32, ptr %[[VAL_12]], align 4
+// CHECK:         %[[VAL_43:.*]] = icmp uge i32 %[[VAL_42]], %[[VAL_36]]
+// CHECK:         br i1 %[[VAL_43]], label %[[VAL_44:.*]], label %[[VAL_45:.*]]
+// CHECK:       loop1.loop_body:                                  ; preds = %[[VAL_40]]
+// CHECK:         %[[VAL_46:.*]] = add nuw nsw i32 %[[VAL_42]], 32
+// CHECK:         store i32 %[[VAL_46]], ptr %[[VAL_12]], align 4
+// CHECK:         %[[VAL_47:.*]] = icmp eq i32 %[[VAL_42]], %[[VAL_26]]
 // CHECK:         store i32 0, ptr %[[VAL_11]], align 4
-// CHECK:         br label %[[VAL_55:.*]]
-// CHECK:       loop2.loop_header:                            ; preds = %[[VAL_56:.*]], %[[VAL_51]]
-// CHECK:         %[[VAL_57:.*]] = load i32, ptr %[[VAL_11]], align 4
-// CHECK:         %[[VAL_58:.*]] = icmp uge i32 %[[VAL_57]], 1
-// CHECK:         br i1 %[[VAL_58]], label %[[VAL_47]], label %[[VAL_59:.*]]
-// CHECK:       loop2.loop_body:                              ; preds = %[[VAL_55]]
-// CHECK:         %[[VAL_60:.*]] = add nuw nsw i32 %[[VAL_57]], 1
-// CHECK:         store i32 %[[VAL_60]], ptr %[[VAL_11]], align 4
-// CHECK:         %[[VAL_61:.*]] = icmp eq i32 %[[VAL_57]], 0
-// CHECK:         %[[VAL_62:.*]] = mul i32 %[[VAL_57]], 32
-// CHECK:         %[[VAL_63:.*]] = add i32 %[[VAL_62]], 0
-// CHECK:         %[[VAL_64:.*]] = add i32 %[[VAL_63]], %[[VAL_54]]
-// CHECK:         %[[VAL_65:.*]] = icmp ult i32 %[[VAL_64]], 32
-// CHECK:         br i1 %[[VAL_65]], label %[[VAL_66:.*]], label %[[VAL_56]]
-// CHECK:       x_in_tile-after:                                  ; preds = %[[VAL_66]], %[[VAL_59]]
-// CHECK:         br label %[[VAL_55]], !llvm.loop !5
-// CHECK:       loop2.loop_exit:                              ; preds = %[[VAL_55]]
-// CHECK:         br label %[[VAL_46]], !llvm.loop !8
-// CHECK:       loop1.loop_exit:                              ; preds = %[[VAL_46]]
-// CHECK:         %[[VAL_69:.*]] = load double, ptr %[[VAL_13]], align 8
-// CHECK:         %[[VAL_67:.*]] = getelementptr inbounds [32 x [33 x double]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_31]], i32 %[[VAL_32]]
-// CHECK:         %[[VAL_68:.*]] = addrspacecast ptr addrspace(3) %[[VAL_67]] to ptr
-// CHECK:         store double %[[VAL_69]], ptr %[[VAL_68]], align 8
+// CHECK:         br label %[[VAL_48:.*]]
+// CHECK:       loop2.loop_header:                                ; preds = %[[VAL_49:.*]], %[[VAL_45]]
+// CHECK:         %[[VAL_50:.*]] = load i32, ptr %[[VAL_11]], align 4
+// CHECK:         %[[VAL_51:.*]] = icmp uge i32 %[[VAL_50]], 1
+// CHECK:         br i1 %[[VAL_51]], label %[[VAL_41]], label %[[VAL_52:.*]]
+// CHECK:       loop2.loop_body:                                  ; preds = %[[VAL_48]]
+// CHECK:         %[[VAL_53:.*]] = add nuw nsw i32 %[[VAL_50]], 1
+// CHECK:         store i32 %[[VAL_53]], ptr %[[VAL_11]], align 4
+// CHECK:         %[[VAL_54:.*]] = icmp eq i32 %[[VAL_50]], 0
+// CHECK:         %[[VAL_55:.*]] = mul i32 %[[VAL_50]], 32
+// CHECK:         %[[VAL_56:.*]] = add i32 %[[VAL_55]], 0
+// CHECK:         %[[VAL_57:.*]] = add i32 %[[VAL_56]], %[[VAL_28]]
+// CHECK:         %[[VAL_58:.*]] = icmp ult i32 %[[VAL_57]], 32
+// CHECK:         br i1 %[[VAL_58]], label %[[VAL_59:.*]], label %[[VAL_49]]
+// CHECK:       x_in_tile-after:                                  ; preds = %[[VAL_59]], %[[VAL_52]]
+// CHECK:         br label %[[VAL_48]], !llvm.loop !5
+// CHECK:       loop2.loop_exit:                                  ; preds = %[[VAL_48]]
+// CHECK:         br label %[[VAL_40]], !llvm.loop !8
+// CHECK:       loop1.loop_exit:                                  ; preds = %[[VAL_40]]
+// CHECK:         %[[VAL_60:.*]] = load double, ptr %[[VAL_13]], align 8
+// CHECK:         %[[VAL_61:.*]] = getelementptr inbounds [32 x [33 x double]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_27]], i32 %[[VAL_26]]
+// CHECK:         %[[VAL_62:.*]] = addrspacecast ptr addrspace(3) %[[VAL_61]] to ptr
+// CHECK:         store double %[[VAL_60]], ptr %[[VAL_62]], align 8
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_70:.*]] = getelementptr inbounds [32 x [33 x double]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_32]], i32 %[[VAL_31]]
-// CHECK:         %[[VAL_71:.*]] = addrspacecast ptr addrspace(3) %[[VAL_70]] to ptr
-// CHECK:         %[[VAL_72:.*]] = load double, ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_73:.*]] = bitcast double %[[VAL_72]] to i64
-// CHECK:         %[[VAL_74:.*]] = bitcast i64 %[[VAL_73]] to <2 x i32>
-// CHECK:         %[[VAL_75:.*]] = extractelement <2 x i32> %[[VAL_74]], i64 0
-// CHECK:         %[[VAL_76:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_75]], i32 16, i32 31)
-// CHECK:         %[[VAL_77:.*]] = insertelement <2 x i32> %[[VAL_74]], i32 %[[VAL_76]], i64 0
-// CHECK:         %[[VAL_78:.*]] = extractelement <2 x i32> %[[VAL_77]], i64 1
-// CHECK:         %[[VAL_79:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_78]], i32 16, i32 31)
-// CHECK:         %[[VAL_80:.*]] = insertelement <2 x i32> %[[VAL_77]], i32 %[[VAL_79]], i64 1
-// CHECK:         %[[VAL_81:.*]] = bitcast <2 x i32> %[[VAL_80]] to i64
-// CHECK:         %[[VAL_82:.*]] = bitcast i64 %[[VAL_81]] to double
-// CHECK:         store double %[[VAL_82]], ptr %[[VAL_9]], align 8
-// CHECK:         call void @[[ADD:add.*]](ptr %[[VAL_71]], ptr %[[VAL_9]], ptr %[[VAL_8]])
-// CHECK:         %[[VAL_83:.*]] = load double, ptr %[[VAL_8]], align 8
-// CHECK:         store double %[[VAL_83]], ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_84:.*]] = load double, ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_85:.*]] = bitcast double %[[VAL_84]] to i64
-// CHECK:         %[[VAL_86:.*]] = bitcast i64 %[[VAL_85]] to <2 x i32>
-// CHECK:         %[[VAL_87:.*]] = extractelement <2 x i32> %[[VAL_86]], i64 0
-// CHECK:         %[[VAL_88:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_87]], i32 8, i32 31)
-// CHECK:         %[[VAL_89:.*]] = insertelement <2 x i32> %[[VAL_86]], i32 %[[VAL_88]], i64 0
-// CHECK:         %[[VAL_90:.*]] = extractelement <2 x i32> %[[VAL_89]], i64 1
-// CHECK:         %[[VAL_91:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_90]], i32 8, i32 31)
-// CHECK:         %[[VAL_92:.*]] = insertelement <2 x i32> %[[VAL_89]], i32 %[[VAL_91]], i64 1
-// CHECK:         %[[VAL_93:.*]] = bitcast <2 x i32> %[[VAL_92]] to i64
-// CHECK:         %[[VAL_94:.*]] = bitcast i64 %[[VAL_93]] to double
-// CHECK:         store double %[[VAL_94]], ptr %[[VAL_7]], align 8
-// CHECK:         call void @[[ADD]](ptr %[[VAL_71]], ptr %[[VAL_7]], ptr %[[VAL_6]])
-// CHECK:         %[[VAL_95:.*]] = load double, ptr %[[VAL_6]], align 8
-// CHECK:         store double %[[VAL_95]], ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_96:.*]] = load double, ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_97:.*]] = bitcast double %[[VAL_96]] to i64
-// CHECK:         %[[VAL_98:.*]] = bitcast i64 %[[VAL_97]] to <2 x i32>
-// CHECK:         %[[VAL_99:.*]] = extractelement <2 x i32> %[[VAL_98]], i64 0
-// CHECK:         %[[VAL_100:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_99]], i32 4, i32 31)
-// CHECK:         %[[VAL_101:.*]] = insertelement <2 x i32> %[[VAL_98]], i32 %[[VAL_100]], i64 0
-// CHECK:         %[[VAL_102:.*]] = extractelement <2 x i32> %[[VAL_101]], i64 1
-// CHECK:         %[[VAL_103:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_102]], i32 4, i32 31)
-// CHECK:         %[[VAL_104:.*]] = insertelement <2 x i32> %[[VAL_101]], i32 %[[VAL_103]], i64 1
-// CHECK:         %[[VAL_105:.*]] = bitcast <2 x i32> %[[VAL_104]] to i64
-// CHECK:         %[[VAL_106:.*]] = bitcast i64 %[[VAL_105]] to double
-// CHECK:         store double %[[VAL_106]], ptr %[[VAL_5]], align 8
-// CHECK:         call void @[[ADD]](ptr %[[VAL_71]], ptr %[[VAL_5]], ptr %[[VAL_4]])
-// CHECK:         %[[VAL_107:.*]] = load double, ptr %[[VAL_4]], align 8
-// CHECK:         store double %[[VAL_107]], ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_108:.*]] = load double, ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_109:.*]] = bitcast double %[[VAL_108]] to i64
-// CHECK:         %[[VAL_110:.*]] = bitcast i64 %[[VAL_109]] to <2 x i32>
-// CHECK:         %[[VAL_111:.*]] = extractelement <2 x i32> %[[VAL_110]], i64 0
-// CHECK:         %[[VAL_112:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_111]], i32 2, i32 31)
-// CHECK:         %[[VAL_113:.*]] = insertelement <2 x i32> %[[VAL_110]], i32 %[[VAL_112]], i64 0
-// CHECK:         %[[VAL_114:.*]] = extractelement <2 x i32> %[[VAL_113]], i64 1
-// CHECK:         %[[VAL_115:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_114]], i32 2, i32 31)
-// CHECK:         %[[VAL_116:.*]] = insertelement <2 x i32> %[[VAL_113]], i32 %[[VAL_115]], i64 1
-// CHECK:         %[[VAL_117:.*]] = bitcast <2 x i32> %[[VAL_116]] to i64
-// CHECK:         %[[VAL_118:.*]] = bitcast i64 %[[VAL_117]] to double
-// CHECK:         store double %[[VAL_118]], ptr %[[VAL_3]], align 8
-// CHECK:         call void @[[ADD]](ptr %[[VAL_71]], ptr %[[VAL_3]], ptr %[[VAL_2]])
-// CHECK:         %[[VAL_119:.*]] = load double, ptr %[[VAL_2]], align 8
-// CHECK:         store double %[[VAL_119]], ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_120:.*]] = load double, ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_121:.*]] = bitcast double %[[VAL_120]] to i64
-// CHECK:         %[[VAL_122:.*]] = bitcast i64 %[[VAL_121]] to <2 x i32>
-// CHECK:         %[[VAL_123:.*]] = extractelement <2 x i32> %[[VAL_122]], i64 0
-// CHECK:         %[[VAL_124:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_123]], i32 1, i32 31)
-// CHECK:         %[[VAL_125:.*]] = insertelement <2 x i32> %[[VAL_122]], i32 %[[VAL_124]], i64 0
-// CHECK:         %[[VAL_126:.*]] = extractelement <2 x i32> %[[VAL_125]], i64 1
-// CHECK:         %[[VAL_127:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_126]], i32 1, i32 31)
-// CHECK:         %[[VAL_128:.*]] = insertelement <2 x i32> %[[VAL_125]], i32 %[[VAL_127]], i64 1
-// CHECK:         %[[VAL_129:.*]] = bitcast <2 x i32> %[[VAL_128]] to i64
-// CHECK:         %[[VAL_130:.*]] = bitcast i64 %[[VAL_129]] to double
-// CHECK:         store double %[[VAL_130]], ptr %[[VAL_1]], align 8
-// CHECK:         call void @[[ADD]](ptr %[[VAL_71]], ptr %[[VAL_1]], ptr %[[VAL_0]])
-// CHECK:         %[[VAL_131:.*]] = load double, ptr %[[VAL_0]], align 8
-// CHECK:         store double %[[VAL_131]], ptr %[[VAL_71]], align 8
-// CHECK:         %[[VAL_133:.*]] = icmp ult i32 %[[VAL_32]], 32
-// CHECK:         %[[VAL_134:.*]] = icmp ult i32 %[[VAL_31]], %[[VAL_40]]
-// CHECK:         %[[VAL_135:.*]] = and i1 %[[VAL_133]], %[[VAL_134]]
-// CHECK:         %[[VAL_136:.*]] = icmp eq i32 %[[VAL_33]], 0
-// CHECK:         %[[VAL_137:.*]] = and i1 %[[VAL_135]], %[[VAL_136]]
-// CHECK:         br i1 %[[VAL_137]], label %[[VAL_138:.*]], label %[[VAL_19]]
-// CHECK:       reduction_write_output-after:                     ; preds = %[[VAL_138]], %[[VAL_50]]
+// CHECK:         %[[VAL_63:.*]] = getelementptr inbounds [32 x [33 x double]], ptr addrspace(3) @shared_cache, i32 0, i32 %[[VAL_26]], i32 %[[VAL_27]]
+// CHECK:         %[[VAL_64:.*]] = addrspacecast ptr addrspace(3) %[[VAL_63]] to ptr
+// CHECK:         %[[VAL_65:.*]] = load double, ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_66:.*]] = bitcast double %[[VAL_65]] to i64
+// CHECK:         %[[VAL_67:.*]] = bitcast i64 %[[VAL_66]] to <2 x i32>
+// CHECK:         %[[VAL_68:.*]] = extractelement <2 x i32> %[[VAL_67]], i64 0
+// CHECK:         %[[VAL_69:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_68]], i32 16, i32 31)
+// CHECK:         %[[VAL_70:.*]] = insertelement <2 x i32> %[[VAL_67]], i32 %[[VAL_69]], i64 0
+// CHECK:         %[[VAL_71:.*]] = extractelement <2 x i32> %[[VAL_70]], i64 1
+// CHECK:         %[[VAL_72:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_71]], i32 16, i32 31)
+// CHECK:         %[[VAL_73:.*]] = insertelement <2 x i32> %[[VAL_70]], i32 %[[VAL_72]], i64 1
+// CHECK:         %[[VAL_74:.*]] = bitcast <2 x i32> %[[VAL_73]] to i64
+// CHECK:         %[[VAL_75:.*]] = bitcast i64 %[[VAL_74]] to double
+// CHECK:         store double %[[VAL_75]], ptr %[[VAL_9]], align 8
+// CHECK:         call void @[[ADD:add.*]](ptr %[[VAL_64]], ptr %[[VAL_9]], ptr %[[VAL_8]])
+// CHECK:         %[[VAL_76:.*]] = load double, ptr %[[VAL_8]], align 8
+// CHECK:         store double %[[VAL_76]], ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_77:.*]] = load double, ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_78:.*]] = bitcast double %[[VAL_77]] to i64
+// CHECK:         %[[VAL_79:.*]] = bitcast i64 %[[VAL_78]] to <2 x i32>
+// CHECK:         %[[VAL_80:.*]] = extractelement <2 x i32> %[[VAL_79]], i64 0
+// CHECK:         %[[VAL_81:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_80]], i32 8, i32 31)
+// CHECK:         %[[VAL_82:.*]] = insertelement <2 x i32> %[[VAL_79]], i32 %[[VAL_81]], i64 0
+// CHECK:         %[[VAL_83:.*]] = extractelement <2 x i32> %[[VAL_82]], i64 1
+// CHECK:         %[[VAL_84:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_83]], i32 8, i32 31)
+// CHECK:         %[[VAL_85:.*]] = insertelement <2 x i32> %[[VAL_82]], i32 %[[VAL_84]], i64 1
+// CHECK:         %[[VAL_86:.*]] = bitcast <2 x i32> %[[VAL_85]] to i64
+// CHECK:         %[[VAL_87:.*]] = bitcast i64 %[[VAL_86]] to double
+// CHECK:         store double %[[VAL_87]], ptr %[[VAL_7]], align 8
+// CHECK:         call void @[[ADD]](ptr %[[VAL_64]], ptr %[[VAL_7]], ptr %[[VAL_6]])
+// CHECK:         %[[VAL_88:.*]] = load double, ptr %[[VAL_6]], align 8
+// CHECK:         store double %[[VAL_88]], ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_89:.*]] = load double, ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_90:.*]] = bitcast double %[[VAL_89]] to i64
+// CHECK:         %[[VAL_91:.*]] = bitcast i64 %[[VAL_90]] to <2 x i32>
+// CHECK:         %[[VAL_92:.*]] = extractelement <2 x i32> %[[VAL_91]], i64 0
+// CHECK:         %[[VAL_93:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_92]], i32 4, i32 31)
+// CHECK:         %[[VAL_94:.*]] = insertelement <2 x i32> %[[VAL_91]], i32 %[[VAL_93]], i64 0
+// CHECK:         %[[VAL_95:.*]] = extractelement <2 x i32> %[[VAL_94]], i64 1
+// CHECK:         %[[VAL_96:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_95]], i32 4, i32 31)
+// CHECK:         %[[VAL_97:.*]] = insertelement <2 x i32> %[[VAL_94]], i32 %[[VAL_96]], i64 1
+// CHECK:         %[[VAL_98:.*]] = bitcast <2 x i32> %[[VAL_97]] to i64
+// CHECK:         %[[VAL_99:.*]] = bitcast i64 %[[VAL_98]] to double
+// CHECK:         store double %[[VAL_99]], ptr %[[VAL_5]], align 8
+// CHECK:         call void @[[ADD]](ptr %[[VAL_64]], ptr %[[VAL_5]], ptr %[[VAL_4]])
+// CHECK:         %[[VAL_100:.*]] = load double, ptr %[[VAL_4]], align 8
+// CHECK:         store double %[[VAL_100]], ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_101:.*]] = load double, ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_102:.*]] = bitcast double %[[VAL_101]] to i64
+// CHECK:         %[[VAL_103:.*]] = bitcast i64 %[[VAL_102]] to <2 x i32>
+// CHECK:         %[[VAL_104:.*]] = extractelement <2 x i32> %[[VAL_103]], i64 0
+// CHECK:         %[[VAL_105:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_104]], i32 2, i32 31)
+// CHECK:         %[[VAL_106:.*]] = insertelement <2 x i32> %[[VAL_103]], i32 %[[VAL_105]], i64 0
+// CHECK:         %[[VAL_107:.*]] = extractelement <2 x i32> %[[VAL_106]], i64 1
+// CHECK:         %[[VAL_108:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_107]], i32 2, i32 31)
+// CHECK:         %[[VAL_109:.*]] = insertelement <2 x i32> %[[VAL_106]], i32 %[[VAL_108]], i64 1
+// CHECK:         %[[VAL_110:.*]] = bitcast <2 x i32> %[[VAL_109]] to i64
+// CHECK:         %[[VAL_111:.*]] = bitcast i64 %[[VAL_110]] to double
+// CHECK:         store double %[[VAL_111]], ptr %[[VAL_3]], align 8
+// CHECK:         call void @[[ADD]](ptr %[[VAL_64]], ptr %[[VAL_3]], ptr %[[VAL_2]])
+// CHECK:         %[[VAL_112:.*]] = load double, ptr %[[VAL_2]], align 8
+// CHECK:         store double %[[VAL_112]], ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_113:.*]] = load double, ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_114:.*]] = bitcast double %[[VAL_113]] to i64
+// CHECK:         %[[VAL_115:.*]] = bitcast i64 %[[VAL_114]] to <2 x i32>
+// CHECK:         %[[VAL_116:.*]] = extractelement <2 x i32> %[[VAL_115]], i64 0
+// CHECK:         %[[VAL_117:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_116]], i32 1, i32 31)
+// CHECK:         %[[VAL_118:.*]] = insertelement <2 x i32> %[[VAL_115]], i32 %[[VAL_117]], i64 0
+// CHECK:         %[[VAL_119:.*]] = extractelement <2 x i32> %[[VAL_118]], i64 1
+// CHECK:         %[[VAL_120:.*]] = call i32 @llvm.nvvm.shfl.sync.down.i32(i32 -1, i32 %[[VAL_119]], i32 1, i32 31)
+// CHECK:         %[[VAL_121:.*]] = insertelement <2 x i32> %[[VAL_118]], i32 %[[VAL_120]], i64 1
+// CHECK:         %[[VAL_122:.*]] = bitcast <2 x i32> %[[VAL_121]] to i64
+// CHECK:         %[[VAL_123:.*]] = bitcast i64 %[[VAL_122]] to double
+// CHECK:         store double %[[VAL_123]], ptr %[[VAL_1]], align 8
+// CHECK:         call void @[[ADD]](ptr %[[VAL_64]], ptr %[[VAL_1]], ptr %[[VAL_0]])
+// CHECK:         %[[VAL_124:.*]] = load double, ptr %[[VAL_0]], align 8
+// CHECK:         store double %[[VAL_124]], ptr %[[VAL_64]], align 8
+// CHECK:         %[[VAL_126:.*]] = icmp ult i32 %[[VAL_26]], 32
+// CHECK:         %[[VAL_127:.*]] = icmp ult i32 %[[VAL_27]], %[[VAL_36]]
+// CHECK:         %[[VAL_128:.*]] = and i1 %[[VAL_126]], %[[VAL_127]]
+// CHECK:         %[[VAL_130:.*]] = icmp eq i32 %[[VAL_29]], 0
+// CHECK:         %[[VAL_131:.*]] = and i1 %[[VAL_128]], %[[VAL_130]]
+// CHECK:         br i1 %[[VAL_131]], label %[[VAL_132:.*]], label %[[VAL_19]]
+// CHECK:       reduction_write_output-after:                     ; preds = %[[VAL_132]], %[[VAL_44]]
 // CHECK:         br label %[[VAL_18]]
-// CHECK:       early_return:                                     ; preds = %[[VAL_17]]
-// CHECK:         ret void
-// CHECK:       x_in_tile-true:                                   ; preds = %[[VAL_59]]
-// CHECK:         %[[VAL_139:.*]] = add i32 %[[VAL_44]], %[[VAL_48]]
-// CHECK:         %[[VAL_140:.*]] = add i32 %[[VAL_45]], %[[VAL_64]]
-// CHECK:         %[[VAL_143:.*]] = getelementptr inbounds [1024 x [1024 x i8]], ptr %[[VAL_144:.*]], i32 0, i32 %[[VAL_139]], i32 %[[VAL_140]]
-// CHECK:         %[[VAL_145:.*]] = load i8, ptr %[[VAL_143]], align 1, !invariant.load !9
-// CHECK:         %[[VAL_146:.*]] = getelementptr inbounds [1024 x [1024 x double]], ptr %[[VAL_147:.*]], i32 0, i32 %[[VAL_139]], i32 %[[VAL_140]]
-// CHECK:         %[[VAL_148:.*]] = load double, ptr %[[VAL_146]], align 8, !invariant.load !9
-// CHECK:         %[[VAL_149:.*]] = getelementptr inbounds [1024 x [1024 x double]], ptr %[[VAL_150:.*]], i32 0, i32 %[[VAL_139]], i32 %[[VAL_140]]
-// CHECK:         %[[VAL_151:.*]] = load double, ptr %[[VAL_149]], align 8, !invariant.load !9
-// CHECK:         %[[VAL_152:.*]] = trunc i8 %[[VAL_145]] to i1
-// CHECK:         %[[VAL_153:.*]] = select i1 %[[VAL_152]], double %[[VAL_148]], double %[[VAL_151]]
-// CHECK:         store double %[[VAL_153]], ptr %[[VAL_14]], align 8
+// CHECK:       x_in_tile-true:                                   ; preds = %[[VAL_52]]
+// CHECK:         %[[VAL_133:.*]] = add i32 %[[VAL_37]], 0
+// CHECK:         %[[VAL_134:.*]] = add i32 %[[VAL_38]], %[[VAL_42]]
+// CHECK:         %[[VAL_135:.*]] = add i32 %[[VAL_39]], %[[VAL_57]]
+// CHECK:         %[[VAL_137:.*]] = getelementptr inbounds [1024 x [1024 x i8]], ptr %[[VAL_138:.*]], i32 0, i32 %[[VAL_134]], i32 %[[VAL_135]]
+// CHECK:         %[[VAL_139:.*]] = load i8, ptr %[[VAL_137]], align 1, !invariant.load !9
+// CHECK:         %[[VAL_140:.*]] = getelementptr inbounds [1024 x [1024 x double]], ptr %[[VAL_141:.*]], i32 0, i32 %[[VAL_134]], i32 %[[VAL_135]]
+// CHECK:         %[[VAL_142:.*]] = load double, ptr %[[VAL_140]], align 8, !invariant.load !9
+// CHECK:         %[[VAL_143:.*]] = getelementptr inbounds [1024 x [1024 x double]], ptr %[[VAL_144:.*]], i32 0, i32 %[[VAL_134]], i32 %[[VAL_135]]
+// CHECK:         %[[VAL_145:.*]] = load double, ptr %[[VAL_143]], align 8, !invariant.load !9
+// CHECK:         %[[VAL_146:.*]] = trunc i8 %[[VAL_139]] to i1
+// CHECK:         %[[VAL_147:.*]] = select i1 %[[VAL_146]], double %[[VAL_142]], double %[[VAL_145]]
+// CHECK:         store double %[[VAL_147]], ptr %[[VAL_14]], align 8
 // CHECK:         call void @[[ADD]](ptr %[[VAL_13]], ptr %[[VAL_14]], ptr %[[VAL_10]])
-// CHECK:         %[[VAL_155:.*]] = load double, ptr %[[VAL_10]], align 8
-// CHECK:         store double %[[VAL_155]], ptr %[[VAL_13]], align 8
-// CHECK:         br label %[[VAL_56]]
-// CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_50]]
-// CHECK:         %[[VAL_156:.*]] = add i32 %[[VAL_43]], 0
-// CHECK:         %[[VAL_157:.*]] = add i32 %[[VAL_44]], %[[VAL_54]]
-// CHECK:         %[[VAL_158:.*]] = add i32 %[[VAL_45]], %[[VAL_32]]
-// CHECK:         %[[VAL_159:.*]] = mul i32 %[[VAL_156]], 1024
-// CHECK:         %[[VAL_160:.*]] = add i32 %[[VAL_159]], %[[VAL_158]]
-// CHECK:         %[[VAL_161:.*]] = udiv i32 %[[VAL_160]], 1
-// CHECK:         %[[VAL_162:.*]] = getelementptr inbounds [1024 x double], ptr %[[VAL_163:.*]], i32 0, i32 %[[VAL_161]]
-// CHECK:         %[[VAL_164:.*]] = load double, ptr %[[VAL_71]], align 8
-// CHECK:         store double %[[VAL_164]], ptr %[[VAL_162]], align 8
+// CHECK:         %[[VAL_149:.*]] = load double, ptr %[[VAL_10]], align 8
+// CHECK:         store double %[[VAL_149]], ptr %[[VAL_13]], align 8
+// CHECK:         br label %[[VAL_49]]
+// CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_44]]
+// CHECK:         %[[VAL_150:.*]] = add i32 %[[VAL_37]], %[[VAL_24]]
+// CHECK:         %[[VAL_151:.*]] = add i32 %[[VAL_38]], %[[VAL_28]]
+// CHECK:         %[[VAL_152:.*]] = add i32 %[[VAL_39]], %[[VAL_26]]
+// CHECK:         %[[VAL_153:.*]] = mul i32 %[[VAL_150]], 1024
+// CHECK:         %[[VAL_154:.*]] = add i32 %[[VAL_153]], %[[VAL_152]]
+// CHECK:         %[[VAL_155:.*]] = udiv i32 %[[VAL_154]], 1
+// CHECK:         %[[VAL_156:.*]] = getelementptr inbounds [1024 x double], ptr %[[VAL_157:.*]], i32 0, i32 %[[VAL_155]]
+// CHECK:         %[[VAL_158:.*]] = load double, ptr %[[VAL_64]], align 8
+// CHECK:         store double %[[VAL_158]], ptr %[[VAL_156]], align 8
 // CHECK:         br label %[[VAL_19]]
 // CHECK:       entry:
-// CHECK:         %[[VAL_165:.*]] = alloca double, align 8
-// CHECK:         %[[VAL_166:.*]] = load double, ptr %[[VAL_167:.*]], align 8
-// CHECK:         %[[VAL_168:.*]] = load double, ptr %[[VAL_169:.*]], align 8
-// CHECK:         %[[VAL_170:.*]] = fadd double %[[VAL_166]], %[[VAL_168]]
-// CHECK:         store double %[[VAL_170]], ptr %[[VAL_165]], align 8
-// CHECK:         %[[VAL_171:.*]] = load double, ptr %[[VAL_165]], align 8
-// CHECK:         store double %[[VAL_171]], ptr %[[VAL_172:.*]], align 8
+// CHECK:         %[[VAL_159:.*]] = alloca double, align 8
+// CHECK:         %[[VAL_160:.*]] = load double, ptr %[[VAL_161:.*]], align 8
+// CHECK:         %[[VAL_162:.*]] = load double, ptr %[[VAL_163:.*]], align 8
+// CHECK:         %[[VAL_164:.*]] = fadd double %[[VAL_160]], %[[VAL_162]]
+// CHECK:         store double %[[VAL_164]], ptr %[[VAL_159]], align 8
+// CHECK:         %[[VAL_165:.*]] = load double, ptr %[[VAL_159]], align 8
+// CHECK:         store double %[[VAL_165]], ptr %[[VAL_166:.*]], align 8
 // CHECK:         ret void
+
+// CHECK-PTX: !3 = !{i32 0, i32 1024}
+// CHECK-PTX: !4 = !{i32 0, i32 32}

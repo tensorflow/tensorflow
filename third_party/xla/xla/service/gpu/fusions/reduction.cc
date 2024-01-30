@@ -114,10 +114,10 @@ int GetNumOutputs(const Shape& shape) {
 llvm::Type* GetIndexType(const HloFusionInstruction& fusion,
                          const TilingScheme& tiling_scheme,
                          llvm::IRBuilder<>* builder) {
-  return GetIndexTypeForKernel(&fusion,
-                               tiling_scheme.GetNumThreadsPerBlockPhysical() *
-                                   tiling_scheme.GetNumBlocksPhysical(),
-                               builder);
+  return GetIndexTypeForKernel(
+      &fusion,
+      tiling_scheme.GetNumThreadsPerBlock() * tiling_scheme.GetNumBlocks(),
+      builder);
 }
 
 // For a row reduction, returns the number of rows we can process in parallel
@@ -241,29 +241,6 @@ std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions(
   absl::c_for_each(
       groups, [&](auto& iter) { ret.emplace_back(std::move(iter.second)); });
   return ret;
-}
-
-// Experimentally determined values to achieve optimal number of
-// bytes-in-flight. With a bound of #warps/SM which can be concurrently
-// scheduled, for small reduced values it can be hard to achieve optimal
-// number of bytes-in-flight. In order to address it, we increase the # of
-// threads/block (physically, while keeping logical mapping the same), which
-// allows larger # of bytes-in-flight.
-int CalculateVirtualThreadScalingFactorForReduction(
-    const HloFusionAnalysis& analysis,
-    const ReductionDimensions& reduction_dimensions) {
-  int64_t dimx = reduction_dimensions.dimensions[TilingScheme::DimX];
-  if (reduction_dimensions.is_row_reduction && dimx <= 128) {
-    int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
-    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-        &analysis.device_info().gpu_compute_capability());
-    if (cuda_cc != nullptr &&
-        cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-      return rows_per_warp * 3;
-    }
-    return rows_per_warp * 5;
-  }
-  return 1;
 }
 
 bool CanVectorizeReduction(const HloFusionAnalysis& analysis,
@@ -489,11 +466,13 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
                   reduction_emitter_.ReducedDimensionSize()) > 1) {
             return std::nullopt;
           }
-          CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
-          int num_warps = tiling_scheme.GetNumThreadsPerBlock() / WarpSize();
+          // Allocate one shared memory element per warp.
+          auto block_size = tiling_scheme.GetThreadsPerBlock();
+          CHECK_EQ(block_size[TilingScheme::DimX] % WarpSize(), 0);
           return llvm_ir::AllocateSharedMemoryTile(
               module, element_type,
-              {tiling_scheme.GetThreadIdScalingFactor(), num_warps},
+              {block_size[TilingScheme::DimY],
+               block_size[TilingScheme::DimX] / WarpSize()},
               "shared_cache");
         }
         const auto& num_threads = tiling_scheme.GetThreadsPerBlock();
@@ -865,15 +844,14 @@ void ReductionFusion::ReductionGroupEmitter::WriteReductionOutput(
   }
 }
 
-// `current_output`: the value the tile has calculated.
-// `output_address`: address where the output value has to be written.
 void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const HloReduceInstruction* reduction,
     const std::vector<const HloInstruction*>& roots) const {
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
-  auto* thread_id_x = thread_id_info.thread_ids[TilingScheme::DimX];
+  const auto& thread_ids = thread_id_info.thread_ids;
+  auto* thread_id_x = thread_ids[TilingScheme::DimX];
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(reduction_emitter_.index_ty_, c);
   };
@@ -896,9 +874,9 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
   const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
   int num_rows_per_warp =
       RowReductionGetRowsPerWarp(reduction_emitter_.ReducedDimensionSize());
-  EmitFullWarpShuffleDownLoopForReduce(
-      reducer, absl::MakeSpan(current_outputs),
-      tiling_scheme.GetNumThreadsPerBlockPhysical(), num_rows_per_warp);
+  EmitFullWarpShuffleDownLoopForReduce(reducer, absl::MakeSpan(current_outputs),
+                                       tiling_scheme.GetNumThreadsPerBlock(),
+                                       num_rows_per_warp);
 
   KernelSupportLibrary ksl(builder);
   llvm::Value* warp_id = builder->CreateUDiv(thread_id_x, constant(WarpSize()));
@@ -910,67 +888,79 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
     });
   };
 
-  if (num_rows_per_warp > 1) {
-    llvm::Value* is_writing_thread = is_zero(builder->CreateAnd(
-        thread_id_x, constant(reduction_emitter_.ReducedDimensionSize() - 1)));
-    emit_write_output(is_writing_thread, current_outputs);
-    return;
-  }
+  // The x axis is checked below. The z axis is not tiled, so it's always in
+  // bounds.
+  llvm::Value* is_in_bounds_y = builder->CreateICmpULT(
+      thread_ids[TilingScheme::DimY],
+      tiling_kernel_info.output_tile_bounds[TilingScheme::DimY]);
 
-  ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
-    for (int oidx = 0; oidx < num_outputs; oidx++) {
-      auto& state = GetCalculationStateFor(reduction, oidx);
-      state.shared_cache->Store(
-          builder->CreateLoad(current_outputs[oidx].second,
-                              current_outputs[oidx].first),
-          {thread_id_info.scaling_index, warp_id}, builder);
-    }
-  });
-
-  // TODO(cheshire): Don't we want to sync it once for everything in the
-  // output? Not once per each?
-  reduction_emitter_.EmitSyncThreads();
-  ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
-    absl::InlinedVector<TypedPointer, 2> selected_values;
-    for (int oidx = 0; oidx < num_outputs; oidx++) {
-      auto& state = GetCalculationStateFor(reduction, oidx);
-      llvm::Value* block_accum_addr = state.shared_cache->Address(
-          {thread_id_info.scaling_index, thread_id_info.lane_id}, builder);
-
-      llvm::Type* element_type =
-          state.partial_result_address->getAllocatedType();
-
-      // Ensure initial value address is in generic, not scratch.
-      llvm::Value* initial_value_addr =
-          CastSharedToGlobal(builder,
-                             llvm_ir::EmitAllocaAtFunctionEntry(
-                                 element_type, "initial_value_addr", builder),
-                             element_type, /*name=*/"");
-      builder->CreateStore(state.initial_value, initial_value_addr);
-
-      llvm::Value* warp_exists = builder->CreateICmpULT(
+  ksl.If("thread_in_bounds", is_in_bounds_y, [&] {
+    if (num_rows_per_warp > 1) {
+      llvm::Value* is_writing_thread = is_zero(builder->CreateAnd(
           thread_id_x,
-          constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX] /
-                   WarpSize()));
-
-      llvm::Value* selected_value = builder->CreateSelect(
-          warp_exists, block_accum_addr, initial_value_addr);
-
-      selected_values.push_back({selected_value, element_type});
+          constant(reduction_emitter_.ReducedDimensionSize() - 1)));
+      emit_write_output(is_writing_thread, current_outputs);
+      return;
     }
 
-    // If only one warp is present in the block, then we don't need inter-warp
-    // reduction.
-    // TODO(b/241414088) If only warp is present, then inter-warp
-    // communication using shared memory and synchronization using barrier is
-    // also unnecessary and should be removed.
-    if (tiling_scheme.GetNumThreadsPerBlock() > WarpSize()) {
-      EmitFullWarpShuffleDownLoopForReduce(
-          reducer, absl::MakeSpan(selected_values),
-          tiling_scheme.GetNumThreadsPerBlock(), /*num_results_per_warp=*/1);
-    }
+    ksl.If("intra_warp_reduce_write", is_zero(thread_id_info.lane_id), [&] {
+      for (int oidx = 0; oidx < num_outputs; oidx++) {
+        auto& state = GetCalculationStateFor(reduction, oidx);
+        state.shared_cache->Store(
+            builder->CreateLoad(current_outputs[oidx].second,
+                                current_outputs[oidx].first),
+            {thread_id_info.thread_ids[TilingScheme::DimY], warp_id}, builder);
+      }
+    });
 
-    emit_write_output(is_zero(thread_id_x), selected_values);
+    // TODO(cheshire): Don't we want to sync it once for everything in the
+    // output? Not once per each?
+    reduction_emitter_.EmitSyncThreads();
+    ksl.If("inter_warp_reduce", is_zero(warp_id), [&] {
+      absl::InlinedVector<TypedPointer, 2> selected_values;
+      for (int oidx = 0; oidx < num_outputs; oidx++) {
+        auto& state = GetCalculationStateFor(reduction, oidx);
+        llvm::Value* block_accum_addr = state.shared_cache->Address(
+            {thread_id_info.thread_ids[TilingScheme::DimY],
+             thread_id_info.lane_id},
+            builder);
+
+        llvm::Type* element_type =
+            state.partial_result_address->getAllocatedType();
+
+        // Ensure initial value address is in generic, not scratch.
+        llvm::Value* initial_value_addr =
+            CastSharedToGlobal(builder,
+                               llvm_ir::EmitAllocaAtFunctionEntry(
+                                   element_type, "initial_value_addr", builder),
+                               element_type, /*name=*/"");
+        builder->CreateStore(state.initial_value, initial_value_addr);
+
+        llvm::Value* warp_exists = builder->CreateICmpULT(
+            thread_id_x,
+            constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX] /
+                     WarpSize()));
+
+        llvm::Value* selected_value = builder->CreateSelect(
+            warp_exists, block_accum_addr, initial_value_addr);
+
+        selected_values.push_back({selected_value, element_type});
+      }
+
+      // If only one warp produces the output element, we don't need to emit
+      // an inter warp reduce. In our tiling, DimX is the minor reduced
+      // dimension. The major reduced dimension is always emitted as a loop.
+      // TODO(b/241414088) If only warp is present, then inter-warp
+      // communication using shared memory and synchronization using barrier is
+      // also unnecessary and should be removed.
+      if (tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX] > WarpSize()) {
+        EmitFullWarpShuffleDownLoopForReduce(
+            reducer, absl::MakeSpan(selected_values),
+            tiling_scheme.GetNumThreadsPerBlock(), /*num_results_per_warp=*/1);
+      }
+
+      emit_write_output(is_zero(thread_id_x), selected_values);
+    });
   });
 }
 
@@ -1123,7 +1113,7 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
 
   CHECK(!heroes.empty()) << " expect at least one reduce instructions.";
   const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
-  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlockPhysical() % WarpSize(), 0);
+  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
   ReductionGroupEmitter group_emitter(*this, heroes, result_ir_arrays,
                                       fused_emitter);
 
@@ -1317,9 +1307,9 @@ absl::Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 LaunchDimensions ReductionFusion::launch_dimensions() const {
   const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
   size_t blocks_y = reduction_codegen_info_.GetIndexGroups().size();
-  return {se::BlockDim(/*x=*/tiling_scheme.GetNumBlocksPhysical(),
+  return {se::BlockDim(/*x=*/tiling_scheme.GetNumBlocks(),
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
-          se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
+          se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlock(),
                         /*y=*/1, /*z=*/1)};
 }
 
@@ -1359,20 +1349,36 @@ ReductionFusion::ComputeReductionCodegenInfo(
     return WarpSize();
   }();
 
+  // If we're limited by the size of the x dimension, add additional parallelism
+  // in the y dimension. The code generator doesn't currently support
+  // parallelizing the z dimension (major reduced dimensions). The general
+  // recommendation is to use between 128 and 512 threads, so we just go for
+  // 256. See https://forums.developer.nvidia.com/t/55529
+  constexpr int64_t kThreadsPerBlockTarget = 256;
+  if (reduction_dimensions.is_row_reduction &&
+      num_threads_x * 2 <= kThreadsPerBlockTarget) {
+    int64_t dim_y = reduction_dimensions.dimensions[TilingScheme::DimY];
+    // Increase the size of the y dimension as long as there's remaining
+    // parallelism.
+    if (dim_y * num_threads_x <= kThreadsPerBlockTarget) {
+      num_threads_y = dim_y;
+      // num_threads_x is a power of two, but it may be less than 32. If dim_y
+      // is also small, we may have to increase the bound so the total number of
+      // threads is a multiple of 32.
+      while ((num_threads_x * num_threads_y) % 32) ++num_threads_y;
+    } else {
+      num_threads_y = kThreadsPerBlockTarget / num_threads_x;
+    }
+  }
+
   int vector_size = CanVectorizeReduction(analysis, reduction_dimensions,
                                           num_threads_x, reduction_tiling)
                         ? 2
                         : 1;
 
   Vector3 num_threads = {1, num_threads_y, num_threads_x};
-  int virtual_thread_scaling_factor =
-      CalculateVirtualThreadScalingFactorForReduction(analysis,
-                                                      reduction_dimensions);
-  VLOG(2) << "Using virtual thread scaling: " << virtual_thread_scaling_factor;
-
   TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
-                             num_threads, vector_size,
-                             virtual_thread_scaling_factor);
+                             num_threads, vector_size);
   bool reduction_is_race_free = ReductionIsRaceFree(
       hero_reduction->GetModule()->config(), reduction_dimensions);
   return ReductionCodegenInfo(

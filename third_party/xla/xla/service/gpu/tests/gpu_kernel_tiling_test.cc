@@ -444,9 +444,6 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
 ; CHECK: call SHUFFLE
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: LCAL
-; CHECK: EXTV
-; CHECK: BR_CAL
 )";
 
   CompileAndVerifyIr(std::move(hlo_module),
@@ -640,7 +637,7 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
 ; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] poison, align 4
   )"
                                          : R"(
-; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [2 x float]]
+; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [4 x [2 x float]]
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -657,9 +654,9 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   }
 
   ENTRY reduce.1 {
-    parameter = f32[4,1048576,1024,1024] parameter(0)
+    parameter = f32[16,1048576,1024,1024] parameter(0)
     init_value = f32[] constant(0)
-    ROOT reduce = f32[4,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
+    ROOT reduce = f32[16,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();

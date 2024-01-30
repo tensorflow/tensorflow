@@ -155,72 +155,50 @@ llvm::Value* EmitThreadId(llvm::IRBuilder<>* builder, int64_t threads_per_block,
                                 /*isSigned=*/true, "thread.id.x");
 }
 
-// Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
-// id.
-//
-// Returns a struct containing these values.
-//
-// In the presence of thread scaling in tiling scheme may return early if the
-// combination of thread_id/block_id does not correspond to a real block.
-// Assumes the current function returns void.
+// Emits the LLVM values for thread_id, block_id, coordinates of the current
+// tile and strides of the loops to iterate over the current tile.
 absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty) {
+  using TS = TilingScheme;
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
-  llvm::Value* thread_id_physical = EmitThreadId(
-      builder, tiling_scheme.GetNumThreadsPerBlockPhysical(), index_ty);
-  int64_t num_blocks = tiling_scheme.GetNumBlocksPhysical();
+  llvm::Value* thread_id =
+      EmitThreadId(builder, tiling_scheme.GetNumThreadsPerBlock(), index_ty);
+  int64_t num_blocks = tiling_scheme.GetNumBlocks();
   if (num_blocks > (int64_t)std::numeric_limits<uint32_t>::max()) {
     return FailedPrecondition(
         "Number of physical blocks (%d) does not fit in an i32 in tiling "
         "scheme: %s",
         num_blocks, tiling_scheme.ToString());
   }
-  llvm::Value* block_id_physical = EmitBlockId(builder, num_blocks, index_ty);
+  llvm::Value* block_id = EmitBlockId(builder, num_blocks, index_ty);
 
-  // More than one thread in the z axis is currently not supported by the
-  // index computation. Since the indexing is a bit complicated (with respect to
-  // strides and starts and "virtual scaling"), there's no obvious way to extend
-  // it right now.
-  CHECK_EQ(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimZ], 1);
+  auto num_threads = tiling_scheme.GetThreadsPerBlock();
+  auto* stride_y = constant(num_threads[TilingScheme::DimX]);
+  auto* stride_z = constant(num_threads[TilingScheme::DimY] *
+                            num_threads[TilingScheme::DimX]);
 
-  llvm::Value* thread_id_logical = builder->CreateURem(
-      thread_id_physical, constant(tiling_scheme.GetNumThreadsPerBlock()));
-  llvm::Value* scaling = builder->CreateUDiv(
-      thread_id_physical, constant(tiling_scheme.GetNumThreadsPerBlock()));
-  llvm::Value* block_id_logical = builder->CreateAdd(
-      builder->CreateMul(block_id_physical,
-                         constant(tiling_scheme.GetThreadIdScalingFactor())),
-      scaling);
+  auto* thread_id_z = builder->CreateUDiv(thread_id, stride_z, "thread_id.z");
+  auto* thread_id_y = builder->CreateUDiv(
+      builder->CreateURem(thread_id, stride_z), stride_y, "thread_id.y");
+  auto* thread_id_x = builder->CreateURem(thread_id, stride_y, "thread_id.x");
 
-  llvm::Value* num_threads_x_v =
-      constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX]);
-
-  llvm::Value* block_exists = builder->CreateICmpULT(
-      block_id_logical, constant(tiling_scheme.GetNumBlocks()));
-  llvm_ir::EmitEarlyReturn(block_exists, builder);
-
-  std::array<llvm::Value*, 3> thread_ids{
-      constant(0),  // See above, there must be 1 thread in the z axis.
-      builder->CreateUDiv(thread_id_logical, num_threads_x_v, "thread_id.y"),
-      builder->CreateURem(thread_id_logical, num_threads_x_v, "thread_id.x")};
+  std::array<llvm::Value*, 3> thread_ids{thread_id_z, thread_id_y, thread_id_x};
   std::array<llvm::Value*, 3> start_offsets{
-      constant(0), thread_ids[TilingScheme::DimY],
-      builder->CreateMul(thread_ids[TilingScheme::DimX],
-                         constant(tiling_scheme.GetVectorSize()))};
+      thread_id_z, thread_id_y,
+      builder->CreateMul(thread_id_x, constant(tiling_scheme.GetVectorSize()))};
   std::array<llvm::Value*, 3> strides{
-      constant(1),
-      constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimY]),
+      constant(num_threads[TilingScheme::DimZ]),
+      constant(num_threads[TilingScheme::DimY]),
       constant(1)  // Not really, see EmitTileRec.
   };
 
   auto* lane_id =
-      builder->CreateURem(thread_id_logical, constant(WarpSize()), "lane_id");
-  return TilingThreadIdInfo{
-      thread_id_logical, thread_ids,       start_offsets, strides,
-      lane_id,           block_id_logical, scaling};
+      builder->CreateURem(thread_id, constant(WarpSize()), "lane_id");
+  return TilingThreadIdInfo{thread_id, thread_ids, start_offsets,
+                            strides,   lane_id,    block_id};
 }
 
 }  // namespace

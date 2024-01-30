@@ -88,8 +88,7 @@ TilingScheme ComputeTransposeTilingScheme(
       /*dims_in_elems=*/tiled_shape,
       /*tile_sizes=*/tile_sizes,
       /*num_threads=*/num_threads,
-      /*vector_size=*/1,
-      /*scaling_factor=*/1);
+      /*vector_size=*/1);
 }
 
 Vector3 TileToInoutPermutation(Vector3 permutation) {
@@ -97,21 +96,6 @@ Vector3 TileToInoutPermutation(Vector3 permutation) {
   // Note: this is also the tile to output permutation because we swap the
   // last two components.
   return permutation[2] == 1 ? Vector3{0, 1, 2} : Vector3{1, 0, 2};
-}
-
-llvm::GlobalVariable* AllocateShared(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* element_type,
-    absl::Span<int64_t const> dimensions_major_to_minor,
-    absl::string_view buffer_name) {
-  CHECK(!dimensions_major_to_minor.empty());
-  llvm::Type* ty = element_type;
-  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
-    ty = llvm::ArrayType::get(ty, dim);
-  }
-  ty = llvm::ArrayType::get(ty, tiling_scheme.GetThreadIdScalingFactor());
-  return llvm_ir::AllocateSharedMemoryTile(
-      builder->GetInsertBlock()->getModule(), ty, buffer_name);
 }
 
 void MaybeEmitFenceForAMDGPU(llvm::IRBuilder<>* builder,
@@ -313,8 +297,8 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 }
 
 LaunchDimensions TransposeFusion::launch_dimensions() const {
-  return LaunchDimensions(tiling_scheme_.GetNumBlocksPhysical(),
-                          tiling_scheme_.GetNumThreadsPerBlockPhysical());
+  return LaunchDimensions(tiling_scheme_.GetNumBlocks(),
+                          tiling_scheme_.GetNumThreadsPerBlock());
 }
 
 }  // namespace gpu

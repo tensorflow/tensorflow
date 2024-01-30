@@ -22,22 +22,17 @@ ENTRY main {
 // CHECK-GCN:     %[[VAL_4:.*]] = call i32 @llvm.amdgcn.workitem.id.x
 // CHECK-PTX:     %[[VAL_5:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !3
 // CHECK-GCN:     %[[VAL_5:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
-// CHECK:         %[[VAL_6:.*]] = urem i32 %[[VAL_4]], 128
 // CHECK:         %[[VAL_7:.*]] = udiv i32 %[[VAL_4]], 128
-// CHECK:         %[[VAL_8:.*]] = mul i32 %[[VAL_5]], 1
-// CHECK:         %[[VAL_9:.*]] = add i32 %[[VAL_8]], %[[VAL_7]]
-// CHECK:         %[[VAL_10:.*]] = icmp ult i32 %[[VAL_9]], 2
-// CHECK:         br i1 %[[VAL_10]], label %[[VAL_11:.*]], label %[[VAL_12:.*]]
-// CHECK:       7:                                                ; preds = %[[VAL_13:.*]]
+// CHECK:         %[[VAL_6:.*]] = urem i32 %[[VAL_4]], 128
 // CHECK:         %[[VAL_15:.*]] = udiv i32 %[[VAL_6]], 32
-// CHECK:         %[[VAL_14:.*]] = urem i32 %[[VAL_6]], 32
+// CHECK:         %[[VAL_14:.*]] = urem i32 %[[VAL_4]], 32
 // CHECK:         %[[VAL_37:.*]] = mul i32 %[[VAL_14]], 1
-// CHECK:         %[[VAL_16:.*]] = urem i32 %[[VAL_6]], 32
-// CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_16:.*]] = urem i32 %[[VAL_4]], 32
+// CHECK:         %[[VAL_17:.*]] = udiv i32 %[[VAL_5]], 1
 // CHECK:         %[[VAL_18:.*]] = urem i32 %[[VAL_17]], 1
-// CHECK:         %[[VAL_19:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_19:.*]] = udiv i32 %[[VAL_5]], 1
 // CHECK:         %[[VAL_20:.*]] = urem i32 %[[VAL_19]], 1
-// CHECK:         %[[VAL_21:.*]] = udiv i32 %[[VAL_9]], 1
+// CHECK:         %[[VAL_21:.*]] = udiv i32 %[[VAL_5]], 1
 // CHECK:         %[[VAL_22:.*]] = icmp eq i32 %[[VAL_20]], 0
 // CHECK:         %[[VAL_23:.*]] = select i1 %[[VAL_22]], i32 16, i32 32
 // CHECK:         %[[VAL_24:.*]] = icmp eq i32 %[[VAL_18]], 0
@@ -47,7 +42,7 @@ ENTRY main {
 // CHECK:         %[[VAL_28:.*]] = mul i32 %[[VAL_18]], 32
 // CHECK:         store i32 %[[VAL_15]], ptr %[[VAL_3]], align 4
 // CHECK:         br label %[[VAL_29:.*]]
-// CHECK:       loop1.loop_header:                            ; preds = %[[VAL_30:.*]], %[[VAL_11]]
+// CHECK:       loop1.loop_header:                            ; preds = %[[VAL_30:.*]], %entry
 // CHECK:         %[[VAL_31:.*]] = load i32, ptr %[[VAL_3]], align 4
 // CHECK:         %[[VAL_32:.*]] = icmp uge i32 %[[VAL_31]], %[[VAL_23]]
 // CHECK:         br i1 %[[VAL_32]], label %[[VAL_33:.*]], label %[[VAL_34:.*]]
@@ -106,8 +101,6 @@ ENTRY main {
 // CHECK:       loop2.loop_exit10:                            ; preds = %[[VAL_59]]
 // CHECK:         br label %[[VAL_50]], !llvm.loop !9
 // CHECK:       loop1.loop_exit4:                             ; preds = %[[VAL_50]]
-// CHECK:         ret void
-// CHECK:       early_return:                                     ; preds = %[[VAL_13]]
 // CHECK:         ret void
 // CHECK:       x_in_tile-true:                                   ; preds = %[[VAL_42]]
 // CHECK:         %[[TILE_0:.*]] = add i32 %[[VAL_26]], 0
