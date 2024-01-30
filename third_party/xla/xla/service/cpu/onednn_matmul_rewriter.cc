@@ -116,6 +116,26 @@ auto ConstScalarNear(double value) {
       });
 }
 
+bool IsScalar(const HloInstruction* instr) {
+  return ShapeUtil::IsEffectiveScalar(instr->shape());
+}
+
+std::optional<float> GetConstantValueAsFloat32(const HloInstruction* inst) {
+  if (!IsScalar(inst)) {
+    return std::nullopt;
+  }
+  switch (inst->shape().element_type()) {
+    case F16:
+      return inst->literal().GetFirstElement<half>();
+    case BF16:
+      return inst->literal().GetFirstElement<bfloat16>();
+    case F32:
+      return inst->literal().GetFirstElement<float>();
+    default:
+      return std::nullopt;
+  }
+}
+
 inline auto BcastConstScalarNear(double value) {
   return m::Broadcast(ConstScalarNear(value));
 }
@@ -580,6 +600,36 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
         return FuseActivation(OneDnnMatMulConfig::GELU_TANH, instr, matmul_call,
                               intermediate_instr);
       }
+    }
+
+    HloInstruction *dot, *constant;
+    auto pattern = m::Op(&instr)
+                       .WithOpcode(HloOpcode::kMultiply)
+                       .WithBinaryOperandsAnyOrder(
+                           m::Op(&dot)
+                               .WithOneUser()
+                               .WithOpcode(HloOpcode::kCustomCall)
+                               .WithCustomCallTarget({"__onednn$matmul"}),
+                           m::Broadcast(m::Constant(&constant)).WithOneUser());
+
+    if (Match(instr, pattern)) {
+      std::vector<HloInstruction*> new_operands;
+      auto constant_value = *GetConstantValueAsFloat32(constant);
+
+      for (auto operand : dot->operands()) {
+        new_operands.push_back(operand);
+      }
+      auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
+          dot->CloneWithNewOperands(instr->shape(), new_operands)));
+      auto backend_config = matmul_call->backend_config<BackendConfig>();
+      backend_config->mutable_onednn_matmul_config()->add_fused_ops(
+          OneDnnMatMulConfig::LINEAR);
+      // Casting to int32 because of issues in proto config for decimal types
+      // handling.
+      backend_config->mutable_onednn_matmul_config()->set_alpha_typecast(
+          *(reinterpret_cast<int32_t*>(&constant_value)));
+      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, matmul_call));
     }
     return OkStatus();
   }

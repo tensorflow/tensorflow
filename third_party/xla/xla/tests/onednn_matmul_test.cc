@@ -457,6 +457,31 @@ TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_BF16) {
   MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
 }
 
+TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.divide.test.1, entry_computation_layout={(f32[16,128,768]{2,1,0}, f32[768,12,64]{2,1,0})->f32[16,128,12,64]{3,2,1,0}}
+  ENTRY matmul.divide.test.f32 {
+    Arg_4.5 = f32[16,128,768]{2,1,0} parameter(0), sharding={replicated}
+    Arg_2.3 = f32[768,12,64]{2,1,0} parameter(1), sharding={replicated}
+    onednn.matmul.0 = f32[16,128,12,64]{3,2,1,0} dot(Arg_4.5, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    constant.8 = f32[] constant(8)
+    broadcast.9 = f32[16,128,12,64]{3,2,1,0} broadcast(constant.8), dimensions={}
+    ROOT divide.16 = f32[16,128,12,64]{3,2,1,0} divide(onednn.matmul.0, broadcast.9)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fused_ops":["LINEAR"]
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
 }  // namespace cpu
 }  // namespace xla
 

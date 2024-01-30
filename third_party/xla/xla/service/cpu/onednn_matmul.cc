@@ -143,6 +143,13 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
         postop_args.emplace_back(
             arg_idx, dnnl::memory(binary_md, cpu_engine, binary_minfo.Data()));
       } break;
+      case OneDnnMatMulConfig::LINEAR: {
+        float const_float;
+        *(reinterpret_cast<int32_t*>(&const_float)) =
+            matmul_config.alpha_typecast();
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, const_float,
+                                0.f);
+      } break;
       default:
         LOG(FATAL) << __FILE__ << ":" << __LINE__
                    << " Attempt to call OneDNN MatMul runtime library with "
