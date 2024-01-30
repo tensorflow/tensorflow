@@ -56,10 +56,7 @@ cc_library(
     deps = [
         ":tf_tfl_flatbuffer_helpers",
         "//tensorflow/compiler/mlir/lite:common",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
-        "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
@@ -68,12 +65,8 @@ cc_library(
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 

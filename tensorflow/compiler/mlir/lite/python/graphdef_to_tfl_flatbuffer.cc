@@ -16,49 +16,41 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
 #include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "absl/status/status.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
-#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
-#include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
-Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
-                                         const toco::TocoFlags& toco_flags,
-                                         const GraphDebugInfo& debug_info,
-                                         const GraphDef& input,
-                                         string* result) {
+
+absl::Status ConvertGraphDefToTFLiteFlatBuffer(
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const GraphDebugInfo& debug_info, const GraphDef& input,
+    std::string* result) {
   using ::tflite::optimize::ReducedPrecisionSupport;
   mlir::MLIRContext context;
   GraphImportConfig specs;
   mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   std::vector<std::optional<double>> node_mins;
   std::vector<std::optional<double>> node_maxs;
@@ -68,21 +60,20 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
       model_flags, toco_flags, &quant_specs, &node_names, &node_dtypes,
       &node_shapes, &node_mins, &node_maxs));
 
-  TF_RETURN_IF_ERROR(tensorflow::ParseInputArrayInfo(
-      node_names, node_dtypes, node_shapes, &specs.inputs));
+  TF_RETURN_IF_ERROR(
+      ParseInputArrayInfo(node_names, node_dtypes, node_shapes, &specs.inputs));
 
   // Parse output arrays.
-  std::vector<string> output_arrays(model_flags.output_arrays().begin(),
-                                    model_flags.output_arrays().end());
-  TF_RETURN_IF_ERROR(
-      tensorflow::ParseOutputArrayInfo(output_arrays, &specs.outputs));
+  std::vector<std::string> output_arrays(model_flags.output_arrays().begin(),
+                                         model_flags.output_arrays().end());
+  TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.outputs));
 
   // Parse control output arrays.
-  std::vector<string> control_output_arrays(
+  std::vector<std::string> control_output_arrays(
       model_flags.control_output_arrays().begin(),
       model_flags.control_output_arrays().end());
-  TF_RETURN_IF_ERROR(tensorflow::ParseOutputArrayInfo(control_output_arrays,
-                                                      &specs.control_outputs));
+  TF_RETURN_IF_ERROR(
+      ParseOutputArrayInfo(control_output_arrays, &specs.control_outputs));
 
   specs.prune_unused_nodes = true;
   specs.convert_legacy_fed_inputs = true;
