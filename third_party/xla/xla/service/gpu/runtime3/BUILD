@@ -267,6 +267,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
     ],
 )

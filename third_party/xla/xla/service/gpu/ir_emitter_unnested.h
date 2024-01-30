@@ -156,6 +156,8 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
   absl::Status EmitConvolutionReorderThunk(mlir::Operation* op);
+  absl::Status EmitConvolutionReorderThunk(
+      const HloCustomCallInstruction* instr);
   absl::Status EmitNormThunk(mlir::Operation* op);
   absl::Status EmitFusedMHAThunk(mlir::Operation* op);
   absl::Status EmitFusedMHABackwardThunk(mlir::Operation* op);

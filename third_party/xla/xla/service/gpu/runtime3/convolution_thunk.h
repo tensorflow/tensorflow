@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/thunk.h"
@@ -63,9 +64,10 @@ class ConvolutionThunk : public Thunk {
 // Launches the kernel that reorders input data for int8x32 convolutions.
 class ConvolutionReorderThunk : public Thunk {
  public:
-  ConvolutionReorderThunk(ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
-                          std::vector<BufferAllocation::Slice> operand_slices,
-                          std::vector<BufferAllocation::Slice> result_slices);
+  ConvolutionReorderThunk(
+      ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
+      absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
+      absl::InlinedVector<BufferAllocation::Slice, 2> result_slices);
 
   ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
   ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
@@ -77,8 +79,8 @@ class ConvolutionReorderThunk : public Thunk {
       absl::Span<int64_t> filter_nchw);
 
   const se::dnn::FilterDescriptor filter_descriptor_;
-  std::vector<BufferAllocation::Slice> operand_buffers_;
-  std::vector<BufferAllocation::Slice> result_buffers_;
+  absl::InlinedVector<BufferAllocation::Slice, 2> operand_buffers_;
+  absl::InlinedVector<BufferAllocation::Slice, 2> result_buffers_;
 };
 
 }  // namespace gpu

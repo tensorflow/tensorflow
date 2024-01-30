@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1226,13 +1227,56 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
 }
 
 absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
+    const HloCustomCallInstruction* instr) {
+  bool has_bias = instr->operand_count() > 1;
+  Shape shape = has_bias ? instr->shape().tuple_shapes(0) : instr->shape();
+  if (shape.rank() != 5 || shape.dimensions(4) != 32) {
+    return Internal("Unexpected shape for convolution reorder: %s",
+                    instr->ToString());
+  }
+  absl::InlinedVector<int64_t, 4> filter_dims = {
+      shape.dimensions(0), shape.dimensions(1) * 32, shape.dimensions(2),
+      shape.dimensions(3)};
+
+  absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices;
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  operand_slices.push_back(filter_input);
+  if (has_bias) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
+                        GetAllocationSliceForHlo(instr->operand(1)));
+    operand_slices.push_back(bias_input);
+  }
+
+  absl::InlinedVector<BufferAllocation::Slice, 2> result_slices;
+  if (has_bias) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_output,
+                        GetAllocationSliceForHlo(instr, {0}));
+    result_slices.push_back(filter_output);
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
+                        GetAllocationSliceForHlo(instr, {1}));
+    result_slices.push_back(bias_output);
+  } else {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_output,
+                        GetAllocationSliceForHlo(instr));
+    result_slices.push_back(filter_output);
+  }
+
+  auto thunk = std::make_unique<ConvolutionReorderThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      absl::MakeSpan(filter_dims), operand_slices, result_slices);
+  AddThunkToThunkSequence(std::move(thunk));
+  return absl::OkStatus();
+}
+
+absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
     mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
   using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
 
-  std::vector<BufferAllocation::Slice> operand_slices;
-  std::vector<BufferAllocation::Slice> result_slices;
+  absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices;
+  absl::InlinedVector<BufferAllocation::Slice, 2> result_slices;
   std::vector<int64_t> filter_dims;
 
   auto set_filter_data = [&](auto op) -> absl::Status {
@@ -1267,7 +1311,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
 
   auto thunk = std::make_unique<ConvolutionReorderThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(op), absl::MakeSpan(filter_dims),
-      std::move(operand_slices), std::move(result_slices));
+      operand_slices, result_slices);
 
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
@@ -4091,6 +4135,10 @@ absl::Status IrEmitterUnnested::EmitOp(
   }
   if (mlir::isa<mlir::lmhlo_gpu::CudnnConvReorderFilterOp,
                 mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      const auto* instr = Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitConvolutionReorderThunk(instr);
+    }
     return EmitConvolutionReorderThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::CudnnNormOp>(op)) {
@@ -4447,6 +4495,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
 #if GOOGLE_CUDA
       if (IsCublasLtMatmulF8(*instr)) {
         return EmitCublasLtMatmulThunkF8(custom_call);
+      }
+      if (IsCudnnConvolutionReorder(*instr)) {
+        return EmitConvolutionReorderThunk(custom_call);
       }
 #endif  // GOOGLE_CUDA
       if (IsCustomCallToTopK(*instr)) {
