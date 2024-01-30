@@ -173,25 +173,6 @@ int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
-absl::Status StreamExecutor::GetFusedMatmulRunners(
-    bool use_cudnn_frontend, dnn::DataType input_type, dnn::DataType bias_type,
-    dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
-    uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
-    dnn::ActivationMode activation_mode, bool use_fallback,
-    const NumericOptions& numeric_options,
-    std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
-        out_exec_plans) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
-  return dnn_support->GetFusedMatmulRunners(
-      use_cudnn_frontend, input_type, bias_type, output_type, stream, trans_a,
-      trans_b, m, n, k, lda, ldb, ldc, activation_mode, use_fallback,
-      numeric_options, out_exec_plans);
-}
-
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
