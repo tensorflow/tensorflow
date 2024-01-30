@@ -51,6 +51,7 @@ cc_library(
     name = "tf_ifrt_passes",
     srcs = [
         "rewrite_cluster_to_ifrt_call.cc",
+        "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",
     ],
     hdrs = [
@@ -70,11 +71,15 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:tpu_metadata_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tfrt/ifrt:ifrt_config_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -82,6 +87,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:computation_placer_hdr",
     ],
 )
 
