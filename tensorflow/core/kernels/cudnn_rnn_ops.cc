@@ -708,22 +708,26 @@ Status CreateForwardAndBackwardIODescriptors(
   const TensorShape& output_shape = model_shapes.output_shape;
 
   DCHECK_EQ(input_shape.dims(), 3);
+  auto dnn = executor->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InvalidArgumentError("No dnn in the executor.");
+  }
   if (seq_lengths.data() != nullptr) {
     if (time_major) {
-      auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto input_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           input_shape.dim_size(0), input_shape.dim_size(1),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
       *input_desc = std::move(input_desc_s).value();
     } else {
-      auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto input_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           input_shape.dim_size(1), input_shape.dim_size(0),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
       *input_desc = std::move(input_desc_s).value();
     }
   } else {
-    auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+    auto input_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
         input_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(input_desc_s.status());
@@ -763,20 +767,20 @@ Status CreateForwardAndBackwardIODescriptors(
   DCHECK_EQ(output_shape.dims(), 3);
   if (seq_lengths.data() != nullptr) {
     if (time_major) {
-      auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto output_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           output_shape.dim_size(0), output_shape.dim_size(1),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
       *output_desc = std::move(output_desc_s).value();
     } else {
-      auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+      auto output_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
           output_shape.dim_size(1), output_shape.dim_size(0),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
       *output_desc = std::move(output_desc_s).value();
     }
   } else {
-    auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+    auto output_desc_s = dnn->CreateRnnSequenceTensorDescriptor(
         output_shape.dim_size(0), output_shape.dim_size(1),
         output_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(output_desc_s.status());

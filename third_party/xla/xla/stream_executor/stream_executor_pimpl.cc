@@ -182,32 +182,6 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
-absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
-                                                  int batch_size, int data_size,
-                                                  dnn::DataType data_type) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnSequenceTensorDescriptor(
-      max_seq_length, batch_size, data_size, data_type);
-}
-
-absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(
-    int max_seq_length, int batch_size, int data_size,
-    const absl::Span<const int>& seq_lengths, bool time_major,
-    dnn::DataType data_type) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnSequenceTensorDescriptor(
-      max_seq_length, batch_size, data_size, seq_lengths, time_major,
-      data_type);
-}
-
 absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
 StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                int data_size,
