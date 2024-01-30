@@ -265,14 +265,13 @@ TfLiteStatus PopulateInputLayerInfo(
   std::vector<std::string> shapes = Split(shapes_string, ':');
 
   if (names.size() != shapes.size()) {
-    TFLITE_LOG(ERROR) << "The number of items in"
-                      << " --input_layer_shape (" << shapes_string << ", with "
-                      << shapes.size() << " items)"
-                      << " must match the number of items in"
-                      << " --input_layer (" << names_string << ", with "
-                      << names.size() << " items)."
-                      << " For example --input_layer=input1,input2"
-                      << " --input_layer_shape=1,224,224,4:1,20";
+    TFLITE_LOG(ERROR)
+        << "The number of items in --input_layer_shape (" << shapes_string
+        << ", with " << shapes.size()
+        << " items) must match the number of items in --input_layer ("
+        << names_string << ", with " << names.size()
+        << " items). For example --input_layer=input1,input2 "
+           "--input_layer_shape=1,224,224,4:1,20";
     return kTfLiteError;
   }
 
