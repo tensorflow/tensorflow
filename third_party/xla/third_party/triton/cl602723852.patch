@@ -1,0 +1,15 @@
+Remove once b/322980485 is fixed.
+diff --git a/python/triton/backends/__init__.py b/python/triton/backends/__init__.py
+--- a/python/triton/backends/__init__.py
++++ b/python/triton/backends/__init__.py
+@@ -46,5 +46,8 @@ def _discover_backends():
+                                  _find_concrete_subclasses(driver, DriverBase))
+     return backends
+ 
+-
+-backends = _discover_backends()
++from triton.backends.nvidia.driver import CudaDriver
++from triton.backends.nvidia.compiler import CUDABackend
++backends = {
++        "nvidia": Backend(CUDABackend, CudaDriver)
++}
