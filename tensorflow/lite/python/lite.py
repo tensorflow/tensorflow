@@ -151,7 +151,6 @@ class Optimize(enum.Enum):
   # The flag can be used alone to optimize float32 models with sparse weights.
   # It can also be used together with the DEFAULT optimization mode to optimize
   # quantized models with sparse weights.
-  # TODO(b/161560631): Add log message when this optimization is applied.
   EXPERIMENTAL_SPARSITY = "EXPERIMENTAL_SPARSITY"
 
   def __str__(self):
@@ -228,8 +227,6 @@ class TargetSpec:
     # Hint for the supported accumulation type used for inference. Typically
     # used for fp16 post-training quantization, where some models can use fp16
     # accumulators instead of the typical fp32 type.
-    # TODO(b/188185962): Provide full API and authoring support for
-    # reduced precision accumulation types.
     self._experimental_supported_accumulation_type = None
 
 
@@ -745,8 +742,6 @@ class TFLiteConverterBase:
     elif self.experimental_new_quantizer and (
         activations_type != _dtypes.int16
     ):
-      # TODO(b/175659372): remove the activations_type restriction and enable
-      # it for all the activation types.
       return _mlir_quantize(
           calibrated,
           self._experimental_disable_per_channel,
@@ -1103,7 +1098,6 @@ class TFLiteConverterBase:
       model = _mlir_sparsify(model)
 
     if not self._experimental_use_buffer_offset:
-      # TODO(b/287476027): move this logic into c++
       try:
         model_object = flatbuffer_utils.convert_bytearray_to_object(model)
         if _check_model_use_buffer_offset(model_object):
@@ -1489,7 +1483,6 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
       )
       # We make sure to clear the saved_model_dir as there is some
       # legacy code down in the caller that checks this.
-      # TODO(b/162537905): Clean these indirect dependencies.
       self.saved_model_dir = None
       return super(TFLiteSavedModelConverterV2, self).convert(
           graph_def, input_tensors, output_tensors
@@ -1693,8 +1686,6 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     Raises:
       ValueError: none or multiple ConcreteFunctions provided.
     """
-    # TODO(b/130297984): Add support for converting multiple function.
-
     if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
       raise ValueError("No ConcreteFunction is specified.")
 
