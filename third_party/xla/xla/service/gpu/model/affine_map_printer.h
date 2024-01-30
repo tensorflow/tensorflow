@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <string_view>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -32,6 +34,12 @@ namespace gpu {
 // symbol and dimension names.
 class AffineMapPrinter {
  public:
+  AffineMapPrinter() = default;
+  AffineMapPrinter(AffineMapPrinter&& other) = default;
+  AffineMapPrinter& operator=(AffineMapPrinter&& other) = default;
+  AffineMapPrinter(absl::Span<const std::string_view> dim_names,
+                   absl::Span<const std::string_view> symbol_names);
+
   void SetSymbolName(int64_t symbol_id, llvm::StringRef name);
   void SetDimensionName(int64_t dim_id, llvm::StringRef name);
 

@@ -35,21 +35,13 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
-using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-
 class LoopTest : public HloTestBase {
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    printer_.SetDimensionName(0, "th_x");
-    printer_.SetDimensionName(1, "th_y");
-    printer_.SetDimensionName(2, "th_z");
-    printer_.SetDimensionName(3, "bl_x");
-    printer_.SetDimensionName(4, "bl_y");
-    printer_.SetDimensionName(5, "bl_z");
-    printer_.SetSymbolName(0, "unroll_factor");
+
+    printer_ = AffineMapPrinter(
+        {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"}, {"unroll_factor"});
   }
 
  protected:
