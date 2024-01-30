@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/statusor.h"
@@ -115,6 +116,9 @@ absl::StatusOr<bool> ReductionDimensionGrouper::Run(
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(
                                         module, execution_threads));
+  if (changed) {
+    TF_RETURN_IF_ERROR(SetElementSizesOnModule(module));
+  }
   return changed;
 }
 

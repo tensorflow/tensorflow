@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -196,6 +197,9 @@ absl::StatusOr<bool> ReductionLayoutNormalizer::Run(
   TF_ASSIGN_OR_RETURN(bool changed,
                       EnforceMinorToMajorReduceOpVisitor().RunOnModule(
                           module, execution_threads));
+  if (changed) {
+    TF_RETURN_IF_ERROR(SetElementSizesOnModule(module));
+  }
   return changed;
 }
 

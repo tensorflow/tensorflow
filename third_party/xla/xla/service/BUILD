@@ -4975,6 +4975,7 @@ cc_library(
         "hlo_pass_interface.h",
     ],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
@@ -5081,6 +5082,7 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -7363,6 +7365,7 @@ cc_library(
         ":hlo_pass",
         "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",

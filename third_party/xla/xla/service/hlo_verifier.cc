@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -1228,7 +1229,8 @@ Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
   const Shape& root_computation_shape =
       fusion->called_computations()[0]->root_instruction()->shape();
-  if (!ShapesSame(fusion->shape(), root_computation_shape)) {
+  if (!ShapesSame(fusion->shape(), root_computation_shape,
+                  Shape::Equal().IgnoreElementSizeInLayout())) {
     return Internal(
         "Fused computation shape (%s) is not equal to the fusion shape (%s)",
         root_computation_shape.ToString(true), fusion->shape().ToString(true));
@@ -2773,8 +2775,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           Layout::Equal equal_predicate = Layout::Equal();
-          if (instruction->opcode() == HloOpcode::kConvert) {
-            // Convert instructions can change element_size_in_bits
+          if (instruction->opcode() == HloOpcode::kConvert ||
+              instruction->opcode() == HloOpcode::kCompare) {
+            // Instructions whose input and output types might differ can change
+            // element_size_in_bits
             equal_predicate.IgnoreElementSize();
           }
           TF_RET_CHECK(equal_predicate(result_layout, operand_layout))

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -299,6 +300,9 @@ absl::StatusOr<bool> GpuTreeReductionRewriter::Run(
   TF_ASSIGN_OR_RETURN(bool changed,
                       ReductionRewriterVisitor(gpu_version_)
                           .RunOnModule(module, execution_threads));
+  if (changed) {
+    TF_RETURN_IF_ERROR(SetElementSizesOnModule(module));
+  }
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

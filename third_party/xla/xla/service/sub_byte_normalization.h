@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -60,6 +61,15 @@ class SubByteNormalization : public HloModulePass {
  private:
   Mode mode_;
 };
+
+// Runs SubByteNormalization with SET_ELEMENT_SIZE on the given module. Several
+// passes run this at the end of the pass because they add instructions but do
+// set element_size_in_bits on them.
+inline Status SetElementSizesOnModule(HloModule* module) {
+  return SubByteNormalization(SubByteNormalization::SET_ELEMENT_SIZE)
+      .Run(module)
+      .status();
+}
 
 }  // namespace xla
 

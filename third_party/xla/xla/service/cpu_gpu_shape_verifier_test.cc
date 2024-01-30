@@ -41,13 +41,12 @@ class CpuGpuShapeVerifierTest : public HloTestBase {
   }
 };
 
-TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
+TEST_F(CpuGpuShapeVerifierTest, InvalidElementSize) {
   const char* const hlo_string = R"(
   HloModule Module
 
   ENTRY main {
-    p0 = u4[2,5] parameter(0)
-    ROOT out = u4[2,5] add(p0, p0)
+    p0 = u8[2,5]{1,0:E(8)} parameter(0)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -55,9 +54,9 @@ TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr("S4/U4 is currently only supported in convert instructions"));
+  EXPECT_THAT(status.message(),
+              HasSubstr("The XLA CPU/GPU backend does not support custom "
+                        "element sizes on non-4-bit types"));
 }
 
 }  // namespace

@@ -2227,4 +2227,19 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
   }
   return size;
 }
+
+/*static*/ Shape ShapeUtil::SetElementSizeInBits(Shape s,
+                                                 bool pack_subbyte_types) {
+  ForEachMutableSubshape(
+      &s, [pack_subbyte_types](Shape* subshape, const ShapeIndex& index) {
+        if (subshape->has_layout()) {
+          int element_size = pack_subbyte_types && primitive_util::Is4BitType(
+                                                       subshape->element_type())
+                                 ? 4
+                                 : 0;
+          subshape->mutable_layout()->set_element_size_in_bits(element_size);
+        }
+      });
+  return s;
+}
 }  // namespace xla

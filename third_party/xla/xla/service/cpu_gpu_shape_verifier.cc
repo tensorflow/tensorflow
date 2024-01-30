@@ -27,39 +27,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-Status VerifyS4U4Usage(HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kBitcast:
-    case HloOpcode::kConstant:
-    case HloOpcode::kConcatenate:
-    case HloOpcode::kConvert:
-    case HloOpcode::kCopy:
-    case HloOpcode::kFusion:
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kParameter:
-    case HloOpcode::kSlice:
-    case HloOpcode::kTuple:
-    case HloOpcode::kWhile:
-      break;
-    default:
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-          instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
-            if (primitive_util::Is4BitType(shape.element_type())) {
-              return absl::InvalidArgumentError(absl::StrFormat(
-                  "S4/U4 is currently only supported in convert instructions, "
-                  "but got instruction with S4/U4 input: %s",
-                  instruction->ToString()));
-            }
-            return OkStatus();
-          }));
-      break;
-  }
-
-  return OkStatus();
-}
-}  // namespace
-
 Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       hlo->shape(), [&](const Shape& shape, const ShapeIndex&) {
@@ -80,7 +47,6 @@ Status CpuGpuShapeVerifier::Preprocess(HloInstruction* hlo) {
         return OkStatus();
       }));
 
-  TF_RETURN_IF_ERROR(VerifyS4U4Usage(hlo));
   return ShapeVerifier::Preprocess(hlo);
 }
 

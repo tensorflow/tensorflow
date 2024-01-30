@@ -663,6 +663,7 @@ xla_test(
         ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//xla:types",
         "//xla/client:global_data",
         "//xla/client:local_client",
         "//xla/client:xla_builder",
