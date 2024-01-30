@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_COMPUTATION_H_
 #define XLA_HLO_IR_HLO_COMPUTATION_H_
 
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <optional>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
@@ -698,100 +701,90 @@ class HloComputation {
   // Returns if this computation is a fusion computation.
   // Do not use this method to determine if fusion_instruction_ != nullptr.
   // Instead, directly do: FusionInstruction() != nullptr
-  bool IsFusionComputation() const { return is_fusion_computation_; }
+  bool IsFusionComputation() const {
+    return instruction_type() == InstructionType::kFusion;
+  }
 
   // Returns if this computation is the entry computation of the module.
   bool IsEntryComputation() const;
 
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.
-  HloInstruction* FusionInstruction() const { return fusion_instruction_; }
+  HloInstruction* FusionInstruction() const {
+    return instruction_type() == InstructionType::kFusion ? instruction()
+                                                          : nullptr;
+  }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
-    CHECK(!IsCustomCallComputation() && !IsAsyncComputation() &&
-          !IsCollectiveCalledComputation() && !IsWhileBodyComputation() &&
-          !IsConditionalBranchComputation());
-    fusion_instruction_ = fusion_instruction;
-    is_fusion_computation_ |= (fusion_instruction != nullptr);
+    SetInstruction(fusion_instruction, InstructionType::kFusion);
   }
 
   // Returns if this computation is a custom-call computation.
-  bool IsCustomCallComputation() const { return is_custom_call_computation_; }
+  bool IsCustomCallComputation() const {
+    return instruction_type() == InstructionType::kCustomCall;
+  }
 
   // Returns the owning custom call instruction, or nullptr if this is not a
   // custom call computation.
   HloInstruction* CustomCallInstruction() const {
-    return custom_call_instruction_;
+    return instruction_type() == InstructionType::kCustomCall ? instruction()
+                                                              : nullptr;
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
-    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCollectiveCalledComputation() && !IsWhileBodyComputation() &&
-          !IsConditionalBranchComputation());
-    custom_call_instruction_ = custom_call_instruction;
-    is_custom_call_computation_ |= (custom_call_instruction != nullptr);
+    SetInstruction(custom_call_instruction, InstructionType::kCustomCall);
   }
 
   // Returns if this computation is a to_apply region of a collective.
   bool IsCollectiveCalledComputation() const {
-    return is_collective_called_computation_;
+    return instruction_type() == InstructionType::kCollective;
   }
 
   // Returns the owning collective call instruction, or nullptr if this is not a
   // collective call computation.
   HloInstruction* CollectiveCallInstruction() const {
-    return collective_call_instruction_;
+    return instruction_type() == InstructionType::kCollective ? instruction()
+                                                              : nullptr;
   }
 
   void SetCollectiveCallInstruction(
       HloInstruction* collective_call_instruction) {
-    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsWhileBodyComputation() &&
-          !IsConditionalBranchComputation());
-    collective_call_instruction_ = collective_call_instruction;
-    is_collective_called_computation_ |=
-        (collective_call_instruction != nullptr);
+    SetInstruction(collective_call_instruction, InstructionType::kCollective);
   }
 
   // Returns if this computation is a body computation of a while.
   bool IsWhileBodyComputation() const {
-    return is_while_call_body_computation_;
+    return instruction_type() == InstructionType::kWhile;
   }
 
   // Returns the owning while call instruction, or nullptr if this is not a
   // while call body computation.
   HloInstruction* WhileCallInstruction() const {
-    return while_call_instruction_;
+    return instruction_type() == InstructionType::kWhile ? instruction()
+                                                         : nullptr;
   }
 
   void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
-    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsCollectiveCalledComputation() &&
-          !IsConditionalBranchComputation());
     CHECK(while_call_instruction != nullptr);
     CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
-    while_call_instruction_ = while_call_instruction;
-    is_while_call_body_computation_ = true;
+    SetInstruction(while_call_instruction, InstructionType::kWhile);
   }
 
   // Returns if this computation is a branch computation of a conditional.
   bool IsConditionalBranchComputation() const {
-    return is_conditional_branch_computation_;
+    return instruction_type() == InstructionType::kConditional;
   }
 
   // Returns the owning conditional call instruction, or nullptr if this is not
   // a conditional branch computation.
   HloInstruction* ConditionalCallInstruction() const {
-    return conditional_call_instruction_;
+    return instruction_type() == InstructionType::kConditional ? instruction()
+                                                               : nullptr;
   }
 
   void SetConditionalCallInstruction(
       HloInstruction* conditional_call_instruction) {
-    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsCollectiveCalledComputation() &&
-          !IsWhileBodyComputation());
     CHECK(conditional_call_instruction != nullptr);
     CHECK(conditional_call_instruction->opcode() == HloOpcode::kConditional);
-    conditional_call_instruction_ = conditional_call_instruction;
-    is_conditional_branch_computation_ = true;
+    SetInstruction(conditional_call_instruction, InstructionType::kConditional);
   }
 
   // Returns if this computation is an async computation.
@@ -845,7 +838,12 @@ class HloComputation {
   // stage clean up process is designed such that HloPass can have stable
   // internal pointers to HloInstructions while we create and remove
   // HloInstructions in a pass.
-  void Cleanup() { to_be_deleted_.clear(); }
+  void Cleanup() {
+    for (HloInstruction* it : to_be_deleted_) {
+      delete it;
+    }
+    to_be_deleted_.clear();
+  }
 
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
@@ -904,50 +902,48 @@ class HloComputation {
   Status RemoveInstructionImpl(HloInstruction* instruction,
                                bool ignore_safety_check);
 
-  std::string name_;
+  enum class InstructionType : uint8_t {
+    kUnset,
+    // This computation is a fusion computation. A fusion computation ordinarily
+    // also has a non-null instruction. However, if a fusion instruction
+    // is removed during compilation, the fusion computation becomes
+    // unreachable, and its instruction is set to null. We still need to regard
+    // such computations as fusion computations for HLO scheduling purposes.
+    kFusion,
+    // This computation is a custom-call computation.
+    kCustomCall,
+    // This computation is a while body computation.
+    kCollective,
+    // This computation is a while body computation.
+    kWhile,
+    // This computation is a conditional branch computation.
+    kConditional,
+  };
+  static constexpr uintptr_t kInstructionTypeMask = 0b111;
+  static_assert(static_cast<int>(InstructionType::kUnset) == 0,
+                "kUnset must be 0.");
+
+  InstructionType instruction_type() const {
+    return static_cast<InstructionType>(instruction_and_type_ &
+                                        kInstructionTypeMask);
+  }
+
+  HloInstruction* instruction() const {
+    return reinterpret_cast<HloInstruction*>(instruction_and_type_ &
+                                             ~kInstructionTypeMask);
+  }
+
+  void SetInstruction(HloInstruction* instruction, InstructionType type);
+
   int64_t unique_id_;
   HloInstruction* root_instruction_;
 
-  // If this computation is a fusion computation, this field points to the
-  // corresponding fusion instruction (if it is live). Otherwise, this is null.
-  HloInstruction* fusion_instruction_;
+  // Module containing this computation.
+  HloModule* parent_ = nullptr;
 
-  // Determines whether this computation is a fusion computation. A fusion
-  // computation ordinarily also has a non-null fusion_instruction_. However, if
-  // a fusion instruction is removed during compilation, the fusion computation
-  // becomes unreachable, and its fusion_instruction_ is set to null. We still
-  // need to regard such computations as fusion computations for HLO scheduling
-  // purposes.
-  bool is_fusion_computation_;
-
-  // If this computation is a custom-call computation, this field points to the
-  // corresponding custom-call instruction (if it is live). Otherwise, this is
-  // null.
-  HloInstruction* custom_call_instruction_;
-
-  // Determines whether this computation is a custom-call computation.
-  bool is_custom_call_computation_;
-
-  // If this computation is a collective sub-computation, this field points to
-  // the corresponding collective instruction. Otherwise, this is null.
-  HloInstruction* collective_call_instruction_;
-
-  // Determines whether this computation is a collective sub-computation.
-  bool is_collective_called_computation_;
-
-  // If this computation is a while body computation, this field points to
-  // the corresponding while instruction. Otherwise, this is null.
-  HloInstruction* while_call_instruction_;
-
-  // Determines whether this computation is a while body computation.
-  bool is_while_call_body_computation_;
-
-  // If this computation is a conditional branch computation, this field points
-  // to the corresponding conditional instruction. Otherwise, this is null.
-  HloInstruction* conditional_call_instruction_;
-
-  // Determines whether this computation is a conditional branch computation.
-  bool is_conditional_branch_computation_;
+  // Contains HloInstruction* and its type.
+  // The respective type in the least significant three bits.
+  uintptr_t instruction_and_type_ = 0;
 
   // If this computation is an async computation, this field points to the
   // first async instruction (async-start) in the asynchronous op chain that
@@ -955,11 +951,7 @@ class HloComputation {
   // Otherwise, this is empty.
   HloInstruction* async_start_ = nullptr;
 
-  // Execution thread of this computation. By default, it's main thread.
-  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
-
-  // Module containing this computation.
-  HloModule* parent_ = nullptr;
+  HloInstruction::InstructionVector param_instructions_;
 
   // Store instructions in std::vector as they can be added and removed
   // arbitrarily and we want a stable iteration order. Keep a map from
@@ -967,11 +959,14 @@ class HloComputation {
   HloInstructionList instructions_;
   absl::flat_hash_map<const HloInstruction*, int> instruction_indices_;
 
+  // Execution thread of this computation. By default, it's main thread.
+  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
+
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
-  std::vector<std::unique_ptr<HloInstruction>> to_be_deleted_;
+  PtrVec<HloInstruction*> to_be_deleted_;
 
-  HloInstruction::InstructionVector param_instructions_;
+  std::string name_;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;
