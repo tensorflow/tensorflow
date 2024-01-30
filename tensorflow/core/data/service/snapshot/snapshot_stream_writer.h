@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace data {
 
 constexpr ByteSize kDefaultMaxChunkSize = ByteSize::GB(2);
-constexpr absl::Duration kDefaultCheckpointInterval = absl::Minutes(20);
+constexpr absl::Duration kDefaultCheckpointInterval = absl::Minutes(30);
 
 struct SnapshotWriterParams {
   // The directory path of the snapshot. See the comment on SnapshotStreamWriter

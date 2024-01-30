@@ -53,7 +53,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
+constexpr ByteSize kTFRecordReaderOutputBufferSize = ByteSize::MB(512);
 constexpr int64_t kUnknownNumElements = -1;
 
 constexpr const char kFileShardDelimiter[] = "_CHUNK_SHARDS_";
@@ -358,9 +358,9 @@ absl::Status SnapshotStreamWriter::Restore() {
                                     kUnknownNumElements);
   }
   TF_RETURN_IF_ERROR(checkpoint_name.status());
-  snapshot_util::TFRecordReaderImpl reader(CheckpointPath(*checkpoint_name),
-                                           params_.compression,
-                                           kTFRecordReaderOutputBufferSize);
+  snapshot_util::TFRecordReaderImpl reader(
+      CheckpointPath(*checkpoint_name), params_.compression,
+      kTFRecordReaderOutputBufferSize.ToUnsignedBytes());
   TF_RETURN_IF_ERROR(reader.Initialize(params_.env));
   TF_ASSIGN_OR_RETURN(std::vector<Tensor> serialized_tensors,
                       reader.GetTensors());
