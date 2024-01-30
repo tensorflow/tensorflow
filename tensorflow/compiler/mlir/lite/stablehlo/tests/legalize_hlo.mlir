@@ -2140,6 +2140,8 @@ func.func @convert_dot_general_dynamic_contracting_dim(%arg0: tensor<4x4x?xf32>,
 func.return %0 : tensor<4x4x256xf32>
 }
 
+
+
 // CHECK-LABEL:   func.func @convert_conv1d(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
@@ -2204,7 +2206,29 @@ func.func @convert_conv1d_dynamic_batch(%arg0: tensor<?x32x256xbf16>, %arg1: ten
   func.return %0 : tensor<?x32x256xbf16>
 }
 
-
+// CHECK-LABEL: convert_dynamic_1d_group_conv
+func.func private @convert_dynamic_1d_group_conv(%arg1: tensor<?x768x2xf32>, %arg2: tensor<768x48x128xf32>) -> (tensor<?x768x3xf32>) {
+  %0 = mhlo.convolution(%arg1, %arg2) 
+    dim_numbers = [b, f, 0]x[o, i, 0]->[b, f, 0], 
+    window = {pad = [[64, 64]]} 
+      {batch_group_count = 1 : i64, feature_group_count = 16 : i64}
+        : (tensor<?x768x2xf32>, tensor<768x48x128xf32>) -> tensor<?x768x3xf32>
+  return %0 : tensor<?x768x3xf32>
+// CHECK:  %cst = arith.constant dense<[-9223372036854775808, 768, 2, 1]> : tensor<4xi64>
+// CHECK:  %0 = "tf.Reshape"(%arg0, %cst) : (tensor<?x768x2xf32>, tensor<4xi64>) -> tensor<?x768x2x1xf32>
+// CHECK:  %cst_0 = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:  %1 = "tf.Transpose"(%0, %cst_0) : (tensor<?x768x2x1xf32>, tensor<4xi64>) -> tensor<?x2x1x768xf32>
+// CHECK:  %cst_1 = arith.constant dense<[768, 48, 128, 1]> : tensor<4xi64>
+// CHECK:  %2 = "tf.Reshape"(%arg1, %cst_1) : (tensor<768x48x128xf32>, tensor<4xi64>) -> tensor<768x48x128x1xf32>
+// CHECK:  %cst_2 = "tf.Const"() <{value = dense<[2, 3, 1, 0]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:  %3 = "tf.Transpose"(%2, %cst_2) : (tensor<768x48x128x1xf32>, tensor<4xi64>) -> tensor<128x1x48x768xf32>
+// CHECK:  %4 = "tf.Conv2D"(%1, %3) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [0, 0, 64, 64, 0, 0, 0, 0], padding = "EXPLICIT", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}> : (tensor<?x2x1x768xf32>, tensor<128x1x48x768xf32>) -> tensor<?x3x1x768xf32>
+// CHECK:  %cst_3 = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:  %5 = "tf.Transpose"(%4, %cst_3) : (tensor<?x3x1x768xf32>, tensor<4xi64>) -> tensor<?x768x3x1xf32>
+// CHECK:  %cst_4 = arith.constant dense<[-9223372036854775808, 768, 3]> : tensor<3xi64>
+// CHECK:  %6 = "tf.Reshape"(%5, %cst_4) : (tensor<?x768x3x1xf32>, tensor<3xi64>) -> tensor<?x768x3xf32>
+// CHECK:  return %6 : tensor<?x768x3xf32>
+}
 
 // CHECK-LABEL:   func.func @convert_conv1d_no_lhs_dil_rhs_dil_precision_conf(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
@@ -2318,13 +2342,22 @@ func.func @no_convert_conv1d_dynamic(%arg0: tensor<16x?x256xbf16>, %arg1: tensor
   func.return %0 : tensor<16x?x256xbf16>
 }
 
-// CHECK-LABEL:   func.func @no_convert_conv1d_feature_group_gt_1(
-// CHECK-SAME:                                                    %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
-// CHECK-SAME:                                                    %[[VAL_1:.*]]: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
-// CHECK:           %[[VAL_2:.*]] = mhlo.convolution(%[[VAL_0]], %[[VAL_1]]) dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f], window = {stride = [1], pad = {{\[\[}}0, 0]], lhs_dilate = [1], rhs_dilate = [1]} {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32x256xbf16>, tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16>
-// CHECK:           return %[[VAL_2]] : tensor<16x32x128xbf16>
-// CHECK:         }
-func.func @no_convert_conv1d_feature_group_gt_1(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
+// CHECK-LABEL:   func.func @convert_conv1d_feature_group_gt_1(
+// CHECK:    %cst = arith.constant dense<[16, 32, 256, 1]> : tensor<4xi64>
+// CHECK:    %0 = "tf.Reshape"(%arg0, %cst) : (tensor<16x32x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK:    %cst_0 = "tf.Const"() <{value = dense<[0, 1, 3, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:    %1 = "tf.Transpose"(%0, %cst_0) : (tensor<16x32x256x1xbf16>, tensor<4xi64>) -> tensor<16x32x1x256xbf16>
+// CHECK:    %cst_1 = arith.constant dense<[1, 128, 128, 1]> : tensor<4xi64>
+// CHECK:    %2 = "tf.Reshape"(%arg1, %cst_1) : (tensor<1x128x128xbf16>, tensor<4xi64>) -> tensor<1x128x128x1xbf16>
+// CHECK:    %cst_2 = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:    %3 = "tf.Transpose"(%2, %cst_2) : (tensor<1x128x128x1xbf16>, tensor<4xi64>) -> tensor<1x1x128x128xbf16>
+// CHECK:    %4 = "tf.Conv2D"(%1, %3) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}> : (tensor<16x32x1x256xbf16>, tensor<1x1x128x128xbf16>) -> tensor<16x32x1x128xbf16>
+// CHECK:    %cst_3 = "tf.Const"() <{value = dense<[0, 1, 3, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:    %5 = "tf.Transpose"(%4, %cst_3) : (tensor<16x32x1x128xbf16>, tensor<4xi64>) -> tensor<16x32x128x1xbf16>
+// CHECK:    %cst_4 = arith.constant dense<[16, 32, 128]> : tensor<3xi64>
+// CHECK:    %6 = "tf.Reshape"(%5, %cst_4) : (tensor<16x32x128x1xbf16>, tensor<3xi64>) -> tensor<16x32x128xbf16>
+// CHECK:    return %6 : tensor<16x32x128xbf16>
+func.func @convert_conv1d_feature_group_gt_1(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,

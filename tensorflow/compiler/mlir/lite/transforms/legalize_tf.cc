@@ -33,13 +33,17 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -104,6 +108,34 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   return rewriter.createOrFold<TF::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val,
       rewriter.getBoolAttr(false));
+}
+
+// Utility function to-
+// 1. Create a tfl.const op with an int32_t values, from an MLIR Value, if the
+// `Value` can be matched to a Constant DenseIntElementsAttr.
+// This will make sure the dynamic dimensions are asigned to be `-1`
+// 2. In the default case, cast the `Value` to an int32_t.
+Value CreateInt32ConstOrCast(Value val, Location loc,
+                             PatternRewriter& rewriter) {
+  if (val.getType().cast<ShapedType>().hasStaticShape()) {
+    DenseElementsAttr shape_value_attr;
+    if (matchPattern(val, m_Constant(&shape_value_attr))) {
+      SmallVector<int32_t, 4> new_shape_array_i32;
+      auto shape_value_array = shape_value_attr.getValues<llvm::APInt>();
+      for (int32_t idx = 0; idx < shape_value_array.size(); ++idx) {
+        auto size = shape_value_array[idx].getSExtValue();
+        new_shape_array_i32.push_back(
+            ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
+      }
+      return rewriter.create<arith::ConstantOp>(
+          loc, DenseIntElementsAttr::get(
+                   RankedTensorType::get(new_shape_array_i32.size(),
+                                         rewriter.getIntegerType(32)),
+                   new_shape_array_i32));
+    }
+  }
+
+  return CreateCastToInt32(val, loc, rewriter);
 }
 
 // Get shape of an operand or result, support both dynamic and static shape.
