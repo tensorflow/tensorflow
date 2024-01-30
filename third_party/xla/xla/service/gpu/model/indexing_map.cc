@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -46,6 +47,7 @@ using mlir::AffineMap;
 using mlir::AffineSymbolExpr;
 using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
+using mlir::MLIRContext;
 
 int64_t FloorDiv(int64_t dividend, int64_t divisor) {
   return dividend / divisor -
@@ -119,23 +121,25 @@ bool operator==(const Range& lhs, const Range& rhs) {
          lhs.upper_bound == rhs.upper_bound;
 }
 
-Domain Domain::FromUpperBounds(absl::Span<const int64_t> dim_upper_bounds,
-                               absl::Span<const int64_t> symbol_upper_bounds) {
-  Domain domain;
-  domain.dim_ranges_.reserve(dim_upper_bounds.size());
+IndexingMap IndexingMap::FromTensorSizes(
+    AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
+    absl::Span<const int64_t> symbol_upper_bounds) {
+  IndexingMap indexing_map;
+  indexing_map.affine_map_ = affine_map;
+  indexing_map.dim_ranges_.reserve(dim_upper_bounds.size());
   for (int64_t ub : dim_upper_bounds) {
     CHECK_GT(ub, 0);
-    domain.dim_ranges_.push_back(Range{0, ub - 1});
+    indexing_map.dim_ranges_.push_back(Range{0, ub - 1});
   }
-  domain.symbol_ranges_.reserve(symbol_upper_bounds.size());
+  indexing_map.symbol_ranges_.reserve(symbol_upper_bounds.size());
   for (int64_t ub : symbol_upper_bounds) {
     CHECK_GT(ub, 0);
-    domain.symbol_ranges_.push_back(Range{0, ub - 1});
+    indexing_map.symbol_ranges_.push_back(Range{0, ub - 1});
   }
-  return domain;
+  return indexing_map;
 }
 
-void Domain::AddConstraint(mlir::AffineExpr expr, const Range& range) {
+void IndexingMap::AddConstraint(mlir::AffineExpr expr, const Range& range) {
   if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
     Range& current_range = dim_ranges_[dim_expr.getPosition()];
     current_range = Intersect(current_range, range);
@@ -168,7 +172,7 @@ void Domain::AddConstraint(mlir::AffineExpr expr, const Range& range) {
   }
 }
 
-bool Domain::IsKnownEmpty() const {
+bool IndexingMap::IsKnownEmpty() const {
   auto is_infeasible = [](const Range& range) {
     return range.lower_bound > range.upper_bound;
   };
@@ -180,36 +184,15 @@ bool Domain::IsKnownEmpty() const {
                       });
 }
 
-std::string Domain::ToString(const AffineMapPrinter& printer) const {
-  std::stringstream ss;
-  Print(ss, printer);
-  return ss.str();
-}
-
-void Domain::Print(std::ostream& out, const AffineMapPrinter& printer) const {
-  for (const auto& [index, range] : llvm::enumerate(dim_ranges_)) {
-    out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in ";
-    range.Print(out);
-    out << '\n';
+RangeEvaluator::RangeEvaluator(absl::Span<const Range> dim_ranges,
+                               absl::Span<const Range> symbol_ranges,
+                               MLIRContext* mlir_context)
+    : mlir_context_(mlir_context) {
+  for (const auto& [index, range] : llvm::enumerate(dim_ranges)) {
+    expression_ranges_cache_[getAffineDimExpr(index, mlir_context_)] = range;
   }
-  for (const auto& [index, range] : llvm::enumerate(symbol_ranges_)) {
-    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
-    range.Print(out);
-    out << '\n';
-  }
-  std::vector<std::string> expr_range_strings;
-  expr_range_strings.reserve(expr_ranges_.size());
-  for (const auto& [expr, range] : expr_ranges_) {
-    std::stringstream ss;
-    printer.Print(ss, expr);
-    ss << " in ";
-    range.Print(ss);
-    ss << '\n';
-    expr_range_strings.push_back(ss.str());
-  }
-  std::sort(expr_range_strings.begin(), expr_range_strings.end());
-  for (const auto& expr_range_string : expr_range_strings) {
-    out << expr_range_string;
+  for (const auto& [index, range] : llvm::enumerate(symbol_ranges)) {
+    expression_ranges_cache_[getAffineSymbolExpr(index, mlir_context_)] = range;
   }
 }
 
@@ -228,12 +211,10 @@ Range RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
       return Range{value, value};
     }
     case AffineExprKind::DimId: {
-      return domain_->GetDimensionRange(
-          mlir::cast<AffineDimExpr>(expr).getPosition());
+      return expression_ranges_cache_[expr];
     }
     case AffineExprKind::SymbolId: {
-      return domain_->GetSymbolRange(
-          mlir::cast<AffineSymbolExpr>(expr).getPosition());
+      return expression_ranges_cache_[expr];
     }
     default:
       auto bound = expression_ranges_cache_.find(expr);
@@ -277,17 +258,6 @@ Range RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
   }
 }
 
-std::ostream& operator<<(std::ostream& out, const Domain& domain) {
-  AffineMapPrinter printer;
-  domain.Print(out, printer);
-  return out;
-}
-
-bool operator==(const Domain& lhs, const Domain& rhs) {
-  return lhs.GetDimensionRanges() == rhs.GetDimensionRanges() &&
-         lhs.GetSymbolRanges() == rhs.GetSymbolRanges();
-}
-
 std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
   std::stringstream ss;
   Print(ss, printer);
@@ -296,10 +266,31 @@ std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
 
 void IndexingMap::Print(std::ostream& out,
                         const AffineMapPrinter& printer) const {
-  printer.Print(out, affine_map);
+  printer.Print(out, affine_map_);
   out << "\ndomain:\n";
-  domain.Print(out, printer);
-  out << "\n";
+  for (const auto& [index, range] : llvm::enumerate(dim_ranges_)) {
+    out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in ";
+    range.Print(out);
+    out << '\n';
+  }
+  for (const auto& [index, range] : llvm::enumerate(symbol_ranges_)) {
+    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
+    range.Print(out);
+    out << '\n';
+  }
+  std::vector<std::string> expr_range_strings;
+  expr_range_strings.reserve(expr_ranges_.size());
+  for (const auto& [expr, range] : expr_ranges_) {
+    std::stringstream ss;
+    printer.Print(ss, expr);
+    ss << " in ";
+    range.Print(ss);
+    expr_range_strings.push_back(ss.str());
+  }
+  std::sort(expr_range_strings.begin(), expr_range_strings.end());
+  for (const auto& expr_range_string : expr_range_strings) {
+    out << expr_range_string << '\n';
+  }
 }
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
@@ -309,18 +300,20 @@ std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
 }
 
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
-  return lhs.affine_map == rhs.affine_map && lhs.domain == rhs.domain;
+  return lhs.GetAffineMap() == rhs.GetAffineMap() &&
+         lhs.GetDimensionRanges() == rhs.GetDimensionRanges() &&
+         lhs.GetSymbolRanges() == rhs.GetSymbolRanges();
 }
 
 bool IndexingMap::Simplify() {
-  RangeEvaluator range_evaluator(&domain);
+  RangeEvaluator range_evaluator(dim_ranges_, symbol_ranges_, GetMLIRContext());
   AffineMap simplified_affine_map =
-      IndexingMapSimplifier(&range_evaluator, affine_map.getContext())
-          .Simplify(affine_map);
-  if (simplified_affine_map == affine_map) {
+      IndexingMapSimplifier(&range_evaluator, GetMLIRContext())
+          .Simplify(affine_map_);
+  if (simplified_affine_map == affine_map_) {
     return false;
   }
-  affine_map = simplified_affine_map;
+  affine_map_ = simplified_affine_map;
   return true;
 }
 
@@ -333,7 +326,7 @@ std::optional<IndexingMap> ComposeIndexingMaps(
   // AffineMap::compose(some_affine_map) actually computes some_affine_map ∘
   // this.
   AffineMap composed_map = mlir::simplifyAffineMap(
-      producer_map->affine_map.compose(consumer_map->affine_map));
+      producer_map->GetAffineMap().compose(consumer_map->GetAffineMap()));
 
   // After the composition some of the symbols might become unused, e.g. when a
   // dimension was added by broadcasting as then reduced. We should remove these
@@ -362,37 +355,38 @@ std::optional<IndexingMap> ComposeIndexingMaps(
   // symbols(consumer_map)]. In that order we are adding the symbol ranges while
   // skipping the symbols that are unused.
   std::vector<Range> combined_symbol_ranges;
-  combined_symbol_ranges.reserve(producer_map->domain.GetSymbolCount() +
-                                 consumer_map->domain.GetSymbolCount());
+  combined_symbol_ranges.reserve(producer_map->GetSymbolCount() +
+                                 consumer_map->GetSymbolCount());
   int64_t symbol_id = 0;
-  for (const Range& symbol_range :
-       llvm::concat<const Range>(producer_map->domain.GetSymbolRanges(),
-                                 consumer_map->domain.GetSymbolRanges())) {
+  for (const Range& symbol_range : llvm::concat<const Range>(
+           producer_map->GetSymbolRanges(), consumer_map->GetSymbolRanges())) {
     if (unused_symbols_bit_vector[symbol_id++]) {
       continue;
     }
     combined_symbol_ranges.push_back(symbol_range);
   }
 
-  IndexingMap composed_indexing_map{
-      std::move(composed_map), Domain{consumer_map->domain.GetDimensionRanges(),
-                                      combined_symbol_ranges}};
+  IndexingMap composed_indexing_map(composed_map,
+                                    consumer_map->GetDimensionRanges(),
+                                    std::move(combined_symbol_ranges));
   composed_indexing_map.Simplify();
 
-  RangeEvaluator consumer_range_evaluator(&consumer_map->domain);
+  RangeEvaluator consumer_range_evaluator(consumer_map->GetDimensionRanges(),
+                                          consumer_map->GetSymbolRanges(),
+                                          consumer_map->GetMLIRContext());
   // Add constraints for consumer's codomain w.r.t. producer's domain.
   for (auto [index, expr] :
-       llvm::enumerate(consumer_map->affine_map.getResults())) {
+       llvm::enumerate(consumer_map->GetAffineMap().getResults())) {
     Range consumer_result_range =
         consumer_range_evaluator.ComputeExpressionRange(expr);
     Range producer_dim_range =
-        producer_map->domain.GetDimensionRange(static_cast<int64_t>(index));
+        producer_map->GetDimensionRange(static_cast<int64_t>(index));
     // If the constraint is always satisfied, we skip it.
     if (consumer_result_range.upper_bound <= producer_dim_range.upper_bound &&
         consumer_result_range.lower_bound >= producer_dim_range.lower_bound) {
       continue;
     }
-    composed_indexing_map.domain.AddConstraint(expr, producer_dim_range);
+    composed_indexing_map.AddConstraint(expr, producer_dim_range);
   }
   return composed_indexing_map;
 }

@@ -102,8 +102,8 @@ bool IsReadCoalesced(const HloInstruction* operand, const HloInstruction* instr,
     }
     // First version is naive, we just check that the affine maps of input and
     // output have the same minor dimension.
-    is_coalesced &=
-        normalized_indexing_map->affine_map.isMinorIdentityWithBroadcasting();
+    is_coalesced &= normalized_indexing_map->GetAffineMap()
+                        .isMinorIdentityWithBroadcasting();
   }
   return is_coalesced;
 }

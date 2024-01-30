@@ -74,9 +74,8 @@ HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
 
 IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* ctx) {
   auto dims = shape.dimensions();
-  IndexingMap identity_map{
-      .affine_map = AffineMap::getMultiDimIdentityMap(dims.size(), ctx),
-      .domain = Domain::FromUpperBounds(dims, {})};
+  IndexingMap identity_map = IndexingMap::FromTensorSizes(
+      AffineMap::getMultiDimIdentityMap(dims.size(), ctx), dims, {});
   return identity_map;
 }
 
@@ -108,10 +107,10 @@ HloInstructionIndexing ComputeOutputToInputBroadcastOpIndexing(
   for (int64_t bcast_dim : bcast->dimensions()) {
     exprs.push_back(getAffineDimExpr(bcast_dim, mlir_context));
   }
-  IndexingMap indexing_map{
-      .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
-                                   mlir_context),
-      .domain = Domain::FromUpperBounds(output_dims, {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
+                     mlir_context),
+      output_dims, {});
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
@@ -138,11 +137,10 @@ HloInstructionIndexing ComputeInputToOutputBroadcastOpIndexing(
     exprs.push_back(getAffineDimExpr(
         std::distance(bcast_dims.begin(), bcast_dim), mlir_context));
   }
-  IndexingMap indexing_map{
-      .affine_map = AffineMap::get(input_shape.rank(), added_dims_sizes.size(),
-                                   exprs, mlir_context),
-      .domain =
-          Domain::FromUpperBounds(input_shape.dimensions(), added_dims_sizes)};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(input_shape.rank(), added_dims_sizes.size(), exprs,
+                     mlir_context),
+      input_shape.dimensions(), added_dims_sizes);
 
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
@@ -170,8 +168,9 @@ HloInstructionIndexing ComputeOutputToInputConcatenateOpIndexing(
     affine_map.setResult(concat_dim, concat_dim_expr - offset);
     int64_t operand_concat_dim = operand->shape().dimensions()[concat_dim];
     dim_ranges[concat_dim] = Range{offset, offset + operand_concat_dim - 1};
-    concat_indexing.indexing_maps[operand_id].insert(IndexingMap{
-        affine_map.getAffineMap(), Domain(dim_ranges, /*symbol_ranges=*/{})});
+    concat_indexing.indexing_maps[operand_id].insert(
+        IndexingMap(affine_map.getAffineMap(), dim_ranges,
+                    /*symbol_ranges=*/{}));
     offset += operand_concat_dim;
   }
   return concat_indexing;
@@ -192,8 +191,8 @@ HloInstructionIndexing ComputeInputToOutputConcatenateOpIndexing(
       AffineMap::getMultiDimIdentityMap(operand_dims.size(), mlir_context);
   affine_map.setResult(concat_dim,
                        getAffineDimExpr(concat_dim, mlir_context) + offset);
-  IndexingMap indexing_map{.affine_map = affine_map.getAffineMap(),
-                           .domain = Domain::FromUpperBounds(operand_dims, {})};
+  IndexingMap indexing_map =
+      IndexingMap::FromTensorSizes(affine_map.getAffineMap(), operand_dims, {});
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
@@ -290,17 +289,15 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
     input_dim_sizes.push_back(lhs_shape.dimensions(lhs_contracting_dim));
   }
 
-  IndexingMap lhs_indexing_map{
-      .affine_map = AffineMap::get(dot->shape().rank(), input_dim_sizes.size(),
-                                   lhs_exprs, mlir_context),
-      .domain =
-          Domain::FromUpperBounds(dot->shape().dimensions(), input_dim_sizes)};
+  IndexingMap lhs_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(dot->shape().rank(), input_dim_sizes.size(), lhs_exprs,
+                     mlir_context),
+      dot->shape().dimensions(), input_dim_sizes);
 
-  IndexingMap rhs_indexing_map{
-      .affine_map = AffineMap::get(dot->shape().rank(), input_dim_sizes.size(),
-                                   rhs_exprs, mlir_context),
-      .domain =
-          Domain::FromUpperBounds(dot->shape().dimensions(), input_dim_sizes)};
+  IndexingMap rhs_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(dot->shape().rank(), input_dim_sizes.size(), rhs_exprs,
+                     mlir_context),
+      dot->shape().dimensions(), input_dim_sizes);
   return HloInstructionIndexing::FromIndexingMaps(
       {lhs_indexing_map, rhs_indexing_map});
 }
@@ -328,15 +325,13 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
     }
     exprs.push_back(getAffineDimExpr(output_dim_id++, mlir_context));
   }
-  IndexingMap inputs_indexing_map{
-      .affine_map = AffineMap::get(output_shape.rank(), reduce_dims_ids.size(),
-                                   exprs, mlir_context),
-      .domain = Domain::FromUpperBounds(output_shape.dimensions(),
-                                        parallel_dims_sizes)};
-  IndexingMap inits_indexing_map{
-      .affine_map = AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {},
-                                   mlir_context),
-      .domain = Domain::FromUpperBounds(output_shape.dimensions(), {})};
+  IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_shape.rank(), reduce_dims_ids.size(), exprs,
+                     mlir_context),
+      output_shape.dimensions(), parallel_dims_sizes);
+  IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
+      output_shape.dimensions(), {});
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(reduce->operand_count());
@@ -371,14 +366,13 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
     inits_exprs.push_back(
         mlir::getAffineSymbolExpr(output_dim_id++, mlir_context));
   }
-  IndexingMap inputs_indexing_map{
-      .affine_map = AffineMap::get(input_shape.rank(), /*symbolCount=*/0,
-                                   inputs_exprs, mlir_context),
-      .domain = Domain::FromUpperBounds(input_shape.dimensions(), {})};
-  IndexingMap inits_indexing_map{
-      .affine_map = AffineMap::get(0, /*symbolCount=*/output_rank, inits_exprs,
-                                   mlir_context),
-      .domain = Domain::FromUpperBounds({}, output_shape.dimensions())};
+  IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(input_shape.rank(), /*symbolCount=*/0, inputs_exprs,
+                     mlir_context),
+      input_shape.dimensions(), {});
+  IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(0, /*symbolCount=*/output_rank, inits_exprs, mlir_context),
+      {}, output_shape.dimensions());
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(reduce->operand_count());
@@ -542,10 +536,9 @@ HloInstructionIndexing ComputeOutputToInputReshapeOpIndexing(
   auto input_dims = reshape->operand(0)->shape().dimensions();
   auto output_dims = reshape->shape().dimensions();
 
-  IndexingMap reshape_indexing_map{
-      .affine_map =
-          ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context),
-      .domain = Domain::FromUpperBounds(output_dims, {})};
+  IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
+      ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context),
+      output_dims, {});
   reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
@@ -554,10 +547,9 @@ HloInstructionIndexing ComputeInputToOutputReshapeOpIndexing(
   auto input_dims = reshape->operand(0)->shape().dimensions();
   auto output_dims = reshape->shape().dimensions();
 
-  IndexingMap reshape_indexing_map{
-      .affine_map =
-          ComputeReshapeIndexingMap(output_dims, input_dims, mlir_context),
-      .domain = Domain::FromUpperBounds(input_dims, {})};
+  IndexingMap reshape_indexing_map = IndexingMap::FromTensorSizes(
+      ComputeReshapeIndexingMap(output_dims, input_dims, mlir_context),
+      input_dims, {});
   reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
@@ -579,10 +571,10 @@ HloInstructionIndexing ComputeReverseOpIndexing(
     exprs.push_back(-dim_expr + output_dim - 1);
   }
 
-  IndexingMap indexing_map{
-      .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
-                                   mlir_context),
-      .domain = Domain::FromUpperBounds(output_dims, {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
+                     mlir_context),
+      output_dims, {});
 
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
@@ -598,10 +590,9 @@ HloInstructionIndexing ComputeOutputToInputSliceOpIndexing(
     exprs.push_back(dim_expr * slice->slice_strides()[dim] +
                     slice->slice_starts()[dim]);
   }
-  IndexingMap indexing_map{
-      .affine_map =
-          AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
-      .domain = Domain::FromUpperBounds(slice->shape().dimensions(), {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
+      slice->shape().dimensions(), {});
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
@@ -616,19 +607,16 @@ HloInstructionIndexing ComputeOutputToInputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
   AffineMap inverse_permutation = ComputeTransposeIndexingMap(
       InversePermutation(transpose->dimensions()), mlir_context);
-  return HloInstructionIndexing::FromIndexingMaps({IndexingMap{
-      .affine_map = inverse_permutation,
-      .domain = Domain::FromUpperBounds(transpose->shape().dimensions(), {})}});
+  return HloInstructionIndexing::FromIndexingMaps({IndexingMap::FromTensorSizes(
+      inverse_permutation, transpose->shape().dimensions(), {})});
 }
 
 HloInstructionIndexing ComputeInputToOutputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
   AffineMap forward_permutation =
       ComputeTransposeIndexingMap(transpose->dimensions(), mlir_context);
-  return HloInstructionIndexing::FromIndexingMaps(
-      {IndexingMap{.affine_map = forward_permutation,
-                   .domain = Domain::FromUpperBounds(
-                       transpose->operand(0)->shape().dimensions(), {})}});
+  return HloInstructionIndexing::FromIndexingMaps({IndexingMap::FromTensorSizes(
+      forward_permutation, transpose->operand(0)->shape().dimensions(), {})});
 }
 
 std::optional<AffineMap> ComputeOutputToInputBitcastOpIndexingImpl(
@@ -672,9 +660,8 @@ HloInstructionIndexing ComputeOutputToInputBitcastOpIndexing(
       input_shape, output_shape, mlir_context);
   if (!bitcast_affine_map.has_value()) return CreateUnknownIndexing();
 
-  IndexingMap bitcast_indexing_map{
-      .affine_map = bitcast_affine_map.value(),
-      .domain = Domain::FromUpperBounds(output_shape.dimensions(), {})};
+  IndexingMap bitcast_indexing_map = IndexingMap::FromTensorSizes(
+      bitcast_affine_map.value(), output_shape.dimensions(), {});
   bitcast_indexing_map.Simplify();
 
   return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
@@ -689,9 +676,8 @@ HloInstructionIndexing ComputeInputToOutputBitcastOpIndexing(
       output_shape, input_shape, mlir_context);
   if (!bitcast_affine_map.has_value()) return CreateUnknownIndexing();
 
-  IndexingMap bitcast_indexing_map{
-      .affine_map = bitcast_affine_map.value(),
-      .domain = Domain::FromUpperBounds(input_shape.dimensions(), {})};
+  IndexingMap bitcast_indexing_map = IndexingMap::FromTensorSizes(
+      bitcast_affine_map.value(), input_shape.dimensions(), {});
   bitcast_indexing_map.Simplify();
 
   return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
@@ -716,13 +702,12 @@ std::optional<IndexingMap> GetIndexingMapFromPhysicalLayoutToLogical(
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return std::nullopt;
   }
-  return IndexingMap{
+  return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(
           InversePermutation(ToTransposeDimensions(shape.layout())), ctx),
-      Domain::FromUpperBounds(
-          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape)
-              .dimensions(),
-          {})};
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape)
+          .dimensions(),
+      {});
 }
 
 // Creates an indexing map from the logical layout of the tensor to its physical
@@ -733,9 +718,9 @@ std::optional<IndexingMap> GetIndexingMapFromLogicalToPhysicalLayout(
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return std::nullopt;
   }
-  return IndexingMap{
+  return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(ToTransposeDimensions(shape.layout()), ctx),
-      Domain::FromUpperBounds(shape.dimensions(), {})};
+      shape.dimensions(), {});
 }
 
 bool HloInstructionIndexing::Simplify() {

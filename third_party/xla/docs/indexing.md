@@ -92,15 +92,11 @@ struct Range {
  int64_t upper_bound;
 };
 
-struct Domain {
+struct IndexingMap {
+ mlir::AffineMap affine_map;
  std::vector<Range> dimension_ranges;
  std::vector<Range> symbol_ranges;
  llvm::DenseMap<mlir::AffineExpr, Range> expr_ranges;
-};
-
-struct IndexingMap {
- mlir::AffineMap affine_map;
- Domain domain;
 };
 
 ```

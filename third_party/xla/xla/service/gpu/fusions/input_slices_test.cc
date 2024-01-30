@@ -84,17 +84,20 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
 
   auto thread_id_to_output_indexing =
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
-  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
-              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z) -> "
-                        "(0, "
-                        "((th_x + bl_x * 128) floordiv 3) mod 2, "
-                        "(th_x + bl_x * 128) mod 3, "
-                        "((th_x + bl_x * 128) floordiv 6) mod 5)"));
-  EXPECT_THAT(thread_id_to_output_indexing->domain,
-              MatchDomain(ElementsAre(MatchRange(0, 127), MatchRange(0, 0),
-                                      MatchRange(0, 0), MatchRange(0, 1),
-                                      MatchRange(0, 0), MatchRange(0, 0)),
-                          IsEmpty()));
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (0,
+      ((th_x + bl_x * 128) floordiv 3) mod 2,
+       (th_x + bl_x * 128) mod 3, 
+       ((th_x + bl_x * 128) floordiv 6) mod 5)
+    domain:
+    th_x in [0, 127]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 1]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+  )"));
 }
 
 }  // namespace

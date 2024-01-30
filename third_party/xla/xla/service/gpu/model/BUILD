@@ -352,9 +352,7 @@ xla_cc_test(
     srcs = ["indexing_analysis_test.cc"],
     deps = [
         ":indexing_analysis",
-        ":indexing_map",
         ":indexing_test_utils",
-        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_traversal",
         "//xla/tests:hlo_test_base",

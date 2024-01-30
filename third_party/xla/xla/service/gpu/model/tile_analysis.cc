@@ -172,7 +172,7 @@ AffineMap SubstituteAllIndicesAndKnownSymbolsWithSameValue(
 // symbols, since they will have been replaced by constants.
 std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
     const IndexingMap& indexing_map) {
-  AffineMap affine_map = indexing_map.affine_map;
+  AffineMap affine_map = indexing_map.GetAffineMap();
   if (!AffineMapDescribesTile(affine_map)) {
     return std::nullopt;
   }
@@ -235,7 +235,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
         if (symbol_expr && symbol_expr.getPosition() < num_known_symbols) {
           CHECK(!size_expr);
           const Range& symbol_range =
-              indexing_map.domain.GetSymbolRange(symbol_expr.getPosition());
+              indexing_map.GetSymbolRange(symbol_expr.getPosition());
           size_expr = getAffineConstantExpr(
               symbol_range.upper_bound - symbol_range.lower_bound + 1,
               mlir_context);
@@ -257,7 +257,9 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   offset_expressions.reserve(num_results);
   std::vector<AffineExpr> stride_expressions;
   stride_expressions.reserve(num_results);
-  RangeEvaluator range_evaluator(&indexing_map.domain);
+  RangeEvaluator range_evaluator(indexing_map.GetDimensionRanges(),
+                                 indexing_map.GetSymbolRanges(),
+                                 indexing_map.GetMLIRContext());
   for (auto [offset_expr, stride_expr, size_expr] :
        llvm::zip(unnormalized_offset_expressions, signed_stride_expressions,
                  size_expressions)) {
@@ -292,8 +294,8 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {
-  MLIRContext* mlir_context = indexing_map.affine_map.getContext();
-  int64_t num_input_dims = indexing_map.domain.GetDimensionCount();
+  MLIRContext* mlir_context = indexing_map.GetAffineMap().getContext();
+  int64_t num_input_dims = indexing_map.GetDimensionCount();
   std::vector<AffineExpr> exprs;
   exprs.reserve(num_input_dims);
 
@@ -301,11 +303,11 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   tile_dimension_ranges.reserve(num_input_dims);
   std::vector<Range> tile_symbol_ranges;
   tile_symbol_ranges.reserve(kNumTileParametersPerInputDim * num_input_dims +
-                             indexing_map.affine_map.getNumSymbols());
+                             indexing_map.GetAffineMap().getNumSymbols());
 
   // The symbols declared in 'indexing_map.affine_map' will precede those
   // defined in the producer map we construct here.
-  absl::c_copy(indexing_map.domain.GetSymbolRanges(),
+  absl::c_copy(indexing_map.GetSymbolRanges(),
                std::back_inserter(tile_symbol_ranges));
 
   // For each input dims we add kNumTileParametersPerInputDim = 3 symbols, as
@@ -320,7 +322,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 
     exprs.push_back(offset + stride * index);
 
-    Range range = indexing_map.domain.GetDimensionRange(dim);
+    Range range = indexing_map.GetDimensionRange(dim);
     tile_dimension_ranges.push_back(range);
 
     for (int64_t symbol_index = 0; symbol_index < kNumTileParametersPerInputDim;
@@ -333,9 +335,9 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
       num_input_dims, kNumTileParametersPerInputDim * num_input_dims, exprs,
       mlir_context);
 
-  IndexingMap composed_indexing_map{
-      .affine_map = indexing_map.affine_map.compose(producer_map),
-      .domain = Domain(tile_dimension_ranges, tile_symbol_ranges)};
+  IndexingMap composed_indexing_map(
+      indexing_map.GetAffineMap().compose(producer_map), tile_dimension_ranges,
+      tile_symbol_ranges);
   composed_indexing_map.Simplify();
 
   std::optional<RawSymbolicTile> maybe_raw_symbolic_tile =

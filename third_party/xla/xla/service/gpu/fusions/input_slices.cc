@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -191,11 +190,8 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   // The implementation requires the shapes and layouts to be the same, but we
   // still use the requested output's shape for clarity.
   const auto& shape = analysis_.fusion_roots()[output_id]->shape();
-  IndexingMap result{GetDefaultThreadIdToOutputIndexingMap(
-                         launch_dims, unroll_factor_, shape, ctx),
-                     GetThreadIdDomain(launch_dims, unroll_factor_)};
-  result.Simplify();
-  return result;
+  return GetDefaultThreadIdToOutputIndexingMap(launch_dims, unroll_factor_,
+                                               shape, ctx);
 }
 
 absl::Status InputSlicesFusion::EmitKernel(
