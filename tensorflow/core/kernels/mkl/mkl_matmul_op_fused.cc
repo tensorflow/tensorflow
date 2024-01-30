@@ -676,8 +676,8 @@ class QuantizedFusedMatMulOp
           FactoryKeyCreator output_scales_partial_key;
           output_scales_partial_key.AddAsKey(src_partial_key.GetKey());
           output_scales_partial_key.AddAsKey(wei_partial_key.GetKey());
-          params.post_op_params.push_back("output_scale", output_scales,
-                                          output_scales_partial_key.GetKey());
+          params.post_op_params.push_back({"output_scale", output_scales,
+                                           output_scales_partial_key.GetKey()});
 #else
           params.post_op_params.push_back(
               {"src_scale", {src_scale}, src_partial_key.GetKey()});
@@ -834,8 +834,9 @@ class QuantizedFusedMatMulOp
               sum += weight_buf[i * stride_ic + j * stride_oc];
             }
 #ifndef ENABLE_ONEDNN_V3
-            adjusted_bias[j] = static_cast<Tbias>((input_bias[j] * scales[j]) +
-                                                  (sum * q_min_input));
+            adjusted_bias[j] = static_cast<TSCALED_BIAS>(
+                (static_cast<float>(input_bias[j]) * scales[j]) +
+                (sum * q_min_input));
 #else
             // TODO(intel-tf): Use zeropoint for quantized input tensor instead
             // of manual adjustments.
@@ -851,28 +852,34 @@ class QuantizedFusedMatMulOp
 #endif  // !ENABLE_ONEDNN_V3
           }
         } else {
-          dnnl::primitive_attr bias_attr;
-          (num_weight_scales == 1) ? bias_attr.set_scales_mask(DNNL_ARG_SRC, 0)
-                                   : bias_attr.set_scales_mask(DNNL_ARG_SRC, 1);
           memory::dims input_bias_dims =
               memory::dims({bias_tensor.shape().dim_size(0)});
           auto input_bias_md = dnnl::memory::desc(
               input_bias_dims, MklDnnType<Tbias>(), memory::format_tag::x);
           auto input_bias_mem =
               dnnl::memory(input_bias_md, this->cpu_engine_, input_bias_buf);
-
           auto scaled_bias_mem =
               dnnl::memory(scaled_bias_md, this->cpu_engine_, scaled_bias_buf);
-          auto scale_mem =
-              memory({{1}, MklDnnType<float>(), memory::format_tag::x},
-                     this->cpu_engine_, bias_scales.data());
-
+          dnnl::primitive_attr bias_attr;
+#ifndef ENABLE_ONEDNN_V3
+          (num_weight_scales == 1)
+              ? bias_attr.set_output_scales(0, bias_scales)
+              : bias_attr.set_output_scales(1, bias_scales);
+#else
+          (num_weight_scales == 1) ? bias_attr.set_scales_mask(DNNL_ARG_SRC, 0)
+                                   : bias_attr.set_scales_mask(DNNL_ARG_SRC, 1);
+#endif  // !ENABLE_ONEDNN_V3
           auto reorder_prim =
               dnnl::reorder(input_bias_mem, scaled_bias_mem, bias_attr);
           std::unordered_map<int, memory> reorder_net_args = {
-              {DNNL_ARG_FROM, input_bias_mem},
-              {DNNL_ARG_TO, scaled_bias_mem},
-              {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, scale_mem}};
+              {DNNL_ARG_FROM, input_bias_mem}, {DNNL_ARG_TO, scaled_bias_mem}};
+#ifdef ENABLE_ONEDNN_V3
+          auto scale_mem =
+              memory({{1}, MklDnnType<float>(), memory::format_tag::x},
+                     this->cpu_engine_, bias_scales.data());
+          reorder_net_args.insert(
+              {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, scale_mem});
+#endif  // ENABLE_ONEDNN_V3
           reorder_prim.execute(dnnl::stream(this->cpu_engine_),
                                reorder_net_args);
         }

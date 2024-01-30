@@ -279,6 +279,9 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                                            matmul_fwd_params.dst_format));
 
     memory::data_type bias_dt;
+#ifndef ENABLE_ONEDNN_V3
+    bias_dt = MklDnnType<Tbias>();
+#else
     if (std::is_same<Tweight, qint8>::value) {
       // For QuantizedMatMul, bias needs to be passed to oneDNN as float of
       // bfloat16 (even if Tbias is qint32).
@@ -291,6 +294,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     } else {
       bias_dt = MklDnnType<Tbias>();
     }
+#endif  // !ENABLE_ONEDNN_V3
     context_.bias_md.reset(new memory::desc({matmul_fwd_params.bias_dims},
                                             bias_dt, memory::format_tag::any));
 
@@ -366,14 +370,15 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, op_alpha,
-                                  op_beta);
+          post_ops.APPEND_ELTWISE(op_scale, dnnl::algorithm::eltwise_linear,
+                                  op_alpha, op_beta);
 #ifndef ENABLE_ONEDNN_V3
         } else if (post_op_param.name == "output_scale") {
-          if (post_op_param.param.size() == 1)
+          if (post_op_param.param.size() == 1) {
             post_ops_attr.set_output_scales(0, post_op_param.param);
-          else
+          } else {
             post_ops_attr.set_output_scales(2, post_op_param.param);
+          }
 #else
         } else if (post_op_param.name == "src_scale") {
           is_scale_set.insert({"src", true});
