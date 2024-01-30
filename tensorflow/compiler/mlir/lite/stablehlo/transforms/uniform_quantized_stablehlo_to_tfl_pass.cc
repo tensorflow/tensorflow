@@ -54,6 +54,10 @@ namespace {
 // TODO: b/311029361: Add e2e test for verifying this legalization once
 // StableHLO Quantizer API migration is complete.
 
+using ::mlir::quant::CreateI32F32UniformQuantizedPerAxisType;
+using ::mlir::quant::CreateI32F32UniformQuantizedType;
+using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
+using ::mlir::quant::CreateI8F32UniformQuantizedType;
 using ::mlir::quant::IsI32F32UniformQuantizedType;
 using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::IsI8F32UniformQuantizedType;
@@ -134,29 +138,21 @@ TFL::QConstOp CreateTflConstOpForFilter(
                                      .cast<TensorType>()
                                      .getElementType()
                                      .cast<UniformQuantizedPerAxisType>();
-
-    new_filter_quantized_type = UniformQuantizedPerAxisType::getChecked(
-        filter_constant_op.getLoc(), /*flags=*/true,
-        /*storageType=*/filter_quantized_type.getStorageType(),
-        /*expressedType=*/filter_quantized_type.getExpressedType(),
-        /*scales=*/filter_quantized_type.getScales(),
-        /*zeroPoints=*/filter_quantized_type.getZeroPoints(),
-        /*quantizedDimension=*/0, /*storageTypeMin=*/llvm::minIntN(8),
-        /*storageTypeMax=*/llvm::maxIntN(8));
+    new_filter_quantized_type = CreateI8F32UniformQuantizedPerAxisType(
+        filter_constant_op->getLoc(), *rewriter.getContext(),
+        filter_quantized_type.getScales(),
+        filter_quantized_type.getZeroPoints(),
+        /*quantization_dimension=*/0, /*narrow_range=*/true);
   } else {
     auto filter_quantized_type = filter_constant_op.getResult()
                                      .getType()
                                      .cast<TensorType>()
                                      .getElementType()
                                      .cast<UniformQuantizedType>();
-    new_filter_quantized_type = UniformQuantizedType::getChecked(
-        filter_constant_op.getLoc(), /*flags=*/true,
-        /*storageType=*/filter_quantized_type.getStorageType(),
-        /*expressedType=*/filter_quantized_type.getExpressedType(),
-        /*scale=*/filter_quantized_type.getScale(),
-        /*zeroPoint=*/filter_quantized_type.getZeroPoint(),
-        /*storageTypeMin=*/llvm::minIntN(8),
-        /*storageTypeMax=*/llvm::maxIntN(8));
+    new_filter_quantized_type = CreateI8F32UniformQuantizedType(
+        filter_constant_op->getLoc(), *rewriter.getContext(),
+        filter_quantized_type.getScale(), filter_quantized_type.getZeroPoint(),
+        /*narrow_range=*/true);
   }
 
   // Required because the quantized dimension is changed from 3 -> 0.
@@ -182,7 +178,7 @@ TFL::QConstOp CreateTflConstOpForDummyBias(const Location loc,
                                            const double input_scale,
                                            TFL::QConstOp filter_const_op,
                                            PatternRewriter& rewriter,
-                                           bool is_per_axis) {
+                                           bool is_per_axis, MLIRContext& ctx) {
   const ArrayRef<int64_t> filter_shape =
       filter_const_op.getResult().getType().getShape();
 
@@ -196,13 +192,11 @@ TFL::QConstOp CreateTflConstOpForDummyBias(const Location loc,
 
     // The storage type is i32 for bias, which is the precision used for
     // accumulation.
-    bias_quantized_type = UniformQuantizedPerAxisType::getChecked(
-        loc, /*flags=*/true, /*storageType=*/rewriter.getI32Type(),
-        /*expressedType=*/rewriter.getF32Type(), /*scales=*/
+    bias_quantized_type = CreateI32F32UniformQuantizedPerAxisType(
+        loc, ctx,
         GetBiasScales(input_scale, filter_quantized_element_type.getScales()),
-        /*zeroPoints=*/filter_quantized_element_type.getZeroPoints(),
-        /*quantizedDimension=*/0, /*storageTypeMin=*/llvm::minIntN(8),
-        /*storageTypeMax=*/llvm::maxIntN(8));
+        filter_quantized_element_type.getZeroPoints(),
+        /*quantization_dimension=*/0);
   } else {
     const auto filter_quantized_element_type =
         filter_const_op.getResult()
@@ -212,13 +206,10 @@ TFL::QConstOp CreateTflConstOpForDummyBias(const Location loc,
 
     // The storage type is i32 for bias, which is the precision used for
     // accumulation.
-    bias_quantized_type = UniformQuantizedType::getChecked(
-        loc, /*flags=*/true, /*storageType=*/rewriter.getI32Type(),
-        /*expressedType=*/rewriter.getF32Type(), /*scale=*/
+    bias_quantized_type = CreateI32F32UniformQuantizedType(
+        loc, ctx,
         GetBiasScale(input_scale, filter_quantized_element_type.getScale()),
-        /*zeroPoint=*/filter_quantized_element_type.getZeroPoint(),
-        /*storageTypeMin=*/llvm::minIntN(8),
-        /*storageTypeMax=*/llvm::maxIntN(8));
+        filter_quantized_element_type.getZeroPoint());
   }
 
   SmallVector<int64_t, 1> bias_shape = {filter_shape[0]};
@@ -474,15 +465,11 @@ class RewriteUpstreamQuantizedConvolutionOp
     // (https://github.com/tensorflow/tensorflow/blob/5430e5e238f868ce977df96ba89c9c1d31fbe8fa/tensorflow/compiler/mlir/lite/ir/tfl_ops.td#L933).
     // The quantized dimension should correspond to the output feature
     // dimension.
-    auto new_filter_quantized_type = UniformQuantizedPerAxisType::getChecked(
-        filter_op->getLoc(), /*flags=*/true,
-        /*storageType=*/filter_uniform_quantized_type.getStorageType(),
-        filter_uniform_quantized_type.getExpressedType(),
+    auto new_filter_quantized_type = CreateI8F32UniformQuantizedPerAxisType(
+        filter_op->getLoc(), *op.getContext(),
         filter_uniform_quantized_type.getScales(),
         filter_uniform_quantized_type.getZeroPoints(),
-        /*quantizedDimension=*/0,
-        filter_uniform_quantized_type.getStorageTypeMin(),
-        filter_uniform_quantized_type.getStorageTypeMax());
+        /*quantization_dimension=*/0, /*narrow_range=*/true);
 
     auto filter_constant_value_attr = cast<DenseIntElementsAttr>(
         cast<stablehlo::ConstantOp>(filter_value.getDefiningOp()).getValue());
@@ -514,15 +501,10 @@ class RewriteUpstreamQuantizedConvolutionOp
     // Create a bias filled with zeros. Mimics the behavior of no bias add.
     const int64_t num_output_features = new_filter_result_type.getShape()[0];
     const SmallVector<int64_t, 1> bias_shape = {num_output_features};
-    auto bias_quantized_type = UniformQuantizedPerAxisType::getChecked(
-        op.getLoc(), /*flags=*/true,
-        /*storageType=*/rewriter.getI32Type(),  // i32 for bias
-        /*expressedType=*/rewriter.getF32Type(),
-        /*scales=*/std::move(bias_scales),
-        /*zeroPoints=*/new_filter_quantized_type.getZeroPoints(),  // Zeros.
-        /*quantizedDimension=*/0,
-        /*storageTypeMin=*/std::numeric_limits<int32_t>::min(),
-        /*storageTypeMax=*/std::numeric_limits<int32_t>::max());
+    auto bias_quantized_type = CreateI32F32UniformQuantizedPerAxisType(
+        op.getLoc(), *op.getContext(), std::move(bias_scales),
+        new_filter_quantized_type.getZeroPoints(),
+        /*quantization_dimension=*/0);
     auto bias_type = RankedTensorType::getChecked(op.getLoc(), bias_shape,
                                                   bias_quantized_type);
 
@@ -984,7 +966,7 @@ class RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp
                                    .getScale();
     TFL::QConstOp bias_constant_op = CreateTflConstOpForDummyBias(
         op.getLoc(), input_scale, new_filter_constant_op, rewriter,
-        /*is_per_axis=*/true);
+        /*is_per_axis=*/true, *op.getContext());
 
     const Value result_value = op.getResult();
     // Set to `nullptr` because this attribute only matters when the input is
@@ -1156,7 +1138,7 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
                                    .getScale();
     TFL::QConstOp bias_constant_op = CreateTflConstOpForDummyBias(
         op.getLoc(), input_scale, new_filter_constant_op, rewriter,
-        /*is_per_axis=*/false);
+        /*is_per_axis=*/false, *op.getContext());
 
     auto output_op = op.getResult().getDefiningOp();
     Operation* requantize_op = *output_op->getResult(0).getUsers().begin();

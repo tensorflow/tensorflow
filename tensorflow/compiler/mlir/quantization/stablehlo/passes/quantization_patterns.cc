@@ -253,7 +253,7 @@ template <typename GemmStyleOp>
 // and sets the quantized bias as the return op.
 void CreateAndReturnQuantizedBiasPattern(
     Operation* op, PatternRewriter& rewriter, func::FuncOp entry_func_op,
-    const Type func_result_type, const Type gemm_style_quantized_element_type,
+    const Type func_result_type, const Type accumulation_quantized_element_type,
     GemmStyleOp gemm_style_op, double result_scale) {
   Value bias_op = op->getOperand(1);
   Value add_op_result = op->getResult(0);
@@ -273,7 +273,7 @@ void CreateAndReturnQuantizedBiasPattern(
     const ArrayRef<int64_t> bcast_shape = bcast_op_result_type.getShape();
 
     const TensorType new_bcast_op_result_type = bcast_op_result_type.cloneWith(
-        bcast_shape, gemm_style_quantized_element_type);
+        bcast_shape, accumulation_quantized_element_type);
     bcast_op_result.setType(new_bcast_op_result_type);
   }
 
@@ -282,7 +282,7 @@ void CreateAndReturnQuantizedBiasPattern(
   const ArrayRef<int64_t> add_op_shape = add_op_result_type.getShape();
   // For quantized bias add case, lhs, rhs, and result have the same types.
   const TensorType new_add_op_result_type = add_op_result_type.cloneWith(
-      add_op_shape, gemm_style_quantized_element_type);
+      add_op_shape, accumulation_quantized_element_type);
   add_op_result.setType(new_add_op_result_type);
 
   AddOp bias_add_op =
@@ -354,7 +354,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
   // Define the intermediate output type, which is an i32 quantized type.
   // This is intermediate because the final output type of the entry_func_op
   // should be an i8 quantized type.
-  const UniformQuantizedType gemm_style_quantized_element_type =
+  const UniformQuantizedType accumulation_quantized_element_type =
       CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
                                        *rewriter.getContext(), result_scale,
                                        /*zero_point=*/0);
@@ -367,7 +367,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 
   const TensorType new_gemm_style_op_result_type =
       gemm_style_op_result_type.cloneWith(gemm_style_shape,
-                                          gemm_style_quantized_element_type);
+                                          accumulation_quantized_element_type);
   gemm_style_op_result.setType(new_gemm_style_op_result_type);
 
   rewriter.setInsertionPointAfter(gemm_style_op);
@@ -381,14 +381,14 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
     // bias fusion
     CreateAndReturnQuantizedBiasPattern(
         next_op, rewriter, entry_func_op, func_result_type,
-        gemm_style_quantized_element_type, gemm_style_op, result_scale);
+        accumulation_quantized_element_type, gemm_style_op, result_scale);
   } else if (auto add_op = cast_or_null<AddOp>(
                  GetBroadcastedUserOp<AddOp>(gemm_style_op))) {
     // dynamic bias fusion
     rewriter.setInsertionPointAfter(add_op);
     CreateAndReturnQuantizedBiasPattern(
         add_op, rewriter, entry_func_op, func_result_type,
-        gemm_style_quantized_element_type, gemm_style_op, result_scale);
+        accumulation_quantized_element_type, gemm_style_op, result_scale);
   } else {
     // Non fusible op
     // If an op is used multiple times and is not a dynamic shape case, do not
