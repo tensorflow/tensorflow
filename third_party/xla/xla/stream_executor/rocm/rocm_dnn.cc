@@ -2761,7 +2761,7 @@ absl::Status MIOpenSupport::DoCtcLoss(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-MIOpenSupport::createRnnDescriptor(
+MIOpenSupport::CreateRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,

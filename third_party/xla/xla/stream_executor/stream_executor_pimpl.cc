@@ -182,24 +182,6 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
-absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-StreamExecutor::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size, int cell_size,
-    int batch_size, dnn::RnnInputMode input_mode,
-    dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
-    dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    const NumericOptions& numeric_options, float dropout, uint64_t seed,
-    ScratchAllocator* state_allocator, bool use_padded_io) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnDescriptor(
-      num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
-      direction_mode, rnn_mode, data_type, algorithm_config, numeric_options,
-      dropout, seed, state_allocator, use_padded_io);
-}
-
 absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   int batch_size, int data_size,

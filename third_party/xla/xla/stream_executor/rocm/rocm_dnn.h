@@ -77,7 +77,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
 
-  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> CreateRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,

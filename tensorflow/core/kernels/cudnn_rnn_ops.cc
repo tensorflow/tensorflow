@@ -1294,7 +1294,11 @@ class CudnnRNNKernelCommon : public OpKernel {
     // ExtracCudnnRNNParamsInfo is only called by op_kernels that do not require
     // random number generator, therefore set state_allocator to nullptr.
     const AlgorithmConfig algo_config;
-    auto rnn_desc_s = stream->parent()->createRnnDescriptor(
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("Dnn is not supported");
+    }
+    auto rnn_desc_s = dnn->CreateRnnDescriptor(
         num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
         ToDataType<T>::value, algo_config, GetNumericOptions(), dropout(),
@@ -1319,7 +1323,11 @@ class CudnnRNNKernelCommon : public OpKernel {
     se::dnn::DataType data_type = std::is_same_v<T, bfloat16>
                                       ? se::dnn::DataType::kFloat
                                       : ToDataType<T>::value;
-    auto rnn_desc_s = executor->createRnnDescriptor(
+    auto dnn = executor->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("Dnn is not supported");
+    }
+    auto rnn_desc_s = dnn->CreateRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, model_shapes.cell_num_units,
         model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),

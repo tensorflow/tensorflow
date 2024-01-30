@@ -283,16 +283,6 @@ class StreamExecutor {
   bool GetBlasGemmAlgorithms(Stream* stream,
                              std::vector<blas::AlgorithmType>* out_algorithms);
 
-  // Create an RNN descriptor based on model shapes and configurations.
-  // The caller retains the ownership of the descriptor.
-  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
-      int num_layers, int hidden_size, int input_size, int cell_size,
-      int batch_size, dnn::RnnInputMode input_mode,
-      dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
-      dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      const NumericOptions& numeric_options, float dropout, uint64_t seed,
-      ScratchAllocator* state_allocator, bool use_padded_io);
-
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
