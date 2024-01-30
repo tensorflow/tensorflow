@@ -173,25 +173,6 @@ int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
-bool StreamExecutor::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    ScratchAllocator* scratch_allocator,
-    std::vector<dnn::ProfileResult>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  return dnn_support->GetMIOpenConvolveAlgorithms(
-      kind, element_type, stream, input_descriptor, input_data,
-      filter_descriptor, filter_data, output_descriptor, output_data,
-      convolution_descriptor, scratch_allocator, out_algorithms);
-}
-
 bool StreamExecutor::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   dnn::DnnSupport* dnn_support = AsDnn();
