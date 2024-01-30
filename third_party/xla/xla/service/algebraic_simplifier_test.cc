@@ -3440,6 +3440,37 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
   EXPECT_THAT(computation->root_instruction(), param0);
 }
 
+// Test that a simplification which changes copy to a bitcast is not performed
+// if layout sensitive is true.
+TEST_F(AlgebraicSimplifierTest, CopyWithDifferentMemorySpaces) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 2}), "param0"));
+  HloInstruction* copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(param0->shape(), HloOpcode::kCopy, param0));
+
+  // Set to different memory spaces.
+  param0->mutable_shape()->mutable_layout()->set_memory_space(0);
+  copy->mutable_shape()->mutable_layout()->set_memory_space(123);
+
+  HloComputation* computation =
+      m->AddEntryComputationWithLayouts(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+
+  // Copy has not been removed.
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
+}
+
 // Test that a reshape which could be replaced with a bitcast is not if
 // add_bitcasts is false.
 TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
