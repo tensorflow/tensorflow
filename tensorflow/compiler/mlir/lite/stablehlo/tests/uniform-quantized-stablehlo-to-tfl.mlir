@@ -804,3 +804,118 @@ func.func @float_slice(%arg0: tensor<3x4xf32>) -> tensor<2x2xf32> {
 // CHECK-NOT: tfl.slice
 // CHECK-NOT: tfl.strided_slice
 // CHECK: stablehlo.slice
+
+// -----
+
+// Test that a quantized stablehlo.broadcast_in_dim is converted to
+// tfl.broadcast_to.
+
+// CHECK-LABEL: broadcast_in_dim
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+func.func @broadcast_in_dim(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  ) -> tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:3>> {
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = array<i64: 0, 1>
+  } : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  return %0 : tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// CHECK: %[[SHAPE:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[3, 2]> : tensor<2xi32>
+// CHECK: %[[BROADCAST:.*]] = "tfl.broadcast_to"(%[[ARG0]], %[[SHAPE]]) : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<2xi32>) -> tensor<3x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: return %[[BROADCAST]]
+
+// -----
+
+// Test that a quantized stablehlo.broadcast_in_dim is converted to
+// tfl.transpose and tfl.broadcast_to when broadcast_dimensions is not in
+// ascending order.
+
+// CHECK-LABEL: broadcast_in_dim_with_transpose
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+func.func @broadcast_in_dim_with_transpose(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  ) -> tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:3>> {
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = array<i64: 1, 0>
+  } : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  return %0 : tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// CHECK: %[[BROADCAST_DIM:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[2, 3]> : tensor<2xi32>
+// CHECK: %[[PERM:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[1, 0]> : tensor<2xi32>
+// CHECK: %[[TRANSPOSE:.*]] = "tfl.transpose"(%[[ARG0]], %[[PERM]]) : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<2xi32>) -> tensor<2x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: %[[BROADCAST:.*]] = "tfl.broadcast_to"(%[[TRANSPOSE]], %[[BROADCAST_DIM]]) : (tensor<2x1x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<2xi32>) -> tensor<2x3x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: return %[[BROADCAST]]
+
+// -----
+
+// Test that a quantized stablehlo.broadcast_in_dim is converted to
+// tfl.expand_dims and tfl.broadcast_to when input rank is smaller than output
+// rank.
+
+// CHECK-LABEL: broadcast_in_dim_with_expand
+// CHECK-SAME: %[[ARG0:.*]]: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+func.func @broadcast_in_dim_with_expand(
+    %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  ) -> tensor<3x2x1x1x!quant.uniform<i8:f32, 2.000000e+00:3>> {
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = array<i64: 0, 1>
+  } : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<3x2x1x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  return %0 : tensor<3x2x1x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// CHECK-DAG: %[[BROADCAST_DIM:.*]] = arith.constant dense<{{\[3, 2, 1, 1\]}}> : tensor<4xi32>
+// CHECK-DAG: %[[EXPAND_DIM1:.*]] = arith.constant dense<3> : tensor<1xi32>
+// CHECK-DAG: %[[EXPAND_DIM0:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK: %[[EXPAND0:.*]] = "tfl.expand_dims"(%[[ARG0]], %[[EXPAND_DIM0]]) : (tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<1xi32>) -> tensor<1x2x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: %[[EXPAND1:.*]] = "tfl.expand_dims"(%[[EXPAND0]], %[[EXPAND_DIM1]]) : (tensor<1x2x1x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<1xi32>) -> tensor<1x2x1x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: %[[BROADCAST:.*]] = "tfl.broadcast_to"(%[[EXPAND1]], %[[BROADCAST_DIM]]) : (tensor<1x2x1x1x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<4xi32>) -> tensor<3x2x1x1x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: return %[[BROADCAST]]
+
+// -----
+
+// Test that a quantized stablehlo.broadcast_in_dim is converted to
+// tfl.transpose, tfl.expand_dims and tfl.broadcast_to when broadcast_dimensions
+// is not in ascending order and input rank is smaller than output rank.
+
+// CHECK-LABEL: broadcast_in_dim_with_transpose_and_expand
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+func.func @broadcast_in_dim_with_transpose_and_expand(
+    %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  ) -> tensor<3x2x1x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>> {
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = array<i64: 1, 0, 4>
+  } : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:3>>) -> tensor<3x2x1x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+  return %0 : tensor<3x2x1x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+}
+
+// CHECK-DAG: %[[BROADCAST_DIM:.*]] = arith.constant dense<{{\[3, 2, 1, 1, 4\]}}> : tensor<5xi32>
+// CHECK-DAG: %[[EXPAND_DIM1:.*]] = arith.constant dense<3> : tensor<1xi32>
+// CHECK-DAG: %[[EXPAND_DIM0:.*]] = arith.constant dense<2> : tensor<1xi32>
+// CHECK-DAG: %[[PERM:.*]] = arith.constant dense<{{\[1, 0, 2\]}}> : tensor<3xi32>
+// CHECK: %[[TRANSPOSE:.*]] = "tfl.transpose"(%[[ARG0]], %[[PERM]]) : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<3xi32>) -> tensor<3x2x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: %[[EXPAND0:.*]] = "tfl.expand_dims"(%[[TRANSPOSE]], %[[EXPAND_DIM0]]) : (tensor<3x2x4x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<1xi32>) -> tensor<3x2x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: %[[EXPAND1:.*]] = "tfl.expand_dims"(%[[EXPAND0]], %[[EXPAND_DIM1]]) : (tensor<3x2x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<1xi32>) -> tensor<3x2x1x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: %[[BROADCAST:.*]] = "tfl.broadcast_to"(%[[EXPAND1]], %[[BROADCAST_DIM]]) : (tensor<3x2x1x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>, tensor<5xi32>) -> tensor<3x2x1x1x4x!quant.uniform<i8:f32, 2.000000e+00:3>>
+// CHECK: return %[[BROADCAST]]
+
+// -----
+
+// Test that a float stablehlo.broadcast_in_dim is not converted to tfl.broadcast_to.
+
+// CHECK-LABEL: float_broadcast_in_dim
+func.func @float_broadcast_in_dim(%arg0: tensor<1x2xf32>) -> tensor<3x2xf32> {
+  %0 = "stablehlo.broadcast_in_dim"(%arg0) {
+    broadcast_dimensions = array<i64: 0, 1>
+  } : (tensor<1x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// CHECK-NOT: tfl.broadcast_to
+// CHECK-NOT: tfl.transpose
+// CHECK-NOT: tfl.expand_dims
+// CHECK: stablehlo.broadcast_in_dim

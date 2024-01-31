@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <iterator>
-#include <limits>
 #include <memory>
 #include <utility>
 
@@ -22,7 +21,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
@@ -1504,6 +1502,105 @@ class RewriteSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
   }
 };
 
+// Rewrites quantized stablehlo.broadcast_in_dim to tfl.broadcast_to.
+// tfl.transpose is introduced when broadcast_dimensions is not in ascending
+// order. Also, tfl.expand_dims is introduced when input rank is smaller than
+// output rank.
+// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
+class RewriteBroadcastInDimOp
+    : public OpRewritePattern<stablehlo::BroadcastInDimOp> {
+ public:
+  using OpRewritePattern<stablehlo::BroadcastInDimOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::BroadcastInDimOp op) const override {
+    return success(IsOpFullyQuantized(op));
+  }
+
+  void rewrite(stablehlo::BroadcastInDimOp op,
+               PatternRewriter& rewriter) const override {
+    auto operand_type = op.getOperand().getType().cast<TensorType>();
+    auto output_type = op.getResult().getType().cast<TensorType>();
+    Value input = op.getOperand();
+
+    // If broadcast_dimensions is not in ascending order, transpose first.
+    if (!llvm::is_sorted(op.getBroadcastDimensions())) {
+      input = InsertTransposeOp(op, rewriter);
+    }
+
+    // If rank of operand is smaller than that of the output, expand dimensions
+    // before broadcasting.
+    if (operand_type.getRank() < output_type.getRank()) {
+      input = InsertExpandDimsOp(op, rewriter, input, output_type.getRank());
+    }
+
+    SmallVector<int32_t> broadcast_shape =
+        CastI64ArrayToI32(output_type.getShape()).value();
+    TensorType broadcast_shape_type =
+        output_type.cloneWith({output_type.getRank()}, rewriter.getI32Type());
+    auto broadcast_shape_attr =
+        DenseIntElementsAttr::get(broadcast_shape_type, broadcast_shape);
+    auto shape =
+        rewriter.create<arith::ConstantOp>(op.getLoc(), broadcast_shape_attr);
+
+    rewriter.replaceOpWithNewOp<TFL::BroadcastToOp>(op, output_type, input,
+                                                    shape);
+  }
+
+  Value InsertTransposeOp(stablehlo::BroadcastInDimOp op,
+                          PatternRewriter& rewriter) const {
+    SmallVector<int64_t> sorted_dims = op.getBroadcastDimensions();
+    llvm::sort(sorted_dims);
+    auto broadcast_dims = op.getBroadcastDimensions();
+    SmallVector<int32_t> permutation(
+        llvm::map_range(broadcast_dims, [sorted_dims](int64_t dim) {
+          return static_cast<int32_t>(llvm::find(sorted_dims, dim) -
+                                      sorted_dims.begin());
+        }));
+    auto operand_type = op.getOperand().getType().cast<TensorType>();
+    TensorType perm_type = operand_type.cloneWith(
+        {static_cast<int64_t>(permutation.size())}, rewriter.getI32Type());
+    auto perm_attr = DenseIntElementsAttr::get(perm_type, permutation);
+    auto perm = rewriter.create<arith::ConstantOp>(op.getLoc(), perm_attr);
+    Value input = op.getOperand();
+
+    return rewriter.create<TFL::TransposeOp>(op.getLoc(), input, perm);
+  }
+
+  Value InsertExpandDimsOp(stablehlo::BroadcastInDimOp op,
+                           PatternRewriter& rewriter, Value input,
+                           int64_t output_rank) const {
+    auto input_type = input.getType().cast<TensorType>();
+    SmallVector<int64_t> input_shape(input_type.getShape());
+    SmallVector<int64_t> input_dims = op.getBroadcastDimensions();
+
+    while (input_dims.size() < output_rank) {
+      int32_t dim_to_expand = 0;
+      for (int32_t i = 0; i < output_rank; ++i) {
+        if (!llvm::is_contained(input_dims, i)) {
+          dim_to_expand = i;
+          break;
+        }
+      }
+
+      TensorType dim_type = input_type.cloneWith({static_cast<int64_t>(1)},
+                                                 rewriter.getI32Type());
+      ArrayRef<int32_t> dims(dim_to_expand);
+      auto dim_attr = DenseIntElementsAttr::get(dim_type, dims);
+      auto dim = rewriter.create<arith::ConstantOp>(op.getLoc(), dim_attr);
+
+      input_shape.insert(input_shape.begin() + dim_to_expand, 1);
+      TensorType expanded_type = input_type.clone(input_shape);
+      input = rewriter.create<TFL::ExpandDimsOp>(op.getLoc(), expanded_type,
+                                                 input, dim);
+
+      // Update expanded dimension in the input dimensions for the next
+      // iteration.
+      input_dims.push_back(static_cast<int64_t>(dim_to_expand));
+    }
+    return input;
+  }
+};
+
 void UniformQuantizedStablehloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
@@ -1515,7 +1612,8 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
                RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
                RewriteTransposeOp, RewriteReshapeOp, RewriteSelectOp,
-               RewriteConcatenateOp, RewritePadOp, RewriteSliceOp>(&ctx);
+               RewriteConcatenateOp, RewritePadOp, RewriteSliceOp,
+               RewriteBroadcastInDimOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
