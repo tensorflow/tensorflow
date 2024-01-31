@@ -736,13 +736,13 @@ Status CreateForwardAndBackwardIODescriptors(
 
   DCHECK_EQ(hidden_state_shape.dims(), 3);
   if (time_major) {
-    auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto hidden_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
     *h_state_desc = std::move(hidden_state_desc_s).value();
   } else {
-    auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto hidden_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(1), hidden_state_shape.dim_size(0),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
@@ -751,13 +751,13 @@ Status CreateForwardAndBackwardIODescriptors(
 
   DCHECK_EQ(cell_state_shape.dims(), 3);
   if (time_major) {
-    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto cell_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         cell_state_shape.dim_size(0), cell_state_shape.dim_size(1),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
     *c_state_desc = std::move(cell_state_desc_s).value();
   } else {
-    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+    auto cell_state_desc_s = dnn->CreateRnnStateTensorDescriptor(
         cell_state_shape.dim_size(1), cell_state_shape.dim_size(0),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());

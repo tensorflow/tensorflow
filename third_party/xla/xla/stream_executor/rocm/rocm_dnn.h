@@ -91,7 +91,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                                     dnn::DataType data_type) override;
 
   absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+  CreateRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,

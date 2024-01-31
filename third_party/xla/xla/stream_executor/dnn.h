@@ -1881,10 +1881,10 @@ class DnnSupport {
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
   virtual absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+  CreateRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
     return absl::UnimplementedError(
-        "createRnnStateTensorDescriptor is unimplemented");
+        "CreateRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.

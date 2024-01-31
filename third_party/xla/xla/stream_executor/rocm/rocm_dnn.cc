@@ -2810,7 +2810,7 @@ MIOpenSupport::CreateRnnSequenceTensorDescriptor(int seq_length, int batch_size,
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-MIOpenSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
+MIOpenSupport::CreateRnnStateTensorDescriptor(int num_layer, int batch_size,
                                               int data_size,
                                               dnn::DataType data_type) {
   std::unique_ptr<MIOpenRnnStateTensorDescriptor> state_desc(

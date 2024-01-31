@@ -283,12 +283,6 @@ class StreamExecutor {
   bool GetBlasGemmAlgorithms(Stream* stream,
                              std::vector<blas::AlgorithmType>* out_algorithms);
 
-  // Create an RNN state descriptor that specifies the input or hidden state.
-  // The caller retains the ownership of the returned descriptor.
-  absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
-                                 dnn::DataType data_type);
-
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }

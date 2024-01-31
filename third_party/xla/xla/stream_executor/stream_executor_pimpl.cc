@@ -182,18 +182,6 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
-absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
-                                               int data_size,
-                                               dnn::DataType data_type) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return absl::UnknownError("Fail to find the dnn implementation.");
-  }
-  return dnn_support->createRnnStateTensorDescriptor(num_layer, batch_size,
-                                                     data_size, data_type);
-}
-
 dnn::DnnSupport* StreamExecutor::AsDnn() {
   absl::MutexLock lock(&mu_);
   if (dnn_ != nullptr) {
