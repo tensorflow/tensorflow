@@ -103,6 +103,12 @@ class FusedMatMulOpsTest : public OpsTestBase {
       string output_quant_mode, bool is_bias_quantized, bool is_perchannel,
       bool requantize, float output_min, float output_max)>;
 
+  bool HasQuantizationSupport() {
+    return TestCPUFeature(tensorflow::port::CPUFeature::AVX_VNNI_INT8) ||
+           TestCPUFeature(tensorflow::port::CPUFeature::AVX512_VNNI) ||
+           TestCPUFeature(port::CPUFeature::AMX_INT8);
+  }
+
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
   // of 'fetch' node into the outputs. Optional `add_nodes` parameter
   // allows to define nodes directly using NodeDefBuilder.
@@ -617,7 +623,7 @@ class FusedMatMulOpsTest : public OpsTestBase {
   //        true: requantized
   //    (5) weight matrix is transposed : {false, true}
   void VerifyQuantizedMatMul(std::vector<string> fused_ops) {
-    if (!IsMKLEnabled()) {
+    if (!HasQuantizationSupport()) {
       GTEST_SKIP() << "oneDNN based Quantized ops are not enabled on this CPU.";
     }
     const GraphRunner run_default =
