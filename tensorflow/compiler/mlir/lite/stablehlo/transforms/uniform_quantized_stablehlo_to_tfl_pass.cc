@@ -43,6 +43,7 @@ limitations under the License.
 #include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "uniform-quantized-stablehlo-to-tfl"
@@ -54,6 +55,8 @@ namespace {
 // TODO: b/311029361: Add e2e test for verifying this legalization once
 // StableHLO Quantizer API migration is complete.
 
+using ::mlir::quant::CastI64ArrayToI32;
+using ::mlir::quant::CastI64ToI32;
 using ::mlir::quant::CreateI32F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI32F32UniformQuantizedType;
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
@@ -567,7 +570,7 @@ class RewriteUpstreamQuantizedConvolutionOp
     // [0, 0]]
     SmallVector<int32_t, 8> tfl_pad_values = {0, 0};  // For output feature dim.
     for (const int64_t padding_value : padding_values) {
-      tfl_pad_values.push_back(static_cast<int32_t>(padding_value));
+      tfl_pad_values.push_back(CastI64ToI32(padding_value).value());
     }
     // For input feature dim.
     tfl_pad_values.push_back(0);
@@ -1281,11 +1284,8 @@ class RewriteTransposeOp : public OpRewritePattern<stablehlo::TransposeOp> {
         operand_type.cloneWith(shape, rewriter.getI32Type());
     // Cast permutation attribute from i64 to i32 as they are required to be i32
     // in TFLite.
-    SmallVector<int32_t> permutation_i32;
-    for (int64_t dim : op.getPermutation()) {
-      permutation_i32.push_back(static_cast<int32_t>(dim));
-    }
-
+    SmallVector<int32_t> permutation_i32 =
+        CastI64ArrayToI32(op.getPermutation()).value();
     auto permutation_attr =
         DenseIntElementsAttr::get(permutation_type, permutation_i32);
     auto permutation =
@@ -1310,10 +1310,8 @@ class RewriteReshapeOp : public OpRewritePattern<stablehlo::ReshapeOp> {
     auto result_type = op->getResult(0).getType().cast<TensorType>();
     // Cast result shapes from i64 to i32 as they are required to be i32 in
     // TFLite.
-    SmallVector<int32_t> shape_i32;
-    for (int64_t dim : result_type.getShape()) {
-      shape_i32.push_back(static_cast<int32_t>(dim));
-    }
+    SmallVector<int32_t> shape_i32 =
+        CastI64ArrayToI32(result_type.getShape()).value();
 
     const int64_t shape_length = shape_i32.size();
     ArrayRef<int64_t> shape(shape_length);
@@ -1366,7 +1364,7 @@ class RewriteConcatenateOp : public OpRewritePattern<stablehlo::ConcatenateOp> {
   void rewrite(stablehlo::ConcatenateOp op,
                PatternRewriter& rewriter) const override {
     Type output_type = op.getResult().getType();
-    uint32_t axis = static_cast<uint32_t>(op.getDimension());
+    uint32_t axis = CastI64ToI32(op.getDimension()).value();
     rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
         op, output_type, op.getOperands(), axis,
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
@@ -1404,8 +1402,8 @@ class RewritePadOp : public OpRewritePattern<stablehlo::PadOp> {
     ArrayRef<int64_t> padding_high = op.getEdgePaddingHigh();
     SmallVector<int32_t> padding_value;
     for (int i = 0; i < rank; ++i) {
-      padding_value.push_back(static_cast<int32_t>(padding_low[i]));
-      padding_value.push_back(static_cast<int32_t>(padding_high[i]));
+      padding_value.push_back(CastI64ToI32(padding_low[i]).value());
+      padding_value.push_back(CastI64ToI32(padding_high[i]).value());
     }
 
     TensorType output_type = op.getResult().getType().cast<TensorType>();
@@ -1426,10 +1424,8 @@ class RewritePadOp : public OpRewritePattern<stablehlo::PadOp> {
     TensorType dilate_type =
         operand_type.cloneWith(dilate_shape, rewriter.getI32Type());
     ArrayRef<int64_t> interior_padding_i64 = op.getInteriorPadding();
-    SmallVector<int32_t> interior_padding_i32;
-    for (int64_t pad : interior_padding_i64) {
-      interior_padding_i32.push_back(static_cast<int32_t>(pad));
-    }
+    SmallVector<int32_t> interior_padding_i32 =
+        CastI64ArrayToI32(interior_padding_i64).value();
     auto dilate_attr =
         DenseIntElementsAttr::get(dilate_type, interior_padding_i32);
     auto dilate = rewriter.create<arith::ConstantOp>(op.getLoc(), dilate_attr);
@@ -1450,6 +1446,64 @@ class RewritePadOp : public OpRewritePattern<stablehlo::PadOp> {
   }
 };
 
+// Rewrites quantized stablehlo.slice to tfl.slice or tfl.strided_slice.
+// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
+class RewriteSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
+ public:
+  using OpRewritePattern<stablehlo::SliceOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::SliceOp op) const override {
+    return success(IsOpFullyQuantized(op));
+  }
+
+  void rewrite(stablehlo::SliceOp op,
+               PatternRewriter& rewriter) const override {
+    auto operand_type = op.getOperand().getType().cast<TensorType>();
+    Type output_type = op.getResult().getType();
+    const int64_t rank = operand_type.getRank();
+
+    ArrayRef<int64_t> idx_shape(rank);
+    TensorType idx_type =
+        operand_type.cloneWith(idx_shape, rewriter.getI32Type());
+
+    ArrayRef<int64_t> start_idx_i64 = op.getStartIndices();
+    ArrayRef<int64_t> limit_idx_i64 = op.getLimitIndices();
+
+    SmallVector<int32_t> start_idx_i32 =
+        CastI64ArrayToI32(start_idx_i64).value();
+    auto start_idx_attr = DenseIntElementsAttr::get(idx_type, start_idx_i32);
+    auto start_idx =
+        rewriter.create<arith::ConstantOp>(op.getLoc(), start_idx_attr);
+
+    SmallVector<int32_t> slice_size_i32(rank);
+    for (int i = 0; i < rank; ++i) {
+      slice_size_i32[i] =
+          CastI64ToI32(limit_idx_i64[i] - start_idx_i64[i]).value();
+    }
+    auto slice_size_attr = DenseIntElementsAttr::get(idx_type, slice_size_i32);
+    auto slice_size =
+        rewriter.create<arith::ConstantOp>(op.getLoc(), slice_size_attr);
+
+    ArrayRef<int64_t> strides = op.getStrides();
+    // If stride of every dimension is 1, create tfl.slice and return early.
+    // Otherwise, create tfl.strided_slice instead.
+    if (llvm::all_of(strides, [](int64_t stride) { return stride == 1; })) {
+      rewriter.replaceOpWithNewOp<TFL::SliceOp>(
+          op, output_type, op.getOperand(), start_idx, slice_size);
+      return;
+    }
+
+    SmallVector<int32_t> stride_i32 = CastI64ArrayToI32(strides).value();
+    auto stride_attr = DenseIntElementsAttr::get(idx_type, stride_i32);
+    auto stride = rewriter.create<arith::ConstantOp>(op.getLoc(), stride_attr);
+    rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
+        op, output_type, op.getOperand(), start_idx, slice_size, stride,
+        /*begin_mask=*/0, /*end_mask=*/0,
+        /*ellipsis_mask=*/0, /*new_axis_mask=*/0, /*shrink_axis_mask=*/0,
+        /*offset=*/false);
+  }
+};
+
 void UniformQuantizedStablehloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
@@ -1461,7 +1515,7 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
                RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
                RewriteTransposeOp, RewriteReshapeOp, RewriteSelectOp,
-               RewriteConcatenateOp, RewritePadOp>(&ctx);
+               RewriteConcatenateOp, RewritePadOp, RewriteSliceOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

@@ -732,3 +732,75 @@ func.func @float_pad(%arg0: tensor<2x3xf32>, %arg1: tensor<f32>) -> tensor<4x5xf
 
 // CHECK-NOT: tfl.padv2
 // CHECK: stablehlo.pad
+
+// -----
+
+// Test that a quantized stablehlo.slice is converted to tfl.slice when stride
+// is 1.
+
+// CHECK-LABEL: slice
+// CHECK-SAME: %[[ARG0:.*]]: tensor<3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @slice(
+    %arg0: tensor<3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = "stablehlo.slice"(%arg0) {
+    start_indices = array<i64: 1, 2>,
+    limit_indices = array<i64: 3, 4>,
+    strides = array<i64: 1, 1>
+  } : (
+    tensor<3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK-DAG: %[[START:.*]] = arith.constant dense<{{\[1, 2\]}}> : tensor<2xi32>
+// CHECK-DAG: %[[SIZE:.*]] = arith.constant dense<2> : tensor<2xi32>
+// CHECK: %[[SLICE:.*]] = "tfl.slice"(%[[ARG0]], %[[START]], %[[SIZE]]) : (tensor<3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[SLICE]]
+
+// -----
+
+// Test that a quantized stablehlo.slice is converted to tfl.strided_slice when
+// stride is not 1.
+
+// CHECK-LABEL: strided_slice
+// CHECK-SAME: %[[ARG0:.*]]: tensor<3x6x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @strided_slice(
+    %arg0: tensor<3x6x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>> {
+  %0 = "stablehlo.slice"(%arg0) {
+    start_indices = array<i64: 0, 2>,
+    limit_indices = array<i64: 3, 6>,
+    strides = array<i64: 2, 3>
+  } : (
+    tensor<3x6x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  ) -> tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+  return %0 : tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+}
+
+// CHECK: %[[START:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[0, 2]> : tensor<2xi32>
+// CHECK: %[[SIZE:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[3, 4]> : tensor<2xi32>
+// CHECK: %[[STRIDE:.*]] = arith.constant
+// CHECK{LITERAL}: dense<[2, 3]> : tensor<2xi32>
+// CHECK: %[[SLICE:.*]] = "tfl.strided_slice"(%[[ARG0]], %[[START]], %[[SIZE]], %[[STRIDE]]) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<3x6x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[SLICE]]
+
+// -----
+
+// Test that a float stablehlo.slice is not converted to tfl.slice.
+
+// CHECK-LABEL: float_slice
+func.func @float_slice(%arg0: tensor<3x4xf32>) -> tensor<2x2xf32> {
+  %0 = "stablehlo.slice"(%arg0) {
+    start_indices = array<i64: 1, 2>,
+    limit_indices = array<i64: 3, 4>,
+    strides = array<i64: 1, 1>
+  } : (tensor<3x4xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// CHECK-NOT: tfl.slice
+// CHECK-NOT: tfl.strided_slice
+// CHECK: stablehlo.slice
