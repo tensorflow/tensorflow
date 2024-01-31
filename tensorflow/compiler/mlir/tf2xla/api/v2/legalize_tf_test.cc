@@ -49,7 +49,6 @@ using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 using tpu::TPUCompileMetadataProto;
-using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_time";
