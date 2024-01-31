@@ -752,3 +752,14 @@ func.func @testGlobalIterIdNotFolded() -> (tensor<i64>) {
   // CHECK: return %[[X]]
   func.return %0: tensor<i64>
 }
+
+// -----
+
+// CHECK-LABEL: func @testReadFileOpNotFolded
+func.func @testReadFileOpNotFolded() -> (tensor<!tf_type.string>) {
+  %0 = "tf.Const"() { value = dense<"filepath"> : tensor<!tf_type.string> } : () -> tensor<!tf_type.string>
+  // CHECK: %[[X:.*]] = "tf.ReadFile"
+  %1 = "tf.ReadFile"(%0) : (tensor<!tf_type.string>) -> tensor<!tf_type.string>
+  // CHECK: return %[[X]]
+  func.return %1: tensor<!tf_type.string>
+}
