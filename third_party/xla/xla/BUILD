@@ -7,6 +7,10 @@ load(
     "tf_proto_library",
 )
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -1104,6 +1108,7 @@ cc_library(
     ],
     hdrs = ["debug_options_flags.h"],
     copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps =
         [
@@ -1117,7 +1122,9 @@ cc_library(
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:protobuf",
             "@local_tsl//tsl/util:command_line_flags",
-        ],
+        ] + if_cuda_is_configured([
+            "@local_config_cuda//cuda:cuda_headers",
+        ]),
 )
 
 cc_library(
