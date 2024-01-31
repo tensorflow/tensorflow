@@ -90,23 +90,12 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns whether unnested_hlo is an input fusion whose root is either a slice
-// or a tuple of slices. If verify_no_strides is true, returns false unless all
-// ROOT slices have no strides.
-bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
-                          bool verify_no_strides);
-
 // Returns true if `instr` is a non-strided slice.
 bool IsSliceWithUnitStrides(const HloInstruction* instr);
 
 // Returns true if `instr` is a slice instruction and produces a contiguous
 // slice.
 bool IsContiguousSlice(const HloInstruction& instr);
-
-// Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(absl::string_view fmt,
-                        absl::Span<llvm::Value* const> arguments,
-                        llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
@@ -130,11 +119,6 @@ llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
-
-template <typename T>
-std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
-  return std::vector<T>(v.begin(), v.end());
-}
 
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
@@ -200,11 +184,6 @@ struct TransposeDescription {
   TransposeDescription(const HloInstruction* instr, Vector3 dimensions,
                        Vector3 permutation)
       : instr(instr), dimensions(dimensions), permutation(permutation) {}
-
-  std::string ToString() const {
-    return absl::StrCat("dimensions=", VectorString(dimensions),
-                        ", permutation=", VectorString(permutation));
-  }
 
   // Transpose instruction input shape.
   const Shape& input_shape() const { return instr->operand(0)->shape(); }

@@ -172,31 +172,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTopKCustomCallTarget;
 }
 
-bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
-                          bool verify_no_strides) {
-  auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
-  if (!fusion) {
-    return false;
-  }
-
-  auto is_non_strided = [](mlir::DenseIntElementsAttr strides) -> bool {
-    return absl::c_all_of(
-        strides, [](const llvm::APInt& stride) { return stride == 1; });
-  };
-
-  for (mlir::Value value : fusion.getFusionResults()) {
-    auto slice =
-        mlir::dyn_cast_or_null<mlir::mhlo::SliceOp>(value.getDefiningOp());
-    if (!slice) {
-      return false;
-    }
-    if (verify_no_strides && !is_non_strided(slice.getStrides())) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool IsSliceWithUnitStrides(const HloInstruction* instr) {
   auto slice = DynCast<HloSliceInstruction>(instr);
   return slice && absl::c_all_of(slice->slice_strides(),
@@ -219,62 +194,6 @@ bool IsContiguousSlice(const HloInstruction& instr) {
     if (dst_shape.dimensions(dim) != 1) return false;
   }
   return true;
-}
-
-// This emits a device-side call to
-// "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
-// http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
-llvm::Value* EmitPrintf(absl::string_view fmt,
-                        absl::Span<llvm::Value* const> arguments,
-                        llvm::IRBuilder<>* builder) {
-  std::vector<llvm::Type*> argument_types;
-
-  // Variadic arguments implicit promotion [1] converts float to double,
-  // and bool/char/short are converted to int.
-  // [1] https://en.cppreference.com/w/cpp/language/variadic_arguments
-  auto requires_int32_promotion = [](llvm::Type* type) {
-    return type->isIntegerTy(/*BitWidth=*/1) ||
-           type->isIntegerTy(/*BitWidth=*/8) ||
-           type->isIntegerTy(/*BitWidth=*/16);
-  };
-  auto requires_double_promotion = [](llvm::Type* type) {
-    return type->isFloatingPointTy();
-  };
-
-  for (auto argument : arguments) {
-    llvm::Type* type = argument->getType();
-    if (requires_double_promotion(type)) {
-      argument_types.push_back(builder->getDoubleTy());
-    } else if (requires_int32_promotion(type)) {
-      argument_types.push_back(builder->getInt32Ty());
-    } else {
-      argument_types.push_back(type);
-    }
-  }
-  auto* arguments_type = llvm::StructType::create(argument_types);
-  llvm::Value* arguments_ptr = builder->CreateAlloca(arguments_type);
-  for (size_t i = 0; i < arguments.size(); ++i) {
-    llvm::Value* value = arguments[i];
-    llvm::Type* type = value->getType();
-    if (requires_double_promotion(type)) {
-      value = builder->CreateFPCast(value, builder->getDoubleTy());
-    } else if (requires_int32_promotion(type)) {
-      value = builder->CreateIntCast(value, builder->getInt32Ty(),
-                                     /*isSigned=*/true);
-    }
-    builder->CreateStore(
-        value,
-        builder->CreateGEP(arguments_type, arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
-  }
-  llvm::Type* ptr_ty = builder->getPtrTy();
-  return builder->CreateCall(
-      builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
-          "vprintf",
-          llvm::FunctionType::get(builder->getInt32Ty(), {ptr_ty, ptr_ty},
-                                  /*isVarArg=*/false)),
-      {builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)),
-       builder->CreatePointerCast(arguments_ptr, ptr_ty)});
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.
@@ -1041,10 +960,6 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
     default:
       return false;
   }
-}
-
-static bool IsParameter(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kParameter;
 }
 
 static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
