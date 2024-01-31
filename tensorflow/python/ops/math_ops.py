@@ -4990,11 +4990,22 @@ def sampled_addmm(indices,
   """
   indices = ops.convert_to_tensor(indices)
   values = ops.convert_to_tensor(values, dtype=output_type)
-  dense_shape = ops.convert_to_tensor(dense_shape)
   mat1 = ops.convert_to_tensor(mat1, dtype=output_type)
   mat2 = ops.convert_to_tensor(mat2, dtype=output_type)
 
-  # TODO(mattbahr): use dense_shape to validate the shapes of mat1 and mat2
+  mat1_shape = mat1.shape
+  mat2_shape = mat2.shape
+  
+  if mat1_shape is None:
+    mat1_shape = array_ops.shape(mat1)
+  if mat2_shape is None:
+    mat2_shape = array_ops.shape(mat2)
+
+  dense_rows = mat1_shape[-2]
+  dense_cols = mat2_shape[-1]
+
+  # TODO(mattbahr): Use dense_shape to validate matrix shapes
+  dense_shape = constant_op.constant([dense_rows, dense_cols])
 
   # Extract row and column indices
   batch_indices = indices[..., :-2]
@@ -5002,11 +5013,17 @@ def sampled_addmm(indices,
   col_indices = array_ops.concat([batch_indices, 
                                   indices[..., -1:]], axis=-1)
 
-  # Extract rows and columns 
+  # Calculate batch dimensions
+  rank = mat1.ndim
+  if rank is None:
+    rank = array_ops.rank(mat1)
+  batch_dims = rank - 2
+
+  # Extract rows and columns
   rows = array_ops.gather_nd(mat1, row_indices, 
-                             batch_dims=array_ops.rank(mat1) - 2)
+                             batch_dims=batch_dims)
   cols = array_ops.gather_nd(array_ops.matrix_transpose(mat2), col_indices,
-                             batch_dims=array_ops.rank(mat2) - 2)
+                             batch_dims=batch_dims)
 
   # Calculate dot product for the selected rows and columns
   dot = reduce_sum(rows * cols, axis=-1)
