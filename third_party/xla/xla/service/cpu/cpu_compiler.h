@@ -96,38 +96,6 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   bool use_mlir_hlo_lowering_ = false;
 };
 
-class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
- public:
-  CpuXlaRuntimeAotCompilationResult(
-      HloModuleProto hlo, std::string_view obj_file,
-      std::string_view mlir_module,
-      const XlaFrameworkMapping& xla_framework_mapping);
-
-  explicit CpuXlaRuntimeAotCompilationResult(
-      XlaRuntimeCpuExecutableProto executable)
-      : xla_runtime_cpu_executable_(executable) {}
-
-  StatusOr<std::string> SerializeAsString() const override {
-    return xla_runtime_cpu_executable_.SerializeAsString();
-  }
-
-  static StatusOr<std::unique_ptr<CpuXlaRuntimeAotCompilationResult>>
-  FromString(const std::string& serialized) {
-    XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
-    if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized JitRtExecutableProto.");
-    }
-    return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
-        xla_runtime_cpu_executable);
-  }
-
-  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) const override;
-
- private:
-  XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable_;
-};
-
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
   CpuAotCompilationResult(
