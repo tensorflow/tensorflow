@@ -164,7 +164,8 @@ void PrepareQuantizePass::runOnOperation() {
   ApplyQuantizationParamsPropagation(
       func, /*is_signed=*/true, bit_width_, !enable_per_channel_quantization_,
       GetStableHloOpQuantSpec, GetStableHloQuantScaleSpec,
-      /*infer_tensor_ranges=*/true, /*legacy_float_scale=*/false);
+      /*infer_tensor_ranges=*/true, /*legacy_float_scale=*/false,
+      /*is_qdq_conversion=*/false);
 
   // Restore constants as stablehlo::ConstantOp.
   RewritePatternSet patterns_2(ctx);
