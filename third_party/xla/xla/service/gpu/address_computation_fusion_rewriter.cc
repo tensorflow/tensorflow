@@ -30,11 +30,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -175,7 +177,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto instructions = module->entry_computation()->MakeInstructionPostOrder();
+  if (!module->has_schedule()) return Internal("module is not scheduled");
   bool changed = false;
 
   absl::flat_hash_map<HloInstruction*, absl::InlinedVector<HloInstruction*, 8>>
@@ -195,17 +197,34 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     }
   }
 
+  HloSchedule& schedule = module->schedule();
   for (auto& kv : matches) {
     auto captures = GetPatternCaptures(kv.second);
     std::reverse(kv.second.begin(), kv.second.end());
+
     TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                         CreateFusionBody(module, kv.second, captures));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * fusion,
         CreateFusionInstruction(module, kv.first, captures, fusion_body));
+
+    // As we are running after scheduling we have to keep it valid.
     HloComputation* parent = kv.first->parent();
+
+    // Update schedule to replace the custom call instruction with the fusion
+    // instruction.
+    // Removal of the rest of the instructions in the sequence is handled by
+    // schedule update below.
+    HloInstructionSequence& sequence = schedule.GetOrCreateSequence(parent);
+    sequence.replace_instruction(kv.first, fusion);
+
+    // TODO(vuson): handle control dependencies
     TF_RETURN_IF_ERROR(parent->ReplaceInstruction(kv.first, fusion));
     changed = true;
+  }
+
+  if (changed) {
+    TF_RETURN_IF_ERROR(module->schedule().Update());
   }
 
   return changed;
