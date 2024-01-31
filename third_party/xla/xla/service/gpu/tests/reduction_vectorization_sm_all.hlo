@@ -189,7 +189,7 @@ HloModule ReduceEvenColumns, is_scheduled=true
 
 // CHECK-SM70-LABEL: .entry wrapped_reduce_even_col
 // CHECK-SM70-COUNT-2: ld.global.nc.v2.f32
-// CHECK-SM70-COUNT-2: ld.global.nc.f32
+// CHECK-SM70-COUNT-2: ld.global.nc.v2.f32
 
 %max_ {
   %x = f32[] parameter(0)

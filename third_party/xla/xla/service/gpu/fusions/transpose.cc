@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -78,17 +79,13 @@ TilingScheme ComputeTransposeTilingScheme(
   // input_dims        {200, 700, 300}   {700, 300, 200}
   // tiled_shape       {200, 700, 300}   {300, 700, 200}
   // tile -> input     {0, 1, 2}         {1, 0, 2}
-  Vector3 tiled_shape{input_dims[1 - permutation[2]], transposed_dims[2],
-                      input_dims[2]};
+  absl::InlinedVector<int64_t, 4> tiled_shape{
+      input_dims[1 - permutation[2]], transposed_dims[2], input_dims[2]};
 
-  Vector3 tile_sizes{1, WarpSize() / kNumRows, 1};
-  Vector3 num_threads{1, kNumRows, WarpSize()};
+  absl::InlinedVector<int64_t, 4> tile_sizes{1, WarpSize() / kNumRows, 1};
+  absl::InlinedVector<int64_t, 4> num_threads{1, kNumRows, WarpSize()};
 
-  return TilingScheme(
-      /*dims_in_elems=*/tiled_shape,
-      /*tile_sizes=*/tile_sizes,
-      /*num_threads=*/num_threads,
-      /*vector_size=*/1);
+  return TilingScheme(tiled_shape, tile_sizes, num_threads);
 }
 
 Vector3 TileToInoutPermutation(Vector3 permutation) {
@@ -192,11 +189,11 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   auto input_shape = Permute(tiling_scheme_.GetShape(), tile_to_inout);
   auto tile_generator = [&](const TilingThreadIdInfo& thread_id_info,
                             const llvm_ir::IrArray::Index& tile_start_index,
-                            std::array<llvm::Value*, 3> tile_dimensions) {
+                            absl::Span<llvm::Value* const> tile_dimensions) {
     // Copy input parameter values to shared memory buffers:
     // tile[thread_id_y, thread_id_x] = input[index]
     EmitTile(builder, tiling_scheme_, thread_id_info, tile_dimensions,
-             [&](std::array<llvm::Value*, 3> index_in_tile) {
+             [&](absl::Span<llvm::Value* const> index_in_tile) {
                auto index = PermuteIndex(
                    tile_start_index.AddOffset(index_in_tile, builder),
                    tile_to_inout);
@@ -237,7 +234,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
     EmitTile(
         builder, tiling_scheme_, thread_id_info, transposed_tile_dimensions,
         /*emit_elem_function=*/
-        [&](std::array<llvm::Value*, 3> index_in_tile) {
+        [&](absl::Span<llvm::Value* const> index_in_tile) {
           auto index =
               PermuteIndex(output_tile_index.AddOffset(index_in_tile, builder),
                            tile_to_inout);
