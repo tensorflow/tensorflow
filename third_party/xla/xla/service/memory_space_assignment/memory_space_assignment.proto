@@ -40,6 +40,10 @@ message SlicedPrefetchOptions {
   // The threshold for max_slices after which we limit the permutations of slice
   // times that we try when placing a sliced allocation.
   uint32 all_slice_time_permutations_threshold = 4;
+
+  // The preferred slize size for MSA sliced prefetches. 0 means there is no
+  // preferred slice size, in which case, we'll try to slice into max_slices.
+  uint64 preferred_slice_size = 5;
 }
 
 // Options for memory-bound loop optimizations in memory space assignment. If

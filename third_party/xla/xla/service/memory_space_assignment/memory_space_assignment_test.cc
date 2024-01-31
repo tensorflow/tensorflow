@@ -11445,9 +11445,11 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   // An HloInstruction* matcher for matching the asynchronous sliced copies
   // produced by MSA. In particular, the matcher performs the following
   // checks:
-  // - The copy is concluded with a concat-bitcast custom call
+  // - The copy is concluded with a concat-bitcast custom call, or a
+  //   bitcast of a concat-bitcast custom call if expect_bitcasted_io is true
   // - The operands to the concat-bitcast are asynchronous slices of the
-  //   expected operand
+  //   expected operand, or asynchronous slices of a bitcast of the expected
+  //   operand if expect_bitcasted_io is true
   // - The number of slices is as expected (i.e.,
   //   expected_slice_params_per_slice_in_spatial_order_.size())
   // - The copy is from and to the correct memory spaces
@@ -11465,47 +11467,57 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     AsyncSlicedCopy(int64_t to_space, int64_t from_space,
                     std::vector<std::vector<SliceParam>>
                         expected_slice_params_per_slice_in_spatial_order,
-                    ::testing::Matcher<const HloInstruction*> operand)
+                    ::testing::Matcher<const HloInstruction*> operand,
+                    bool expect_bitcasted_io)
         : to_space_(to_space),
           from_space_(from_space),
           expected_slice_params_per_slice_in_spatial_order_(
               std::move(expected_slice_params_per_slice_in_spatial_order)),
-          custom_call_matcher_(
-              memory_space_assignment::kConcatBitcastCustomCall,
-              std::vector<::testing::Matcher<const HloInstruction*>>(
-                  expected_slice_params_per_slice_in_spatial_order_.size(),
-                  op::AsyncDone(op::AsyncStart(operand)))) {}
+          base_hlo_matcher_(CreateBaseHloMatcher(
+              operand, expected_slice_params_per_slice_in_spatial_order_.size(),
+              expect_bitcasted_io)),
+          expect_bitcasted_io_(expect_bitcasted_io) {}
 
     bool MatchAndExplain(
         const HloInstruction* instruction,
         ::testing::MatchResultListener* listener) const override {
-      // Match the custom call.
-      if (!custom_call_matcher_.MatchAndExplain(instruction, listener)) {
+      // Match opcodes and number of operands.
+      if (!base_hlo_matcher_.MatchAndExplain(instruction, listener)) {
         return false;
       }
 
-      // Check if the custom call has the proper memory space.
-      const HloInstruction* concat_bitcast = instruction;
-      if (!MatchMemorySpace(concat_bitcast, to_space_, "concat-bitcast",
-                            listener)) {
+      // Check if the copied result has the proper memory space.
+      if (!MatchMemorySpace(instruction, to_space_, "copy result", listener)) {
         return false;
       }
 
-      // Check if the copied tensor has the proper memory space.
+      // Find some instructions in the async copy.
+      const HloInstruction* concat_bitcast =
+          (expect_bitcasted_io_ ? instruction->operand(0) : instruction);
+      VLOG(2) << "AsyncSlicedCopy identified the concat-bitcast as "
+              << concat_bitcast->name();
       const HloInstruction* copy_operand =
           concat_bitcast->operand(0)->operand(0)->operand(0);
-      if (!MatchMemorySpace(copy_operand, from_space_, "copy operand",
+      const HloInstruction* original_copy_operand =
+          (expect_bitcasted_io_ ? copy_operand->operand(0) : copy_operand);
+      VLOG(2) << "AsyncSlicedCopy identified the copy operand as "
+              << copy_operand->name() << ", and the original copy operand as "
+              << original_copy_operand->name();
+
+      // Check if the copied tensor has the proper memory space.
+      if (!MatchMemorySpace(original_copy_operand, from_space_, "copy operand",
                             listener)) {
         return false;
       }
 
       // Check if the copied tensor retains its shape.
-      if (!Shape::Equal().IgnoreMemorySpaceInLayout()(concat_bitcast->shape(),
-                                                      copy_operand->shape())) {
+      if (!Shape::Equal().IgnoreMemorySpaceInLayout()(
+              instruction->shape(), original_copy_operand->shape())) {
         *listener << " has a shape of "
-                  << copy_operand->shape().ToString(/*print_layout=*/true)
+                  << original_copy_operand->shape().ToString(
+                         /*print_layout=*/true)
                   << " before copying but a shape of "
-                  << concat_bitcast->shape().ToString(/*print_layout=*/true)
+                  << instruction->shape().ToString(/*print_layout=*/true)
                   << " after copying (ignoring memory space)";
 
         return false;
@@ -11581,7 +11593,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     }
 
     void DescribeTo(std::ostream* os) const override {
-      custom_call_matcher_.DescribeTo(os);
+      base_hlo_matcher_.DescribeTo(os);
       std::vector<std::string> slice_parameters_per_operand;
       for (int op_idx = 0;
            op_idx < expected_slice_params_per_slice_in_spatial_order_.size();
@@ -11609,6 +11621,22 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     }
 
    private:
+    static ::testing::Matcher<const HloInstruction*> CreateBaseHloMatcher(
+        ::testing::Matcher<const HloInstruction*> operand, int64_t num_slices,
+        bool expect_bitcasted_io) {
+      if (expect_bitcasted_io) {
+        return op::Bitcast(op::CustomCall(
+            memory_space_assignment::kConcatBitcastCustomCall,
+            std::vector<::testing::Matcher<const HloInstruction*>>(
+                num_slices,
+                op::AsyncDone(op::AsyncStart(op::Bitcast(operand))))));
+      }
+      return op::CustomCall(
+          memory_space_assignment::kConcatBitcastCustomCall,
+          std::vector<::testing::Matcher<const HloInstruction*>>(
+              num_slices, op::AsyncDone(op::AsyncStart(operand))));
+    }
+
     static bool MatchMemorySpace(const HloInstruction* instruction,
                                  int64_t expected_memory_space,
                                  std::string_view error_message_identifier,
@@ -11636,7 +11664,8 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     int64_t from_space_;
     std::vector<std::vector<SliceParam>>
         expected_slice_params_per_slice_in_spatial_order_;
-    ::xla::testing::HloCustomCallMatcher custom_call_matcher_;
+    ::testing::Matcher<const HloInstruction*> base_hlo_matcher_;
+    bool expect_bitcasted_io_;
   };
 
   // Returns an AsyncSlicedCopy matcher.
@@ -11644,10 +11673,11 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       int64_t to_space, int64_t from_space,
       std::vector<std::vector<SliceParam>>
           expected_slice_params_per_slice_in_spatial_order,
-      ::testing::Matcher<const HloInstruction*> operand_matcher) {
+      ::testing::Matcher<const HloInstruction*> operand_matcher,
+      bool expect_bitcasted_io = false) {
     return ::testing::MakeMatcher(new AsyncSlicedCopy(
         to_space, from_space, expected_slice_params_per_slice_in_spatial_order,
-        operand_matcher));
+        operand_matcher, expect_bitcasted_io));
   }
 
   // We make our own matcher for SlicedPrefetchOptions to work around the fact
@@ -12041,6 +12071,9 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       std::string_view slices_start_after_instruction_name,
       std::string_view slices_done_before_instruction_name,
       bool expect_slices_started_at_different_times) {
+    CHECK(concat_bitcast->IsCustomCall(
+        memory_space_assignment::kConcatBitcastCustomCall));
+
     // Get the schedule.
     auto entry_schedule =
         module.schedule().sequence(module.entry_computation()).instructions();
@@ -12114,29 +12147,39 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   }
 
   // Returns OkStatus iff:
-  // - When the slices of concat_bitcast are sorted in expected spatial order,
-  //   they are assigned chunks that spatially fall in the same order AND
-  // - The slices of concat_bitcast are assigned contiguous memory chunks AND
-  // - The concat_bitcast is assigned a chunk that is the concatenation of the
-  //   slice chunks AND
-  // - The size of the chunk assigned to the concat_bitcast has the same size
-  //   as the instruction's shape
+  // - Each slice is assigned a chunk that is the same size as the slice
+  //   instruction's shape.
+  // - When the slices of sliced_copy_result are sorted in expected spatial
+  //   order, they are assigned chunks that spatially fall in the same order AND
+  // - The slices of sliced_copy_result are assigned contiguous memory chunks
+  //   AND
+  // - The sliced_copy_result is assigned a chunk that is the concatenation of
+  //   the slice chunks AND
+  // - The size of the chunk assigned to the sliced_copy_result has the same
+  //   size as the instruction's shape
   static Status CheckSliceChunks(const PresetAssignments& assignments,
-                                 const HloInstruction* concat_bitcast) {
+                                 const HloInstruction* sliced_copy_result,
+                                 bool expect_bitcasted_io = false) {
+    const HloInstruction* concat_bitcast =
+        (expect_bitcasted_io ? sliced_copy_result->operand(0)
+                             : sliced_copy_result);
+    CHECK(concat_bitcast->IsCustomCall(
+        memory_space_assignment::kConcatBitcastCustomCall));
+
     absl::flat_hash_map<const HloInstruction*, Chunk> slices_to_chunks;
-    std::optional<Chunk> concat_bitcast_chunk = std::nullopt;
+    std::optional<Chunk> result_chunk = std::nullopt;
 
     for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
          assignments.chunks()) {
-      if (position_chunk_pair.first.instruction == concat_bitcast) {
-        if (concat_bitcast_chunk.has_value()) {
+      if (position_chunk_pair.first.instruction == sliced_copy_result) {
+        if (result_chunk.has_value()) {
           return FailedPrecondition(
-              "%s", absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+              "%s", absl::StrCat("Sliced copy ", sliced_copy_result->name(),
                                  " is assigned more than one chunk: ",
-                                 concat_bitcast_chunk->ToString(), " and ",
+                                 result_chunk->ToString(), " and ",
                                  position_chunk_pair.second.ToString()));
         }
-        concat_bitcast_chunk = position_chunk_pair.second;
+        result_chunk = position_chunk_pair.second;
       }
       for (const HloInstruction* slice : concat_bitcast->operands()) {
         if (position_chunk_pair.first.instruction == slice) {
@@ -12155,7 +12198,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
     std::vector<const HloInstruction*> sorted_slices =
         SortSlicesInExpectedSpatialOrder(concat_bitcast);
-    VLOG(1) << "Chunk assignments for " << concat_bitcast->name() << ":\n"
+    VLOG(1) << "Chunk assignments for " << sliced_copy_result->name() << ":\n"
             << absl::StrJoin(
                    sorted_slices, "\n",
                    [&](std::string* out, const HloInstruction* slice) {
@@ -12167,16 +12210,16 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                      absl::StrAppend(out, "  slice ", slice->name(), ": ",
                                      chunk);
                    })
-            << "\n  concat-bitcast " << concat_bitcast->name() << ": "
-            << (concat_bitcast_chunk.has_value()
-                    ? concat_bitcast_chunk->ToString()
-                    : "no chunk assigned");
+            << "\n  sliced copy result " << sliced_copy_result->name() << ": "
+            << (result_chunk.has_value() ? result_chunk->ToString()
+                                         : "no chunk assigned");
     if (sorted_slices.empty()) {
       return OkStatus();
     }
 
     // Check that slices are assigned contiguous chunks that are spatially
-    // ordered according to sorted_slices.
+    // ordered according to sorted_slices. Also make sure that slices are
+    // assigned chunks with sizes that match their shape.
     int64_t previous_end = -1;
     int64_t min_offset = std::numeric_limits<int64_t>::max();
     int64_t max_limit = std::numeric_limits<int64_t>::min();
@@ -12188,6 +12231,16 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             absl::StrCat("Slice ", slice->name(), " is not assigned a chunk"));
       }
       const Chunk& chunk = it->second;
+
+      if (chunk.size != ShapeSize(slice->shape())) {
+        return FailedPrecondition(
+            "%s",
+            absl::StrCat("Slice ", slice->name(), " is assigned chunk ",
+                         chunk.ToString(), " with size ", chunk.size,
+                         ". Expected a size of ", ShapeSize(slice->shape()),
+                         ", to match its shape."));
+      }
+
       if (previous_end != -1 && chunk.offset != previous_end) {
         return FailedPrecondition(
             "%s", absl::StrCat(
@@ -12200,31 +12253,29 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       max_limit = std::max(max_limit, chunk.chunk_end());
     }
 
-    // Check that the concat_bitcast is assigned a chunk that is the
+    // Check that the sliced copy result is assigned a chunk that is the
     // concatenation of the slice chunks.
-    if (!concat_bitcast_chunk.has_value()) {
+    if (!result_chunk.has_value()) {
       return FailedPrecondition(
-          "%s", absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+          "%s", absl::StrCat("Sliced copy result ", sliced_copy_result->name(),
                              " is not assigned a chunk."));
     }
-    Chunk expected_concat_bitcast_chunk =
-        Chunk::FromOffsetEnd(min_offset, max_limit);
-    if (!(*concat_bitcast_chunk == expected_concat_bitcast_chunk)) {
+    Chunk expected_result_chunk = Chunk::FromOffsetEnd(min_offset, max_limit);
+    if (!(*result_chunk == expected_result_chunk)) {
       return FailedPrecondition(
-          "%s",
-          absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
-                       " is assigned chunk ", concat_bitcast_chunk->ToString(),
-                       " but its expected to be assigned chunk ",
-                       expected_concat_bitcast_chunk.ToString()));
+          "%s", absl::StrCat("Sliced copy result ", sliced_copy_result->name(),
+                             " is assigned chunk ", result_chunk->ToString(),
+                             ", but it's expected to be assigned chunk ",
+                             expected_result_chunk.ToString()));
     }
-    if (concat_bitcast_chunk->size != ShapeSize(concat_bitcast->shape())) {
+    if (result_chunk->size != ShapeSize(sliced_copy_result->shape())) {
       return FailedPrecondition(
-          "%s",
-          absl::StrCat(
-              "Concat-bitcast ", concat_bitcast->name(), " is assigned chunk ",
-              concat_bitcast_chunk->ToString(), " with size ",
-              concat_bitcast_chunk->size, ". Expected a size of ",
-              ShapeSize(concat_bitcast->shape()), ", to match its shape."));
+          "%s", absl::StrCat("Sliced copy result ", sliced_copy_result->name(),
+                             " is assigned chunk ", result_chunk->ToString(),
+                             " with size ", result_chunk->size,
+                             ". Expected a size of ",
+                             ShapeSize(sliced_copy_result->shape()),
+                             ", to match its shape."));
     }
 
     return OkStatus();
@@ -12242,6 +12293,9 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             const memory_space_assignment::SlicedPrefetchOptions& options) {
           return slice_proposer_.ProposeSlices(shape, options);
         };
+    options_.get_equivalent_s8_shape_fn = [](const Shape& original_shape) {
+      return ShapeUtil::MakeShape(S8, {ShapeSize(original_shape)});
+    };
   }
 
   bool allocate_across_sequential_calls() const override { return true; }
@@ -13139,5 +13193,96 @@ TEST_F(RepackingTest, Colocations) {
   EXPECT_EQ(f.GetColocationsCount(), 3);
   EXPECT_THAT(f.GetColocations(), UnorderedElementsAre(&d, &e, &f));
 }
+
+TEST_F(SlicedPrefetchTest, UniformSizedSlicing) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+  p2 = f32[8,16] parameter(2)
+  constant1 = f32[] constant(1.1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+  d = f32[8,8] tanh(c)
+  e = f32[8,8] tanh(d)
+  f = f32[8,8] tanh(e)
+  g = f32[8,8] tanh(f)
+  h = f32[8,8] tanh(g)
+
+  x = f32[8,8] add(p1, h)
+  padded_x = f32[8,16] pad(x, constant1), padding=0_0x0_8
+  ROOT r = f32[8,16] add(padded_x, p2)
+})zz";
+  const Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
+  const Shape s8_128 = ShapeUtil::MakeShape(S8, {128});
+
+  options_.sliced_prefetch_options.set_max_slices(100000);
+  options_.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);
+
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
+                                          options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal(
+              {s8_128, std::vector<SliceParam>({{0, 128}}), ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{128, 256}}),
+                         ShapeSize(s8_128)}),
+      })));
+
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_8_16, EqualsSlicedPrefetchOptions(
+                                          options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal(
+              {s8_128, std::vector<SliceParam>({{0, 128}}), ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{128, 256}}),
+                         ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{256, 384}}),
+                         ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{384, 512}}),
+                         ShapeSize(s8_128)}),
+      })));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/100, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto root = module->entry_computation()->root_instruction();
+
+  // Expect p1 to be asynchronously copied via 2 slices, and p2 to be
+  // asynchronously copied via 4 slices. We expect p1 and p2 to be bitcast
+  // before slicing and after slicing.
+  EXPECT_THAT(
+      root,
+      op::Add(op::Pad(op::Add(IsAsyncSlicedCopy(
+                                  kAlternateMemorySpace, kDefaultMemorySpace,
+                                  {{{0, 128}}, {{128, 256}}}, op::Parameter(1),
+                                  /*expect_bitcasted_io=*/true),
+                              /*don't care*/ _),
+                      /*padding constant*/ _),
+              IsAsyncSlicedCopy(
+                  kAlternateMemorySpace, kDefaultMemorySpace,
+                  {{{0, 128}}, {{128, 256}}, {{256, 384}}, {{384, 512}}},
+                  op::Parameter(2), /*expect_bitcasted_io=*/true)));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1),
+                                /*expect_bitcasted_io=*/true));
+  TF_EXPECT_OK(CheckSliceChunks(*assignments,
+                                root->operand(0)->operand(0)->operand(0),
+                                /*expect_bitcasted_io=*/true));
+}
+
 }  // namespace
 }  // namespace xla

@@ -47,6 +47,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:buffer_value",
