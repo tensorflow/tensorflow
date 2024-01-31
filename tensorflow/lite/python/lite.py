@@ -31,7 +31,7 @@ from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
-from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metdata_fb
+from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import convert_graphdef as _convert_graphdef
 from tensorflow.lite.python.convert import convert_graphdef_with_arrays as _convert_graphdef_with_arrays
@@ -602,7 +602,7 @@ class TFLiteConverterBase:
 
   # Stores the original model type temporarily to transmit the information
   # from the factory class methods to TFLiteConverterBase init function.
-  _original_model_type = conversion_metdata_fb.ModelType.NONE
+  _original_model_type = conversion_metadata_fb.ModelType.NONE
 
   def __init__(self):
     self.optimizations = set()
@@ -639,9 +639,9 @@ class TFLiteConverterBase:
     self.experimental_use_stablehlo_quantizer = False
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
-    self._metadata = conversion_metdata_fb.ConversionMetadataT()
-    self._metadata.environment = conversion_metdata_fb.EnvironmentT()
-    self._metadata.options = conversion_metdata_fb.ConversionOptionsT()
+    self._metadata = conversion_metadata_fb.ConversionMetadataT()
+    self._metadata.environment = conversion_metadata_fb.EnvironmentT()
+    self._metadata.options = conversion_metadata_fb.ConversionOptionsT()
     self._metadata.environment.tensorflowVersion = versions.__version__
     self._metadata.environment.modelType = self._get_original_model_type()
     self._experimental_enable_dynamic_update_slice = False
@@ -931,7 +931,7 @@ class TFLiteConverterBase:
   @classmethod
   def _set_original_model_type(cls, model_type):
     """Stores the original model type."""
-    if model_type == conversion_metdata_fb.ModelType.NONE:
+    if model_type == conversion_metadata_fb.ModelType.NONE:
       raise ValueError("The original model type should be specified.")
     cls._original_model_type = model_type
 
@@ -939,7 +939,7 @@ class TFLiteConverterBase:
     """One-time getter to return original model type and set it to NONE."""
     model_type = TFLiteConverterBase._original_model_type
     TFLiteConverterBase._original_model_type = (
-        conversion_metdata_fb.ModelType.NONE
+        conversion_metadata_fb.ModelType.NONE
     )
     return model_type
 
@@ -1025,27 +1025,27 @@ class TFLiteConverterBase:
 
     if quant_mode.is_post_training_float16_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16
+          conversion_metadata_fb.ModelOptimizationMode.PTQ_FLOAT16
       )
 
     if quant_mode.is_post_training_dynamic_range_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE
+          conversion_metadata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE
       )
 
     if quant_mode.is_post_training_int8_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER
+          conversion_metadata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER
       )
 
     if quant_mode.is_post_training_int16x8_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16
+          conversion_metadata_fb.ModelOptimizationMode.PTQ_INT16
       )
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
+          conversion_metadata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):
@@ -2049,7 +2049,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.TF_CONCRETE_FUNCTIONS
+        conversion_metadata_fb.ModelType.TF_CONCRETE_FUNCTIONS
     )
     # pylint: enable=protected-access
     if trackable_obj is None:
@@ -2092,7 +2092,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.TF_SAVED_MODEL
+        conversion_metadata_fb.ModelType.TF_SAVED_MODEL
     )
     # pylint: enable=protected-access
     # When run without eager enabled, this will return the legacy
@@ -2167,7 +2167,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.KERAS_MODEL
+        conversion_metadata_fb.ModelType.KERAS_MODEL
     )
     # pylint: enable=protected-access
     return TFLiteKerasModelConverterV2(model)
@@ -2195,7 +2195,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.JAX
+        conversion_metadata_fb.ModelType.JAX
     )
     # pylint: enable=protected-access
     return TFLiteJaxConverterV2(serving_funcs, inputs)
@@ -3010,7 +3010,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.TF_SESSION
+        conversion_metadata_fb.ModelType.TF_SESSION
     )
     # pylint: enable=protected-access
     graph_def = _freeze_graph(sess, input_tensors, output_tensors)
@@ -3050,7 +3050,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.TF_GRAPH_DEF
+        conversion_metadata_fb.ModelType.TF_GRAPH_DEF
     )
     # pylint: enable=protected-access
     with _ops.Graph().as_default():
@@ -3156,7 +3156,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.TF_SAVED_MODEL
+        conversion_metadata_fb.ModelType.TF_SAVED_MODEL
     )
     # pylint: enable=protected-access
     if tag_set is None:
@@ -3215,7 +3215,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     """
     # pylint: disable=protected-access
     TFLiteConverterBase._set_original_model_type(
-        conversion_metdata_fb.ModelType.KERAS_MODEL
+        conversion_metadata_fb.ModelType.KERAS_MODEL
     )
     # pylint: enable=protected-access
     return TFLiteKerasModelConverter(
