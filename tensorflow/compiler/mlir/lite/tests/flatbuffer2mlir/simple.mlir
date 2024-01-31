@@ -5,7 +5,9 @@
 
 func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<3x2xi32>):
-  // CHECK: module attributes {tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}
+  // CHECK: module attributes
+  // CHECK-SAME: tfl.description = "MLIR Converted."
+  // CHECK-SAME: tfl.schema_version = 3 : i32
 
   // CHECK:          %{{.*}} = "tfl.pseudo_const"() {value = dense<{{\[\[1, 2\], \[3, 4\], \[5, 6\]\]}}> : tensor<3x2xi32>}
   // CHECK-NEXT:     [[SUB:%.*]] = tfl.sub %{{.*}}, %{{.*}} {fused_activation_function = "RELU6"} : tensor<3x2xi32>

@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -1495,6 +1496,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   bool use_stablehlo_constant = false;
 
+  llvm::SmallVector<mlir::NamedAttribute> metadata_attrs;
+  mlir::StringSet<> seen_attr;
   for (const auto& metadata : model->metadata) {
     if (metadata->name == tflite::kModelControlDependenciesMetadataKey) {
       const std::vector<uint8_t>& data = model->buffers[metadata->buffer]->data;
@@ -1502,15 +1505,28 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
               reinterpret_cast<const char*>(data.data()), data.size(),
               &model_control_dependencies)) {
         return emitError(base_loc,
-                         "Invalid model_control_dependencies metadata"),
+                         "invalid model_control_dependencies metadata"),
                nullptr;
       }
-      break;
+      continue;
     }
+
+    // Skip already seen attributes. Ideally there should be no duplicates here.
+    if (!seen_attr.try_emplace(metadata->name).second) continue;
+
     // check if the model is serialized using stablehlo constant tensor
     if (metadata->name == tflite::kModelUseStablehloTensorKey) {
       use_stablehlo_constant = true;
+      metadata_attrs.emplace_back(builder.getStringAttr(metadata->name),
+                                  builder.getStringAttr("true"));
+      continue;
     }
+
+    std::vector<uint8_t> buffer = model->buffers[metadata->buffer]->data;
+    metadata_attrs.emplace_back(
+        builder.getStringAttr(metadata->name),
+        builder.getStringAttr(llvm::StringRef(
+            reinterpret_cast<char*>(buffer.data()), buffer.size())));
   }
 
   std::vector<std::string> func_names;
@@ -1528,16 +1544,13 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                     builder.getStringAttr(model->description));
   }
 
+  if (!metadata_attrs.empty()) {
+    module->setAttr("tfl.metadata", builder.getDictionaryAttr(metadata_attrs));
+  }
+
   if (!model->signature_defs.empty()) {
     module->setAttr("tf_saved_model.semantics",
                     mlir::UnitAttr::get(builder.getContext()));
-  }
-
-  if (use_stablehlo_constant) {
-    module->setAttr("tfl.metadata",
-                    builder.getDictionaryAttr(builder.getNamedAttr(
-                        tflite::kModelUseStablehloTensorKey,
-                        builder.getStringAttr("true"))));
   }
 
   absl::flat_hash_map<uint32_t, tflite::SignatureDefT*>
