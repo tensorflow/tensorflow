@@ -703,17 +703,9 @@ static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
   return *version;
 }
 
-absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
-    const std::string& preferred_cuda_dir) {
-  {
-    absl::MutexLock lock(&mutex_);
-    auto it = linking_methods_.find(preferred_cuda_dir);
-    if (it != linking_methods_.end()) {
-      return it->second;
-    }
-  }
-
-  LinkingMethod linking_method = LinkingMethod::kNone;
+absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
+    const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
+  using LinkingMethod = NVPTXCompiler::LinkingMethod;
   TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
                       se::GetAsmCompilerVersion(preferred_cuda_dir));
 
@@ -724,33 +716,57 @@ absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     return absl::InternalError("XLA requires ptxas version 11.8 or higher");
   }
 
-  static const std::optional<std::array<int64_t, 3>> nvlink_version =
+  std::optional<std::array<int64_t, 3>> nvlink_version =
       GetNvLinkVersion(preferred_cuda_dir);
   if (nvlink_version && *nvlink_version >= ptxas_version_tuple) {
-    linking_method = LinkingMethod::kNvLink;
-  } else {
-    int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
-                        std::get<1>(ptxas_version_tuple) * 10;
-    TF_ASSIGN_OR_RETURN(int driver_version,
-                        se::gpu::GpuDriver::GetDriverVersion());
+    return LinkingMethod::kNvLink;
+  }
 
-    if (driver_version >= ptxas_version) {
-      linking_method = LinkingMethod::kDriver;
-    } else {
-      LOG_FIRST_N(WARNING, 1)
-          << "The NVIDIA driver's CUDA version is "
-          << absl::StrFormat("%d.%d", driver_version / 1000,
-                             (driver_version % 1000) / 10)
-          << " which is older than the ptxas CUDA version "
-          << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
-                             std::get<1>(ptxas_version_tuple),
-                             std::get<2>(ptxas_version_tuple))
-          << ". Because the driver is older than the ptxas version, XLA is "
-             "disabling parallel compilation, which may slow down compilation. "
-             "You should update your NVIDIA driver or use the NVIDIA-provided "
-             "CUDA forward compatibility packages.";
+  int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
+                      std::get<1>(ptxas_version_tuple) * 10;
+  TF_ASSIGN_OR_RETURN(int driver_version,
+                      se::gpu::GpuDriver::GetDriverVersion());
+
+  if (driver_version >= ptxas_version) {
+    return LinkingMethod::kDriver;
+  }
+
+  LOG_FIRST_N(WARNING, 1)
+      << "The NVIDIA driver's CUDA version is "
+      << absl::StrFormat("%d.%d", driver_version / 1000,
+                         (driver_version % 1000) / 10)
+      << " which is older than the ptxas CUDA version "
+      << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
+                         std::get<1>(ptxas_version_tuple),
+                         std::get<2>(ptxas_version_tuple))
+      << ". Because the driver is older than the ptxas version, XLA is "
+         "disabling parallel compilation, which may slow down "
+         "compilation. "
+         "You should update your NVIDIA driver or use the "
+         "NVIDIA-provided "
+         "CUDA forward compatibility packages.";
+
+  return LinkingMethod::kNone;
+}
+
+absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
+    const DebugOptions& debug_options) {
+  se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
+  std::string& preferred_cuda_dir = ptxas_config.preferred_cuda_dir;
+
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = linking_methods_.find(preferred_cuda_dir);
+    if (it != linking_methods_.end()) {
+      return it->second;
     }
   }
+
+  // This wrapper only handles caching. The actual choice happens in this call:
+  TF_ASSIGN_OR_RETURN(
+      LinkingMethod linking_method,
+      ChooseLinkingMethodImpl(debug_options, preferred_cuda_dir));
+
   {
     absl::MutexLock lock(&mutex_);
     linking_methods_[preferred_cuda_dir] = linking_method;
@@ -762,10 +778,8 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
-  auto ptxas_config =
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
-                      ChooseLinkingMethod(ptxas_config.preferred_cuda_dir));
+                      ChooseLinkingMethod(hlo_module_config.debug_options()));
   return linking_method != LinkingMethod::kNone;
 }
 
@@ -783,7 +797,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
       stream_exec->platform_specific_handle().context);
 
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
-                      ChooseLinkingMethod(ptxas_config.preferred_cuda_dir));
+                      ChooseLinkingMethod(debug_options));
   if (linking_method == LinkingMethod::kNvLink) {
     return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
                            images);
