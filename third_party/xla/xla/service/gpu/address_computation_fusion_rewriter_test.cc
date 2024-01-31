@@ -588,4 +588,136 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmDuplicateOperand) {
                             });
 }
 
+TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY %main.9 {
+      %p0 = f16[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
+      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
+      %p1 = f16[2,8,8]{2,1,0} parameter(0)
+      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+
+      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[0:1], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK:              custom_call_target="__cublas$gemm"
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[A1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]], [[A1]])
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY %main.9 {
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
+      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
+      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+
+      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
+        custom_call_target="__cublas$gemm",
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"64",
+          "rhs_stride":"64",
+          "grad_x":false,
+          "grad_y":false
+        }}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[0:1], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK:              custom_call_target="__cublas$gemm"
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[A1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]], [[A1]])
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 }  // namespace xla::gpu
