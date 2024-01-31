@@ -290,6 +290,7 @@ cc_library(
         ":kernel_reuse_cache",
         "//xla/service:buffer_assignment",
         "//xla/service:name_uniquer",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",

@@ -104,7 +104,7 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
       /*Initializer=*/initializer,
       /*Name=*/"", /*InsertBefore=*/nullptr,
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/0,
+      /*AddressSpace=*/llvm_ir::GetGlobalMemoryAddressSpace(),
       /*isExternallyInitialized=*/false);
   global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
 
