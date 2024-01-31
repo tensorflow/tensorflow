@@ -54,6 +54,14 @@
     * Added `experimental_skip_slot_variables` (a boolean option) to skip
     restoring of optimizer slot variables in a checkpoint.
 
+*   `tf.saved_model.SaveOptions`
+
+    * `SaveOptions` now takes a new argument called
+      `experimental_debug_stripper`. When enabled, this strips the debug nodes
+      from both the node defs and the function defs of the graph. Note that
+      this currently only strips the `Assert` nodes from the graph and
+      converts them into `NoOp`s instead.
+
 ## Keras
 
 *  `keras.layers.experimental.DynamicEmbedding`

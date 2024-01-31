@@ -20,8 +20,11 @@ from absl.testing import parameterized
 
 from google.protobuf import text_format
 from tensorflow.core.config import flags
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.client import session as session_lib
@@ -1110,22 +1113,79 @@ class SavingOptionsTest(test.TestCase):
     # If the user passes an empty list for the namespace whitelist rather than
     # nothing, we should then throw an exception if a custom op is used.
     with self.assertRaisesRegex(
-        ValueError, "Attempted to save ops from non-whitelisted namespaces"):
+        ValueError, "Attempted to save ops from non-whitelisted namespaces"
+    ):
       save._verify_ops(graph_def, [])
+
+  def test_strip_debug_nodes(self):
+    # Test that we are able to strip debug nodes from a meta_graph correctly.
+    test_node_defs = [
+        node_def_pb2.NodeDef(
+            name="AssertNode",
+            op="Assert",
+            input=[
+                "NonControlInput:output:0",
+                "^ControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="ConstNode",
+            op="Const",
+        ),
+    ]
+
+    expected_node_defs = [
+        node_def_pb2.NodeDef(
+            name="AssertNode",
+            op="NoOp",
+            input=[
+                "^NonControlInput",
+                "^ControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="ConstNode",
+            op="Const",
+        ),
+    ]
+
+    meta_graph_def = meta_graph_pb2.MetaGraphDef(
+        graph_def=graph_pb2.GraphDef(
+            node=test_node_defs,
+            library=function_pb2.FunctionDefLibrary(
+                function=[function_pb2.FunctionDef(node_def=test_node_defs)]
+            ),
+        ),
+    )
+
+    expected = meta_graph_pb2.MetaGraphDef(
+        graph_def=graph_pb2.GraphDef(
+            node=expected_node_defs,
+            library=function_pb2.FunctionDefLibrary(
+                function=[function_pb2.FunctionDef(node_def=expected_node_defs)]
+            ),
+        ),
+    )
+
+    save._strip_debug_nodes(meta_graph_def)
+    self.assertEqual(expected, meta_graph_def)
 
   def test_save_debug_info_enabled(self):
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(
-        lambda x: math_ops.mul(2., x, name="DEBUG_INFO_OP"),
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+        lambda x: math_ops.mul(2.0, x, name="DEBUG_INFO_OP"),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    )
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(
         root,
         save_dir,
         root.f,
-        options=save_options.SaveOptions(save_debug_info=True))
-    debug_info_file_name = os.path.join(save_dir, "debug",
-                                        "saved_model_debug_info.pb")
+        options=save_options.SaveOptions(save_debug_info=True),
+    )
+    debug_info_file_name = os.path.join(
+        save_dir, "debug", "saved_model_debug_info.pb"
+    )
     self.assertTrue(os.path.exists(debug_info_file_name))
     debug_info = graph_debug_info_pb2.GraphDebugInfo()
     with open(debug_info_file_name, "rb") as f:
