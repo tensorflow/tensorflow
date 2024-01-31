@@ -24,8 +24,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/shape_inference.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -125,93 +127,110 @@ StatusOr<ReplacedAsync> CreateAsyncStartDone(
 
 }  // namespace
 
+// Find all supported collective ops first as we can't modify the instructions
+// while iterating through them.
+std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
+    HloComputation* computation) {
+  std::vector<HloInstruction*> supported_collectives;
+  for (HloInstruction* instruction : computation->instructions()) {
+    const HloOpcode op = instruction->opcode();
+    if ((op == HloOpcode::kAllReduce &&
+         config_.convert_all_reduce(instruction)) ||
+        (op == HloOpcode::kAllGather &&
+         config_.convert_all_gather(instruction)) ||
+        (op == HloOpcode::kCollectivePermute &&
+         config_.convert_collective_permute(instruction)) ||
+        (op == HloOpcode::kAllToAll &&
+         config_.convert_all_to_all(instruction)) ||
+        (op == HloOpcode::kReduceScatter &&
+         config_.convert_reduce_scatter(instruction))) {
+      supported_collectives.push_back(instruction);
+    }
+  }
+  return supported_collectives;
+}
+
+StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
+    HloComputation* computation,
+    std::vector<HloInstruction*>& supported_collectives) {
+  bool changed = false;
+  HloModule* module = computation->parent();
+  absl::flat_hash_map<HloInstruction*, ReplacedAsync> replaced_pairs;
+  const bool should_update_schedule =
+      module->has_schedule() &&
+      module->schedule().is_computation_scheduled(computation);
+  for (HloInstruction* instruction : supported_collectives) {
+    StatusOr<ReplacedAsync> async_pair;
+    switch (instruction->opcode()) {
+      case HloOpcode::kAllReduce:
+        async_pair = CreateAsyncAllReduce(instruction);
+        break;
+      case HloOpcode::kAllGather:
+        async_pair = CreateAsyncAllGather(instruction);
+        break;
+      case HloOpcode::kCollectivePermute:
+        async_pair = CreateAsyncCollectivePermute(
+            instruction, config_.get_context_shapes(instruction));
+        break;
+      case HloOpcode::kAllToAll:
+      case HloOpcode::kReduceScatter:
+        async_pair = CreateAsyncStartDone(
+            instruction, config_.get_context_shapes(instruction));
+        break;
+      default:
+        return Internal("Unexpected opcode %s",
+                        HloOpcodeString(instruction->opcode()));
+    }
+    TF_RETURN_IF_ERROR(async_pair.status());
+    async_pair->start->set_metadata(instruction->metadata());
+    async_pair->start->CopyBackendConfigFrom(instruction);
+    if (should_update_schedule) {
+      replaced_pairs[instruction] = *async_pair;
+    }
+
+    // Update control dependencies if present.
+    TF_RETURN_IF_ERROR(
+        instruction->CopyAllControlDepsTo(async_pair->start, async_pair->done));
+    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
+
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        computation->ReplaceInstruction(instruction, async_pair->done),
+        "replacing ", instruction->ToShortString());
+    changed = true;
+  }
+  if (should_update_schedule) {
+    std::vector<HloInstruction*> new_sequence;
+    const HloInstructionSequence& sequence =
+        module->schedule().sequence(computation);
+    new_sequence.reserve(sequence.size() + replaced_pairs.size());
+    for (HloInstruction* instr : sequence.instructions()) {
+      auto it = replaced_pairs.find(instr);
+      if (it != replaced_pairs.end()) {
+        new_sequence.push_back(it->second.start);
+        new_sequence.push_back(it->second.done);
+        continue;
+      }
+      new_sequence.push_back(instr);
+    }
+    module->schedule().set_sequence(computation, new_sequence);
+  }
+  return changed;
+}
+
 StatusOr<bool> AsyncCollectiveCreator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Find all supported collective ops first as we can't modify the
-    // instructions while iterating through them.
-    std::vector<HloInstruction*> supported_collectives;
-    for (HloInstruction* instruction : computation->instructions()) {
-      const HloOpcode op = instruction->opcode();
-      if ((op == HloOpcode::kAllReduce &&
-           config_.convert_all_reduce(instruction)) ||
-          (op == HloOpcode::kAllGather &&
-           config_.convert_all_gather(instruction)) ||
-          (op == HloOpcode::kCollectivePermute &&
-           config_.convert_collective_permute(instruction)) ||
-          (op == HloOpcode::kAllToAll &&
-           config_.convert_all_to_all(instruction)) ||
-          (op == HloOpcode::kReduceScatter &&
-           config_.convert_reduce_scatter(instruction))) {
-        supported_collectives.push_back(instruction);
-      }
-    }
+    std::vector<HloInstruction*> supported_collectives =
+        MatchCollectives(computation);
     if (supported_collectives.empty()) {
       continue;
     }
-
-    absl::flat_hash_map<HloInstruction*, ReplacedAsync> replaced_pairs;
-    const bool should_update_schedule =
-        module->has_schedule() &&
-        module->schedule().is_computation_scheduled(computation);
-    for (HloInstruction* instruction : supported_collectives) {
-      StatusOr<ReplacedAsync> async_pair;
-      switch (instruction->opcode()) {
-        case HloOpcode::kAllReduce:
-          async_pair = CreateAsyncAllReduce(instruction);
-          break;
-        case HloOpcode::kAllGather:
-          async_pair = CreateAsyncAllGather(instruction);
-          break;
-        case HloOpcode::kCollectivePermute:
-          async_pair = CreateAsyncCollectivePermute(
-              instruction, config_.get_context_shapes(instruction));
-          break;
-        case HloOpcode::kAllToAll:
-        case HloOpcode::kReduceScatter:
-          async_pair = CreateAsyncStartDone(
-              instruction, config_.get_context_shapes(instruction));
-          break;
-        default:
-          return Internal("Unexpected opcode %s",
-                               HloOpcodeString(instruction->opcode()));
-      }
-      TF_RETURN_IF_ERROR(async_pair.status());
-      async_pair->start->set_metadata(instruction->metadata());
-      async_pair->start->CopyBackendConfigFrom(instruction);
-      if (should_update_schedule) {
-        replaced_pairs[instruction] = *async_pair;
-      }
-
-      // Update control dependencies if present.
-      TF_RETURN_IF_ERROR(instruction->CopyAllControlDepsTo(async_pair->start,
-                                                           async_pair->done));
-      TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
-
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(
-          computation->ReplaceInstruction(instruction, async_pair->done),
-          "replacing ", instruction->ToShortString());
-      changed = true;
-    }
-    if (should_update_schedule) {
-      std::vector<HloInstruction*> new_sequence;
-      const HloInstructionSequence& sequence =
-          module->schedule().sequence(computation);
-      new_sequence.reserve(sequence.size() + replaced_pairs.size());
-      for (HloInstruction* instr : sequence.instructions()) {
-        auto it = replaced_pairs.find(instr);
-        if (it != replaced_pairs.end()) {
-          new_sequence.push_back(it->second.start);
-          new_sequence.push_back(it->second.done);
-          continue;
-        }
-        new_sequence.push_back(instr);
-      }
-      module->schedule().set_sequence(computation, new_sequence);
-    }
+    TF_ASSIGN_OR_RETURN(bool comp_changed,
+                        ReplaceCollectives(computation, supported_collectives));
+    changed |= comp_changed;
   }
   return changed;
 }

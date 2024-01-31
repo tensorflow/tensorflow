@@ -120,6 +120,7 @@ cc_library(
         ":hlo_pass",
         ":shape_inference",
         "//xla:frontend_attributes",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:errors",

@@ -51,6 +51,11 @@ class AsyncCollectiveCreator : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  std::vector<HloInstruction *> MatchCollectives(HloComputation *computation);
+  StatusOr<bool> ReplaceCollectives(
+      HloComputation *computation,
+      std::vector<HloInstruction *> &supported_collectives);
+
  private:
   CollectiveCreatorConfig config_;
 };
