@@ -122,8 +122,7 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
   }
 
   if (config.contains(DebugOptions::CUSTOM_CALL)) {
-    if (hlo->custom_call_target() == "triton_kernel_call" ||
-        hlo->custom_call_target() == "cu_threefry2x32") {
+    if (hlo->custom_call_target() == "cu_threefry2x32") {
       return true;
     }
   }
