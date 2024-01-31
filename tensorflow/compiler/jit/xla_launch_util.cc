@@ -673,7 +673,6 @@ Status PreparePjRtExecutableArguments(
       }
     } else {
       if (av_tensor->GetBuffer() == nullptr) {
-        // TODO(b/260799971): verify size 0 argument is supported.
         CHECK_EQ(tensor->NumElements(), 0);  // Crash OK
         continue;
       }
