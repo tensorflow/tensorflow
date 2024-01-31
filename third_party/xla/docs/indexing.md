@@ -65,13 +65,20 @@ $s_1 \in [0, 16)$.
 This mapping can be constructed from the attributes of HLO instructions or the
 mappings of unfused instructions can be composed to get indexing for a fusion.
 The mapping also has a domain, which specifies for what elements of the tensor
-the mapping exists. $$ \begin{eqnarray} \boldsymbol{f}(\boldsymbol{d},
-\boldsymbol{s})\; &s.t.& \\ \boldsymbol{lb}_d &\leq& \boldsymbol{d} \leq
-\boldsymbol{ub}_d \\ \boldsymbol{lb}_s &\leq& \boldsymbol{s} \leq
-\boldsymbol{ub}_s \\ \boldsymbol{lb}_g &\leq& \boldsymbol{g}(\boldsymbol{d},
-\boldsymbol{s}) \leq \boldsymbol{ub}_g \end{eqnarray} $$ Since we want to
-minimize recomputation, we need a library for symbolic computations. XLA already
-depends on MLIR, so we use
+the mapping exists. 
+
+$$
+\begin{eqnarray} 
+\boldsymbol{f}(\boldsymbol{d}, \boldsymbol{s})\; &s.t.& \\
+\boldsymbol{lb}_d &\leq& \boldsymbol{d} \leq \boldsymbol{ub}_d \\ 
+\boldsymbol{lb}_s &\leq& \boldsymbol{s} \leq \boldsymbol{ub}_s \\ 
+\boldsymbol{lb}_g &\leq& \boldsymbol{g}(\boldsymbol{d}, 
+  \boldsymbol{s}) \leq \boldsymbol{ub}_g 
+\end{eqnarray} 
+$$
+
+Since we want to minimize recomputation, we need a library for symbolic
+computations. XLA already depends on MLIR, so we use
 [mlir::AffineMap](https://github.com/llvm/llvm-project/blob/main/mlir/include/mlir/IR/AffineMap.h)
 instead of writing a symbolic arithmetic library.
 
