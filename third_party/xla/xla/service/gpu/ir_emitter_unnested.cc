@@ -1317,6 +1317,62 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitNormThunk(
+    const HloCustomCallInstruction* instr) {
+  if (instr->shape().tuple_shapes_size() != 2 &&
+      instr->shape().tuple_shapes_size() != 4) {
+    return Internal("Unexpected shape for norm: %s", instr->ToString());
+  }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
+                      GetAllocationSliceForHlo(instr->operand(1)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_slice,
+                      GetAllocationSliceForHlo(instr->operand(2)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      GetAllocationSliceForHlo(instr, {0}));
+
+  bool has_aux_outputs = instr->shape().tuple_shapes_size() == 4;
+  std::optional<BufferAllocation::Slice> expectation_slice, norm_factor_slice;
+  std::optional<Shape> expectation_shape, norm_factor_shape;
+  BufferAllocation::Slice scratch_slice;
+  Shape scratch_shape;
+  if (has_aux_outputs) {
+    TF_ASSIGN_OR_RETURN(expectation_slice,
+                        GetAllocationSliceForHlo(instr, {1}));
+    TF_ASSIGN_OR_RETURN(norm_factor_slice,
+                        GetAllocationSliceForHlo(instr, {2}));
+    TF_ASSIGN_OR_RETURN(scratch_slice, GetAllocationSliceForHlo(instr, {3}));
+    expectation_shape = ShapeUtil::GetSubshape(instr->shape(), {1});
+    norm_factor_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
+    scratch_shape = ShapeUtil::GetSubshape(instr->shape(), {3});
+  } else {
+    TF_ASSIGN_OR_RETURN(scratch_slice, GetAllocationSliceForHlo(instr, {1}));
+    scratch_shape = ShapeUtil::GetSubshape(instr->shape(), {1});
+  }
+
+  TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  GpuNormDescriptor descriptor = {
+      gpu_config.cudnn_norm_backend_config(),
+      /*input_shape=*/instr->operand(0)->shape(),
+      /*scale_shape=*/instr->operand(1)->shape(),
+      /*bias_shape=*/instr->operand(2)->shape(),
+      /*output_shape=*/ShapeUtil::GetSubshape(instr->shape(), {0}),
+      expectation_shape, norm_factor_shape,
+      /*scratch_size=*/
+      static_cast<size_t>(ShapeUtil::ByteSizeOf(scratch_shape))};
+  TF_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
+
+  auto thunk = std::make_unique<NormThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config),
+      input_slice, scale_slice, bias_slice, output_slice, expectation_slice,
+      norm_factor_slice, scratch_slice);
+  AddThunkToThunkSequence(std::move(thunk));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitNormThunk(mlir::Operation* op) {
   auto norm = mlir::dyn_cast<mlir::lmhlo_gpu::CudnnNormOp>(op);
   TF_RET_CHECK(norm != nullptr);
@@ -4142,6 +4198,10 @@ absl::Status IrEmitterUnnested::EmitOp(
     return EmitConvolutionReorderThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::CudnnNormOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      const auto* instr = Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitNormThunk(instr);
+    }
     return EmitNormThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::fusedMHAOp>(op)) {
@@ -4498,6 +4558,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       if (IsCudnnConvolutionReorder(*instr)) {
         return EmitConvolutionReorderThunk(custom_call);
+      }
+      if (IsCustomCallToDnnNorm(*instr)) {
+        return EmitNormThunk(custom_call);
       }
 #endif  // GOOGLE_CUDA
       if (IsCustomCallToTopK(*instr)) {
