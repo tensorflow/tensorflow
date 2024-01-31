@@ -592,9 +592,6 @@ def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
   (TFL_ReshapeOp $input, (CreateInt32ConstOrCast $shape))>;
 
-def ZeroIntAttr
-  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
-
 def LegalizeStridedSlice : Pat<
   (TF_StridedSliceOp
     $input, $begin, $end, $strides, $begin_mask, $end_mask,

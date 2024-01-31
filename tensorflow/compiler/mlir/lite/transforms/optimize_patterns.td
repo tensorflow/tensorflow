@@ -1129,6 +1129,24 @@ def OptimizeSliceOp : Pat<
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
 
+// Convert the StridedSliceOp to a SliceOp when possible. This will enable other
+// optimizations on SliceOp to run.
+def OptimizeStridedSlice : Pat<
+  (TFL_StridedSliceOp $input,
+    (Arith_ConstantOp $begin),
+    (Arith_ConstantOp $end),
+    (Arith_ConstantOp $stride),
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ConstBoolAttrFalse),
+  (TFL_SliceOp $input,
+    (Arith_ConstantOp $begin),
+    (Arith_ConstantOp (GetOffSet $begin, $end))),
+  [(IsAllOnesConstant $stride)]>;
+
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0.getType())">;
 
 def ReshapeValueDroppingLastDim : NativeCodeCall<

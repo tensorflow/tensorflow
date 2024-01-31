@@ -23,6 +23,16 @@ include "mlir/IR/PatternBase.td"
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
+// Constraint that values in list attribute are all ones.
+def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
+
+// Utility function to get the offset between two dense attribute values.
+def GetOffSet : NativeCodeCall<"TFL::GetOffSet($0, $1)">;
+
+// Attribute Constraint that checks if the attribute value is zero.
+def ZeroIntAttr
+  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+
 // Checks if the value has rank at most 'n'.
 class HasRankAtLeast<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "

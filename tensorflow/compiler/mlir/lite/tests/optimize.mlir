@@ -3919,3 +3919,15 @@ func.func @NoReorderNCHWTransposeAddNotBias(%arg0: tensor<1x40x40x1xf32>, %filte
   // CHECK: %[[add:.*]] = tfl.add %[[transpose]],
   // CHECK: return %[[add]]
 }
+
+// CHECK-LABEL: @ConvertStridedSliceToSlice
+func.func @ConvertStridedSliceToSlice(%arg0: tensor<2x3872x1x128xf32>) -> tensor<1x3872x1x128xf32> {
+  %44 = arith.constant dense<0> : tensor<4xi32>
+  %45 = arith.constant dense<[1, 3872, 1, 128]> : tensor<4xi32>
+  %46 = arith.constant dense<1> : tensor<4xi32>
+  %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<2x3872x1x128xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x3872x1x128xf32>
+  func.return %47 : tensor<1x3872x1x128xf32>
+
+  // CHECK: %[[slice:.*]] = "tfl.slice"
+  // CHECK: return %[[slice]]
+}
