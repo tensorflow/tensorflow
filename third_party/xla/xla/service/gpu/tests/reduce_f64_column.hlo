@@ -49,7 +49,7 @@ ENTRY e {
 // CHECK:       reduce-group-0-after:                             ; preds = %[[VAL_19:.*]], %[[VAL_20:.*]]
 // CHECK:         ret void
 // CHECK:       reduce-group-0-true:                              ; preds = %[[VAL_20]]
-// CHECK:         %[[VAL_21:.*]] = load double, ptr addrspace(1) @0, align 8
+// CHECK:         %[[VAL_21:.*]] = load double, ptr @0, align 8
 // CHECK:         store double %[[VAL_21]], ptr %[[VAL_13]], align 8
 // CHECK-PTX:     %thread.id.x = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK-GCN:     %thread.id.x = call i32 @llvm.amdgcn.workitem.id.x

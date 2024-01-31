@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace gpu {
@@ -80,7 +79,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
       llvm::GlobalValue::ExternalLinkage,
       /*Initializer=*/initializer, symbol_name,
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/llvm_ir::GetGlobalMemoryAddressSpace(),
+      /*AddressSpace=*/0,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   llvm_module_->insertGlobalVariable(global_for_const);

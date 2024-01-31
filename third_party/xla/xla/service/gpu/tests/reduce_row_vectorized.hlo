@@ -59,7 +59,7 @@ ENTRY reduce.1 {
 // CHECK:       reduce-group-0-after:                             ; preds = %thread_in_bounds-after, %[[VAL_34:.*]]
 // CHECK:         ret void
 // CHECK:       reduce-group-0-true:                              ; preds = %[[VAL_34]]
-// CHECK:         %[[VAL_35:.*]] = load float, ptr addrspace(1) @0, align 4
+// CHECK:         %[[VAL_35:.*]] = load float, ptr @0, align 4
 // CHECK:         store float %[[VAL_35]], ptr %[[VAL_28]], align 4
 // CHECK-PTX:     %thread.id.x = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !3
 // CHECK-GCN:     %thread.id.x = call i32 @llvm.amdgcn.workitem.id.x
