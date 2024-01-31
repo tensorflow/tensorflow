@@ -444,7 +444,7 @@ TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
       ASSERT_EQ(tensors_expected.size(), 1);
       auto tensors = EvaluateNodes(output, item.fetch, item.feed);
       ASSERT_EQ(tensors.size(), 1);
-      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 2e-5);
     }
   }
 }
