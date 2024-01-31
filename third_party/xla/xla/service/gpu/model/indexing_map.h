@@ -71,6 +71,9 @@ class RangeEvaluator {
   // Computes the range of expression using its subexpression ranges.
   Range ComputeExpressionRange(mlir::AffineExpr expr);
 
+  // Return MLIR context.
+  mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
+
  private:
   mlir::MLIRContext* mlir_context_;
   llvm::DenseMap<mlir::AffineExpr, Range> expression_ranges_cache_;
@@ -147,7 +150,7 @@ class IndexingMap {
   // Allows to add bounds for the affine expression `expr`. If there are
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
-  void AddConstraint(mlir::AffineExpr expr, const Range& range);
+  void AddConstraint(mlir::AffineExpr expr, Range range);
 
   // Returns true if the domain is empty. Right now it scans through all
   // constraints to find the one where lower_bound > upper_bound. If it returns
@@ -188,43 +191,6 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
                     indexing_map.GetSymbolRanges(),
                     indexing_map.GetExprCount());
 }
-
-class IndexingMapSimplifier {
- public:
-  IndexingMapSimplifier(RangeEvaluator* range_evaluator,
-                        mlir::MLIRContext* mlir_context)
-      : range_evaluator_(range_evaluator), mlir_context_(mlir_context) {}
-
-  // Simplifies the map as much as possible.
-  mlir::AffineMap Simplify(mlir::AffineMap affine_map);
-
-  // Simplifies the expression as much as possible.
-  mlir::AffineExpr Simplify(mlir::AffineExpr expr);
-
- private:
-  std::optional<int64_t> GetConstantRhsMultiplier(mlir::AffineExpr expr);
-
-  // Simplifier for mod.
-  // - Rewrites (a * 100 + ...) % 100 to (...) % 100
-  // - Rewrites a % b to a if a is known to be less than b.
-  mlir::AffineExpr RewriteMod(mlir::AffineBinaryOpExpr mod);
-
-  // Simplifier for floordiv.
-  // - Rewrites (a * 100 + ...) / 100 to a + (...) / 100
-  // - Rewrites a / 100 to 0 when a is known to be less than 100.
-  mlir::AffineExpr RewriteFloorDiv(mlir::AffineBinaryOpExpr div);
-
-  mlir::AffineExpr RewriteSumIf(
-      mlir::AffineExpr expr, const std::function<bool(mlir::AffineExpr)>& pred);
-
-  // Attempts to simplify the expression, but doesn't attempt to simplify the
-  // result further.
-  mlir::AffineExpr SimplifyOnce(mlir::AffineExpr expr);
-
-  RangeEvaluator* range_evaluator_;
-  mlir::MLIRContext* mlir_context_;
-};
-
 
 }  // namespace gpu
 }  // namespace xla

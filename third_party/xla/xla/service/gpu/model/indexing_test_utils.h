@@ -59,6 +59,9 @@ HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                                mlir::MLIRContext* context);
 
+mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
+                                 mlir::MLIRContext* context);
+
 }  // namespace gpu
 }  // namespace xla
 
