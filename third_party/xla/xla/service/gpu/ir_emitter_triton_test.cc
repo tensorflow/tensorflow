@@ -971,10 +971,11 @@ TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
 HloModule t
 
 ENTRY e {
-  p0 = s8[3,122,96,12]{3,2,1,0} parameter(0)
+  p0 = pred[3,122,96,12]{3,2,1,0} parameter(0)
   cp0 = f16[3,122,96,12]{3,2,1,0} convert(p0)
-  p1 = f16[1,5,122]{2,1,0} parameter(1)
-  ROOT _ = f16[3,96,12,1,5]{4,3,2,1,0} dot(cp0, p1),
+  p1 = pred[1,5,122]{2,1,0} parameter(1)
+  cp1 = f16[1,5,122]{2,1,0} convert(p1)
+  ROOT _ = f16[3,96,12,1,5]{4,3,2,1,0} dot(cp0, cp1),
     lhs_contracting_dims={1}, rhs_contracting_dims={2}
 })";
 
@@ -987,7 +988,7 @@ ENTRY e {
 ; CHECK-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
