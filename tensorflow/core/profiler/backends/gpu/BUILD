@@ -1,4 +1,4 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -105,26 +105,6 @@ tf_cuda_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cuda_library(
-    name = "cuda_test",
-    testonly = 1,
-    hdrs = ["cuda_test.h"],
-    copts = select({
-        "@local_config_cuda//cuda:using_nvcc": [
-            "-nvcc_options",
-            "ptxas-options=-v",
-        ],
-        "//conditions:default": [],
-    }),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:test",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudart",
-        "@local_xla//xla/backends/profiler/gpu:cuda_test",
     ],
 )
 
