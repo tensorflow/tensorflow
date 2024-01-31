@@ -174,7 +174,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
-  AlgebraicSimplifierOptions algsimp_options;
+  AlgebraicSimplifierOptions algsimp_options =
+      GetAlgebraicSimplifierOptions(hlo_module->config());
   algsimp_options.set_enable_conv_operand_swap(false);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
@@ -234,7 +235,8 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     const DebugOptions& debug_options = hlo_module->config().debug_options();
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions alg_sim_options;
+    AlgebraicSimplifierOptions alg_sim_options =
+        GetAlgebraicSimplifierOptions(hlo_module->config());
     alg_sim_options.set_supports_non_canonical_dots(false);
     alg_sim_options.set_is_layout_sensitive(true);
     alg_sim_options.set_enable_conv_operand_swap(false);

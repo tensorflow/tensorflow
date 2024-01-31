@@ -357,10 +357,6 @@ MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
 
 bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
 
-bool ConvIsLowerable(HloInstruction* conv) {
-  return GpuConvRewriter::ConvIsLowerable(conv);
-}
-
 absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
     const GpuCompiler::CompileOptions& options,
@@ -658,8 +654,14 @@ absl::Status GpuCompiler::OptimizeHloModule(
       /*default_thread_pool=*/options.thread_pool,
       /*default_parallelism=*/tsl::port::MaxParallelism());
 
-  AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
-                                                             ConvIsLowerable);
+  AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
+      GetAlgebraicSimplifierOptions(hlo_module->config());
+  layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
+      GpuConvRewriter::ConvIsLowerable);
+  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_dot_strength_reduction());
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
@@ -1283,6 +1285,14 @@ absl::Status GpuCompiler::OptimizeHloModule(
   return absl::OkStatus();
 }
 
+AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
+    const HloModuleConfig& config) {
+  AlgebraicSimplifierOptions opts;
+  opts.set_enable_dot_strength_reduction(
+      config.debug_options().xla_gpu_enable_dot_strength_reduction());
+  return opts;
+}
+
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
 absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
@@ -1300,7 +1310,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   const se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
   const AlgebraicSimplifierOptions simplifier_options = [&] {
-    AlgebraicSimplifierOptions opts;
+    AlgebraicSimplifierOptions opts =
+        GetAlgebraicSimplifierOptions(hlo_module->config());
     opts.set_supports_non_canonical_dots(false);
     opts.set_is_layout_sensitive(true);
     opts.set_enable_conv_operand_swap(false);
