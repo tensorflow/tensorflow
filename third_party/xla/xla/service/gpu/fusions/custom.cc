@@ -80,18 +80,20 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 
 absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
     const BufferAssignment& buffer_assignment, const HloFusionAdaptor& fusion,
-    const HloInstruction* bufferized_instr, const HloInstruction& start) {
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice orig_slice,
-      GetAllocationSlice(buffer_assignment, bufferized_instr, {}));
+    const HloInstruction& fusion_instr, const HloInstruction& start) {
+  if (const auto* param = DynCast<HloParameterInstruction>(&start)) {
+    return GetAllocationSlice(
+        buffer_assignment, fusion_instr.operand(param->parameter_number()), {});
+  }
 
-  auto maybe_slice_adaptor =
+  auto slice_adaptor =
       HloFindIf({HloInstructionAdaptor(start)}, fusion,
                 [](auto node) { return node.opcode() == HloOpcode::kSlice; });
-  if (maybe_slice_adaptor == std::nullopt) return orig_slice;
+  TF_RET_CHECK(slice_adaptor.has_value())
+      << "AddressComputationFusion expects at least one sliced operand";
 
-  const auto& slice_instr = *static_cast<const HloSliceInstruction*>(
-      &maybe_slice_adaptor->instruction());
+  const auto& slice_instr =
+      *static_cast<const HloSliceInstruction*>(&slice_adaptor->instruction());
 
   TF_RET_CHECK(IsContiguousSlice(slice_instr))
       << "AddressComputationFusion only handles contiguous slices currently";
@@ -99,6 +101,12 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   const Shape& src_shape = slice_instr.operand(0)->shape();
   const Shape& dst_shape = slice_instr.shape();
   int64_t size = ShapeUtil::ByteSizeOf(dst_shape);
+
+  const auto* param = Cast<HloParameterInstruction>(slice_instr.operand(0));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice orig_slice,
+      GetAllocationSlice(buffer_assignment,
+                         fusion_instr.operand(param->parameter_number()), {}));
 
   // Given this slice
   // f16[1,4,8]{2,1,0} slice(f16[2,8,8]{2,1,0}),
@@ -184,15 +192,15 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
   if (IsLegacyCublasMatmul(custom_call)) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_slice,
-                        GetSliceWithUpdatedOffsetAndSize(
-                            buffer_assignment, adaptor, fusion.operand(0),
-                            *custom_call.operand(0)));
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice lhs_slice,
+        GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
+                                         *custom_call.operand(0)));
 
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_slice,
-                        GetSliceWithUpdatedOffsetAndSize(
-                            buffer_assignment, adaptor, fusion.operand(1),
-                            *custom_call.operand(1)));
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice rhs_slice,
+        GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
+                                         *custom_call.operand(1)));
 
     BufferAllocation::Slice output;
     std::optional<BufferAllocation::Slice> workspace;
