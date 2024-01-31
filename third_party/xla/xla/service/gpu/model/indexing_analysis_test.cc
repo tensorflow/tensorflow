@@ -1651,6 +1651,30 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
                           ElementsAre(std::nullopt)));
 }
 
+TEST_F(IndexingAnalysisTest, TilingIndexing) {
+  TilingScheme tiling{/*shape=*/{1024, 256, 16},
+                      /*tile_sizes=*/{8, 1, 4},
+                      /*num_threads=*/{1, 4, 4}};
+  EXPECT_THAT(GetIndexingMapForTiling(tiling, &mlir_context_).ToString(),
+              MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
+          (d3 floordiv 64) * 8 + s0,
+          (d3 mod 64) * 4 + (d0 floordiv 4) mod 4,
+          d0 mod 4 + s2 * 4
+        )
+        domain:
+        d0 in [0, 15]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 8191]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 7]
+        s1 in [0, 0]
+        s2 in [0, 3]
+      )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

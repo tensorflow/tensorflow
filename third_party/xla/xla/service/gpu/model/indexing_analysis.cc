@@ -62,6 +62,7 @@ using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
+using mlir::getAffineSymbolExpr;
 using mlir::MLIRContext;
 
 HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
@@ -145,6 +146,15 @@ HloInstructionIndexing ComputeInputToOutputBroadcastOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
+std::vector<Range> RangesFromUpperBounds(absl::Span<const int64_t> bounds) {
+  std::vector<Range> dim_ranges;
+  dim_ranges.reserve(bounds.size());
+  for (int64_t dim : bounds) {
+    dim_ranges.push_back(Range{0, dim - 1});
+  }
+  return dim_ranges;
+}
+
 HloInstructionIndexing ComputeOutputToInputConcatenateOpIndexing(
     const HloConcatenateInstruction* concat, MLIRContext* mlir_context) {
   const auto& operand_0_dims = concat->operand(0)->shape().dimensions();
@@ -153,11 +163,7 @@ HloInstructionIndexing ComputeOutputToInputConcatenateOpIndexing(
   // be adjusted for a particular operand_id.
   mlir::MutableAffineMap affine_map =
       AffineMap::getMultiDimIdentityMap(operand_0_dims.size(), mlir_context);
-  std::vector<Range> dim_ranges;
-  dim_ranges.reserve(operand_0_dims.size());
-  for (int64_t dim : operand_0_dims) {
-    dim_ranges.push_back(Range{0, dim - 1});
-  }
+  std::vector<Range> dim_ranges = RangesFromUpperBounds(operand_0_dims);
 
   HloInstructionIndexing concat_indexing;
   concat_indexing.indexing_maps.resize(concat->operand_count());
@@ -363,8 +369,7 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
       continue;
     }
     inputs_exprs.push_back(getAffineDimExpr(input_dim_id, mlir_context));
-    inits_exprs.push_back(
-        mlir::getAffineSymbolExpr(output_dim_id++, mlir_context));
+    inits_exprs.push_back(getAffineSymbolExpr(output_dim_id++, mlir_context));
   }
   IndexingMap inputs_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(input_shape.rank(), /*symbolCount=*/0, inputs_exprs,
@@ -715,6 +720,49 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
   return IndexingMap::FromTensorSizes(
       ComputeTransposeIndexingMap(ToTransposeDimensions(shape.layout()), ctx),
       shape.dimensions(), {});
+}
+
+IndexingMap GetIndexingMapForTiling(const TilingScheme& tiling,
+                                    mlir::MLIRContext* ctx) {
+  // Note: this function intentionally creates already simplified expressions.
+  auto delinearize = [&](auto sizes, auto strides,
+                         int dim) -> absl::InlinedVector<AffineExpr, 4> {
+    auto linear = getAffineDimExpr(dim, ctx);
+    absl::InlinedVector<AffineExpr, 4> result;
+    for (auto [size, stride] : llvm::zip(sizes, strides)) {
+      result.push_back(linear.floorDiv(stride) % size);
+    }
+    if (sizes[0] > 1) {
+      result[0] = linear.floorDiv(strides[0]);  // Remove the mod.
+    }
+    return result;
+  };
+
+  auto block_idxs =
+      delinearize(tiling.GetBlockCounts(), tiling.GetBlockStrides(), 3);
+  auto thread_idxs =
+      delinearize(tiling.GetThreadsPerBlock(), tiling.GetThreadStrides(), 0);
+
+  std::vector<AffineExpr> element_idxs;
+  element_idxs.reserve(tiling.GetShape().size());
+  for (int dim = 0; dim < tiling.GetShape().size(); ++dim) {
+    auto& elem = element_idxs.emplace_back(
+        block_idxs[dim] * tiling.GetBlockTileSize()[dim] + thread_idxs[dim]);
+    if (tiling.GetThreadTileSize()[dim] > 1) {
+      elem = elem +
+             getAffineSymbolExpr(dim, ctx) * tiling.GetThreadsPerBlock()[dim];
+    }
+  };
+
+  // TODO(jreiffers): Use general constraints for symbols: in the last blocks
+  // in each each dimension, the bounds can be different if we don't have a
+  // perfect tiling.
+  std::vector<Range> dimension_ranges{
+      {0, tiling.GetNumThreadsPerBlock() - 1}, {}, {},
+      {0, tiling.GetNumBlocks() - 1},          {}, {},
+  };
+  return {AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, element_idxs, ctx),
+          dimension_ranges, RangesFromUpperBounds(tiling.GetThreadTileSize())};
 }
 
 bool HloInstructionIndexing::Simplify() {

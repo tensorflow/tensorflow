@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -97,6 +98,13 @@ IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
 // layout.
 IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
                                                       mlir::MLIRContext* ctx);
+
+// Creates an indexing map from thread and block IDs to elements of the tiled
+// shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
+// are thread indices (currently only 0 is used), dimensions 3 to 5 are block
+// indices (currently only 3 is used).
+IndexingMap GetIndexingMapForTiling(const TilingScheme& tiling,
+                                    mlir::MLIRContext* ctx);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);

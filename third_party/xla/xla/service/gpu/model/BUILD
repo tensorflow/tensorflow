@@ -338,6 +338,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/fusions:tiling_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
