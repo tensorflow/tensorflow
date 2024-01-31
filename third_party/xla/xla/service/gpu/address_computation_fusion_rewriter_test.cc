@@ -32,8 +32,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemm) {
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
       %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
@@ -96,8 +96,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmWithWorkspace) {
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
       %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
@@ -164,8 +164,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotRoot) {
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
       %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
@@ -231,8 +231,8 @@ TEST_F(AddressComputationFusionRewriterTest,
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
       %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
@@ -300,8 +300,8 @@ TEST_F(AddressComputationFusionRewriterTest,
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
       %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
@@ -359,8 +359,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[4,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[4,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.12 = f16[2,8,8]{2,1,0} slice(%p0), slice={[0:2], [0:8], [0:8]}
       %slice.13 = f16[1,8,8]{2,1,0} slice(%slice.12), slice={[1:2], [0:8], [0:8]}
       %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
@@ -429,8 +429,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNotContiguousSlice) {
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,4,6]{2,1,0} slice(%p0), slice={[1:2], [0:4], [0:6]}
       %bitcast.41 = f16[4,6]{1,0} bitcast(%slice.13)
       %slice.14 = f16[1,6,4]{2,1,0} slice(%p1), slice={[1:2], [0:6], [0:4]}
@@ -468,8 +468,8 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
     HloModule test, is_scheduled=true
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
-      %p1 = f16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
+      %p0 = f16[2,8,8]{2,1,0} parameter(0)
+      %p1 = f16[2,8,8]{2,1,0} parameter(1)
       %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
       %slice.14 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
       %add.0 = f16[1,8,8]{2,1,0} add(%slice.13, %slice.14)
@@ -504,6 +504,88 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(),
                             std::nullopt);
+}
+
+TEST_F(AddressComputationFusionRewriterTest, SimpleGemmDuplicateOperand) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY %main {
+      %p0 = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
+      %get-tuple-element.240 = f32[100,100]{1,0} get-tuple-element(%p0), index=0
+      %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
+      %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
+      %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
+        custom_call_target="__cublas$gemm",
+        backend_config={
+          "gemm_backend_config":{
+            "alpha_real":1,
+            "beta":0,
+            "dot_dimension_numbers":{
+              "lhs_contracting_dimensions":["1"],
+              "rhs_contracting_dimensions":["0"],
+              "lhs_batch_dimensions":[],
+              "rhs_batch_dimensions":[]
+            },
+            "alpha_imag":0,
+            "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+            "epilogue":"DEFAULT",
+            "lhs_stride":"20000",
+            "rhs_stride":"10000",
+            "grad_x":false,
+            "grad_y":false
+          }
+        }
+      %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
+      %slice.26 = f32[100,100]{1,0} slice(%get-tuple-element.97), slice={[0:100], [0:100]}
+      ROOT %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %slice.26),
+        custom_call_target="__cublas$gemm",
+        backend_config={
+          "gemm_backend_config":{
+            "alpha_real":1,
+            "beta":0,
+            "dot_dimension_numbers":{
+              "lhs_contracting_dimensions":["1"],
+              "rhs_contracting_dimensions":["0"],
+              "lhs_batch_dimensions":[],
+              "rhs_batch_dimensions":[]
+            },
+            "alpha_imag":0,
+            "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+            "epilogue":"DEFAULT",
+            "lhs_stride":"10000",
+            "rhs_stride":"10000",
+            "grad_x":false,
+            "grad_y":false
+          }
+        }
+  })";
+
+  const char* expected = R"(
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK:       [[P0:%[^ ]+]] = f32[200,100]{1,0} parameter(0)
+    ; CHECK:       [[S0:%[^ ]+]] = f32[100,100]{1,0} slice([[P0]]), slice={[0:100], [0:100]}
+    ; CHECK-NOT:   slice
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[80000]{0}) custom-call([[S0]], [[S0]]),
+    ; CHECK:         custom_call_target="__cublas$gemm"
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[80000]{0}) fusion
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
 }
 
 }  // namespace xla::gpu

@@ -55,11 +55,14 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
   absl::InlinedVector<HloInstruction*, 8> sliced_operand_chains = {
       const_cast<HloInstruction*>(instr)};
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
+  absl::flat_hash_set<HloInstruction*> processed_sliced_chain_set;
+
   for (auto* operand : instr->operands()) {
     absl::InlinedVector<HloInstruction*, 4> maybe_sliced_operand_chain;
     auto maybe_slice_adaptor =
         HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
           const HloInstruction* cur = &node.instruction();
+          if (processed_sliced_chain_set.contains(cur)) return true;
           maybe_sliced_operand_chain.push_back(
               const_cast<HloInstruction*>(cur));
           // TODO(vuson): lift the first restriction by considering fusing other
@@ -72,10 +75,13 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
         });
     if (maybe_slice_adaptor == std::nullopt) continue;
     const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
-    if (IsContiguousSlice(maybe_slice_instr)) {
+    if (IsContiguousSlice(maybe_slice_instr) ||
+        processed_sliced_chain_set.contains(&maybe_slice_instr)) {
       sliced_operand_chains.insert(sliced_operand_chains.end(),
                                    maybe_sliced_operand_chain.begin(),
                                    maybe_sliced_operand_chain.end());
+      processed_sliced_chain_set.insert(maybe_sliced_operand_chain.begin(),
+                                        maybe_sliced_operand_chain.end());
     }
   }
   return sliced_operand_chains;
