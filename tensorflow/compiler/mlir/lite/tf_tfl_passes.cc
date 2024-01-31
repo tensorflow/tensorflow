@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -29,11 +30,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -47,7 +46,7 @@ CreateTFExecutorToControlDialectConversion();
 namespace tensorflow {
 namespace {
 // Data layout supported by TFLite.
-const char kTFLiteDataLayout[] = "NHWC";
+constexpr mlir::StringRef kTFLiteDataLayout = "NHWC";
 }  // namespace
 
 void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -266,7 +265,7 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
 
   // This decomposes resource ops like ResourceGather into read-variable op
   // followed by gather. This is used when the saved model import path is used
-  // during which resources dont get frozen in the python layer.
+  // during which resources don't get frozen in the python layer.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
@@ -375,7 +374,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // Force layout supported by TFLite, this will transpose the data
     // to match 'kTFLiteDataLayout'
     mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
-    layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    layout_optimization_options.force_data_format = kTFLiteDataLayout.str();
     layout_optimization_options.skip_fold_transpose_in_ops = true;
     mlir::TF::CreateLayoutOptimizationPipeline(
         pass_manager->nest<mlir::func::FuncOp>(), layout_optimization_options);
