@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_po
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

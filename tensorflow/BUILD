@@ -44,7 +44,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 # # buildifier: disable=out-of-order-load
 # load("//devtools/build_cleaner/skylark:action_config_test.bzl", "action_config_test")
 # load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
-# load("//tools/build_defs/license:license.bzl", "license")
+# load("@rules_license//rules:license.bzl", "license")
 # # buildifier: enable=out-of-order-load
 # copybara:uncomment_end
 

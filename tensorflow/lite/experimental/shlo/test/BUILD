@@ -1,4 +1,4 @@
-package(default_applicable_licenses = ["//tensorflow:license"])
+package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 cc_library(
     name = "util",
