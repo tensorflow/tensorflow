@@ -289,12 +289,14 @@ void RegisterSharding(py::module& m) {
   py::object abc_init = abc_module.attr("_abc_init");
 
   // NOLINTNEXTLINE(bugprone-unused-raii)
-  py::class_<Sharding>(m, "Sharding", py::metaclass(abc_meta));
+  py::class_<Sharding>(m, "Sharding", py::metaclass(abc_meta))
+      .def(py::init<>());
   abc_init(py::type::of<Sharding>());
 
   // NOLINTNEXTLINE(bugprone-unused-raii)
   py::class_<XLACompatibleSharding, Sharding>(m, "XLACompatibleSharding",
-                                              py::metaclass(abc_meta));
+                                              py::metaclass(abc_meta))
+      .def(py::init<>());
   abc_init(py::type::of<XLACompatibleSharding>());
 
   py::class_<NamedSharding, XLACompatibleSharding>(m, "NamedSharding",
