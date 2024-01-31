@@ -373,6 +373,137 @@ TEST_F(AddressComputationFusionTest, ContiguousSliceNonDefaultLayout) {
                                       /*run_hlo_passes=*/false));
 }
 
+TEST_F(AddressComputationFusionTest, OperandIsSlicedGetTupleElement) {
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  const char* hlo_ref = R"(
+  HloModule jit_slice
+
+  ENTRY %main {
+    %p0 = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
+    %get-tuple-element.240 = f32[100,100]{1,0} get-tuple-element(%p0), index=0
+    %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
+    %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
+    %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
+      custom_call_target="__cublas$gemm",
+      backend_config={
+        "gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"20000",
+          "rhs_stride":"10000",
+          "grad_x":false,
+          "grad_y":false
+        }
+      }
+    %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
+    %slice.26 = f32[100,100]{1,0} slice(%get-tuple-element.97), slice={[0:100], [0:100]}
+    ROOT %custom-call.17 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.26, %get-tuple-element.240),
+      custom_call_target="__cublas$gemm",
+      backend_config={
+        "gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"10000",
+          "rhs_stride":"10000",
+          "grad_x":false,
+          "grad_y":false
+        }
+      }
+  })";
+
+  const char* hlo_opt = R"(
+  HloModule jit_slice
+
+  %address-computation {
+    %p0.3 = f32[200,100]{1,0} parameter(0)
+    %p1.3 = f32[100,100]{1,0} parameter(1)
+    %slice.56 = f32[100,100]{1,0} slice(%p0.3), slice={[0:100], [0:100]}
+    %cublas-gemm.23 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.56, %p1.3),
+      custom_call_target="__cublas$gemm",
+      backend_config={
+        "gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"10000",
+          "rhs_stride":"10000",
+          "grad_x":false,
+          "grad_y":false
+        }
+      }
+    %get-tuple-element.221 = f32[100,100]{1,0} get-tuple-element(%cublas-gemm.23), index=0
+    %get-tuple-element.222 = s8[80000]{0} get-tuple-element(%cublas-gemm.23), index=1
+    ROOT %tuple.58 = (f32[100,100]{1,0}, s8[80000]{0}) tuple(%get-tuple-element.221, %get-tuple-element.222)
+  }
+
+  ENTRY %main {
+    %p0 = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
+    %get-tuple-element.240 = f32[100,100]{1,0} get-tuple-element(%p0), index=0
+    %get-tuple-element.241 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
+    %concatenate.10 = f32[200,100]{1,0} concatenate(%get-tuple-element.240, %get-tuple-element.241), dimensions={0}
+    %custom-call.16 = (f32[200,100]{1,0}, s8[120000]{0}) custom-call(%concatenate.10, %get-tuple-element.240),
+      custom_call_target="__cublas$gemm",
+      backend_config={
+        "gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"20000",
+          "rhs_stride":"10000",
+          "grad_x":false,
+          "grad_y":false
+        }
+      }
+    %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
+    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240),
+      kind=kCustom,
+      calls=%address-computation,
+      backend_config={
+        "fusion_backend_config":{
+          "kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}
+        }
+      }
+  })";
+
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

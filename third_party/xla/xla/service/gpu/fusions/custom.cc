@@ -107,7 +107,7 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   // The offset of the slice should be:
   //    slice_starts(0) * 8 * 8 * sizeof(f16) +
   //    slice_starts(1) * 8 * sizeof(f16)
-  int64_t offset = 0;
+  int64_t offset = orig_slice.offset();
   for (auto [start, stride] : llvm::zip(slice_instr.slice_starts(),
                                         *ShapeUtil::ByteStrides(src_shape))) {
     offset += start * stride;
