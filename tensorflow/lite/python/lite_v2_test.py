@@ -812,6 +812,38 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       self.assertAllClose(old_value, new_value, atol=1e-01)
 
   @test_util.run_v2_only
+  def testGatherNDQI8(self):
+    """Test gather_nd with quantized i8 parameters."""
+
+    class GatherNDQI8QDQ(tf.keras.Model):
+      @tf.function(
+          input_signature=[tf.TensorSpec(shape=(2, 2), dtype=tf.float32)]
+      )
+
+      def func(self, input_tensor):
+        x = tf.quantization.fake_quant_with_min_max_args(
+            input_tensor, -3.0, 3.0
+        )
+        x = tf.gather_nd(x, [[0, 0], [1, 1]])
+        return tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+
+    # Build a QDQ model so that tfl.gather_nd will be converted to a QI8 version
+    # with the `_experimental_qdq_conversion_mode`` flag
+    root = GatherNDQI8QDQ()
+    concrete_func = root.func.get_concrete_function()
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter._experimental_qdq_conversion_mode = 'STATIC'
+    tflite_model = converter.convert()
+
+    np_data = np.array([[1, 2], [3, 4]], dtype=np.float32)
+    input_tensor = tf.constant(np_data, dtype=tf.int8)
+    expected_value = [1, 4]
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_tensor])
+    self.assertAllClose(expected_value, actual_value[0], atol=1e-05)
+
+  @test_util.run_v2_only
   def testEmbeddings(self):
     """Test model with embeddings."""
     input_data = tf.constant(
