@@ -3877,7 +3877,7 @@ tf_cuda_cc_test(
     name = "matmul_op_test",
     srcs = ["matmul_op_test.cc"],
     tags = [
-        "no_arm64",  # b/282068262
+        "no_aarch64",  # b/282068262
     ],
     deps = [
         ":matmul_op",
