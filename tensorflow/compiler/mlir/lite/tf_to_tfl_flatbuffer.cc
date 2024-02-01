@@ -224,8 +224,8 @@ absl::StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
   std::string error_message;
   auto file = mlir::openInputFile(input_filename, &error_message);
   if (!file) {
-    llvm::errs() << error_message << "\n";
-    return absl::InvalidArgumentError("fail to open input file");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to open input file: ", error_message));
   }
 
   if (input_mlir) {
@@ -313,7 +313,8 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
     const auto status = quantization::PreprocessAndFreezeGraph(
         module, module.getContext(), session);
     if (!status.ok()) {
-      return absl::AbortedError("Failed to preprocess & freeze TF graph");
+      return status_handler.Combine(
+          absl::InternalError("Failed to preprocess & freeze TF graph."));
     }
 
     // TODO: b/264218457 - Refactor the component below once StableHLO Quantizer
@@ -368,12 +369,8 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
   if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result,
                                                  true)) {
-    auto s = status_handler.ConsumeStatus();
-    std::string message = "Could not translate MLIR to FlatBuffer.";
-    if (!s.ok()) {
-      absl::StrAppend(&message, " ", s.ToString());
-    }
-    return absl::UnknownError(message);
+    return status_handler.Combine(
+        absl::InternalError("Could not translate MLIR to FlatBuffer."));
   }
 
   return absl::OkStatus();
@@ -393,34 +390,23 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   mlir::func::registerAllExtensions(registry);
   module.getContext()->appendDialectRegistry(registry);
 
-  // Register a warning handler only log to std out.
-  mlir::ScopedDiagnosticHandler s(
-      module.getContext(), [](mlir::Diagnostic& diag) {
-        if (diag.getSeverity() == mlir::DiagnosticSeverity::Warning) {
-          for (auto& note : diag.getNotes()) {
-            std::cout << note.str() << "\n";
-            LOG(WARNING) << note.str() << "\n";
-          }
-        }
-        return mlir::failure();
-      });
-
   mlir::StatusScopedDiagnosticHandler status_handler(module.getContext(),
                                                      /*propagate=*/true);
-
-  if (failed(IsValidGraph(module))) {
-    return status_handler.ConsumeStatus();
-  }
 
   mlir::PassManager pass_manager(module.getContext());
   mlir::registerPassManagerCLOptions();
   if (mlir::failed(mlir::applyPassManagerCLOptions(pass_manager))) {
-    return absl::UnknownError("failed to apply MLIR pass manager CL options");
+    return absl::InternalError("Failed to apply MLIR pass manager CL options.");
   }
+  InitPassManager(pass_manager, toco_flags.debug_options());
+
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
-  InitPassManager(pass_manager, toco_flags.debug_options());
+
+  if (failed(IsValidGraph(module))) {
+    return status_handler.ConsumeStatus();
+  }
 
   Session* session = saved_model_bundle == nullptr
                          ? nullptr
@@ -452,23 +438,13 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Freeze variables if a session is provided.
-  if (session != nullptr) {
-    mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
-    if (failed(mlir::tf_saved_model::FreezeVariables(module, session))) {
-      auto status = status_handler.ConsumeStatus();
-      mlir::TFL::ErrorCollector* collector =
-          mlir::TFL::ErrorCollector::GetErrorCollector();
-      if (!collector->CollectedErrors().empty()) {
-        // LINT.IfChange
-        return absl::InvalidArgumentError(
-            "Variable constant folding is failed. Please consider using "
-            "enabling `experimental_enable_resource_variables` flag in the "
-            "TFLite converter object. For example, "
-            "converter.experimental_enable_resource_variables = True");
-        // LINT.ThenChange(//tensorflow/lite/python/lite_v2_test.py)
-      }
-      return status;
-    }
+  if (session != nullptr &&
+      failed(mlir::tf_saved_model::FreezeVariables(module, session))) {
+    return status_handler.Combine(absl::InvalidArgumentError(
+        "Variable constant folding is failed. Please consider using "
+        "enabling `experimental_enable_resource_variables` flag in the "
+        "TFLite converter object. For example, "
+        "converter.experimental_enable_resource_variables = True"));
   }
 
   pass_manager.clear();
@@ -476,21 +452,11 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   AddPostVariableFreezingTFToTFLConversionPasses(saved_model_dir, toco_flags,
                                                  pass_config, &pass_manager);
   if (failed(pass_manager.run(module))) {
-    auto status = status_handler.ConsumeStatus();
-    mlir::TFL::ErrorCollector* collector =
-        mlir::TFL::ErrorCollector::GetErrorCollector();
-    for (const auto& error_data : collector->CollectedErrors()) {
-      if (error_data.subcomponent() == "FreezeGlobalTensorsPass") {
-        // LINT.IfChange
-        return absl::InvalidArgumentError(
-            "Variable constant folding is failed. Please consider using "
-            "enabling `experimental_enable_resource_variables` flag in the "
-            "TFLite converter object. For example, "
-            "converter.experimental_enable_resource_variables = True");
-        // LINT.ThenChange(//tensorflow/lite/python/lite_v2_test.py)
-      }
-    }
-    return status;
+    return status_handler.Combine(absl::InvalidArgumentError(
+        "Variable constant folding is failed. Please consider using "
+        "enabling `experimental_enable_resource_variables` flag in the "
+        "TFLite converter object. For example, "
+        "converter.experimental_enable_resource_variables = True"));
   }
 
   if (failed(GraphContainsStatefulPartitionedOp(module))) {
@@ -526,12 +492,8 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
   if (!tflite::MlirToFlatBufferTranslateFunction(
           module, options, &translated_result, serialize_stablehlo_ops)) {
-    auto s = status_handler.ConsumeStatus();
-    std::string message = "Could not translate MLIR to FlatBuffer.";
-    if (!s.ok()) {
-      absl::StrAppend(&message, " ", s.ToString());
-    }
-    return absl::UnknownError(message);
+    return status_handler.Combine(
+        absl::InternalError("Could not translate MLIR to FlatBuffer."));
   }
 
   // TODO: b/176267167 - Quantize flex fallback in the MLIR pipeline
@@ -543,13 +505,16 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     // statement.
     auto status = ApplyDynamicRangeQuantizationFromOldQuantizer(
         quant_specs, translated_result, result);
-    if (!status.ok()) return status;
+    if (!status.ok()) {
+      return status_handler.Combine(status);
+    }
   } else {
     *result = translated_result;
   }
 
   if (mlir::failed(module.verifyInvariants())) {
-    return absl::UnknownError("Final module is invalid");
+    return status_handler.Combine(
+        absl::InternalError("Final module is invalid."));
   }
   return absl::OkStatus();
 }
@@ -583,7 +548,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     if (!module_or.status().ok()) return module_or.status();
     return std::move(module_or).value();
   } else {
-    return absl::InvalidArgumentError("Should be either saved model v1 or v2");
+    return absl::InvalidArgumentError("Should be either saved model v1 or v2.");
   }
 }
 
