@@ -876,7 +876,6 @@ absl::Status ReorganizeMemory(Stream *stream,
 template <typename T>
 struct AllocateStridedResult {
   using Type = RocBlasType_t<T>;
-  std::unique_ptr<TemporaryDeviceMemory<Type>> temp_mem;
   DeviceMemory<Type> device_mem;
   bool reallocated;
 };
@@ -911,17 +910,12 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
     return res;
   }
 
-  if (scratch_allocator != nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        DeviceMemory<uint8> batch_matrix_bytes,
-        scratch_allocator->AllocateBytes(matrix_batch_byte_size));
-    res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
-  } else {
-    TF_ASSIGN_OR_RETURN(res.temp_mem, stream->AllocateTemporaryArray<MAPPED_T>(
-                                          matrix_batch_byte_size));
-    res.device_mem =
-        DeviceMemory<MAPPED_T>(*(res.temp_mem)->mutable_device_memory());
+  if (scratch_allocator == nullptr) {
+    return absl::InternalError("scratch_allocator is null");
   }
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> batch_matrix_bytes,
+                      scratch_allocator->AllocateBytes(matrix_batch_byte_size));
+  res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
   if (copy_data) {
     return ReorganizeMemory(stream, &res.device_mem, raw_ptrs, batch_count,
