@@ -77,7 +77,20 @@ class TritonGemmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
+    // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Do not autotune split-k by default, since this prevents deterministically
+    // matching the optimized HLO.
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    return debug_options;
+  }
+};
+
+class TritonGemmTestWithSplitK : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_split_k_autotuning(true);
     return debug_options;
   }
 };
@@ -883,7 +896,8 @@ ENTRY entry {
   EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 }
 
-TEST_F(TritonGemmTest, WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
+TEST_F(TritonGemmTestWithSplitK,
+       WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
   // The condition mentioned in the test name is fulfilled by
   // GemmKey(16, 64, 256, 8, 1, 4), which was part of the default configs for
   // Ampere at the time of the addition of this test case.
@@ -2172,7 +2186,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
+TEST_F(TritonGemmTestWithSplitK,
+       SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
   const std::string kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)
