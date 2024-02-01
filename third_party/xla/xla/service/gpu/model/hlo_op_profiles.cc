@@ -24,12 +24,21 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
+
+/*static*/ const HloOpProfiles& HloOpProfiles::Singleton() {
+  static const auto* hlo_op_profiles =
+      HloOpProfiles::Load(kDeviceHloOpProfiles,
+                          /*default_profile_name=*/"sm_86")
+          .release();
+  return *hlo_op_profiles;
+}
 
 /*static*/ std::string HloOpProfiles::GetProfileName(
     const se::DeviceDescription* device_info) {

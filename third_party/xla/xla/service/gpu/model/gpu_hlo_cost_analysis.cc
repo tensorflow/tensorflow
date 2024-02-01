@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -327,11 +326,7 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
 
 int64_t FlopsPerElement(const se::DeviceDescription* device_info,
                         const PrimitiveType type, const HloOpcode opcode) {
-  static const auto* hlo_op_profiles =
-      HloOpProfiles::Load(kDeviceHloOpProfiles,
-                          /*default_profile_name=*/"sm_86")
-          .release();
-  auto device_profile = hlo_op_profiles->GetProfile(device_info);
+  auto device_profile = HloOpProfiles::Singleton().GetProfile(device_info);
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
   return FindOrDefault(device_profile, std::make_pair(opcode, type),
