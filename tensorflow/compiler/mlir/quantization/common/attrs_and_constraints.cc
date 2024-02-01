@@ -19,10 +19,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -64,10 +62,8 @@ SmallVector<Value> CloneOpWithReplacedOperands(
   return builder.clone(*op, mapping)->getResults();
 }
 
-FailureOr<int32_t> CastI64ToI32(int64_t value) {
-  const int64_t min_i32 = llvm::minIntN(32);
-  const int64_t max_i32 = llvm::maxIntN(32);
-  if (value < min_i32 || value > max_i32) {
+FailureOr<int32_t> CastI64ToI32(const int64_t value) {
+  if (!llvm::isInt<32>(value)) {
     DEBUG_WITH_TYPE(
         "mlir-quant-attrs-and-constraints",
         llvm::dbgs()
@@ -79,20 +75,15 @@ FailureOr<int32_t> CastI64ToI32(int64_t value) {
 }
 
 FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
-    ArrayRef<int64_t> int64_array) {
-  const int64_t min_i32 = llvm::minIntN(32);
-  const int64_t max_i32 = llvm::maxIntN(32);
-  SmallVector<int32_t> int32_array(int64_array.size());
-  for (int i = 0; i < int64_array.size(); ++i) {
-    if (int64_array[i] < min_i32 || int64_array[i] > max_i32) {
-      DEBUG_WITH_TYPE(
-          "mlir-quant-attrs-and-constraints",
-          llvm::dbgs()
-              << "Tried to cast " << int64_array[i]
-              << "from int64 to int32, but lies out of range of int32.\n");
-      return failure();
-    }
-    int32_array[i] = static_cast<int32_t>(int64_array[i]);
+    const ArrayRef<int64_t> int64_array) {
+  SmallVector<int32_t> int32_array{};
+  int32_array.reserve(int64_array.size());
+
+  for (const int64_t i64 : int64_array) {
+    FailureOr<int32_t> cast_i32 = CastI64ToI32(i64);
+    if (failed(cast_i32)) return failure();
+
+    int32_array.push_back(*cast_i32);
   }
   return int32_array;
 }

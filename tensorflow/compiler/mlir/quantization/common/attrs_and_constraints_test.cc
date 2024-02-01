@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "llvm/Support/MathExtras.h"
@@ -36,6 +37,7 @@ namespace {
 using ::mlir::quant::QuantizationTestBase;
 using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::DotGeneralOp;
+using ::testing::ElementsAreArray;
 
 class AttrsAndConstraintsTest : public QuantizationTestBase {};
 
@@ -115,22 +117,15 @@ TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ValueOutOfI32Range) {
 }
 
 TEST_F(AttrsAndConstraintsTest, I64ArrayInI32RangeAreCastedCorrectly) {
-  const int64_t min_i32 = -2147483648;
-  const int64_t max_i32 = 2147483647;
-  ArrayRef<int64_t> array_i64{min_i32, -2, -1, 0, 1, 2, max_i32};
-  FailureOr<SmallVector<int32_t>> cast_result = CastI64ArrayToI32(array_i64);
-  EXPECT_TRUE(succeeded(cast_result));
-  SmallVector<int32_t> array_i32 = cast_result.value();
-  EXPECT_EQ(min_i32, llvm::minIntN(32));
-  EXPECT_EQ(max_i32, llvm::maxIntN(32));
-  EXPECT_EQ(array_i32.size(), array_i64.size());
-  EXPECT_EQ(array_i32[0], min_i32);
-  EXPECT_EQ(array_i32[1], -2);
-  EXPECT_EQ(array_i32[2], -1);
-  EXPECT_EQ(array_i32[3], 0);
-  EXPECT_EQ(array_i32[4], 1);
-  EXPECT_EQ(array_i32[5], 2);
-  EXPECT_EQ(array_i32[6], max_i32);
+  const SmallVector<int64_t> array_i64 = {llvm::minIntN(32), -2, -1, 0, 1, 2,
+                                          llvm::maxIntN(32)};
+
+  FailureOr<SmallVector<int32_t>> array_i32 = CastI64ArrayToI32(array_i64);
+  EXPECT_TRUE(succeeded(array_i32));
+  EXPECT_THAT(
+      *array_i32,
+      ElementsAreArray({static_cast<int32_t>(llvm::minIntN(32)), -2, -1, 0, 1,
+                        2, static_cast<int32_t>(llvm::maxIntN(32))}));
 }
 
 TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayUnderI32Range) {
