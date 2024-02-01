@@ -1652,9 +1652,9 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
 }
 
 TEST_F(IndexingAnalysisTest, TilingIndexing) {
-  TilingScheme tiling{/*shape=*/{1024, 256, 16},
-                      /*tile_sizes=*/{8, 1, 4},
-                      /*num_threads=*/{1, 4, 4}};
+  Tiling tiling{/*shape=*/{1024, 256, 16},
+                /*tile_sizes=*/{8, 1, 4},
+                /*num_threads=*/{1, 4, 4}};
   EXPECT_THAT(GetIndexingMapForTiling(tiling, &mlir_context_).ToString(),
               MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (

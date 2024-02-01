@@ -121,12 +121,9 @@ int GetNumOutputs(const Shape& shape) {
 }
 
 llvm::Type* GetIndexType(const HloFusionInstruction& fusion,
-                         const TilingScheme& tiling_scheme,
-                         llvm::IRBuilder<>* builder) {
+                         const Tiling& tiling, llvm::IRBuilder<>* builder) {
   return GetIndexTypeForKernel(
-      &fusion,
-      tiling_scheme.GetNumThreadsPerBlock() * tiling_scheme.GetNumBlocks(),
-      builder);
+      &fusion, tiling.GetNumThreadsPerBlock() * tiling.GetNumBlocks(), builder);
 }
 
 // For a row reduction, returns the number of rows we can process in parallel
@@ -301,7 +298,7 @@ class ReductionFusion::ReductionEmitter {
         reduction_codegen_info_(reduction_codegen_info),
         ir_emitter_context_(ir_emitter_context),
         fusion_(fusion),
-        index_ty_(GetIndexType(fusion, reduction_codegen_info.GetTilingScheme(),
+        index_ty_(GetIndexType(fusion, reduction_codegen_info.GetTiling(),
                                elemental_emitter_.builder())) {}
 
   absl::StatusOr<FusionEmissionResult> EmitInitializers(
@@ -334,7 +331,7 @@ class ReductionFusion::ReductionEmitter {
   void EmitSyncThreads();
 
   int ReducedDimensionSize() const {
-    return reduction_codegen_info_.GetTilingScheme().GetShape()[2];
+    return reduction_codegen_info_.GetTiling().GetShape()[2];
   }
 
   llvm::IRBuilder<>* builder_;
@@ -460,7 +457,7 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
                                        .value();
 
       builder->CreateStore(init_ir_value, result_address);
-      const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
+      const Tiling& tiling = reduction_info.GetTiling();
       auto shared_cache = [&]() -> std::optional<llvm_ir::SharedMemoryTile> {
         auto* module = reduction_emitter.ir_emitter_context_.llvm_module();
         if (reduction_info.IsRowReduction()) {
@@ -470,7 +467,7 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
             return std::nullopt;
           }
           // Allocate one shared memory element per warp.
-          auto block_size = tiling_scheme.GetThreadsPerBlock();
+          auto block_size = tiling.GetThreadsPerBlock();
           CHECK_EQ(block_size[kRowMinorReducedDimension] % WarpSize(), 0);
           return llvm_ir::AllocateSharedMemoryTile(
               module, element_type,
@@ -478,7 +475,7 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
                block_size[kRowMinorReducedDimension] / WarpSize()},
               "shared_cache");
         }
-        const auto& num_threads = tiling_scheme.GetThreadsPerBlock();
+        const auto& num_threads = tiling.GetThreadsPerBlock();
         int n = num_threads[kColReducedDimension];
         CHECK_EQ(n, num_threads[kColMinorKeptDimension]);
         // The "+1" is used to avoid bank conflicts.
@@ -746,7 +743,7 @@ ReductionFusion::ReductionGroupEmitter::GetOutputIndexForReduction(
     int output_idx) const {
   auto* builder = reduction_emitter_.builder_;
   const auto& reduction_info = reduction_emitter_.reduction_codegen_info_;
-  const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
+  const Tiling& tiling = reduction_info.GetTiling();
   const TilingThreadIdInfo& thread_id_info = tiling_kernel_info.thread_id_info;
 
   llvm_ir::IrArray::Index index = [&] {
@@ -769,7 +766,7 @@ ReductionFusion::ReductionGroupEmitter::GetOutputIndexForReduction(
       return index[kRowKeptDimension];
     }
     // For column reduction, we get the transposed address.
-    absl::Span<const int64_t> dims_in_elem = tiling_scheme.GetShape();
+    absl::Span<const int64_t> dims_in_elem = tiling.GetShape();
     llvm::Value* x_dim_size =
         index.GetConstantWithIndexType(dims_in_elem[kColMinorKeptDimension]);
     llvm::Value* x_block_offset =
@@ -869,11 +866,11 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
   }
 
   const auto& reduction_info = reduction_emitter_.reduction_codegen_info_;
-  const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
+  const Tiling& tiling = reduction_info.GetTiling();
   int num_rows_per_warp =
       RowReductionGetRowsPerWarp(reduction_emitter_.ReducedDimensionSize());
   EmitFullWarpShuffleDownLoopForReduce(reducer, absl::MakeSpan(current_outputs),
-                                       tiling_scheme.GetNumThreadsPerBlock(),
+                                       tiling.GetNumThreadsPerBlock(),
                                        num_rows_per_warp);
 
   KernelSupportLibrary ksl(builder);
@@ -936,9 +933,8 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
 
         llvm::Value* warp_exists = builder->CreateICmpULT(
             thread_id_x,
-            constant(
-                tiling_scheme.GetThreadsPerBlock()[kRowMinorReducedDimension] /
-                WarpSize()));
+            constant(tiling.GetThreadsPerBlock()[kRowMinorReducedDimension] /
+                     WarpSize()));
 
         llvm::Value* selected_value = builder->CreateSelect(
             warp_exists, block_accum_addr, initial_value_addr);
@@ -952,11 +948,10 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
       // TODO(b/241414088) If only warp is present, then inter-warp
       // communication using shared memory and synchronization using barrier is
       // also unnecessary and should be removed.
-      if (tiling_scheme.GetThreadsPerBlock()[kRowMinorReducedDimension] >
-          WarpSize()) {
+      if (tiling.GetThreadsPerBlock()[kRowMinorReducedDimension] > WarpSize()) {
         EmitFullWarpShuffleDownLoopForReduce(
             reducer, absl::MakeSpan(selected_values),
-            tiling_scheme.GetNumThreadsPerBlock(), /*num_results_per_warp=*/1);
+            tiling.GetNumThreadsPerBlock(), /*num_results_per_warp=*/1);
       }
 
       emit_write_output(is_zero(thread_id_x), selected_values);
@@ -983,7 +978,7 @@ void ReductionFusion::ReductionGroupEmitter::
     return builder->CreateICmpEQ(value, constant(0));
   };
   const auto& reduction_info = reduction_emitter_.reduction_codegen_info_;
-  const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
+  const Tiling& tiling = reduction_info.GetTiling();
   int num_outputs = reducer->num_parameters() / 2;
 
   auto* kept_index = thread_ids[kColMinorKeptDimension];
@@ -1013,7 +1008,7 @@ void ReductionFusion::ReductionGroupEmitter::
 
   EmitFullWarpShuffleDownLoopForReduce(reducer,
                                        absl::MakeSpan(shmem_transposed_addrs),
-                                       tiling_scheme.GetNumThreadsPerBlock(),
+                                       tiling.GetNumThreadsPerBlock(),
                                        /*num_results_per_warp=*/1);
 
   // Some warps in the block are completely outside of the bound of the
@@ -1109,15 +1104,15 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
   }
 
   CHECK(!heroes.empty()) << " expect at least one reduce instructions.";
-  const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
-  CHECK_EQ(tiling_scheme.GetNumThreadsPerBlock() % WarpSize(), 0);
+  const Tiling& tiling = reduction_codegen_info_.GetTiling();
+  CHECK_EQ(tiling.GetNumThreadsPerBlock() % WarpSize(), 0);
   ReductionGroupEmitter group_emitter(*this, heroes, result_ir_arrays,
                                       fused_emitter);
 
   TF_ASSIGN_OR_RETURN(
       TilingKernelInfo tiling_kernel_info,
       EmitTilingKernel(
-          builder_, tiling_scheme, index_ty_,
+          builder_, tiling, index_ty_,
           [&](const TilingThreadIdInfo& thread_id_info,
               const llvm_ir::IrArray::Index& tile_index,
               absl::Span<llvm::Value* const> tile_dimensions) {
@@ -1135,11 +1130,10 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
                   // instructions in the fusion, if any.
                   TF_CHECK_OK(group_emitter.EmitExtraOutputsForReduce(
                       ShapeUtil::MakeShape(
-                          F32,
-                          reduction_codegen_info_.GetTilingScheme().GetShape()),
+                          F32, reduction_codegen_info_.GetTiling().GetShape()),
                       index, extra_output_gens));
                 };
-            EmitTile(builder_, reduction_codegen_info_.GetTilingScheme(),
+            EmitTile(builder_, reduction_codegen_info_.GetTiling(),
                      thread_id_info, tile_dimensions, emit_element);
           }));
 
@@ -1303,11 +1297,11 @@ absl::Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 }
 
 LaunchDimensions ReductionFusion::launch_dimensions() const {
-  const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
+  const Tiling& tiling = reduction_codegen_info_.GetTiling();
   size_t blocks_y = reduction_codegen_info_.GetIndexGroups().size();
-  return {se::BlockDim(/*x=*/tiling_scheme.GetNumBlocks(),
+  return {se::BlockDim(/*x=*/tiling.GetNumBlocks(),
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
-          se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlock(),
+          se::ThreadDim(/*x=*/tiling.GetNumThreadsPerBlock(),
                         /*y=*/1, /*z=*/1)};
 }
 
@@ -1379,14 +1373,13 @@ ReductionFusion::ComputeReductionCodegenInfo(
     tile_per_thread.push_back(vector_size);
   }
 
-  TilingScheme tiling_scheme(tiled_shape, tile_per_thread, num_threads,
-                             /*loops_to_unroll=*/{false, false, true, false});
+  Tiling tiling(tiled_shape, tile_per_thread, num_threads,
+                /*loops_to_unroll=*/{false, false, true, false});
   bool reduction_is_race_free = ReductionIsRaceFree(
       hero_reduction->GetModule()->config(), reduction_dimensions);
   return ReductionCodegenInfo(
-      tiling_scheme, reduction_dimensions.is_row_reduction,
-      reduction_is_race_free, GroupDisjointReductions(analysis),
-      hero_reduction);
+      tiling, reduction_dimensions.is_row_reduction, reduction_is_race_free,
+      GroupDisjointReductions(analysis), hero_reduction);
 }
 
 }  // namespace gpu

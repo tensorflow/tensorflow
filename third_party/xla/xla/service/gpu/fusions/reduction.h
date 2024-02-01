@@ -141,16 +141,16 @@ class ReductionFusion : public KernelFusionEmitterBase {
    public:
     using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
-    ReductionCodegenInfo(TilingScheme mapping_scheme, bool is_row_reduction,
+    ReductionCodegenInfo(Tiling tiling, bool is_row_reduction,
                          bool is_race_free, IndexGroups index_groups,
                          const HloInstruction* first_reduce)
-        : tiling_scheme_(mapping_scheme),
+        : tiling_(tiling),
           is_row_reduction_(is_row_reduction),
           is_race_free_(is_race_free),
           index_groups_(std::move(index_groups)),
           first_reduce_(first_reduce) {}
 
-    const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
+    const Tiling& GetTiling() const { return tiling_; }
     const IndexGroups& GetIndexGroups() const { return index_groups_; }
     Shape GetReduceOperandShape() const {
       return first_reduce_->operand(0)->shape();
@@ -160,7 +160,7 @@ class ReductionFusion : public KernelFusionEmitterBase {
     bool IsRaceFree() const { return is_race_free_; }
 
    private:
-    TilingScheme tiling_scheme_;
+    Tiling tiling_;
     bool is_row_reduction_;
     bool is_race_free_;
     IndexGroups index_groups_;

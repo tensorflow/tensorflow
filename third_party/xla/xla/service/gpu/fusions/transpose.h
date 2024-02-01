@@ -81,7 +81,7 @@ class TransposeFusion : public KernelFusionEmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
-  TilingScheme tiling_scheme_;
+  Tiling tiling_;
 };
 
 }  // namespace gpu

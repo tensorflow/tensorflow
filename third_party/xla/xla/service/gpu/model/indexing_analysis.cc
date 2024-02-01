@@ -722,7 +722,7 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
       shape.dimensions(), {});
 }
 
-IndexingMap GetIndexingMapForTiling(const TilingScheme& tiling,
+IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
                                     mlir::MLIRContext* ctx) {
   // Note: this function intentionally creates already simplified expressions.
   auto delinearize = [&](auto sizes, auto strides,

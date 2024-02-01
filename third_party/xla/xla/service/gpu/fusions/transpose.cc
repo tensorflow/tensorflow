@@ -54,8 +54,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-TilingScheme ComputeTransposeTilingScheme(
-    const TransposeDescription& tiled_transpose) {
+Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
   constexpr int kNumRows = 4;
   static_assert(WarpSize() % kNumRows == 0);
 
@@ -85,11 +84,11 @@ TilingScheme ComputeTransposeTilingScheme(
   absl::InlinedVector<int64_t, 4> tile_sizes{1, WarpSize() / kNumRows, 1};
   absl::InlinedVector<int64_t, 4> num_threads{1, kNumRows, WarpSize()};
 
-  return TilingScheme(tiled_shape, tile_sizes, num_threads);
+  return Tiling(tiled_shape, tile_sizes, num_threads);
 }
 
 Vector3 TileToInoutPermutation(Vector3 permutation) {
-  // See ComputeTransposeTilingScheme.
+  // See ComputeTransposeTiling.
   // Note: this is also the tile to output permutation because we swap the
   // last two components.
   return permutation[2] == 1 ? Vector3{0, 1, 2} : Vector3{1, 0, 2};
@@ -123,8 +122,7 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      tiling_scheme_(ComputeTransposeTilingScheme(analysis.tiled_transpose())) {
-}
+      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {}
 
 absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                                          const HloFusionInstruction& fusion,
@@ -175,7 +173,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   Vector3 permutation;
   for (const auto& [tile_idx, tr] : llvm::enumerate(transposes)) {
     permutation = tr.permutation;
-    auto tile_size = tiling_scheme_.GetBlockTileSize();
+    auto tile_size = tiling_.GetBlockTileSize();
     ++tile_size.back();  // Prevent bank conflicts.
     auto* module = ir_emitter_context.llvm_module();
     tiles[tr.instr] = llvm_ir::AllocateSharedMemoryTile(
@@ -186,13 +184,13 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   }
 
   auto tile_to_inout = TileToInoutPermutation(permutation);
-  auto input_shape = Permute(tiling_scheme_.GetShape(), tile_to_inout);
+  auto input_shape = Permute(tiling_.GetShape(), tile_to_inout);
   auto tile_generator = [&](const TilingThreadIdInfo& thread_id_info,
                             const llvm_ir::IrArray::Index& tile_start_index,
                             absl::Span<llvm::Value* const> tile_dimensions) {
     // Copy input parameter values to shared memory buffers:
     // tile[thread_id_y, thread_id_x] = input[index]
-    EmitTile(builder, tiling_scheme_, thread_id_info, tile_dimensions,
+    EmitTile(builder, tiling_, thread_id_info, tile_dimensions,
              [&](absl::Span<llvm::Value* const> index_in_tile) {
                auto index = PermuteIndex(
                    tile_start_index.AddOffset(index_in_tile, builder),
@@ -232,7 +230,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
     auto transposed_tile_dimensions = Permute(tile_dimensions, {0, 2, 1});
 
     EmitTile(
-        builder, tiling_scheme_, thread_id_info, transposed_tile_dimensions,
+        builder, tiling_, thread_id_info, transposed_tile_dimensions,
         /*emit_elem_function=*/
         [&](absl::Span<llvm::Value* const> index_in_tile) {
           auto index =
@@ -288,13 +286,13 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   llvm::Type* index_type =
       GetIndexTypeForKernel(&fusion, launch_dims.launch_bound(), builder);
-  return EmitTilingKernel(builder, tiling_scheme_, index_type, tile_generator)
+  return EmitTilingKernel(builder, tiling_, index_type, tile_generator)
       .status();
 }
 
 LaunchDimensions TransposeFusion::launch_dimensions() const {
-  return LaunchDimensions(tiling_scheme_.GetNumBlocks(),
-                          tiling_scheme_.GetNumThreadsPerBlock());
+  return LaunchDimensions(tiling_.GetNumBlocks(),
+                          tiling_.GetNumThreadsPerBlock());
 }
 
 }  // namespace gpu

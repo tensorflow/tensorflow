@@ -44,9 +44,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
-                 const TilingScheme& tiling, int dim,
-                 absl::InlinedVector<llvm::Value*, 4> tile_idx,
+void EmitTileRec(const TilingThreadIdInfo& thread_id_info, const Tiling& tiling,
+                 int dim, absl::InlinedVector<llvm::Value*, 4> tile_idx,
                  absl::Span<llvm::Value* const> tile_dimensions,
                  llvm::IRBuilder<>* b, const TileElementGenerator& emit_elem) {
   llvm::Type* index_ty = thread_id_info.thread_id->getType();
@@ -114,14 +113,13 @@ void EmitTileRec(const TilingThreadIdInfo& thread_id_info,
 
 }  // namespace
 
-void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
+void EmitTile(llvm::IRBuilder<>* builder, const Tiling& tiling,
               const TilingThreadIdInfo& thread_id_info,
               absl::Span<llvm::Value* const> tile_dimensions,
               const TileElementGenerator& emit_elem_function) {
-  absl::InlinedVector<llvm::Value*, 4> tile_idx(
-      tiling_scheme.GetShape().size());
-  EmitTileRec(thread_id_info, tiling_scheme, 0, tile_idx, tile_dimensions,
-              builder, emit_elem_function);
+  absl::InlinedVector<llvm::Value*, 4> tile_idx(tiling.GetShape().size());
+  EmitTileRec(thread_id_info, tiling, 0, tile_idx, tile_dimensions, builder,
+              emit_elem_function);
 }
 
 namespace {
@@ -157,27 +155,27 @@ llvm::Value* EmitThreadId(llvm::IRBuilder<>* builder, int64_t threads_per_block,
 
 // Emits the LLVM values for thread_id, block_id, coordinates of the current
 // tile and strides of the loops to iterate over the current tile.
-absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* index_ty) {
+absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(llvm::IRBuilder<>* builder,
+                                                    const Tiling& tiling,
+                                                    llvm::Type* index_ty) {
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
-  int64_t num_blocks = tiling_scheme.GetNumBlocks();
+  int64_t num_blocks = tiling.GetNumBlocks();
   if (num_blocks > (int64_t)std::numeric_limits<uint32_t>::max()) {
     return FailedPrecondition(
         "Number of physical blocks (%d) does not fit in an i32 in tiling "
         "scheme: %s",
-        num_blocks, tiling_scheme.ToString());
+        num_blocks, tiling.ToString());
   }
 
   TilingThreadIdInfo info;
   info.thread_id =
-      EmitThreadId(builder, tiling_scheme.GetNumThreadsPerBlock(), index_ty);
+      EmitThreadId(builder, tiling.GetNumThreadsPerBlock(), index_ty);
   info.block_id = EmitBlockId(builder, num_blocks, index_ty);
 
-  for (auto [dim, stride] : llvm::enumerate(tiling_scheme.GetThreadStrides())) {
-    int64_t size = tiling_scheme.GetThreadsPerBlock()[dim];
+  for (auto [dim, stride] : llvm::enumerate(tiling.GetThreadStrides())) {
+    int64_t size = tiling.GetThreadsPerBlock()[dim];
     if (size == 1) {
       info.thread_ids.emplace_back(constant(0));
     } else {
@@ -200,16 +198,16 @@ absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
 }  // namespace
 
 absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* index_ty, const TileGenerator& tile_generator) {
-  absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetShape();
-  const auto& block_counts = tiling_scheme.GetBlockCounts();
+    llvm::IRBuilder<>* builder, const Tiling& tiling, llvm::Type* index_ty,
+    const TileGenerator& tile_generator) {
+  absl::Span<const int64_t> dims_in_elems = tiling.GetShape();
+  const auto& block_counts = tiling.GetBlockCounts();
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
 
   TF_ASSIGN_OR_RETURN(TilingThreadIdInfo thread_id_info,
-                      EmitThreadIdInfo(builder, tiling_scheme, index_ty));
+                      EmitThreadIdInfo(builder, tiling, index_ty));
 
   KernelSupportLibrary ksl(builder, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -219,7 +217,7 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
 
   absl::InlinedVector<llvm::Value*, 4> tile_dimensions;
   for (int i = 0; i < block_counts.size(); ++i) {
-    int64_t block_tile_size = tiling_scheme.GetBlockTileSize()[i];
+    int64_t block_tile_size = tiling.GetBlockTileSize()[i];
     if (dims_in_elems[i] % block_tile_size == 0) {
       // The block tile size evenly divides the tiled shape -> no need to emit
       // the bounds check.
@@ -242,10 +240,10 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     for (int i = 0; i < block_counts.size(); ++i) {
       elem_multi_index[i] = builder->CreateMul(
           block_coords[i],
-          llvm::ConstantInt::get(index_ty, tiling_scheme.GetBlockTileSize()[i]),
+          llvm::ConstantInt::get(index_ty, tiling.GetBlockTileSize()[i]),
           absl::StrCat("tile_origin.", i));
     }
-    return llvm_ir::IrArray::Index(elem_multi_index, tiling_scheme.GetShape(),
+    return llvm_ir::IrArray::Index(elem_multi_index, tiling.GetShape(),
                                    index_ty);
   }();
 

@@ -103,7 +103,7 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
 // shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
 // are thread indices (currently only 0 is used), dimensions 3 to 5 are block
 // indices (currently only 3 is used).
-IndexingMap GetIndexingMapForTiling(const TilingScheme& tiling,
+IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
                                     mlir::MLIRContext* ctx);
 
 // Returns the shape of the output of the instruction.

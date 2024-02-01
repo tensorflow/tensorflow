@@ -31,13 +31,13 @@ namespace gpu {
 // Describes tiling used by the kernel.
 //
 // Used by reduction and transpose emitters.
-class TilingScheme {
+class Tiling {
  public:
-  TilingScheme(absl::InlinedVector<int64_t, 4> shape,
-               absl::InlinedVector<int64_t, 4> tile_sizes,
-               absl::InlinedVector<int64_t, 4> num_threads,
-               // By default, don't unroll anything.
-               absl::InlinedVector<bool, 4> loops_to_unroll = {})
+  Tiling(absl::InlinedVector<int64_t, 4> shape,
+         absl::InlinedVector<int64_t, 4> tile_sizes,
+         absl::InlinedVector<int64_t, 4> num_threads,
+         // By default, don't unroll anything.
+         absl::InlinedVector<bool, 4> loops_to_unroll = {})
       : shape_(shape),
         tile_sizes_per_thread_(tile_sizes),
         tile_sizes_per_block_(shape.size()),
@@ -160,7 +160,7 @@ using TileElementGenerator =
 
 // Emits code to iterate through a tile with given tile dimensions and generate
 // elements using the callback.
-void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
+void EmitTile(llvm::IRBuilder<>* builder, const Tiling& tiling,
               const TilingThreadIdInfo& thread_id_info,
               absl::Span<llvm::Value* const> tile_dimensions,
               const TileElementGenerator& emit_elem_function);
@@ -168,8 +168,8 @@ void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
 // Emits a kernel for the hlo instruction using the given kernel mapping
 // scheme.
 absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* index_ty, const TileGenerator& tile_element_generator);
+    llvm::IRBuilder<>* builder, const Tiling& tiling, llvm::Type* index_ty,
+    const TileGenerator& tile_element_generator);
 
 }  // namespace gpu
 }  // namespace xla
