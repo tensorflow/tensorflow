@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1145,7 +1145,8 @@ def OptimizeStridedSlice : Pat<
   (TFL_SliceOp $input,
     (Arith_ConstantOp $begin),
     (Arith_ConstantOp (GetOffSet $begin, $end))),
-  [(IsAllOnesConstant $stride)]>;
+  [(IsAllOnesConstant $stride),
+   (HasNonNegativeOffset $begin, $end)]>;
 
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0.getType())">;
 

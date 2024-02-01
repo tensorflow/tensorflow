@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,6 +69,14 @@ inline bool IsAllOnesConstant(Attribute value) {
                       [](int32_t element_value) { return element_value != 1; });
 }
 
+// Checks if all elements in the constant attribute value are non-negative.
+inline bool HasNonNegativeValues(Attribute value) {
+  auto values = value.cast<DenseElementsAttr>().getValues<APInt>();
+  return !std::any_of(
+      values.begin(), values.end(),
+      [](const APInt& element_value) { return element_value.isNonPositive(); });
+}
+
 // Utility function to get the offset between two dense attribute values.
 inline TypedAttr GetOffSet(Attribute begin, Attribute end) {
   auto begin_values = begin.cast<DenseElementsAttr>().getValues<int32_t>();
@@ -85,6 +93,11 @@ inline TypedAttr GetOffSet(Attribute begin, Attribute end) {
       RankedTensorType::get({static_cast<int>(offsets.size())},
                             mlir::IntegerType::get(begin.getContext(), 32)),
       llvm::ArrayRef(offsets));
+}
+
+// Check if the offset between two dense attribute values is non-negative.
+inline bool HasNonNegativeOffset(Attribute begin, Attribute end) {
+  return HasNonNegativeValues(GetOffSet(begin, end));
 }
 
 // Return true if the permutation value only swaps the last two dimensions

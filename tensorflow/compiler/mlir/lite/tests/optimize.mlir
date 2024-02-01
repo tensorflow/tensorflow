@@ -4032,3 +4032,15 @@ func.func @broadcast_to_i32_with_dynamic_shape_and_output(%arg0: tensor<3xi32>, 
   // CHECK:  %1 = tfl.mul(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<3x?xi32>) -> tensor<3x?xi32>
   // CHECK:  return %1 : tensor<3x?xi32>
 }
+
+
+// CHECK-LABEL: @ConvertStridedSliceToSliceNeg
+func.func @ConvertStridedSliceToSliceNeg(%arg0: tensor<5x5x5x5xf32>) -> tensor<*xf32> {
+  %44 = arith.constant dense<[5, 5, 5, 5]> : tensor<4xi32>
+  %45 = arith.constant dense<[1, 1, 1, 1]> : tensor<4xi32>
+  %46 = arith.constant dense<1> : tensor<4xi32>
+  %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<5x5x5x5xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+  func.return %47 : tensor<*xf32>
+
+  // CHECK-NOT: %[[slice:.*]] = "tfl.slice"
+}
