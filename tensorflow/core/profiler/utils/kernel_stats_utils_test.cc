@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
 namespace tensorflow {
@@ -68,7 +68,7 @@ TEST(KernelStatsUtilsTest, TestGroupKernelReportsByOpName) {
 }
 
 TEST(KernelStatsUtilsTest, KernelDetailsXStatParser) {
-  KernelDetails kernel_info;
+  xla::profiler::KernelDetails kernel_info;
   kernel_info.registers_per_thread = 10;
   kernel_info.static_shared_memory_usage = 128;
   kernel_info.dynamic_shared_memory_usage = 256;
