@@ -22,11 +22,11 @@ toc:
       path: /xla/custom_call
     - title: Persisted autotuning
       path: /xla/persisted_autotuning
-   - title: Copybara quirks
+    - title: Copybara quirks
       path: /xla/copybara
-   - title: XLA Tooling
+    - title: XLA Tooling
       path: /xla/tools
-   - title: Using LSP autocompletion
+    - title: Using LSP autocompletion
       path: /xla/lsp
 - title: Contributing
   section:
@@ -38,14 +38,14 @@ toc:
       path: /xla/code_reviews
     - title: Build from source
       path: /xla/build_from_source
- - title: Using XLA in TensorFlow
-   section:
-     - title: Using XLA in TensorFlow
-       path: /xla/tf2xla
-     - title: Use tfcompile
-       path: /xla/tf2xla/tfcompile
-     - title: Autoclustering tutorial
-       path: /xla/tf2xla/tutorials/autoclustering_xla
-     - title: Use XLA with tf.function
-       path: /xla/tf2xla/tutorials/jit_compile
+- title: Using XLA in TensorFlow
+  section:
+    - title: Using XLA in TensorFlow
+      path: /xla/tf2xla
+    - title: Use tfcompile
+      path: /xla/tf2xla/tfcompile
+    - title: Autoclustering tutorial
+      path: /xla/tf2xla/tutorials/autoclustering_xla
+    - title: Use XLA with tf.function
+      path: /xla/tf2xla/tutorials/jit_compile
 
