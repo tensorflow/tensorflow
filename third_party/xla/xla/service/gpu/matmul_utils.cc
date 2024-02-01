@@ -507,7 +507,7 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
              ? se::blas::Transpose::kNoTranspose
              : se::blas::Transpose::kTranspose)};
   };
-  // make a local copy to prevent modification of layouts,
+  // TODO: make a local copy to prevent modification of layouts,
   // but maybe we can modify them once instead during creation ?
   se::gpu::MatrixLayout lhs = lhs_layout, rhs = rhs_layout, out = output_layout;
 
@@ -595,14 +595,11 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
   se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
       stream->parent()->AsBlas(), &workspace);
 
-// TODO: enable DoGemmWithAlgorithm for ROCm !
-#if GOOGLE_CUDA
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         lhs, rhs, output, workspace, alpha, beta, stream, *algorithm,
         compute_precision, numeric_options, profile_result, context);
   }
-#endif
 
   if (output.batch_size != 1) {
     return stream->ThenBlasGemmStridedBatched(
