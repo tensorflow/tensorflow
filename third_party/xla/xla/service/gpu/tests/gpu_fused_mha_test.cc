@@ -84,7 +84,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
  protected:
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_xla_runtime_executable(true);
+    debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
     return debug_options;
   }
 
@@ -2839,6 +2839,254 @@ class FlashAttentionBMMScaleBiasMaskSoftmaxBMM
                       true);
   }
 };
+
+class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
+ protected:
+  const std::string  // NOLINT
+  GetModuleFlash_Attention_Training_BMM1_Softmax_BMM2_HloString_BF16() {  // NOLINT
+    const std::string hlo_text = R"(
+    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,64,1024]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0})->(bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,64,1024]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+    region_0.13 {
+      Arg_0.14 = bf16[] parameter(0)
+      Arg_1.15 = bf16[] parameter(1)
+      ROOT maximum.16 = bf16[] maximum(Arg_0.14, Arg_1.15)
+    }
+
+    region_1.25 {
+      Arg_0.26 = f32[] parameter(0)
+      Arg_1.27 = f32[] parameter(1)
+      ROOT add.28 = f32[] add(Arg_0.26, Arg_1.27)
+    }
+
+    region_2.47 {
+      Arg_0.48 = bf16[] parameter(0)
+      Arg_1.49 = bf16[] parameter(1)
+      ROOT add.50 = bf16[] add(Arg_0.48, Arg_1.49)
+    }
+
+    region_3.59 {
+      Arg_0.60 = f32[] parameter(0)
+      Arg_1.61 = f32[] parameter(1)
+      ROOT add.62 = f32[] add(Arg_0.60, Arg_1.61)
+    }
+
+    ENTRY main.72 {
+      Arg_0.1 = bf16[2,6,1024,64]{3,2,1,0} parameter(0), sharding={replicated}
+      Arg_1.2 = bf16[2,6,64,1024]{3,2,1,0} parameter(1), sharding={replicated}
+      dot.11 = bf16[2,6,1024,1024]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      constant.17 = bf16[] constant(2)
+      broadcast.29 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(constant.17), dimensions={}
+      multiply.2 = bf16[2,6,1024,1024]{3,2,1,0} multiply(dot.11, broadcast.29)
+      constant.9 = bf16[] constant(-inf)
+      reduce.17 = bf16[2,6,1024]{2,1,0} reduce(multiply.2, constant.9), dimensions={3}, to_apply=region_0.13
+      reshape.18 = bf16[2,6,1024,1]{3,2,1,0} reshape(reduce.17)
+      broadcast.19 = bf16[2,6,1024,1]{3,2,1,0} broadcast(reshape.18), dimensions={0,1,2,3}
+      reshape.20 = bf16[2,6,1024]{2,1,0} reshape(broadcast.19)
+      broadcast.21 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.20), dimensions={0,1,2}
+      subtract.22 = bf16[2,6,1024,1024]{3,2,1,0} subtract(multiply.2, broadcast.21)
+      exponential.23 = bf16[2,6,1024,1024]{3,2,1,0} exponential(subtract.22)
+      convert.24 = f32[2,6,1024,1024]{3,2,1,0} convert(exponential.23)
+      constant.8 = f32[] constant(0)
+      reduce.29 = f32[2,6,1024]{2,1,0} reduce(convert.24, constant.8), dimensions={3}, to_apply=region_1.25
+      reshape.30 = f32[2,6,1024,1]{3,2,1,0} reshape(reduce.29)
+      convert.31 = bf16[2,6,1024,1]{3,2,1,0} convert(reshape.30)
+      broadcast.32 = bf16[2,6,1024,1]{3,2,1,0} broadcast(convert.31), dimensions={0,1,2,3}
+      reshape.33 = bf16[2,6,1024]{2,1,0} reshape(broadcast.32)
+      broadcast.34 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.33), dimensions={0,1,2}
+      divide.35 = bf16[2,6,1024,1024]{3,2,1,0} divide(exponential.23, broadcast.34)
+      Arg_2.3 = bf16[2,6,1024,64]{3,2,1,0} parameter(2), sharding={replicated}
+      dot.38 = bf16[2,6,1024,64]{3,2,1,0} dot(divide.35, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      Arg_4.5 = bf16[2,6,1024,64]{3,2,1,0} parameter(3), sharding={replicated}
+      dot.41 = bf16[2,6,1024,1024]{3,2,1,0} dot(Arg_4.5, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+      broadcast.54 = bf16[2,6,1024,1]{3,2,1,0} broadcast(convert.31), dimensions={0,1,2,3}
+      reshape.55 = bf16[2,6,1024]{2,1,0} reshape(broadcast.54)
+      broadcast.56 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.55), dimensions={0,1,2}
+      divide.57 = bf16[2,6,1024,1024]{3,2,1,0} divide(dot.41, broadcast.56)
+      constant.5 = bf16[] constant(1)
+      broadcast.6 = bf16[2,6,1024,1]{3,2,1,0} broadcast(constant.5), dimensions={}
+      multiply.36 = bf16[2,6,1024,1]{3,2,1,0} multiply(convert.31, convert.31)
+      divide.37 = bf16[2,6,1024,1]{3,2,1,0} divide(broadcast.6, multiply.36)
+      broadcast.42 = bf16[2,6,1024,1]{3,2,1,0} broadcast(divide.37), dimensions={0,1,2,3}
+      reshape.43 = bf16[2,6,1024]{2,1,0} reshape(broadcast.42)
+      broadcast.44 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.43), dimensions={0,1,2}
+      multiply.45 = bf16[2,6,1024,1024]{3,2,1,0} multiply(dot.41, broadcast.44)
+      multiply.46 = bf16[2,6,1024,1024]{3,2,1,0} multiply(multiply.45, exponential.23)
+      constant.7 = bf16[] constant(0)
+      reduce.51 = bf16[2,6,1024]{2,1,0} reduce(multiply.46, constant.7), dimensions={3}, to_apply=region_2.47
+      reshape.52 = bf16[2,6,1024,1]{3,2,1,0} reshape(reduce.51)
+      negate.53 = bf16[2,6,1024,1]{3,2,1,0} negate(reshape.52)
+      convert.58 = f32[2,6,1024,1]{3,2,1,0} convert(negate.53)
+      reduce.63 = f32[2,6,1024]{2,1,0} reduce(convert.58, constant.8), dimensions={3}, to_apply=region_3.59
+      broadcast.64 = f32[2,6,1024,1024]{3,2,1,0} broadcast(reduce.63), dimensions={0,1,2}
+      convert.65 = bf16[2,6,1024,1024]{3,2,1,0} convert(broadcast.64)
+      add.66 = bf16[2,6,1024,1024]{3,2,1,0} add(divide.57, convert.65)
+      multiply.67 = bf16[2,6,1024,1024]{3,2,1,0} multiply(add.66, exponential.23)
+      dot.70 = bf16[2,6,1024,64]{3,2,1,0} dot(multiply.67, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+      dot.68 = bf16[2,6,1024,64]{3,2,1,0} dot(multiply.67, Arg_0.1), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      transpose.69 = bf16[2,6,64,1024]{2,3,1,0} transpose(dot.68), dimensions={0,1,3,2}
+      dot.39 = bf16[2,6,64,1024]{3,2,1,0} dot(Arg_4.5, divide.35), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      transpose.40 = bf16[2,6,1024,64]{2,3,1,0} transpose(dot.39), dimensions={0,1,3,2}
+      ROOT tuple.71 = (bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,64,1024]{2,3,1,0}, bf16[2,6,1024,64]{2,3,1,0}) tuple(dot.38, dot.70, transpose.69, transpose.40)
+    }
+  )";
+    return hlo_text;
+  }
+
+  template <typename T>
+  void TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
+          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
+      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
+                      "GPUs and cuDNN >= 8.9.3.";
+    }
+    XlaBuilder builder(TestName());
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 6, 64, 1024}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    auto do_literal = GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    std::string hlo_string = "";
+    hlo_string =
+        GetModuleFlash_Attention_Training_BMM1_Softmax_BMM2_HloString_BF16();  // NOLINT
+    ExecuteAndCompare(
+        hlo_string,
+        {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
+        true);
+  }
+};
+
+class FlashAttentionBMMScaleMaskSoftmaxBMM : public MultiHeadedAttentionTest {
+ protected:
+  const std::string  // NOLINT
+  GetModuleFlash_Attention_Training_BMM1_Mask_Softmax_BMM2_HloString_BF16() {  // NOLINT
+    const std::string hlo_text = R"(
+    HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,1024,64]{3,2,1,0},bf16[2,6,64,1024]{3,2,1,0},bf16[2,6,1024,64]{3,2,1,0},bf16[2,6,1024,64]{3,2,1,0},pred[2,6,1024,1024]{3,2,1,0})->(bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,64,1024]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+    region_0.21 {
+      Arg_0.22 = bf16[] parameter(0)
+      Arg_1.23 = bf16[] parameter(1)
+      ROOT maximum.24 = bf16[] maximum(Arg_0.22, Arg_1.23)
+    }
+
+    region_1.33 {
+      Arg_0.34 = f32[] parameter(0)
+      Arg_1.35 = f32[] parameter(1)
+      ROOT add.36 = f32[] add(Arg_0.34, Arg_1.35)
+    }
+
+    region_2.55 {
+      Arg_0.56 = bf16[] parameter(0)
+      Arg_1.57 = bf16[] parameter(1)
+      ROOT add.58 = bf16[] add(Arg_0.56, Arg_1.57)
+    }
+
+    region_3.67 {
+      Arg_0.68 = f32[] parameter(0)
+      Arg_1.69 = f32[] parameter(1)
+      ROOT add.70 = f32[] add(Arg_0.68, Arg_1.69)
+    }
+
+    ENTRY main.82 {
+      constant.16 = pred[2,6,1024,1024]{3,2,1,0} parameter(4)
+      Arg_0.1 = bf16[2,6,1024,64]{3,2,1,0} parameter(0)
+      Arg_1.2 = bf16[2,6,64,1024]{3,2,1,0} parameter(1)
+      dot.17 = bf16[2,6,1024,1024]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      constant.5 = bf16[] constant(2)
+      broadcast.6 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(constant.5), dimensions={}
+      multiply.18 = bf16[2,6,1024,1024]{3,2,1,0} multiply(dot.17, broadcast.6)
+      constant.7 = bf16[] constant(0)
+      broadcast.8 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(constant.7), dimensions={}
+      select.20 = bf16[2,6,1024,1024]{3,2,1,0} select(constant.16, multiply.18, broadcast.8)
+      constant.12 = bf16[] constant(-inf)
+      reduce.25 = bf16[2,6,1024]{2,1,0} reduce(select.20, constant.12), dimensions={3}, to_apply=region_0.21
+      reshape.26 = bf16[2,6,1024,1]{3,2,1,0} reshape(reduce.25)
+      broadcast.27 = bf16[2,6,1024,1]{3,2,1,0} broadcast(reshape.26), dimensions={0,1,2,3}
+      reshape.28 = bf16[2,6,1024]{2,1,0} reshape(broadcast.27)
+      broadcast.29 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.28), dimensions={0,1,2}
+      subtract.30 = bf16[2,6,1024,1024]{3,2,1,0} subtract(select.20, broadcast.29)
+      exponential.31 = bf16[2,6,1024,1024]{3,2,1,0} exponential(subtract.30)
+      convert.32 = f32[2,6,1024,1024]{3,2,1,0} convert(exponential.31)
+      constant.11 = f32[] constant(0)
+      reduce.37 = f32[2,6,1024]{2,1,0} reduce(convert.32, constant.11), dimensions={3}, to_apply=region_1.33
+      reshape.38 = f32[2,6,1024,1]{3,2,1,0} reshape(reduce.37)
+      convert.39 = bf16[2,6,1024,1]{3,2,1,0} convert(reshape.38)
+      broadcast.40 = bf16[2,6,1024,1]{3,2,1,0} broadcast(convert.39), dimensions={0,1,2,3}
+      reshape.41 = bf16[2,6,1024]{2,1,0} reshape(broadcast.40)
+      broadcast.42 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.41), dimensions={0,1,2}
+      divide.43 = bf16[2,6,1024,1024]{3,2,1,0} divide(exponential.31, broadcast.42)
+      Arg_2.3 = bf16[2,6,1024,64]{3,2,1,0} parameter(2)
+      dot.46 = bf16[2,6,1024,64]{3,2,1,0} dot(divide.43, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      Arg_3.4 = bf16[2,6,1024,64]{3,2,1,0} parameter(3)
+      dot.49 = bf16[2,6,1024,1024]{3,2,1,0} dot(Arg_3.4, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+      broadcast.62 = bf16[2,6,1024,1]{3,2,1,0} broadcast(convert.39), dimensions={0,1,2,3}
+      reshape.63 = bf16[2,6,1024]{2,1,0} reshape(broadcast.62)
+      broadcast.64 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.63), dimensions={0,1,2}
+      divide.65 = bf16[2,6,1024,1024]{3,2,1,0} divide(dot.49, broadcast.64)
+      constant.9 = bf16[] constant(1)
+      broadcast.10 = bf16[2,6,1024,1]{3,2,1,0} broadcast(constant.9), dimensions={}
+      multiply.44 = bf16[2,6,1024,1]{3,2,1,0} multiply(convert.39, convert.39)
+      divide.45 = bf16[2,6,1024,1]{3,2,1,0} divide(broadcast.10, multiply.44)
+      broadcast.50 = bf16[2,6,1024,1]{3,2,1,0} broadcast(divide.45), dimensions={0,1,2,3}
+      reshape.51 = bf16[2,6,1024]{2,1,0} reshape(broadcast.50)
+      broadcast.52 = bf16[2,6,1024,1024]{3,2,1,0} broadcast(reshape.51), dimensions={0,1,2}
+      multiply.53 = bf16[2,6,1024,1024]{3,2,1,0} multiply(dot.49, broadcast.52)
+      multiply.54 = bf16[2,6,1024,1024]{3,2,1,0} multiply(multiply.53, exponential.31)
+      constant.13 = bf16[] constant(0)
+      reduce.59 = bf16[2,6,1024]{2,1,0} reduce(multiply.54, constant.13), dimensions={3}, to_apply=region_2.55
+      reshape.60 = bf16[2,6,1024,1]{3,2,1,0} reshape(reduce.59)
+      negate.61 = bf16[2,6,1024,1]{3,2,1,0} negate(reshape.60)
+      convert.66 = f32[2,6,1024,1]{3,2,1,0} convert(negate.61)
+      reduce.71 = f32[2,6,1024]{2,1,0} reduce(convert.66, constant.11), dimensions={3}, to_apply=region_3.67
+      broadcast.72 = f32[2,6,1024,1024]{3,2,1,0} broadcast(reduce.71), dimensions={0,1,2}
+      convert.73 = bf16[2,6,1024,1024]{3,2,1,0} convert(broadcast.72)
+      add.74 = bf16[2,6,1024,1024]{3,2,1,0} add(divide.65, convert.73)
+      multiply.75 = bf16[2,6,1024,1024]{3,2,1,0} multiply(add.74, exponential.31)
+      select.76 = bf16[2,6,1024,1024]{3,2,1,0} select(constant.16, multiply.75, broadcast.8)
+      multiply.77 = bf16[2,6,1024,1024]{3,2,1,0} multiply(select.76, broadcast.6)
+      dot.80 = bf16[2,6,1024,64]{3,2,1,0} dot(multiply.77, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+      dot.78 = bf16[2,6,1024,64]{3,2,1,0} dot(multiply.77, Arg_0.1), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      transpose.79 = bf16[2,6,64,1024]{2,3,1,0} transpose(dot.78), dimensions={0,1,3,2}
+      dot.47 = bf16[2,6,64,1024]{3,2,1,0} dot(Arg_3.4, divide.43), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      transpose.48 = bf16[2,6,1024,64]{2,3,1,0} transpose(dot.47), dimensions={0,1,3,2}
+      ROOT tuple.81 = (bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,1024,64]{3,2,1,0}, bf16[2,6,64,1024]{2,3,1,0}, bf16[2,6,1024,64]{2,3,1,0}) tuple(dot.46, dot.80, transpose.79, transpose.48)
+    }
+  )";
+
+    return hlo_text;
+  }
+
+  template <typename T>
+  void TestImpl_Flash_Attention_Training_BMM1_Mask_Softmax_BMM2() {
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
+    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
+          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
+      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
+                      "GPUs and cuDNN >= 8.9.3.";
+    }
+    XlaBuilder builder(TestName());
+    auto lhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    auto rhs_bmm1_literal =
+        GetInput4DLiteral<T>({2, 6, 64, 1024}, {3, 2, 1, 0});
+    auto rhs_bmm2_literal =
+        GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    auto mask_literal = GetMask4DLiteral({2, 6, 1024, 1024}, {3, 2, 1, 0});
+    auto do_literal = GetInput4DLiteral<T>({2, 6, 1024, 64}, {3, 2, 1, 0});
+    std::string hlo_string =
+        GetModuleFlash_Attention_Training_BMM1_Mask_Softmax_BMM2_HloString_BF16();  // NOLINT
+    ExecuteAndCompare(hlo_string,
+                      {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
+                       &do_literal, &mask_literal},
+                      true);
+  }
+};
+
 // BMM1 - BMM2
 XLA_TEST_F(MultiHeadedAttentionBMMBMM, FMHABMM_BMM_vanilla_F16) {
   TestImpl_FMHABMM_BMM_vanilla<Eigen::half>();
@@ -3002,6 +3250,18 @@ XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
 XLA_TEST_F(FlashAttentionBMMScaleBiasMaskSoftmaxBMM,
            Flash_Attention_Training_BMM1_Bias_Mask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_Bias_Mask_Softmax_BMM2<bfloat16>();
+}
+
+// BMM1 - Scale - Softmax - BMM2
+XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
+           Flash_Attention_Training_BMM1_Softmax_BMM2_BF16) {
+  TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2<bfloat16>();
+}
+
+// BMM1 - Scale - Mask - Softmax - BMM2
+XLA_TEST_F(FlashAttentionBMMScaleMaskSoftmaxBMM,
+           Flash_Attention_Training_BMM1_Mask_Softmax_BMM2_BF16) {
+  TestImpl_Flash_Attention_Training_BMM1_Mask_Softmax_BMM2<bfloat16>();
 }
 }  // namespace gpu
 }  // namespace xla

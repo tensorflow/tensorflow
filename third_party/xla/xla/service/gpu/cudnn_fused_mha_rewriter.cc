@@ -473,17 +473,11 @@ StatusOr<bool> IsFlashAttention(
   TF_RET_CHECK(seq_q.size() == 1);
   TF_RET_CHECK(seq_k.size() == 1);
   TF_RET_CHECK(hidden_dim.size() == 1);
-  auto is_fixed_topology =
-      (custom_call_name == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget ||
-       custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget ||
-       custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget ||
-       custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget);
 
   auto is_seqlen_supported = seq_q[0] > 512 && seq_k[0] > 512 &&
                              seq_q[0] % 64 == 0 && seq_k[0] % 64 == 0;
   auto is_hidden_dim_supported = hidden_dim[0] == 64 || hidden_dim[0] == 128;
-  auto is_flash_attention =
-      is_seqlen_supported && is_hidden_dim_supported && is_fixed_topology;
+  auto is_flash_attention = is_seqlen_supported && is_hidden_dim_supported;
   auto is_cross_attention = seq_q[0] != seq_k[0];
 
   // flash attention requires cuDNN 8.9.3 to run non-fused QKV
@@ -671,9 +665,10 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
       OptionalConvert(first_bmm_pattern.WithOneUse()),
       OptionalConvert(
           m::Broadcast(m::Constant(&scale).WithPredicate(IsScalar))));
-
   if (Match(softmax_input,
-            OptionalConvert(OptionalBitcast(first_bmm_pattern)))) {
+            OptionalConvert(OptionalBitcast(m::AnyOf<HloInstruction>(
+                first_bmm_pattern, unfused_scaled_bmm_subpattern))))) {
+    // bmm1 - (scale) - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHASoftmaxDropoutCallTarget
@@ -685,6 +680,7 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
                            unfused_scaled_bmm_subpattern.WithOneUse(),
                            first_bmm_pattern.WithOneUse()))),
                        m::Op(&bias))))) {
+    // bmm1 - (scale) - bias - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_scale = scale;
     match_result.matched_bias = bias;
@@ -1227,11 +1223,8 @@ absl::StatusOr<bool> IsMHABlockSupported(
     return false;
   }
 
-  if (is_training &&
-      (custom_call_name != kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasSoftmaxCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasMaskSoftmaxCallTarget)) {
+  // cuDNN FMHA requires softmax for backward
+  if (is_training && custom_call_name == kCudnnfMHABmmBmmCallTarget) {
     VLOG(3) << "Unsupported fused MHA training pattern.\n";
     return false;
   }

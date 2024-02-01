@@ -4013,6 +4013,219 @@ ENTRY main.92 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       FlashAttentionBF16TrainingBmm1SoftmaxBmm2Pattern) {
+  const char* module_str = R"(
+HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,128,2048]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0})->(bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+region_0.32 {
+  Arg_0.33 = bf16[] parameter(0)
+  Arg_1.34 = bf16[] parameter(1)
+  ROOT maximum = bf16[] maximum(Arg_0.33, Arg_1.34)
+}
+region_1.44 {
+  Arg_0.45 = f32[] parameter(0)
+  Arg_1.46 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0.45, Arg_1.46)
+}
+region_2.66 {
+  Arg_0.67 = bf16[] parameter(0)
+  Arg_1.68 = bf16[] parameter(1)
+  ROOT add.1 = bf16[] add(Arg_0.67, Arg_1.68)
+}
+ENTRY main.92 {
+  Arg_0.1 = bf16[2,6,2048,128]{3,2,1,0} parameter(0), sharding={replicated}
+  Arg_1.2 = bf16[2,6,128,2048]{3,2,1,0} parameter(1), sharding={replicated}
+  dot.14 = bf16[2,6,2048,2048]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  constant.17 = bf16[] constant(2)
+  broadcast.29 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(constant.17), dimensions={}
+  multiply.2 = bf16[2,6,2048,2048]{3,2,1,0} multiply(dot.14, broadcast.29)
+  constant.10 = bf16[] constant(-inf)
+  constant.16 = bf16[] constant(0)
+  reduce.36 = bf16[2,6,2048]{2,1,0} reduce(multiply.2, constant.10), dimensions={3}, to_apply=region_0.32
+  broadcast.21 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(reduce.36), dimensions={0,1,2}
+  subtract.1 = bf16[2,6,2048,2048]{3,2,1,0} subtract(multiply.2, broadcast.21)
+  exponential.1 = bf16[2,6,2048,2048]{3,2,1,0} exponential(subtract.1)
+  convert.5 = f32[2,6,2048,2048]{3,2,1,0} convert(exponential.1)
+  constant.14 = f32[] constant(0)
+  reduce.48 = f32[2,6,2048]{2,1,0} reduce(convert.5, constant.14), dimensions={3}, to_apply=region_1.44
+  convert.9 = bf16[2,6,2048]{2,1,0} convert(reduce.48)
+  broadcast.32 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(convert.9), dimensions={0,1,2}
+  divide.5 = bf16[2,6,2048,2048]{3,2,1,0} divide(exponential.1, broadcast.32)
+  Arg_2.3 = bf16[2,6,2048,128]{3,2,1,0} parameter(2), sharding={replicated}
+  dot.57 = bf16[2,6,2048,128]{3,2,1,0} dot(divide.5, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  Arg_3.4 = bf16[2,6,2048,128]{3,2,1,0} parameter(3), sharding={replicated}
+  dot.60 = bf16[2,6,2048,2048]{3,2,1,0} dot(Arg_3.4, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  divide.4 = bf16[2,6,2048,2048]{3,2,1,0} divide(dot.60, broadcast.32)
+  constant.15 = bf16[] constant(1)
+  broadcast.25 = bf16[2,6,2048]{2,1,0} broadcast(constant.15), dimensions={}
+  multiply.3 = bf16[2,6,2048]{2,1,0} multiply(convert.9, convert.9)
+  divide.3 = bf16[2,6,2048]{2,1,0} divide(broadcast.25, multiply.3)
+  broadcast.26 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(divide.3), dimensions={0,1,2}
+  multiply.4 = bf16[2,6,2048,2048]{3,2,1,0} multiply(dot.60, broadcast.26)
+  multiply.5 = bf16[2,6,2048,2048]{3,2,1,0} multiply(multiply.4, exponential.1)
+  reduce.70 = bf16[2,6,2048]{2,1,0} reduce(multiply.5, constant.16), dimensions={3}, to_apply=region_2.66
+  negate.2 = bf16[2,6,2048]{2,1,0} negate(reduce.70)
+  broadcast.31 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(negate.2), dimensions={0,1,2}
+  add.5 = bf16[2,6,2048,2048]{3,2,1,0} add(divide.4, broadcast.31)
+  multiply.8 = bf16[2,6,2048,2048]{3,2,1,0} multiply(add.5, exponential.1)
+  multiply.9 = bf16[2,6,2048,2048]{3,2,1,0} multiply(multiply.8, broadcast.29)
+  dot.90 = bf16[2,6,2048,128]{3,2,1,0} dot(multiply.9, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  dot = bf16[2,6,128,2048]{3,2,1,0} dot(Arg_0.1, multiply.9), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  dot.1 = bf16[2,6,2048,128]{3,2,1,0} dot(divide.5, Arg_3.4), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  ROOT tuple.91 = (bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}) tuple(dot.57, dot.90, dot, dot.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{
+      GetCudaComputeCapability(), GetCudnnVersionWithFlashAttentionSupport()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  HloDCE dce;
+  TF_ASSERT_OK(RunHloPass(&dce, m.get()).status());
+
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  const HloInstruction* fmha;
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(
+              m::CustomCall(&fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
+              .WithShape(BF16, {2, 6, 2048, 128}),
+          m::GetTupleElement(
+              m::CustomCall(&fmha, {kCudnnfMHASoftmaxBackwardCallTarget}), 0)
+              .WithShape(BF16, {2, 6, 2048, 128}),
+          m::Transpose(
+              m::GetTupleElement(
+                  m::CustomCall({kCudnnfMHASoftmaxBackwardCallTarget}), 1))
+              .WithShape(BF16, {2, 6, 128, 2048}),
+          m::GetTupleElement(
+              m::CustomCall({kCudnnfMHASoftmaxBackwardCallTarget}), 2)
+              .WithShape(BF16, {2, 6, 2048, 128}))));
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
+  EXPECT_EQ(fmha->operands().size(), 6);
+  EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
+  EXPECT_EQ(config.is_flash_attention(), true);
+  EXPECT_EQ(config.is_causal_mask(), false);
+}
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       FlashAttentionBF16TrainingBmm1ScaleMaskSoftmaxBmm2Pattern) {
+  const char* module_str = R"(
+HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,64]{3,2,1,0},bf16[2,6,64,2048]{3,2,1,0},bf16[2,6,2048,64]{3,2,1,0},bf16[2,6,2048,64]{3,2,1,0})->(bf16[2,6,2048,64]{3,2,1,0}, bf16[2,6,2048,64]{3,2,1,0}, bf16[2,6,64,2048]{3,2,1,0}, bf16[2,6,2048,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+region_0.21 {
+  Arg_0.22 = bf16[] parameter(0)
+  Arg_1.23 = bf16[] parameter(1)
+  ROOT maximum = bf16[] maximum(Arg_0.22, Arg_1.23)
+}
+
+region_1.33 {
+  Arg_0.34 = f32[] parameter(0)
+  Arg_1.35 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0.34, Arg_1.35)
+}
+
+region_2.55 {
+  Arg_0.56 = bf16[] parameter(0)
+  Arg_1.57 = bf16[] parameter(1)
+  ROOT add.1 = bf16[] add(Arg_0.56, Arg_1.57)
+}
+
+ENTRY main.82 {
+  constant.18 = pred[2,6,2048,2048]{3,2,1,0} constant({...})
+  Arg_0.1 = bf16[2,6,2048,64]{3,2,1,0} parameter(0), sharding={replicated}
+  Arg_1.2 = bf16[2,6,64,2048]{3,2,1,0} parameter(1), sharding={replicated}
+  dot.17 = bf16[2,6,2048,2048]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  constant.22 = bf16[] constant(2)
+  broadcast.24 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(constant.22), dimensions={}
+  multiply.2 = bf16[2,6,2048,2048]{3,2,1,0} multiply(dot.17, broadcast.24)
+  constant.19 = bf16[] constant(1)
+  constant.21 = bf16[] constant(0)
+  broadcast.23 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(constant.21), dimensions={}
+  select.1 = bf16[2,6,2048,2048]{3,2,1,0} select(constant.18, multiply.2, broadcast.23)
+  constant.15 = bf16[] constant(-inf)
+  reduce.25 = bf16[2,6,2048]{2,1,0} reduce(select.1, constant.15), dimensions={3}, to_apply=region_0.21
+  broadcast.17 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(reduce.25), dimensions={0,1,2}
+  subtract.1 = bf16[2,6,2048,2048]{3,2,1,0} subtract(select.1, broadcast.17)
+  exponential.1 = bf16[2,6,2048,2048]{3,2,1,0} exponential(subtract.1)
+  convert.5 = f32[2,6,2048,2048]{3,2,1,0} convert(exponential.1)
+  constant.17 = f32[] constant(0)
+  reduce.37 = f32[2,6,2048]{2,1,0} reduce(convert.5, constant.17), dimensions={3}, to_apply=region_1.33
+  convert.9 = bf16[2,6,2048]{2,1,0} convert(reduce.37)
+  broadcast.26 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(convert.9), dimensions={0,1,2}
+  divide.5 = bf16[2,6,2048,2048]{3,2,1,0} divide(exponential.1, broadcast.26)
+  Arg_2.3 = bf16[2,6,2048,64]{3,2,1,0} parameter(2), sharding={replicated}
+  dot.46 = bf16[2,6,2048,64]{3,2,1,0} dot(divide.5, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  Arg_3.4 = bf16[2,6,2048,64]{3,2,1,0} parameter(3), sharding={replicated}
+  dot.49 = bf16[2,6,2048,2048]{3,2,1,0} dot(Arg_3.4, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  divide.4 = bf16[2,6,2048,2048]{3,2,1,0} divide(dot.49, broadcast.26)
+  broadcast.20 = bf16[2,6,2048]{2,1,0} broadcast(constant.19), dimensions={}
+  multiply.3 = bf16[2,6,2048]{2,1,0} multiply(convert.9, convert.9)
+  divide.3 = bf16[2,6,2048]{2,1,0} divide(broadcast.20, multiply.3)
+  broadcast.21 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(divide.3), dimensions={0,1,2}
+  multiply.4 = bf16[2,6,2048,2048]{3,2,1,0} multiply(dot.49, broadcast.21)
+  multiply.5 = bf16[2,6,2048,2048]{3,2,1,0} multiply(multiply.4, exponential.1)
+  reduce.59 = bf16[2,6,2048]{2,1,0} reduce(multiply.5, constant.21), dimensions={3}, to_apply=region_2.55
+  negate.2 = bf16[2,6,2048]{2,1,0} negate(reduce.59)
+  broadcast.25 = bf16[2,6,2048,2048]{3,2,1,0} broadcast(negate.2), dimensions={0,1,2}
+  add.5 = bf16[2,6,2048,2048]{3,2,1,0} add(divide.4, broadcast.25)
+  multiply.8 = bf16[2,6,2048,2048]{3,2,1,0} multiply(add.5, exponential.1)
+  select.3 = bf16[2,6,2048,2048]{3,2,1,0} select(constant.18, multiply.8, broadcast.23)
+  multiply.9 = bf16[2,6,2048,2048]{3,2,1,0} multiply(select.3, broadcast.24)
+  dot.80 = bf16[2,6,2048,64]{3,2,1,0} dot(multiply.9, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  dot = bf16[2,6,64,2048]{3,2,1,0} dot(Arg_0.1, multiply.9), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  dot.1 = bf16[2,6,2048,64]{3,2,1,0} dot(divide.5, Arg_3.4), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  ROOT tuple.81 = (bf16[2,6,2048,64]{3,2,1,0}, bf16[2,6,2048,64]{3,2,1,0}, bf16[2,6,64,2048]{3,2,1,0}, bf16[2,6,2048,64]{3,2,1,0}) tuple(dot.46, dot.80, dot, dot.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{
+      GetCudaComputeCapability(), GetCudnnVersionWithFlashAttentionSupport()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  HloDCE dce;
+  TF_ASSERT_OK(RunHloPass(&dce, m.get()).status());
+
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  const HloInstruction* fmha;
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(
+              m::CustomCall(&fmha, {kCudnnfMHAScaleMaskSoftmaxCallTarget}), 0)
+              .WithShape(BF16, {2, 6, 2048, 64}),
+          m::GetTupleElement(
+              m::CustomCall(&fmha,
+                            {kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget}),
+              0)
+              .WithShape(BF16, {2, 6, 2048, 64}),
+          m::Transpose(
+              m::GetTupleElement(
+                  m::CustomCall({kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget}),
+                  1))
+              .WithShape(BF16, {2, 6, 64, 2048}),
+          m::GetTupleElement(
+              m::CustomCall({kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget}), 2)
+              .WithShape(BF16, {2, 6, 2048, 64}))));
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
+  EXPECT_EQ(fmha->operands().size(), 7);
+  EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
+  EXPECT_EQ(config.is_flash_attention(), true);
+  EXPECT_EQ(config.is_causal_mask(), false);
+}
+
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
        FlashAttentionF16Bmm1BiasSoftmaxBmm2PatternCrossAttention) {
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,2048,64]{3,2,1,0},f16[2,6,64,1024]{3,2,1,0},f16[2,6,1024,64]{3,2,1,0},f16[2,6,2048,1024]{3,2,1,0})->f16[2,6,2048,64]{3,2,1,0}}
