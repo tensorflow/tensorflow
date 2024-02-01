@@ -188,10 +188,12 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   // phase.
   main_func->setAttr("tf.entry_function", builder.getDictionaryAttr(attrs));
 
+  // StableHLO Quantizer is not supported for JAX input models, so
+  // quantization_py_function_lib is set to nullptr.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,
-      /*saved_model_tags=*/{}, result,
-      /*session=*/std::nullopt);
+      /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
+      /*quantization_py_function_lib=*/nullptr);
   return status;
 }
 

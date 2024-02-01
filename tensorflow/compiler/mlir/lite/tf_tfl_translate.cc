@@ -320,7 +320,7 @@ int main(int argc, char **argv) {
   if (bundle) session = bundle->GetSession();
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,
-      /*saved_model_dir=*/"", session, &result, serialize_stablehlo_ops);
+      /*saved_model_dir=*/"", bundle.get(), &result, serialize_stablehlo_ops);
   if (!status.ok()) {
     llvm::errs() << status.message() << '\n';
     return kTrFailure;

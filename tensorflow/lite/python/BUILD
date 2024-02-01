@@ -453,6 +453,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
     ],

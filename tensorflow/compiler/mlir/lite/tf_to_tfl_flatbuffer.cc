@@ -50,13 +50,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/stablehlo/quantization.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
@@ -71,6 +74,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
@@ -87,6 +91,8 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
 using mlir::OwningOpRef;
+using ::stablehlo::quantization::QuantizationConfig;
+using ::tensorflow::quantization::PyFunctionLibrary;
 
 bool IsControlFlowV1Op(Operation* op) {
   return mlir::isa<mlir::tf_executor::SwitchOp, mlir::tf_executor::MergeOp,
@@ -153,6 +159,57 @@ absl::Status RegisterExtraTfOpDefs(
   }
   return absl::OkStatus();
 }
+
+// The hlo->tf conversion is done in three steps; pre-quantization,
+// quantization, and post-quantization. Quantization is optional, enabled only
+// when `pass_config.enable_stablehlo_quantizer` is `true`. If quantization is
+// not run, it only performs the hlo->tf conversion.
+//
+// All parameters except for `pass_config`, `pass_manager`, `status_handler`,
+// and `module` are only required for quantization. See the comments of
+// `RunQuantization` for details. If quantization is not performed, they will be
+// ignored.
+//
+// Returns a failure status when any of the three steps fail. `pass_manager`
+// will be cleared before returning.
+mlir::LogicalResult RunHloToTfConversion(
+    const mlir::TFL::PassConfig& pass_config,
+    const absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& saved_model_tags,
+    const QuantizationConfig& quantization_config,
+    const PyFunctionLibrary* quantization_py_function_lib,
+    const SavedModelBundle* saved_model_bundle, mlir::PassManager& pass_manager,
+    mlir::StatusScopedDiagnosticHandler& status_handler, ModuleOp& module) {
+  // TODO: b/194747383 - We need to valid that indeed the "main" func is
+  // presented.
+  AddPreQuantizationStableHloToTfPasses(/*entry_function_name=*/"main",
+                                        pass_config, pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return mlir::failure();
+  }
+  pass_manager.clear();
+
+  if (pass_config.enable_stablehlo_quantizer) {
+    const absl::StatusOr<mlir::ModuleOp> quantized_module_op = RunQuantization(
+        saved_model_bundle, saved_model_dir, saved_model_tags,
+        quantization_config, quantization_py_function_lib, module);
+    if (!quantized_module_op.ok()) {
+      LOG(ERROR) << "Failed to run quantization: "
+                 << quantized_module_op.status();
+      return mlir::failure();
+    }
+    module = *quantized_module_op;
+  }
+
+  AddPostQuantizationStableHloToTfPasses(pass_config, pass_manager);
+  if (failed(pass_manager.run(module))) {
+    return mlir::failure();
+  }
+  pass_manager.clear();
+
+  return mlir::success();
+}
+
 }  // namespace
 
 absl::StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
@@ -326,8 +383,9 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir,
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    llvm::StringRef saved_model_dir, std::optional<Session*> session,
-    std::string* result, bool serialize_stablehlo_ops) {
+    llvm::StringRef saved_model_dir, SavedModelBundle* saved_model_bundle,
+    std::string* result, bool serialize_stablehlo_ops,
+    const PyFunctionLibrary* quantization_py_function_lib) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
 
@@ -364,22 +422,39 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
           pass_manager.getContext()));
   InitPassManager(pass_manager, toco_flags.debug_options());
 
+  Session* session = saved_model_bundle == nullptr
+                         ? nullptr
+                         : saved_model_bundle->GetSession();
   if (pass_config.enable_stablehlo_conversion) {
+    // `ConvertTFExecutorToStablehloFlatbuffer` expects a `std::nullopt` if the
+    // `Session*` is a nullptr.
+    std::optional<Session*> session_opt =
+        session == nullptr ? std::nullopt : std::make_optional(session);
+
     // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
         pass_manager, module, export_to_mlir, status_handler, toco_flags,
-        pass_config, session, result, saved_model_tags);
+        pass_config, std::move(session_opt), result, saved_model_tags);
+  }
+
+  if (pass_config.enable_hlo_to_tf_conversion) {
+    if (failed(RunHloToTfConversion(
+            pass_config, saved_model_dir, saved_model_tags,
+            toco_flags.quantization_config(), quantization_py_function_lib,
+            saved_model_bundle, pass_manager, status_handler, module))) {
+      return status_handler.ConsumeStatus();
+    }
   }
 
   AddPreVariableFreezingTFToTFLConversionPasses(pass_config, &pass_manager);
   if (failed(pass_manager.run(module))) {
     return status_handler.ConsumeStatus();
   }
+
   // Freeze variables if a session is provided.
-  if (session.has_value()) {
+  if (session != nullptr) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
-    if (failed(
-            mlir::tf_saved_model::FreezeVariables(module, session.value()))) {
+    if (failed(mlir::tf_saved_model::FreezeVariables(module, session))) {
       auto status = status_handler.ConsumeStatus();
       mlir::TFL::ErrorCollector* collector =
           mlir::TFL::ErrorCollector::GetErrorCollector();

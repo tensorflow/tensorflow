@@ -1560,10 +1560,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       converter.convert()
 
   @test_util.run_v2_only
-  def testStableHloQuantizerNoOpForStaticRangePtq(self):
-    """Tests that StableHLO Quantizer performs a no-op for Static-Range PTQ."""
-    # TODO: b/307626169 - Provide a full test after StableHLO Quantizer
-    # integration.
+  def testStableHloQuantizerNoOpForTfSavedModel(self):
+    """Tests that StableHLO Quantizer does not run for TF SavedModel."""
     input_data = tf.constant(1.0, shape=[1])
     root = autotrackable.AutoTrackable()
     root.f = tf.function(lambda x: 2.0 * x)
@@ -1576,6 +1574,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       return [{'x': np.ones(shape=(1,), dtype=np.float32)}]
 
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    # Set the flags to enable StableHLO Quantizer.
     converter.experimental_use_stablehlo_quantizer = True
     converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = _representative_data_gen

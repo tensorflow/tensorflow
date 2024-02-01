@@ -7,6 +7,8 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        # For TFLite Converter integration.
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
     ],
     licenses = ["notice"],
@@ -310,6 +312,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/lite:__pkg__",  # For tf_tfl_translate binary.
+        # For odml_to_stablehlo binary.
+        "//tensorflow/compiler/mlir/lite/stablehlo:__pkg__",
+        # For StableHLO Quantizer adapter functionalities within TFLite. Testonly.
+        "//tensorflow/compiler/mlir/lite/quantization/stablehlo:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [

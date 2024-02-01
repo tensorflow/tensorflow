@@ -831,7 +831,6 @@ class TFLiteConverterBase:
           " path will be a no-op."
       )
 
-    # TODO: b/307626169 - Integrate StableHLO Quantizer.
     if self.experimental_use_stablehlo_quantizer:
       if Optimize.DEFAULT in self.optimizations and self.representative_dataset:
         if len(self._saved_model_exported_names) != 1:

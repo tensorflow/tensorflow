@@ -33,10 +33,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
@@ -58,6 +60,7 @@ namespace internal {
 namespace {
 
 using ::mlir::quant::ReducedPrecisionSupport;
+using ::tensorflow::quantization::PyFunctionLibrary;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 constexpr mlir::StringRef kDetectionPostProcessOp =
@@ -344,7 +347,8 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
-    std::string* result, std::optional<Session*> session) {
+    std::string* result, SavedModelBundle* saved_model_bundle,
+    const PyFunctionLibrary* quantization_py_function_lib) {
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         module.get(),
@@ -368,7 +372,8 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
-      saved_model_tags, model_flags.saved_model_dir(), session, result);
+      saved_model_tags, model_flags.saved_model_dir(), saved_model_bundle,
+      result, /*serialize_stablehlo_ops=*/false, quantization_py_function_lib);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

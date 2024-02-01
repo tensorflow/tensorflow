@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -28,16 +29,20 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       [](py::object model_flags_proto_txt_raw,
          py::object toco_flags_proto_txt_raw, py::object input_contents_txt_raw,
          bool extended_return, py::object debug_info_txt_raw,
-         bool enable_mlir_converter) {
+         bool enable_mlir_converter,
+         const tensorflow::quantization::PyFunctionLibrary*
+             quantization_py_function_library) {
         return tensorflow::PyoOrThrow(toco::TocoConvert(
             model_flags_proto_txt_raw.ptr(), toco_flags_proto_txt_raw.ptr(),
             input_contents_txt_raw.ptr(), extended_return,
-            debug_info_txt_raw.ptr(), enable_mlir_converter));
+            debug_info_txt_raw.ptr(), enable_mlir_converter,
+            quantization_py_function_library));
       },
       py::arg("model_flags_proto_txt_raw"), py::arg("toco_flags_proto_txt_raw"),
       py::arg("input_contents_txt_raw"), py::arg("extended_return") = false,
       py::arg("debug_info_txt_raw") = py::none(),
       py::arg("enable_mlir_converter") = false,
+      py::arg("quantization_py_function_library") = py::none(),
       R"pbdoc(
       Convert a model represented in `input_contents`. `model_flags_proto`
       describes model parameters. `toco_flags_proto` describes conversion

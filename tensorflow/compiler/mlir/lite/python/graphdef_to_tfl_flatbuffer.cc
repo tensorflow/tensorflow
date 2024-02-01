@@ -109,10 +109,12 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
       toco_flags.guarantee_all_funcs_one_use();
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
 
+  // StableHLO Quantizer is not supported for GraphDef inputs, so
+  // quantization_py_function_lib is set to nullptr.
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,
-      /*saved_model_tags=*/{}, result,
-      /*session=*/std::nullopt);
+      /*saved_model_tags=*/{}, result, /*saved_model_bundle=*/nullptr,
+      /*quantization_py_function_lib=*/nullptr);
 }
 
 }  // namespace tensorflow

@@ -17,6 +17,7 @@
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
+from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 
 
 def wrapped_toco_convert(
@@ -34,6 +35,7 @@ def wrapped_toco_convert(
       False,  # extended_return
       debug_info_str,
       enable_mlir_converter,
+      py_function_lib.PyFunctionLibrary(),
   )
 
 
