@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/mlir_bridge_pass_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -215,7 +217,7 @@ MlirOptimizationPassState GetPassStateImpl(
   // explicltly requested a policy.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, &function_library, config_proto,
-      /*run_replicated_bridge*/ run_replicated_bridge,
+      /*is_tpu_graph*/ run_replicated_bridge,
       /*uses_uninitialized_resource_args=*/false,
       /*is_v1_compat=*/false, /*record_stats=*/false);
   // GetPassState is called once before MlirBridgePass starts, and the pass
@@ -259,14 +261,18 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
     const Graph& graph,
     const FunctionLibraryDefinition& function_library) const {
+  // While we do not use device type information to choose which pass pipeline
+  // to execute, it's needed for successful execution.
   if (!device_set) {
     // This is not expected in practice.
     VLOG(1) << "Device set is empty!";
     return MlirOptimizationPassState::Disabled;
   }
 
-  return GetPassStateImpl(/*run_replicated_bridge*/ HasTPUDevice(*device_set),
-                          config_proto, graph, function_library);
+  return GetPassStateImpl(
+      /*run_replicated_bridge*/ HasTpuReplicateAttr(graph, function_library) ||
+          IsSingleCoreTpuGraph(graph, function_library),
+      config_proto, graph, function_library);
 }
 
 // This runs the first phase of the "bridge", transforming the graph in a form
@@ -288,14 +294,6 @@ Status MlirBridgePass::Run(const std::string& function_name,
         1);
   }
 
-  // Check if the graph has any XLA-compilable ops.
-  // This check needs to precede GetPassState for instrumentation purposes.
-  bool run_replicated_bridge = RunReplicatedBridge(module);
-  if (!run_replicated_bridge && !RunNonReplicatedBridge(graph)) {
-    VLOG(1) << "Skipping MLIR TF2XLA Bridge, no XLA-compilable ops found.";
-    return OkStatus();
-  }
-
   if (HasTPUPartitionedCallOpInModule(module)) {
     VLOG(1) << "Skipping MLIR TF2XLA Bridge. This is an inference graph, "
                "Session V1 Bridge should be used during execution of "
@@ -305,6 +303,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
 
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
   // related to graph analysis from here.
+  bool run_replicated_bridge = RunReplicatedBridge(module);
   auto pass_state = GetPassStateImpl(run_replicated_bridge, config_proto, graph,
                                      function_library);
 
@@ -368,7 +367,7 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
-      /*run_replicated_bridge*/ true,
+      /*is_tpu_graph*/ true,
       /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
       /*record_stats=*/false);
   switch (policy) {
