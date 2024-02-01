@@ -238,20 +238,24 @@ void FollowArrayOrTokenStrategyGroup(
     const StrategyGroup& src_strategy_group, const Shape& shape,
     const size_t instruction_id, const bool have_memory_cost,
     const ClusterEnvironment& cluster_env,
-    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     StrategyGroup& strategy_group) {
   CHECK(shape.IsArray() || shape.IsToken());
 
+  std::vector<ShardingStrategy> pretrimmed_strategies;
   // Only follows the given strategy when there is no other strategy to be
   // restored.
-  if (!pretrimmed_strategy_map.contains(src_strategy_group.node_idx)) {
+  auto pretrimmed_strategy_map_it =
+      pretrimmed_strategy_map.find(src_strategy_group.node_idx);
+  if (pretrimmed_strategy_map_it != pretrimmed_strategy_map.end()) {
+    pretrimmed_strategies = pretrimmed_strategy_map_it->second;
+  } else {
     strategy_group.following = &src_strategy_group;
   }
+
   strategy_group.strategies.reserve(src_strategy_group.strategies.size());
   // Creates the sharding strategies and restores trimmed strategies, if any.
-  std::vector<ShardingStrategy>& pretrimmed_strategies =
-      pretrimmed_strategy_map[src_strategy_group.node_idx];
   for (int64_t sid = 0; sid < src_strategy_group.strategies.size() +
                                   pretrimmed_strategies.size();
        ++sid) {
@@ -288,7 +292,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     const size_t instruction_id, const bool have_memory_cost,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
-    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map) {
   std::unique_ptr<StrategyGroup> strategy_group;
   if (src_strategy_group->is_tuple) {
@@ -1521,7 +1525,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     const size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     const int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs) {
