@@ -572,23 +572,26 @@ static void Init(py::module_& m) {
     xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();
   });
-  m.def("load_pjrt_plugin",
-        [](std::string platform_name, std::optional<std::string> library_path,
-           std::optional<py::capsule> c_api) -> py::capsule {
-          if (library_path.has_value()) {
-            const PJRT_Api* api = xla::ValueOrThrow(
-                pjrt::LoadPjrtPlugin(platform_name, *library_path));
-            return py::capsule(absl::bit_cast<void*>(api), "pjrt_c_api");
-          }
-          if (absl::string_view(c_api->name()) != "pjrt_c_api") {
-            throw py::value_error(
-                "c_api argument to load_pjrt_plugin is not a pjrt_c_api "
-                "capsule.");
-          }
-          xla::ThrowIfError(pjrt::SetPjrtApi(
-              platform_name, static_cast<const PJRT_Api*>(*c_api)));
-          return *c_api;
-        });
+  m.def(
+      "load_pjrt_plugin",
+      [](std::string platform_name, std::optional<std::string> library_path,
+         std::optional<py::capsule> c_api) -> py::capsule {
+        if (library_path.has_value()) {
+          const PJRT_Api* api = xla::ValueOrThrow(
+              pjrt::LoadPjrtPlugin(platform_name, *library_path));
+          return py::capsule(absl::bit_cast<void*>(api), "pjrt_c_api");
+        }
+        if (absl::string_view(c_api->name()) != "pjrt_c_api") {
+          throw py::value_error(
+              "c_api argument to load_pjrt_plugin is not a pjrt_c_api "
+              "capsule.");
+        }
+        xla::ThrowIfError(pjrt::SetPjrtApi(
+            platform_name, static_cast<const PJRT_Api*>(*c_api)));
+        return *c_api;
+      },
+      py::arg("platform_name"), py::arg("library_path") = std::nullopt,
+      py::arg("c_api") = std::nullopt);
   m.def("pjrt_plugin_initialized", [](std::string platform_name) -> bool {
     return xla::ValueOrThrow(pjrt::IsPjrtPluginInitialized(platform_name));
   });
