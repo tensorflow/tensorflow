@@ -55,7 +55,7 @@ RBE_FLAGS=""
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
-    RBE_FLAGS="--config=rbe_linux_cuda_nvcc"
+    RBE_FLAGS="--config=rbe_linux_cuda_nvcc --jobs=150"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
 else
@@ -66,7 +66,7 @@ else
         TAGS_FILTER="$TAGS_FILTER,-no_aarch64"
         ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=tf_public_cache_push --action_env PYTHON_BIN_PATH=/usr/bin/python3.10 --python_path=/usr/bin/python3.10"
     else
-        RBE_FLAGS="--config=rbe_linux_cpu"
+        RBE_FLAGS="--config=rbe_linux_cpu --jobs=150"
     fi
 fi
 
@@ -81,7 +81,6 @@ docker exec xla bazel \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \
         $RBE_FLAGS \
-        --jobs=150 \
         --nobuild_tests_only \
         $ADDITIONAL_FLAGS \
         -- //xla/... //build_tools/...
