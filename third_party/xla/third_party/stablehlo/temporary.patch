@@ -1360,7 +1360,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/s
 diff --ruN a/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir b/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
 --- stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
 +++ stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,51 @@
 +// RUN: experimental-stablehlo-opt --experimental-chlo-recompose-ops --split-input-file --verify-diagnostics %s | FileCheck %s
 +
 +// -----
@@ -1397,6 +1397,21 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir b/st
 +  } : (tensor<16xf32>) -> tensor<?xf32>
 +  func.return %0 : tensor<?xf32>
 +}
++
++// -----
++
++// CHECK-LABEL: @recompose_erf
++func.func @recompose_erf(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
++  // CHECK: %0 = chlo.erf %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    backend_config = "",
++    call_target_name = "mhlo.erf",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
++  func.return %0 : tensor<?x20x20xbf16>
++}
++
 diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
 --- stablehlo/stablehlo/experimental/tests/lit.cfg.py
 +++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
@@ -2008,7 +2023,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stable
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
 --- stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
 +++ stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,168 @@
 +/* Copyright 2024 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2131,6 +2146,15 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +  }
 +};
 +
++struct ErfOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.erf") return failure();
++    return recomposeChloOpFromCustomCall<chlo::ErfOp>(op, rewriter);
++  }
++};
++
 +}  // namespace
 +
 +struct ChloRecomposeOpsPass
@@ -2149,6 +2173,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/
 +    RewritePatternSet patterns(&getContext());
 +    patterns.add<TopKOpRecomposePattern>(&getContext());
 +    patterns.add<TanOpRecomposePattern>(&getContext());
++    patterns.add<ErfOpRecomposePattern>(&getContext());
 +
 +    // Only apply to CustomCallOps
 +    auto moduleOp = getOperation();
