@@ -22,7 +22,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
-#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -48,11 +49,13 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -439,14 +442,13 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // switch it to the loop emitter. This often occurs during epilog fusion for
     // reductions, which suffer from limited emitter support.
     // TODO(b/312686229): Cost model should handle this.
-    const auto& analysis_fused =
-        fusion_analysis_cache_.Get(*producer, *consumer);
-    if (producer->IsInputFusion() &&
-        analysis_fused.GetEmitterFusionKind() ==
-            HloFusionAnalysis::EmitterFusionKind::kLoop) {
-      const auto& analysis = fusion_analysis_cache_.Get(*producer);
-      if (analysis.GetEmitterFusionKind() ==
-          HloFusionAnalysis::EmitterFusionKind::kReduction) {
+    const auto& analysis = fusion_analysis_cache_.Get(*producer);
+    if (analysis.GetEmitterFusionKind() ==
+        HloFusionAnalysis::EmitterFusionKind::kReduction) {
+      const auto& analysis_fused =
+          fusion_analysis_cache_.Get(*producer, *consumer);
+      if (analysis_fused.GetEmitterFusionKind() ==
+          HloFusionAnalysis::EmitterFusionKind::kLoop) {
         return "fusion into output of a reduce fusion would create a loop "
                "fusion";
       }

@@ -19,9 +19,11 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +42,6 @@ limitations under the License.
 
 namespace m = ::xla::match;
 
-using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
@@ -303,6 +304,33 @@ TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
 CHECK: ENTRY
 CHECK: ROOT {{.*}} fusion(
   )");
+}
+
+TEST_F(PriorityFusionTest, DoNotChangeReductionFusionToLoopFusion) {
+  // Regression test for epilogue fusion of slice into a reduction. The fusion
+  // kind for the reduction fusion is intentionally chosen to be set to kLoop,
+  // as we cannot rely on reductions always having fusion kind kInput.
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      rhs.407 = f32[] parameter(1)
+      lhs.407 = f32[] parameter(0)
+      ROOT add.24451 = f32[] add(lhs.407, rhs.407)
+    }
+
+    fused_computation {
+      p0 = f32[16,64]{1,0} parameter(0)
+      zero = f32[] constant(0.0)
+      ROOT reduce = f32[16]{0} reduce(p0, zero), dimensions={1}, to_apply=add
+    }
+
+    ENTRY main {
+      param0 = f32[16,64]{1,0} parameter(0)
+      fusion = f32[16]{0} fusion(param0), kind=kLoop, calls=fused_computation
+      ROOT slice = f32[8]{0} slice(fusion), slice={[0:8]}
+    })");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
