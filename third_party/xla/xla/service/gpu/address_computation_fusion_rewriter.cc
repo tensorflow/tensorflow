@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -57,7 +58,18 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
   absl::flat_hash_set<HloInstruction*> processed_sliced_chain_set;
 
+  const auto& aliasing_pairs =
+      Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  absl::flat_hash_set<int64_t> aliased_operands;
+  for (const auto& pair : aliasing_pairs) {
+    aliased_operands.insert(pair.second.first);
+  }
+
   for (auto* operand : instr->operands()) {
+    // output_to_operand_aliasing means the operand is to be materialized, which
+    // is against the whole idea of address computation fusion. Skip this
+    // operand.
+    if (aliased_operands.contains(instr->operand_index(operand))) continue;
     absl::InlinedVector<HloInstruction*, 4> maybe_sliced_operand_chain;
     auto maybe_slice_adaptor =
         HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
@@ -164,6 +176,9 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       body->root_instruction()->shape(), HloInstruction::FusionKind::kCustom,
       captures, body));
   module->SetAndUniquifyInstrName(fusion, "address_computation");
+
+  // We don't need to set/update output_to_operand_aliasing for the new fusion
+  // instruction because all buffers are already assigned at this point.
 
   // Set backends config to a matched custom fusion config.
   GpuBackendConfig gpu_config;

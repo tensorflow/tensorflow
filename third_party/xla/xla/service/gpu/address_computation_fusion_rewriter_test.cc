@@ -720,4 +720,71 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
                             });
 }
 
+TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY %main.9 {
+      %p0 = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
+      %get-tuple-element.287 = f32[100,100]{1,0} get-tuple-element(%p0), index=0
+      %get-tuple-element.288 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
+      %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
+      %slice.30 = f32[100,100]{1,0} slice(%concatenate.12), slice={[20:120], [0:100]}
+      %slice.34 = f32[100,100]{1,0} slice(%concatenate.12), slice={[99:199], [0:100]}
+      ROOT %cublas-gemm.15 = (f32[100,100]{1,0}, s8[120000]{0}) custom-call(%get-tuple-element.287, %slice.30, %slice.34),
+        custom_call_target="__cublas$gemm",
+        output_to_operand_aliasing={{0}: (2, {})},
+        backend_config={"gemm_backend_config":{
+          "alpha_real":1,
+          "beta":1,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{"operand_precision":["HIGHEST","HIGHEST"]},
+          "epilogue":"DEFAULT",
+          "lhs_stride":"10000",
+          "rhs_stride":"10000",
+          "grad_x":false,
+          "grad_y":false
+        }}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK:     %address-computation {{.*}} {
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[100,100]{1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[100,100]{1,0} parameter(1)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[200,100]{1,0} parameter(2)
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[100,100]{1,0} slice([[P2]]), slice={[20:120], [0:100]}
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) custom-call([[P0]], [[S1]], [[P1]]),
+    ; CHECK:         custom_call_target="__cublas$gemm"
+    ; CHECK:     }
+
+    ; CHECK:     ENTRY %main{{.*}} {
+    ; CHECK:       [[P:%[^ ]+]] = (f32[100,100]{1,0}, f32[100,100]{1,0}) parameter(0)
+    ; CHECK:       [[GTE0:%[^ ]+]] = f32[100,100]{1,0} get-tuple-element([[P]]), index=0
+    ; CHECK:       [[GTE1:%[^ ]+]] = f32[100,100]{1,0} get-tuple-element([[P]]), index=1
+    ; CHECK:       [[CONCAT:%[^ ]+]] = f32[200,100]{1,0} concatenate([[GTE0]], [[GTE1]]), dimensions={0}
+    ; CHECK:       [[S:%[^ ]+]] = f32[100,100]{1,0} slice([[CONCAT]]), slice={[99:199], [0:100]}
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[100,100]{1,0}, s8[120000]{0}) fusion([[GTE0]], [[S]], [[CONCAT]])
+    ; CHECK:         kind=kCustom, calls=%address-computation,
+    ; CHECK:         backend_config={
+    ; CHECK:           "kind":"__custom_fusion",
+    ; CHECK:           "custom_fusion_config":{"name":"address_computation"}
+    ; CHECK:         }
+    ; CHECK:     }
+  )";
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  RunAndFilecheckHloRewrite(hlo, AddressComputationFusionRewriter(), expected,
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 }  // namespace xla::gpu
