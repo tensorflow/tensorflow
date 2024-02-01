@@ -122,6 +122,9 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
   ...
 
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
+  ...
+
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
   ...
 

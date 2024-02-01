@@ -48,7 +48,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 235
+_version = 236
 
 # Version number for MLIR:Python components.
 mlir_api_version = 55
@@ -145,7 +145,11 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
-  return _xla.load_pjrt_plugin(plugin_name, library_path)
+  return _xla.load_pjrt_plugin(plugin_name, library_path, c_api=None)
+
+
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
+  return _xla.load_pjrt_plugin(plugin_name, None, c_api)
 
 
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
