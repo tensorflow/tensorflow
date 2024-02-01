@@ -89,6 +89,12 @@ absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
 GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
                              const HloInstruction* instr);
 
+// Creates an indexing map for bitcasting from `input_shape` to `output_shape`.
+// Equivalent to linearizing the input_shape index and then delinearizing it
+// to output_shape.
+IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
+                          mlir::MLIRContext* ctx);
+
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
 IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,

@@ -624,9 +624,10 @@ HloInstructionIndexing ComputeInputToOutputTransposeOpIndexing(
       forward_permutation, transpose->operand(0)->shape().dimensions(), {})});
 }
 
-std::optional<AffineMap> ComputeOutputToInputBitcastOpIndexingImpl(
-    const Shape& input_shape, const Shape& output_shape,
-    MLIRContext* mlir_context) {
+}  // namespace
+
+IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
+                          MLIRContext* ctx) {
   ShapeUtil::BitcastDecomposition decomposed_bitcast =
       ShapeUtil::DecomposeBitcast(input_shape, output_shape);
 
@@ -637,55 +638,49 @@ std::optional<AffineMap> ComputeOutputToInputBitcastOpIndexingImpl(
     CHECK(permutation.has_value())
         << "Failed to deduce permutation for a bitcast.";
 
-    return ComputeTransposeIndexingMap(InversePermutation(permutation.value()),
-                                       mlir_context);
+    return IndexingMap::FromTensorSizes(
+        ComputeTransposeIndexingMap(permutation.value(), ctx),
+        input_shape.dimensions(), {});
   }
   if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
           decomposed_bitcast)) {
-    return ComputeReshapeIndexingMap(input_shape.dimensions(),
-                                     output_shape.dimensions(), mlir_context);
+    // Note: ComputeReshapeIndexingMap assumes it's computing an output->input
+    // indexing, so input and output are reversed.
+    return IndexingMap::FromTensorSizes(
+        ComputeReshapeIndexingMap(output_shape.dimensions(),
+                                  input_shape.dimensions(), ctx),
+        input_shape.dimensions(), {});
   }
   // `trt` stands for transpose-reshape-transpose decomposition of bitcast.
   auto trt = std::get<ShapeUtil::BitcastDecompositionTrt>(decomposed_bitcast);
-  AffineMap transpose_map_1 = ComputeTransposeIndexingMap(
-      InversePermutation(trt.transpose1_dims), mlir_context);
-  AffineMap reshape_map =
-      ComputeReshapeIndexingMap(trt.transpose1_shape.dimensions(),
-                                trt.reshape_shape.dimensions(), mlir_context);
-  AffineMap transpose_map_2 = ComputeTransposeIndexingMap(
-      InversePermutation(trt.transpose2_dims), mlir_context);
-  return transpose_map_1.compose(reshape_map).compose(transpose_map_2);
+  auto transpose_map_1 = ComputeTransposeIndexingMap(trt.transpose1_dims, ctx);
+  auto reshape_map = ComputeReshapeIndexingMap(
+      trt.reshape_shape.dimensions(), trt.transpose1_shape.dimensions(), ctx);
+  auto transpose_map_2 = ComputeTransposeIndexingMap(trt.transpose2_dims, ctx);
+  auto bitcast_map =
+      transpose_map_2.compose(reshape_map).compose(transpose_map_1);
+  return IndexingMap::FromTensorSizes(bitcast_map, input_shape.dimensions(),
+                                      {});
 }
+
+namespace {
 
 HloInstructionIndexing ComputeOutputToInputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
-  const Shape& input_shape = bitcast->operand(0)->shape();
-  const Shape& output_shape = bitcast->shape();
-  auto bitcast_affine_map = ComputeOutputToInputBitcastOpIndexingImpl(
-      input_shape, output_shape, mlir_context);
-  if (!bitcast_affine_map.has_value()) return CreateUnknownIndexing();
+  auto bitcast_map = GetBitcastMap(bitcast->shape(),
+                                   bitcast->operand(0)->shape(), mlir_context);
+  bitcast_map.Simplify();
 
-  IndexingMap bitcast_indexing_map = IndexingMap::FromTensorSizes(
-      bitcast_affine_map.value(), output_shape.dimensions(), {});
-  bitcast_indexing_map.Simplify();
-
-  return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
+  return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
 HloInstructionIndexing ComputeInputToOutputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
-  const Shape& input_shape = bitcast->operand(0)->shape();
-  const Shape& output_shape = bitcast->shape();
+  auto bitcast_map = GetBitcastMap(bitcast->operand(0)->shape(),
+                                   bitcast->shape(), mlir_context);
+  bitcast_map.Simplify();
 
-  auto bitcast_affine_map = ComputeOutputToInputBitcastOpIndexingImpl(
-      output_shape, input_shape, mlir_context);
-  if (!bitcast_affine_map.has_value()) return CreateUnknownIndexing();
-
-  IndexingMap bitcast_indexing_map = IndexingMap::FromTensorSizes(
-      bitcast_affine_map.value(), input_shape.dimensions(), {});
-  bitcast_indexing_map.Simplify();
-
-  return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
+  return HloInstructionIndexing::FromIndexingMaps({bitcast_map});
 }
 
 // Converts a layout to a dimensions transposition necessary to get to that
