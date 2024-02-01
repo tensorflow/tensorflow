@@ -279,13 +279,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  // Get the list of supported algorithms for BLAS gemm.
-  bool GetBlasGemmAlgorithms(Stream* stream, const gpu::MatrixDescriptor& a,
-                             const gpu::MatrixDescriptor& b,
-                             gpu::OutputMatrixDescriptor* c, const void* alpha,
-                             const void* beta,
-                             std::vector<blas::AlgorithmType>* out_algorithms);
-
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }

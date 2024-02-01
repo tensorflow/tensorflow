@@ -64,9 +64,12 @@ absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
       GemmConfig::DescriptorsTuple desc,
       config->GetMatrixDescriptors(lhs_buffer, rhs_buffer, out_buffer));
 
-  stream->parent()->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs,
-                                          &desc.output, &config->alpha,
-                                          &config->beta, &algorithms);
+  auto blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No BLAS support for stream");
+  }
+  blas->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs, &desc.output,
+                              &config->alpha, &config->beta, &algorithms);
   const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   AutotuneConfig autotune_config{

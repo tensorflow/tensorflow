@@ -336,9 +336,13 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
                         gemm_config.GetMatrixDescriptors(lhs_buffer, rhs_buffer,
                                                          output_buffer));
 
-    stream->parent()->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs,
-                                            &desc.output, &gemm_config.alpha,
-                                            &gemm_config.beta, &algorithms);
+    auto blas = stream->parent()->AsBlas();
+    if (blas == nullptr) {
+      return absl::InternalError("No BLAS support for stream");
+    }
+    blas->GetBlasGemmAlgorithms(stream, desc.lhs, desc.rhs, &desc.output,
+                                &gemm_config.alpha, &gemm_config.beta,
+                                &algorithms);
 
 #if TENSORFLOW_USE_ROCM        // Blas gemm algorithms can be empty for ROCM
     if (algorithms.empty()) {  // nothing to autotune
