@@ -613,6 +613,8 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
       DumpingEnabledForHloPass(name(), module->config().debug_options());
   if (dump_enabled) {
     fusion_process_dump_ = std::make_unique<FusionProcessDumpProto>();
+    *fusion_process_dump_->mutable_gpu_device_info() =
+        device_info_.ToGpuProto();
   }
 
   // Appends ".0" suffix to all instructions.
@@ -630,6 +632,11 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
       module->SetAndUniquifyInstrName(instruction,
                                       absl::StrCat(instruction->name(), ".0"));
     }
+  }
+
+  if (dump_enabled) {
+    fusion_process_dump_->set_hlo_module_before_fusion(
+        module->ToString(HloPrintOptions::ShortParsable()));
   }
 
   auto result = InstructionFusion::Run(module, execution_threads);
