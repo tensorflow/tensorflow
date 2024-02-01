@@ -1,6 +1,11 @@
 # Tests of TensorFlow sparse linear algebra kernels using the Python API.
 
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_test")
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -100,6 +105,33 @@ cuda_py_strict_test(
     ],
 )
 
+py_strict_library(
+    name = "csr_sparse_matrix_dense_mat_mul_grad_test_base",
+    srcs = ["csr_sparse_matrix_dense_mat_mul_grad_test_base.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:gradient_checker",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
+        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
+    ],
+)
+
+tf_py_test(
+    name = "csr_sparse_matrix_dense_mat_mul_onednn_grad_test",
+    size = "medium",
+    srcs = ["csr_sparse_matrix_dense_mat_mul_onednn_grad_test.py"],
+    main = "csr_sparse_matrix_dense_mat_mul_onednn_grad_test.py",
+    shard_count = 50,
+    deps = [
+        ":csr_sparse_matrix_dense_mat_mul_grad_test_base",
+    ],
+)
+
 cuda_py_strict_test(
     name = "csr_sparse_matrix_dense_mat_mul_grad_test",
     size = "medium",
@@ -110,14 +142,7 @@ cuda_py_strict_test(
         "no_cuda_asan",  # TODO(b/190824595)
     ],
     deps = [
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:gradient_checker",
-        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
-        "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_ops",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/platform:tf_logging",
+        ":csr_sparse_matrix_dense_mat_mul_grad_test_base",
     ],
 )
 

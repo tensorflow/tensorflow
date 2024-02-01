@@ -26,6 +26,8 @@ namespace graph {
 
 Node* oneDNNSoftmax(Graph* g, Node* input);
 
+Node* oneDNNSparseCSRMatmul(Graph* g, Node* csr_matrix_t, Node* b);
+
 }  // namespace graph
 }  // namespace test
 }  // namespace tensorflow

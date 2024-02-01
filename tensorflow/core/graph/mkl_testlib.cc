@@ -32,6 +32,17 @@ Node* oneDNNSoftmax(Graph* g, Node* input) {
   return ret;
 }
 
+Node* oneDNNSparseCSRMatmul(Graph* g, Node* csr_matrix_t, Node* b) {
+  Node* ret = nullptr;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_MklNativeSparseMatrixMatMul")
+                  .Input(csr_matrix_t)
+                  .Input(b)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("_kernel", mkl_op_registry::kMklNameChangeOpLabel)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 }  // namespace graph
 }  // namespace test
 }  // namespace tensorflow

@@ -295,6 +295,86 @@ REGISTER_OP("SparseMatrixMatMul")
       return OkStatus();
     });
 
+#ifdef INTEL_MKL
+
+REGISTER_OP("_MklNativeSparseMatrixMatMul")
+    .Input("a: variant")
+    .Input("b: T")
+    .Attr("T: type")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("adjoint_a: bool = false")
+    .Attr("adjoint_b: bool = false")
+    .Attr("transpose_output: bool = false")
+    .Attr("conjugate_output: bool = false")
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      VLOG(1) << "_MklNativeSparseMatrixMatMul shape function";
+      ShapeAndType sparse_matrix_shape_and_type;
+      TF_RETURN_IF_ERROR(GetVariantInput(c, 0, &sparse_matrix_shape_and_type));
+      ShapeHandle a_shape = sparse_matrix_shape_and_type.shape;
+      TF_RETURN_IF_ERROR(c->WithRank(a_shape, 2, &a_shape));
+      if (!c->RankKnown(a_shape)) {
+        return errors::Internal("a has an unknown rank.");
+      }
+      ShapeHandle b_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &b_shape));
+      VLOG(1) << "_MklNativeSparseMatrixMatMul shape function still";
+
+      bool transpose_a = false;
+      bool transpose_b = false;
+      bool transpose_output = false;
+
+      // TODO(ebrevdo): Add transpose support.
+      TF_RETURN_IF_ERROR(c->GetAttr("transpose_a", &transpose_a));
+      TF_RETURN_IF_ERROR(c->GetAttr("transpose_b", &transpose_b));
+      TF_RETURN_IF_ERROR(c->GetAttr("transpose_output", &transpose_output));
+
+      bool adjoint_a = false;
+      bool adjoint_b = false;
+      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_a", &adjoint_a));
+      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_b", &adjoint_b));
+      if (adjoint_a && transpose_a) {
+        return errors::InvalidArgument(
+            "Only one of adjoint_a and transpose_a may be true.");
+      }
+      if (adjoint_b && transpose_b) {
+        return errors::InvalidArgument(
+            "Only one of adjoint_b and transpose_b may be true.");
+      }
+      transpose_a = transpose_a || adjoint_a;
+      transpose_b = transpose_b || adjoint_b;
+
+      auto output_rows = c->Dim(a_shape, transpose_a ? -1 : -2);
+      auto output_cols = c->Dim(b_shape, transpose_b ? -2 : -1);
+      if (transpose_output) {
+        std::tie(output_rows, output_cols) =
+            std::make_tuple(output_cols, output_rows);
+      }
+
+      // Batch dims match between inputs.
+      ShapeHandle a_batch_dims;
+      ShapeHandle b_batch_dims;
+      ShapeHandle batch_dims;
+      TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_batch_dims));
+      TF_RETURN_IF_ERROR(c->Subshape(b_shape, 0, -2, &b_batch_dims));
+      TF_RETURN_IF_ERROR(c->Merge(a_batch_dims, b_batch_dims, &batch_dims));
+
+      // Assert inner dims match.
+      shape_inference::DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, transpose_a ? -2 : -1),
+                                  c->Dim(b_shape, transpose_b ? -1 : -2),
+                                  &unused));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->Concatenate(
+          batch_dims, c->Matrix(output_rows, output_cols), &out));
+
+      c->set_output(0, out);
+      return OkStatus();
+    });
+#endif
+
 REGISTER_OP("SparseMatrixMul")
     .Input("a: variant")
     .Input("b: T")
