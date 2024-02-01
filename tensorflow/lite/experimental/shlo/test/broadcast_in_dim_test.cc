@@ -17,11 +17,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
-#include "tensorflow/lite/experimental/shlo/src/debug.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
 #include "tensorflow/lite/experimental/shlo/test/util.h"
 
@@ -47,20 +47,10 @@ void test(std::initializer_list<DimensionSize>&& operand_shape,
   absl::Span<const DimensionSize> broadcast_dimensions(
       broadcast_dimensions_values);
 
-  auto res = BroadcastInDim(operand, broadcast_dimensions, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "operand: " << operand;
-    LOG(INFO) << "broadcast_dimensions: " << ToString(broadcast_dimensions);
-    LOG(INFO) << "expected: " << expected;
-    LOG(INFO) << "result: " << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(BroadcastInDim(operand, broadcast_dimensions, result));
+  EXPECT_EQ(result, expected)
+      << "operand: " << operand
+      << "\nbroadcast_dimensions: " << ToString(broadcast_dimensions);
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -97,18 +87,10 @@ void test(
       broadcast_dimensions_values);
   auto res = BroadcastInDim(operand, broadcast_dimensions, result);
 
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "operand: " << operand;
-    LOG(INFO) << "broadcast_dimensions: " << ToString(broadcast_dimensions);
-    LOG(INFO) << "expected: " << expected;
-    LOG(INFO) << "result: " << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(BroadcastInDim(operand, broadcast_dimensions, result));
+  EXPECT_EQ(result, expected)
+      << "operand: " << operand
+      << "\nbroadcast_dimensions: " << ToString(broadcast_dimensions);
 }
 
 TEST(BroadcastInDim, Unquantized) {

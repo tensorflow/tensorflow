@@ -13,12 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <initializer_list>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
@@ -33,6 +37,16 @@ struct TensorConst {
   std::initializer_list<DimensionSize>&& shape;
   std::vector<typename Storage<element_type>::Type>&& values;
 };
+
+template <typename T>
+std::string ToString(std::string_view name,
+                     const std::vector<const T*>& tensors) {
+  std::ostringstream result;
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    result << name << "[" << i << "]: " << *tensors[i] << "\n";
+  }
+  return result.str();
+}
 
 template <ElementType element_type>
 void test(std::initializer_list<TensorConst<element_type>>&& inputs_,
@@ -54,22 +68,9 @@ void test(std::initializer_list<TensorConst<element_type>>&& inputs_,
       expected.num_elements());
   Tensor result(TensorType(expected.type()), result_values.data());
 
-  auto res = Concatenate(absl::Span<const Tensor*>(inputs), dimension, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    for (auto i = 0; i < inputs.size(); ++i) {
-      LOG(INFO) << "input[" << i << "]: " << *inputs[i];
-    }
-    LOG(INFO) << "dimension: " << dimension;
-    LOG(INFO) << "expected: " << expected;
-    LOG(INFO) << "result: " << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Concatenate(absl::Span<const Tensor*>(inputs), dimension, result));
+  EXPECT_EQ(result, expected)
+      << ToString("inputs", inputs) << "dimension: " << dimension;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -106,23 +107,10 @@ void test(QuantizedParameter&& quantized_parameter,
   QuantizedTensor result(QuantizedTensorType(expected.type()),
                          result_values.data());
 
-  auto res = Concatenate(absl::Span<const QuantizedTensor*>(inputs), dimension,
-                         result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    for (auto i = 0; i < inputs.size(); ++i) {
-      LOG(INFO) << "input[" << i << "]: " << *inputs[i];
-    }
-    LOG(INFO) << "dimension: " << dimension;
-    LOG(INFO) << "expected: " << expected;
-    LOG(INFO) << "result: " << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Concatenate(absl::Span<const QuantizedTensor*>(inputs), dimension,
+                        result));
+  EXPECT_EQ(result, expected)
+      << ToString("inputs", inputs) << "dimension: " << dimension;
 }
 
 TEST(Concatenate, Unquantized) {

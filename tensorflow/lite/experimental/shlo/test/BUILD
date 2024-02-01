@@ -1,6 +1,16 @@
 package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 cc_library(
+    name = "matchers",
+    testonly = True,
+    hdrs = ["matchers.h"],
+    deps = [
+        "//tensorflow/lite/experimental/shlo:debug",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "util",
     srcs = [
     ],
@@ -10,6 +20,7 @@ cc_library(
     visibility = ["//tensorflow/lite/experimental/shlo/bench:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/shlo",
+        "//tensorflow/lite/experimental/shlo:debug",
         "@com_google_absl//absl/log:check",
     ],
 )
@@ -25,7 +36,6 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -42,7 +52,6 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -58,7 +67,6 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -74,7 +82,6 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -88,10 +95,10 @@ cc_test(
     data = [
     ],
     deps = [
+        ":matchers",
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -105,10 +112,10 @@ cc_test(
     data = [
     ],
     deps = [
+        ":matchers",
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -125,7 +132,6 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -140,7 +146,6 @@ cc_test(
     deps = [
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -156,7 +161,6 @@ cc_test(
         ":util",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -169,10 +173,9 @@ cc_test(
     data = [
     ],
     deps = [
+        ":matchers",
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

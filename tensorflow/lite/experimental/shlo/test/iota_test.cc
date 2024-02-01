@@ -17,8 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
@@ -38,19 +38,8 @@ void test(std::initializer_list<DimensionSize>&& shape,
       expected_values.size());
   Tensor result(TensorType(Shape(shape), element_type), result_values.data());
 
-  auto res = Iota(iota_dimension, result);
-  if (!res.ok()) {
-    ABSL_LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    ABSL_LOG(INFO) << "iota_dimension=" << iota_dimension;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Iota(iota_dimension, result));
+  EXPECT_EQ(result, expected) << "\niota_dimension: " << iota_dimension;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -74,19 +63,8 @@ void test(
                           QuantizedTensorElementType(element_type)),
       result_quant_values.data());
 
-  auto res = Iota(iota_dimension, result);
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "iota_dimension=" << iota_dimension;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Iota(iota_dimension, result));
+  EXPECT_EQ(result, expected) << "\niota_dimension: " << iota_dimension;
 }
 
 TEST(Iota, Unquantized) {
