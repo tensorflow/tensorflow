@@ -73,7 +73,8 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     ++output_leaf_it;
     const Shape& output_shape =
         ShapeUtil::GetSubshape(output_buffers->shape(), shape_index);
-    TF_RET_CHECK(ShapeUtil::Equal(source_slices_[index].shape, output_shape))
+    TF_RET_CHECK(
+        ShapeUtil::ReshapeIsBitcast(source_slices_[index].shape, output_shape))
         << "Mismatch between outfeed output buffer shape "
         << ShapeUtil::HumanStringWithLayout(output_shape)
         << " and outfeed source buffer shape "
@@ -96,7 +97,7 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return Internal("Failed to complete data transfer on stream %p: %s",
-                         &stream, block_status.message());
+                    &stream, block_status.message());
   }
 
   VLOG(2) << "Outfeeding from GPU complete";

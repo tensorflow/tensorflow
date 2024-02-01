@@ -45,7 +45,8 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), shape_index);
-    TF_RET_CHECK(ShapeUtil::Equal(dest_slices_[index].shape, source_shape))
+    TF_RET_CHECK(
+        ShapeUtil::ReshapeIsBitcast(dest_slices_[index].shape, source_shape))
         << "Mismatch between infeed source buffer shape "
         << ShapeUtil::HumanStringWithLayout(source_shape)
         << " and infeed dest buffer shape "
@@ -62,7 +63,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return Internal("Failed to complete data transfer on stream %p: %s",
-                         &stream, block_status.message());
+                    &stream, block_status.message());
   }
 
   VLOG(2) << "Infeeding to GPU complete";
