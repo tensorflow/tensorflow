@@ -1631,6 +1631,7 @@ genrule(
 
         d="$${d#*external/farmhash_archive/src}"
         d="$${d#*external/$${extname}/}"
+        d="$${d#_virtual_includes/*/}"
       fi
 
       mkdir -p "$@/$${d}"
