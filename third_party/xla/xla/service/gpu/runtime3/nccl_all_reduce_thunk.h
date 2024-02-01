@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
-#define XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_NCCL_ALL_REDUCE_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_NCCL_ALL_REDUCE_THUNK_H_
 
 #include <cstdint>
 #include <optional>
@@ -144,4 +144,4 @@ absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_NCCL_ALL_REDUCE_THUNK_H_

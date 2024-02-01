@@ -78,6 +78,7 @@ cc_library(
         "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/gpu/runtime3:memset_thunk",
         "//xla/service/gpu/runtime3:nccl_all_gather_thunk",
+        "//xla/service/gpu/runtime3:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
         "//xla/stream_executor:blas",

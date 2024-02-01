@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_reduce_thunk.h"
 
 #include <array>
 #include <cstdint>
@@ -126,7 +126,7 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
 
   if (!MatchReductionComputation(inst->called_computations().front())
            .has_value()) {
-    return tsl::errors::Unimplemented("Unrecognized reduction computation");
+    return absl::UnimplementedError("Unrecognized reduction computation");
   }
 
   return absl::OkStatus();
@@ -140,7 +140,7 @@ absl::Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
   if (!NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
            op.getComputation())
            .has_value()) {
-    return tsl::errors::Unimplemented("Unrecognized reduction computation");
+    return absl::UnimplementedError("Unrecognized reduction computation");
   }
   return absl::OkStatus();
 }

@@ -374,6 +374,7 @@ cc_library(
         "//xla/service/gpu/runtime3:infeed_thunk",
         "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/gpu/runtime3:nccl_all_gather_thunk",
+        "//xla/service/gpu/runtime3:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime3:norm_thunk",
         "//xla/service/gpu/runtime3:outfeed_thunk",
         "//xla/service/gpu/runtime3:replica_id_thunk",
@@ -852,7 +853,6 @@ cc_library(
 cc_library(
     name = "nccl_collective_thunks",
     srcs = [
-        "nccl_all_reduce_thunk.cc",
         "nccl_all_to_all_thunk.cc",
         "nccl_collective_permute_thunk.cc",
         "nccl_collective_thunk.cc",
@@ -861,7 +861,6 @@ cc_library(
         "nccl_send_thunk.cc",
     ],
     hdrs = [
-        "nccl_all_reduce_thunk.h",
         "nccl_all_to_all_thunk.h",
         "nccl_collective_permute_thunk.h",
         "nccl_collective_thunk.h",
