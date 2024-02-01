@@ -215,9 +215,9 @@ LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
-    int64_t output_id, mlir::MLIRContext* ctx) const {
+    int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  const auto& shape = analysis_.fusion_roots()[output_id]->shape();
+  const auto& shape = analysis_.fusion_roots()[root_index]->shape();
   return GetDefaultThreadIdToOutputIndexingMap(
       launch_dims, config_.unroll_factor, shape, ctx);
 }

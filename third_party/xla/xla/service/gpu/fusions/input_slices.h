@@ -50,6 +50,13 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t output_id, mlir::MLIRContext* ctx) const override;
 
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
+
  protected:
   absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
                           const HloFusionInstruction& fusion,
