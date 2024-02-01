@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
-#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -276,11 +275,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
     gpu_performance_model_cache_.Invalidate(*instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
-
-    for (auto* user : instruction->users()) {
-      fusion_node_evaluations_.erase(user);
-    }
-    fusion_node_evaluations_.erase(instruction);
   }
 
   // Updates data for the new fusion instruction and its users and operands.
@@ -471,18 +465,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // have exponential time/memory requirements for emitting certain fusion
     // kernels, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-    if (consumer->opcode() == HloOpcode::kFusion) {
-      absl::MutexLock lock(&fusion_node_evaluations_mutex_);
-      if (fusion_node_evaluations_.find(consumer) ==
-          fusion_node_evaluations_.end()) {
-        // We have no cached results for this fusion node yet. Compute it now.
-        fusion_node_evaluations_.emplace(
-            consumer, FusionNodeIndexingEvaluation(consumer));
-      }
-      if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
-              producer)) {
-        return "the fusion would result in an overly large code duplication";
-      }
+    if (cost_analysis_.ProducerConsumerMergedTooLarge(*producer, *consumer)) {
+      return "the fusion would result in an overly large code duplication";
     }
 
     // Don't fuse across a root instruction. There are situation when a root
@@ -588,12 +572,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   absl::Mutex can_fuse_cache_mutex_;
 
   GpuPerformanceModelCache gpu_performance_model_cache_;
-
-  // Keep track of the number of times each instruction inside a fusion node is
-  // indexed with different index vectors.
-  absl::Mutex fusion_node_evaluations_mutex_;
-  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
-      fusion_node_evaluations_;
 };
 
 }  // namespace

@@ -2505,7 +2505,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:dump",
-        "//xla/service:fusion_node_indexing_evaluation",
         "//xla/service:fusion_queue",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_pass",

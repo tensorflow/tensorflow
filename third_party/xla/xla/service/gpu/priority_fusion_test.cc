@@ -805,5 +805,56 @@ TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
                   m::Add(m::Parameter(), m::Broadcast(m::Constant())))));
 }
 
+TEST_F(PriorityFusionTest, DoNotFuseProducerConsumerMergedTooLarge) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation.1 {
+      iota.9.7 = s32[3,1,1]{2,1,0} iota(), iota_dimension=0
+      param_3.29 = s32[] parameter(2)
+      pad.2.7 = s32[3,1,2]{2,1,0} pad(iota.9.7, param_3.29), padding=0_0x0_0x0_1
+      param_2.39 = s32[] parameter(1)
+      broadcast.76.1 = s32[3,1,2]{2,1,0} broadcast(param_2.39), dimensions={}
+      compare.9.1 = pred[3,1,2]{2,1,0} compare(pad.2.7, broadcast.76.1), direction=GE
+      param_1.73 = s32[2]{0} parameter(0)
+      broadcast.78.1 = s32[3,2]{1,0} broadcast(param_1.73), dimensions={1}
+      bitcast.1 = s32[3,2]{1,0} bitcast(pad.2.7)
+      compare.10.1 = pred[3,2]{1,0} compare(bitcast.1, broadcast.78.1), direction=LE
+      bitcast.2 = pred[3,1,2]{2,1,0} bitcast(compare.10.1)
+      ROOT and.3.1 = pred[3,1,2]{2,1,0} and(compare.9.1, bitcast.2)
+    }
+
+    and {
+      x = pred[] parameter(0)
+      y = pred[] parameter(1)
+      ROOT and = pred[] and(x, y)
+    }
+
+    fused_computation.2 {
+      param0 = pred[3,1,2]{2,1,0} parameter(0)
+      slice = pred[1,1,2]{2,1,0} slice(param0), slice={[0:1], [0:1], [0:2]}
+      bitcast = pred[2]{0} bitcast(slice)
+      init = pred[] constant(true)
+      reduce = pred[2]{0} reduce(param0, init), dimensions={0,1}, to_apply=and
+      and = pred[2]{0} and(bitcast, reduce)
+      pad = pred[3]{0} pad(and, init), padding=0_1
+      broadcast = pred[3,2]{1,0} broadcast(pad), dimensions={0}
+      bitcast2 = pred[6]{0} bitcast(broadcast)
+      broadcast2 = pred[2,3]{1,0} broadcast(pad), dimensions={1}
+      bitcast3 = pred[6]{0} bitcast(broadcast2)
+      ROOT and2 = pred[6]{0} and(bitcast2, bitcast3)
+    }
+
+    ENTRY main {
+      p0 = s32[2]{0} parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      fusion1 = pred[3,1,2]{2,1,0} fusion(p0, p1, p2), kind=kLoop, calls=fused_computation.1
+      ROOT fusion2 = pred[6]{0} fusion(fusion1), kind=kInput, calls=fused_computation.2
+    }
+  )");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla
