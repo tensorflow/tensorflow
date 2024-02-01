@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -703,6 +704,71 @@ bool IsPermutationNCHW(Value perm) {
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
+
+// This pattern matches TFL::BroadcastToOp WITH TENSOR RANK <= 4 and replaces
+// it with a MulOp that multiplies the tensor by a splat constant with 1s.
+struct ConvertTFLBroadcastToMulOp
+    : public OpRewritePattern<TFL::BroadcastToOp> {
+  using OpRewritePattern<TFL::BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::BroadcastToOp tfl_broadcast_to_op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type =
+        tfl_broadcast_to_op.getInput().getType().cast<ShapedType>();
+    auto output_type =
+        tfl_broadcast_to_op.getOutput().getType().cast<ShapedType>();
+    auto shape_type =
+        tfl_broadcast_to_op.getShape().getType().cast<ShapedType>();
+    Type element_type = input_type.getElementType();
+
+    auto loc = tfl_broadcast_to_op->getLoc();
+
+    // Check that the output type is not dynamic and is less-than-equal to 4D or
+    // the shape type is static, 1D and has less-than-equal to 4 elements.
+    bool is_output_shape_dynamic =
+        (!output_type.hasRank() || (output_type.getRank() > 4) ||
+         (output_type.getNumDynamicDims() > 0));
+    bool is_broadcast_shape_dynamic =
+        (!shape_type.hasStaticShape() || (shape_type.getRank() != 1) ||
+         (shape_type.getDimSize(0) > 4));
+    if (is_output_shape_dynamic && is_broadcast_shape_dynamic)
+      return rewriter.notifyMatchFailure(
+          loc, "output_rank or broadcast_to shape not supported");
+
+    // Allow lowering when the input's elements type is F32, BFloat16, I32 or
+    // I16.
+    if (!(element_type.isa<BFloat16Type, Float32Type>() ||
+          element_type.isInteger(32) || element_type.isInteger(16)))
+      return rewriter.notifyMatchFailure(loc, "element_type_not_supported");
+
+    Value mul_rhs_value;
+    if (!output_type.hasRank() || (output_type.getNumDynamicDims() > 0)) {
+      auto status_or_const_op =
+          CreateConstOpWithSingleValue(&rewriter, loc, input_type, 1);
+      if (!status_or_const_op.ok()) {
+        return failure();
+      }
+
+      mul_rhs_value = rewriter.create<TFL::FillOp>(
+          loc, output_type, tfl_broadcast_to_op.getShape(),
+          status_or_const_op.value());
+    } else {
+      auto status_or_const_op =
+          CreateConstOpWithVectorValue(&rewriter, loc, output_type, 1);
+      if (!status_or_const_op.ok()) {
+        return failure();
+      }
+
+      mul_rhs_value = status_or_const_op.value();
+    }
+
+    auto mul_op = rewriter.create<TFL::MulOp>(
+        loc, output_type, tfl_broadcast_to_op.getInput(), mul_rhs_value,
+        rewriter.getStringAttr("NONE"));
+    rewriter.replaceOp(tfl_broadcast_to_op, mul_op.getResult());
+    return success();
+  }
+};
 
 struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
   using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
@@ -2427,8 +2493,8 @@ void OptimizePass::runOnOperation() {
   // binary ops.
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
-      .add<RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected>(
-          ctx);
+      .add<RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
+           ConvertTFLBroadcastToMulOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus

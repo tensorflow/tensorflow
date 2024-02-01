@@ -452,14 +452,15 @@ cc_library(
         "utils/constant_utils.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -754,6 +755,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":constant_utils",
         ":convert_type",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",

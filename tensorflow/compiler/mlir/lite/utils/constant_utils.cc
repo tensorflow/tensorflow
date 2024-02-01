@@ -15,39 +15,47 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 
+#include <complex>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
 
-tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
-    PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
-    int value) {
+tsl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   Type element_type = shaped_type.getElementType();
-  ShapedType scalar_type = RankedTensorType::get({}, element_type);
-  TypedAttr attr;
   if (element_type.isF16()) {
     auto floatType = mlir::FloatType::getF16(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
     std::vector<Attribute> floatValues({floatAttr});
-    attr = DenseElementsAttr::get(scalar_type, floatValues);
+    return DenseElementsAttr::get(shaped_type, floatValues);
   } else if (element_type.isBF16()) {
     auto floatType = mlir::FloatType::getBF16(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
     std::vector<Attribute> floatValues({floatAttr});
-    attr = DenseElementsAttr::get(scalar_type, floatValues);
+    return DenseElementsAttr::get(shaped_type, floatValues);
   } else if (element_type.isF32()) {
-    attr =
-        DenseElementsAttr::get<float>(scalar_type, static_cast<float>(value));
+    return DenseElementsAttr::get<float>(shaped_type,
+                                         static_cast<float>(value));
   } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
@@ -64,7 +72,7 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
       repr.set_tensor_content(content);
       std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-      attr = mlir::TF::TensorProtoAttr::get(scalar_type, mangled);
+      return mlir::TF::TensorProtoAttr::get(shaped_type, mangled);
     } else {
       return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                 "Unsupported type");
@@ -73,19 +81,19 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     if (element_type.isSignedInteger()) {
       switch (itype.getWidth()) {
         case 8:
-          attr = DenseElementsAttr::get<int8_t>(scalar_type,
+          return DenseElementsAttr::get<int8_t>(shaped_type,
                                                 static_cast<int8_t>(value));
           break;
         case 16:
-          attr = DenseElementsAttr::get<int16_t>(scalar_type,
+          return DenseElementsAttr::get<int16_t>(shaped_type,
                                                  static_cast<int16_t>(value));
           break;
         case 32:
-          attr = DenseElementsAttr::get<int32_t>(scalar_type,
+          return DenseElementsAttr::get<int32_t>(shaped_type,
                                                  static_cast<int32_t>(value));
           break;
         case 64:
-          attr = DenseElementsAttr::get<int64_t>(scalar_type,
+          return DenseElementsAttr::get<int64_t>(shaped_type,
                                                  static_cast<int64_t>(value));
           break;
         default:
@@ -95,19 +103,19 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     } else {
       switch (itype.getWidth()) {
         case 8:
-          attr = DenseElementsAttr::get<uint8_t>(scalar_type,
+          return DenseElementsAttr::get<uint8_t>(shaped_type,
                                                  static_cast<uint8_t>(value));
           break;
         case 16:
-          attr = DenseElementsAttr::get<uint16_t>(scalar_type,
+          return DenseElementsAttr::get<uint16_t>(shaped_type,
                                                   static_cast<uint16_t>(value));
           break;
         case 32:
-          attr = DenseElementsAttr::get<uint32_t>(scalar_type,
+          return DenseElementsAttr::get<uint32_t>(shaped_type,
                                                   static_cast<uint32_t>(value));
           break;
         case 64:
-          attr = DenseElementsAttr::get<uint64_t>(scalar_type,
+          return DenseElementsAttr::get<uint64_t>(shaped_type,
                                                   static_cast<uint64_t>(value));
           break;
         default:
@@ -119,8 +127,29 @@ tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Unsupported type");
   }
+}
+
+// Returns a Constant op with a splat vector value.
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithVectorValue(
+    PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
+    int value) {
+  ShapedType dense_type = RankedTensorType::get(shaped_type.getShape(),
+                                                shaped_type.getElementType());
+  auto attr = CreateTypedAttr(dense_type, value);
+
+  return rewriter->create<arith::ConstantOp>(loc, dense_type,
+                                             cast<TypedAttr>(*attr));
+}
+
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
+    PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
+    int value) {
+  ShapedType scalar_type =
+      RankedTensorType::get({}, shaped_type.getElementType());
+  auto attr = CreateTypedAttr(scalar_type, value);
+
   return rewriter->create<arith::ConstantOp>(loc, scalar_type,
-                                             cast<TypedAttr>(attr));
+                                             cast<TypedAttr>(*attr));
 }
 
 }  // namespace TFL
