@@ -76,7 +76,7 @@ class HostOffloaderTest : public HloTestBase {
 
 TEST_F(HostOffloaderTest, BasicDusDs) {
   const std::string& hlo_string = R"(
-HloModule llm_while
+HloModule my_module
 ENTRY main {
   data_param = f32[1,2048,2048] parameter(0)
   index_param = s32[] parameter(1)
@@ -123,9 +123,322 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, BasicCopy) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="PipelineForward"
+  copy_0 = f32[2048] copy(offload_custom_call)
+  copy_1 = f32[2048] copy(copy_0)
+  ROOT load_custom_call = f32[2048] custom-call(copy_1), custom_call_target="PipelineBackward"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(&copy_to_device,
+                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, BasicNoCopy) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="PipelineForward"
+  ROOT load_custom_call = f32[2048] custom-call(offload_custom_call), custom_call_target="PipelineBackward"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(&copy_to_device,
+                         m::Copy(&copy_to_host, m::Parameter(&param, 0)))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyWithOptBarrier) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="PipelineForward"
+  tuple = (f32[2048]) tuple(offload_custom_call)
+  opt_barrier = (f32[2048]) opt-barrier(tuple)
+  get_tuple_element = f32[2048] get-tuple-element(opt_barrier), index=0
+  ROOT load_custom_call = f32[2048] custom-call(get_tuple_element), custom_call_target="PipelineBackward"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  // param
+  //   |
+  // copy (to host)
+  //   |
+  // tuple
+  //   |
+  // opt-barrier
+  //   |
+  // get-tuple-element
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* tuple;
+  HloInstruction* opt_barrier;
+  HloInstruction* gte;
+  HloInstruction* copy_to_device;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Copy(
+          &copy_to_device,
+          m::GetTupleElement(
+              &gte, m::OptimizationBarrier(
+                        &opt_barrier,
+                        m::Tuple(&tuple, m::Copy(&copy_to_host,
+                                                 m::Parameter(&param, 0))))))));
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, NoCopyWithOptBarrierMoreElaborate) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16]{0})->f32[16]{0}}
+
+ENTRY main.24 {
+  Arg_0.1 = f32[16]{0} parameter(0), sharding={devices=[2]<=[2]}
+  cosine.4 = f32[16]{0} cosine(Arg_0.1)
+  custom-call.5 = f32[16]{0} custom-call(cosine.4), custom_call_target="PipelineForward"
+  sine.3 = f32[16]{0} sine(Arg_0.1)
+  cosine.7 = f32[16]{0} cosine(sine.3)
+  custom-call.8 = f32[16]{0} custom-call(cosine.7), custom_call_target="PipelineForward"
+  sine.6 = f32[16]{0} sine(sine.3)
+  cosine.9 = f32[16]{0} cosine(sine.6)
+  custom-call.10 = f32[16]{0} custom-call(cosine.9), custom_call_target="PipelineForward"
+  constant.2 = f32[] constant(1)
+  tuple.11 = (f32[16]{0}, f32[16]{0}, f32[16]{0}, f32[]) tuple(custom-call.5, custom-call.8, custom-call.10, constant.2)
+  opt-barrier.12 = (f32[16]{0}, f32[16]{0}, f32[16]{0}, f32[]) opt-barrier(tuple.11)
+  get-tuple-element.16 = f32[] get-tuple-element(opt-barrier.12), index=3
+  broadcast.20 = f32[16]{0} broadcast(get-tuple-element.16), dimensions={}
+  get-tuple-element.15 = f32[16]{0} get-tuple-element(opt-barrier.12), index=2
+  custom-call.19 = f32[16]{0} custom-call(get-tuple-element.15), custom_call_target="PipelineBackward"
+  multiply.21 = f32[16]{0} multiply(broadcast.20, custom-call.19)
+  get-tuple-element.14 = f32[16]{0} get-tuple-element(opt-barrier.12), index=1
+  custom-call.18 = f32[16]{0} custom-call(get-tuple-element.14), custom_call_target="PipelineBackward"
+  multiply.22 = f32[16]{0} multiply(multiply.21, custom-call.18)
+  get-tuple-element.13 = f32[16]{0} get-tuple-element(opt-barrier.12), index=0
+  custom-call.17 = f32[16]{0} custom-call(get-tuple-element.13), custom_call_target="PipelineBackward"
+  ROOT multiply.23 = f32[16]{0} multiply(multiply.22, custom-call.17)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern:
+  //                          param                         constant
+  //                __________/ |                             |
+  //               /            |                             |
+  //          cosine           sine                           |
+  //            |               |  \____________              |
+  //            |               |               \             |
+  //            |               |              sine           |
+  //            |               |                |            |
+  //            |             cosine          cosine          |
+  //            |               |               |             |
+  //       copy(to host)   copy(to host)   copy(to host)      |
+  //                  \                \   /                  |
+  //                   \______________  | |  _________________/
+  //                                  \ | | /
+  //                                   tuple
+  //                                     |
+  //                                 opt-barrier
+  //                   _____________/   /  \   \_____________
+  //                  /                /    \                \
+  // get-tuple-element  get-tuple-element  get-tuple-element  get-tuple-element
+  //        |                   |                  |                  |
+  //   copy(to device)     copy(to device)    copy(to device)     broadcast
+  //                  \                   \                 \    /
+  //                   \                   \__________     multiply
+  //                    \                             \       /
+  //                     \                             multiply
+  //                      \_________________________        /
+  //                                                \      /
+  //                                                multiply
+
+  HloInstruction* param;
+  HloInstruction* constant;
+  HloInstruction* sine_0;
+  HloInstruction* sine_1;
+  HloInstruction* cosine_0;
+  HloInstruction* cosine_1;
+  HloInstruction* cosine_2;
+  HloInstruction* copy_to_host_0;
+  HloInstruction* copy_to_host_1;
+  HloInstruction* copy_to_host_2;
+  HloInstruction* tuple;
+  HloInstruction* opt_barrier;
+  HloInstruction* gte_0;
+  HloInstruction* gte_1;
+  HloInstruction* gte_2;
+  HloInstruction* gte_3;
+  HloInstruction* broadcast;
+  HloInstruction* copy_to_device_0;
+  HloInstruction* copy_to_device_1;
+  HloInstruction* copy_to_device_2;
+  HloInstruction* multiply_0;
+  HloInstruction* multiply_1;
+  HloInstruction* multiply_2;
+
+  auto parameter_matcher = m::Parameter(&param, 0);
+  auto first_sine_matcher = m::Op(&sine_0)
+                                .WithOpcode(xla::HloOpcode::kSin)
+                                .WithOperand(0, parameter_matcher);
+  auto opt_barrier_matcher = m::OptimizationBarrier(
+      &opt_barrier,
+      m::Tuple(
+          &tuple,
+          m::Copy(&copy_to_host_0, m::Op(&cosine_0)
+                                       .WithOpcode(xla::HloOpcode::kCos)
+                                       .WithOperand(0, parameter_matcher)),
+          m::Copy(&copy_to_host_1, m::Op(&cosine_1)
+                                       .WithOpcode(xla::HloOpcode::kCos)
+                                       .WithOperand(0, first_sine_matcher)),
+          m::Copy(&copy_to_host_2,
+                  m::Op(&cosine_2)
+                      .WithOpcode(xla::HloOpcode::kCos)
+                      .WithOperand(0, m::Op(&sine_1)
+                                          .WithOpcode(xla::HloOpcode::kSin)
+                                          .WithOperand(0, first_sine_matcher))),
+          m::Constant(&constant)));
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          &multiply_0,
+          m::Multiply(
+              &multiply_1,
+              m::Multiply(
+                  &multiply_2,
+                  m::Broadcast(&broadcast, m::GetTupleElement(
+                                               &gte_3, opt_barrier_matcher, 3)),
+                  m::Copy(&copy_to_device_2,
+                          m::GetTupleElement(&gte_2, opt_barrier_matcher, 2))),
+              m::Copy(&copy_to_device_1,
+                      m::GetTupleElement(&gte_1, opt_barrier_matcher, 1))),
+          m::Copy(&copy_to_device_0,
+                  m::GetTupleElement(&gte_0, opt_barrier_matcher, 0)))));
+
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(constant->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(sine_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(sine_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(cosine_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(cosine_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(cosine_2->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_host_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host_1->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(copy_to_host_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {3}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {0}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {1}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {2}),
+                          kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(opt_barrier->shape(), {3}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(gte_0->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_1->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_2->shape(), kHostMemorySpaceColor);
+  TestShapeHasMemorySpace(gte_3->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(broadcast->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_device_0->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_device_1->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(copy_to_device_2->shape(),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_0->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_1->shape(), Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(multiply_2->shape(), Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 TEST_F(HostOffloaderTest, BasicDusDsWithMultipleBroadcastUsers) {
   const std::string& hlo_string = R"(
-HloModule llm_while
+HloModule my_module
 ENTRY main {
   data_param = f32[1,2048,2048] parameter(0)
   index_param = s32[] parameter(1)
@@ -190,7 +503,7 @@ ENTRY main {
 
 TEST_F(HostOffloaderTest, BasicDusDsBitcastBeforeDus) {
   const std::string& hlo_string = R"(
-HloModule llm_while
+HloModule my_module
 ENTRY main {
   data_param = f32[2048,2048] parameter(0)
   index_param = s32[] parameter(1)
@@ -247,7 +560,7 @@ ENTRY main {
 // before.
 TEST_F(HostOffloaderTest, BasicDusDsDusAnnotationOnWrongSide) {
   const std::string& hlo_string = R"(
-HloModule llm_while
+HloModule my_module
 ENTRY main {
   data_param = f32[1,2048,2048] parameter(0)
   index_param = s32[] parameter(1)
@@ -270,10 +583,9 @@ ENTRY main {
 }
 
 // The annotation is mistakenly before the dynamic-slice; it should be after.
-// TODO(b/319686133): Enable this test once it passes.
-TEST_F(HostOffloaderTest, DISABLED_BasicDusDsDsAnnotationOnWrongSide) {
+TEST_F(HostOffloaderTest, BasicDusDsDsAnnotationOnWrongSide) {
   const std::string& hlo_string = R"(
-HloModule llm_while
+HloModule my_module
 ENTRY main {
   data_param = f32[1,2048,2048] parameter(0)
   index_param = s32[] parameter(1)
