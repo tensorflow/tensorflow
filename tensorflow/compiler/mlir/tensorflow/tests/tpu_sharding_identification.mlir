@@ -174,6 +174,72 @@ func.func @func_with_sharding_after_read_variable(%arg0: tensor<*x!tf_type.resou
 
 // -----
 
+// Tests sharding propagation in while region body.
+// CHECK-LABEL: func @check_sharding_for_read_variable_inside_while_body
+func.func @check_sharding_for_read_variable_inside_while_body(%arg0 : tensor<i32>, %arg1: tensor<*x!tf_type.resource<tensor<128x1024xf32>>>) {
+  %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<128x1024xf32>>>) -> tensor<128x1024xf32>
+  %1:1 = "tf_device.cluster_func"(%arg0, %0) {func = @func_with_sharding_inside_while_body, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", num_cores_per_replica = 2 : i64, use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<i32>, tensor<128x1024xf32>) -> (tensor<128x1024xf32>)
+  // CHECK: input_sharding_configuration
+  // CHECK-SAME: ["", "\0A\0B\0C"]
+  // CHECK: output_sharding_configuration
+  // CHECK-SAME: ["\0D\0E\0F"]
+  func.return
+}
+
+// CHECK-LABEL: func @func_with_sharding_inside_while_body
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i32> {mhlo.sharding = ""}, %{{[a-z0-9]+}}: tensor<128x1024xf32> {mhlo.sharding = "\0A\0B\0C"})
+// CHECK-SAME: -> (tensor<128x1024xf32> {mhlo.sharding = "\0D\0E\0F"})
+func.func @func_with_sharding_inside_while_body(%arg0: tensor<i32>, %arg1: tensor<128x1024xf32>) -> (tensor<128x1024xf32>) {
+  %cst = "tf.Const"() <{value = dense<0> : tensor<i32>}> {device = ""} : () -> tensor<i32>
+  %0:2 = "tf.WhileRegion"(%cst, %arg1) <{is_stateless = false, parallel_iterations = 1 : i64}> ({
+    ^bb0(%arg2: tensor<i32>, %arg3: tensor<128x1024xf32>):
+      %1 = "tf.Less"(%arg2, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%1) : (tensor<i1>) -> ()
+  }, {
+    ^bb0(%arg2: tensor<i32>, %arg3: tensor<128x1024xf32>):
+      %1 = "tf.XlaSharding"(%arg3) <{_XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C"}> {unspecified_dims = []} : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+      %2 = "tf.Square"(%1) : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+      "tf.Yield"(%arg2, %2) : (tensor<i32>, tensor<128x1024xf32>) -> ()
+  }) {_num_original_outputs = 1 : i64, _read_only_resource_inputs = [1], _xla_propagate_compile_time_consts = true} : (tensor<i32>, tensor<128x1024xf32>) -> (tensor<i32>, tensor<128x1024xf32>)
+  %1 = "tf.XlaSharding"(%0#1) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+  func.return %1 : tensor<128x1024xf32>
+}
+
+// -----
+
+// Tests sharding propagation in while region condition.
+// CHECK-LABEL: func @check_sharding_for_read_variable_inside_while_cond
+func.func @check_sharding_for_read_variable_inside_while_cond(%arg0 : tensor<i32>, %arg1: tensor<*x!tf_type.resource<tensor<128x1024xf32>>>) {
+  %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<128x1024xf32>>>) -> tensor<128x1024xf32>
+  %1:1 = "tf_device.cluster_func"(%arg0, %0) {func = @func_with_sharding_inside_while_cond, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", num_cores_per_replica = 2 : i64, use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<i32>, tensor<128x1024xf32>) -> (tensor<128x1024xf32>)
+  // CHECK: input_sharding_configuration
+  // CHECK-SAME: ["", "\0A\0B\0C"]
+  // CHECK: output_sharding_configuration
+  // CHECK-SAME: ["\0D\0E\0F"]
+  func.return
+}
+
+// CHECK-LABEL: func @func_with_sharding_inside_while_cond
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<i32> {mhlo.sharding = ""}, %{{[a-z0-9]+}}: tensor<128x1024xf32> {mhlo.sharding = "\0A\0B\0C"})
+// CHECK-SAME: -> (tensor<128x1024xf32> {mhlo.sharding = "\0D\0E\0F"})
+func.func @func_with_sharding_inside_while_cond(%arg0: tensor<i32>, %arg1: tensor<128x1024xf32>) -> (tensor<128x1024xf32>) {
+  %cst = "tf.Const"() <{value = dense<0> : tensor<i32>}> {device = ""} : () -> tensor<i32>
+  %0:2 = "tf.WhileRegion"(%cst, %arg1) <{is_stateless = false, parallel_iterations = 1 : i64}> ({
+    ^bb0(%arg2: tensor<i32>, %arg3: tensor<128x1024xf32>):
+      %1 = "tf.XlaSharding"(%arg3) <{_XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C"}> {unspecified_dims = []} : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+      %2 = "tf.Less"(%arg2, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+  }, {
+    ^bb0(%arg2: tensor<i32>, %arg3: tensor<128x1024xf32>):
+      %1 = "tf.Square"(%arg3) : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+      "tf.Yield"(%arg2, %1) : (tensor<i32>, tensor<128x1024xf32>) -> ()
+  }) {_num_original_outputs = 1 : i64, _read_only_resource_inputs = [1], _xla_propagate_compile_time_consts = true} : (tensor<i32>, tensor<128x1024xf32>) -> (tensor<i32>, tensor<128x1024xf32>)
+  %1 = "tf.XlaSharding"(%0#1) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+  func.return %1 : tensor<128x1024xf32>
+}
+
+// -----
+
 // Tests with input sharding following an identity op and cast op.
 // CHECK-LABEL: func @check_sharding_after_cast_op
 func.func @check_sharding_after_cast_op(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
