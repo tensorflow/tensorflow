@@ -130,12 +130,6 @@ Status GpuTracer::DoStart() {
     CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
 
-  bool use_cupti_activity_api = true;
-  ReadBoolFromEnvVar("TF_GPU_CUPTI_USE_ACTIVITY_API", true,
-                     &use_cupti_activity_api)
-      .IgnoreError();
-  options_.enable_event_based_activity = !use_cupti_activity_api;
-
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,
                      &trace_concurrent_kernels)

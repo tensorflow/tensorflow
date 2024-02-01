@@ -29,13 +29,6 @@ namespace xla {
 namespace profiler {
 
 struct CuptiTracerOptions {
-  bool enable_activity_api = true;
-
-  // Use cuda events to enclose the kernel/memcpy to measure device activity.
-  // enable_event_based_activity, if true, will override the enable_activity_api
-  // setting.
-  bool enable_event_based_activity = false;
-
   bool required_callback_api_events = true;
   // The callback ids that will be enabled and monitored, if empty, all
   // Callback ids to be enabled using Callback API.
