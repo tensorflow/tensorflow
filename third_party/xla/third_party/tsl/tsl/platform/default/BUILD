@@ -113,6 +113,7 @@ cc_library(
         "//tsl/platform:ram_file_system.h",
         "//tsl/platform:threadpool.h",
     ],
+    copts = tsl_copts(),
     tags = [
         "manual",
         "no_oss",
