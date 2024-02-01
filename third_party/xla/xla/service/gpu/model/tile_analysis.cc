@@ -338,6 +338,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   IndexingMap composed_indexing_map(
       indexing_map.GetAffineMap().compose(producer_map), tile_dimension_ranges,
       tile_symbol_ranges);
+
   composed_indexing_map.Simplify();
 
   std::optional<RawSymbolicTile> maybe_raw_symbolic_tile =

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -108,10 +107,15 @@ class RangeEvaluator {
 class IndexingMap {
  public:
   IndexingMap(mlir::AffineMap affine_map, std::vector<Range> dim_ranges,
-              std::vector<Range> symbol_ranges)
+              std::vector<Range> symbol_ranges,
+              absl::Span<std::pair<mlir::AffineExpr, Range>> constraints = {})
       : affine_map_(affine_map),
         dim_ranges_(std::move(dim_ranges)),
-        symbol_ranges_(std::move(symbol_ranges)) {}
+        symbol_ranges_(std::move(symbol_ranges)) {
+    for (const auto& [expr, range] : constraints) {
+      AddConstraint(expr, range);
+    }
+  }
 
   static IndexingMap FromTensorSizes(
       mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
@@ -142,10 +146,10 @@ class IndexingMap {
   int64_t GetSymbolCount() const { return symbol_ranges_.size(); }
 
   // Getters for affine expression constraints.
-  const llvm::DenseMap<mlir::AffineExpr, Range>& GetExprRanges() const {
-    return expr_ranges_;
+  const llvm::DenseMap<mlir::AffineExpr, Range>& GetConstraints() const {
+    return constraints_;
   }
-  int64_t GetExprCount() const { return expr_ranges_.size(); }
+  int64_t GetConstraintsCount() const { return constraints_.size(); }
 
   // Allows to add bounds for the affine expression `expr`. If there are
   // bounds for the `expr`, then computes intersection of the current and new
@@ -160,8 +164,19 @@ class IndexingMap {
   // satisfies both constraints.
   bool IsKnownEmpty() const;
 
+  // Removes unused symbols from the `affine_map_` and constraints.
+  void RemoveUnusedSymbols();
+
  private:
   IndexingMap() = default;
+
+  // Performs AffineExpr simplification for all constraints.
+  // Returns true if simplification was performed.
+  bool SimplifyConstraintExprs();
+
+  // Performs range simplification for all constraints.
+  // Returns true if simplification was performed.
+  bool SimplifyConstraintRanges();
 
   mlir::AffineMap affine_map_;
   std::vector<Range> dim_ranges_;
@@ -169,18 +184,15 @@ class IndexingMap {
   // Inequality constraints for affine expressions. They restrict the feasible
   // set for the domain of the indexing map. It contains affine expressions
   // other than AffineDimExpr and AffineSymbolExpr.
-  llvm::DenseMap<mlir::AffineExpr, Range> expr_ranges_;
+  llvm::DenseMap<mlir::AffineExpr, Range> constraints_;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 
-// Composes affine maps, i.e. consumer_map ∘ producer_map.
-// Right now the ranges of the composed indexing map are correct only when there
-// is no composition with concat.
-// TODO(b/319410501): Generalize domain modelling.
+// Composes affine maps, i.e. first ∘ second.
 std::optional<IndexingMap> ComposeIndexingMaps(
-    const std::optional<IndexingMap>& producer_map,
-    const std::optional<IndexingMap>& consumer_map);
+    const std::optional<IndexingMap>& first,
+    const std::optional<IndexingMap>& second, bool simplify = true);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
@@ -189,7 +201,7 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
   return H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
                     indexing_map.GetDimensionRanges(),
                     indexing_map.GetSymbolRanges(),
-                    indexing_map.GetExprCount());
+                    indexing_map.GetConstraintsCount());
 }
 
 }  // namespace gpu

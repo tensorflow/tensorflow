@@ -78,11 +78,11 @@ HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
       auto normalized_indexing_map = indexing_map;
       if (output_permutation.has_value()) {
         normalized_indexing_map =
-            ComposeIndexingMaps(normalized_indexing_map, output_permutation);
+            ComposeIndexingMaps(output_permutation, normalized_indexing_map);
       }
       if (operand_permutation.has_value()) {
         normalized_indexing_map =
-            ComposeIndexingMaps(operand_permutation, normalized_indexing_map);
+            ComposeIndexingMaps(normalized_indexing_map, operand_permutation);
       }
       operand_indexing_maps.insert(normalized_indexing_map);
     }
@@ -127,11 +127,11 @@ HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
       auto normalized_indexing_map = indexing_map;
       if (input_permutation.has_value()) {
         normalized_indexing_map =
-            ComposeIndexingMaps(normalized_indexing_map, input_permutation);
+            ComposeIndexingMaps(input_permutation, normalized_indexing_map);
       }
       if (operand_permutation.has_value()) {
         normalized_indexing_map =
-            ComposeIndexingMaps(operand_permutation, normalized_indexing_map);
+            ComposeIndexingMaps(normalized_indexing_map, operand_permutation);
       }
       operand_indexing_maps.insert(normalized_indexing_map);
     }

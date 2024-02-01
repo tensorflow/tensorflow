@@ -801,8 +801,10 @@ bool HloInstructionIndexing::Simplify() {
     std::vector<std::optional<IndexingMap>> to_remove, to_add;
     for (std::optional<IndexingMap> map : operand_indexing) {
       to_remove.push_back(map);
-      if (!map.has_value() || map->Simplify()) {
+      if (!map.has_value()) {
         to_add.push_back(map);
+      } else if (map->Simplify()) {
+        map->RemoveUnusedSymbols();
       } else {
         to_remove.pop_back();
       }
@@ -898,8 +900,12 @@ std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
            producer_operand_indexing) {
         for (const std::optional<IndexingMap>& consumer_map :
              consumer_indexing_maps) {
+          auto composed_map = ComposeIndexingMaps(consumer_map, producer_map);
+          if (composed_map.has_value()) {
+            composed_map->RemoveUnusedSymbols();
+          }
           grouped_indexing_maps[&producer_operand_adaptor.instruction()].insert(
-              ComposeIndexingMaps(producer_map, consumer_map));
+              composed_map);
         }
       }
     }

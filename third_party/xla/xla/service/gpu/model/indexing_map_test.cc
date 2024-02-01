@@ -43,7 +43,7 @@ TEST_F(IndexingMapTest, Composition_Permutation) {
   IndexingMap consumer = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_), {4}, {4});
 
-  auto composed = ComposeIndexingMaps(producer, consumer);
+  auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:
@@ -62,14 +62,57 @@ TEST_F(IndexingMapTest, Composition_RestrictedRange) {
   IndexingMap consumer = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_), {10}, {8});
 
-  auto composed = ComposeIndexingMaps(producer, consumer);
+  auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:
                           d0 in [0, 4]
-                          s0 in [0, 5]
+                          s0 in [0, 6]
                           s1 in [0, 1]
+                          s2 in [0, 5]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
+  IndexingMap producer = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)", &mlir_context_),
+      {50, 60}, {70, 20});
+  producer.AddConstraint(ParseAffineExpr("d0 mod 8", &mlir_context_),
+                         Range{0, 0});
+  producer.AddConstraint(ParseAffineExpr("s0 mod 3", &mlir_context_),
+                         Range{1, 1});
+
+  IndexingMap consumer = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_), {10}, {8});
+  consumer.AddConstraint(ParseAffineExpr("d0 + s0", &mlir_context_),
+                         Range{0, 20});
+  consumer.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
+                         Range{0, 0});
+
+  auto composed = ComposeIndexingMaps(consumer, producer, /*simplify=*/false);
+  EXPECT_THAT(composed, MatchIndexingMap(R"(
+                          (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+                          domain:
+                          d0 in [0, 9]
+                          s0 in [0, 69]
+                          s1 in [0, 19]
                           s2 in [0, 7]
+                          d0 + s2 in [0, 20]
+                          d0 mod 8 in [0, 0]
+                          s0 mod 3 in [1, 1]
+                          s2 mod 4 in [0, 0]
+                        )"));
+  composed->Simplify();
+  EXPECT_THAT(composed, MatchIndexingMap(R"(
+                          (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+                          domain:
+                          d0 in [0, 9]
+                          s0 in [0, 69]
+                          s1 in [0, 19]
+                          s2 in [0, 7]
+                          d0 mod 8 in [0, 0]
+                          s0 mod 3 in [1, 1]
+                          s2 mod 4 in [0, 0]
                         )"));
 }
 

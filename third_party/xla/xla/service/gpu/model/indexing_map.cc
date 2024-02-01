@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -410,7 +411,7 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Range range) {
     AddConstraint(expr, range);
     return;
   }
-  auto [it, inserted] = expr_ranges_.insert({expr, range});
+  auto [it, inserted] = constraints_.insert({expr, range});
   if (!inserted) {
     it->second = Intersect(it->second, range);
   }
@@ -422,7 +423,7 @@ bool IndexingMap::IsKnownEmpty() const {
   };
   return llvm::any_of(dim_ranges_, is_infeasible) ||
          llvm::any_of(symbol_ranges_, is_infeasible) ||
-         llvm::any_of(expr_ranges_,
+         llvm::any_of(constraints_,
                       [&](const std::pair<AffineExpr, Range>& item) {
                         return is_infeasible(item.second);
                       });
@@ -523,8 +524,8 @@ void IndexingMap::Print(std::ostream& out,
     out << '\n';
   }
   std::vector<std::string> expr_range_strings;
-  expr_range_strings.reserve(expr_ranges_.size());
-  for (const auto& [expr, range] : expr_ranges_) {
+  expr_range_strings.reserve(constraints_.size());
+  for (const auto& [expr, range] : constraints_) {
     std::stringstream ss;
     printer.Print(ss, expr);
     ss << " in ";
@@ -549,87 +550,197 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
          lhs.GetSymbolRanges() == rhs.GetSymbolRanges();
 }
 
+// Simplification of IndexingMap has two main parts.
+// At first we optimized constraints to make the domain as small and simple as
+// possible. And only then we simplify the affine_map, because its
+// simplification relies on lower/upper bounds of dimensions and symbols.
+
+// Constraint simplification is performed in two stages repeated until
+// convergence.
+//   1. Simplify affine expressions in all constraints.
+//   2. Simplify constraint ranges for all constraints.
+// We don't optimize every constraint separately to avoid re-initialization of
+// RangeEvaluator for every constraint. Note that we start with "expr"
+// simplification, because the ranges of constraints were already optimized once
+// when IndexingMap was constructed.
 bool IndexingMap::Simplify() {
+  // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
+  bool constraints_were_simplified = false;
+  while (true) {
+    if (!SimplifyConstraintExprs()) break;
+    constraints_were_simplified = true;
+    if (!SimplifyConstraintRanges()) break;
+  }
+  // Simplify affine_map using the optimized ranges.
+  // Potentially, we can be smarter about recreating the range_evaluator.
   RangeEvaluator range_evaluator(dim_ranges_, symbol_ranges_, GetMLIRContext());
   AffineMap simplified_affine_map =
       AffineExprSimplifier(&range_evaluator).Simplify(affine_map_);
-  if (simplified_affine_map == affine_map_) {
-    return false;
+  bool affine_map_was_simplified = simplified_affine_map != affine_map_;
+  if (affine_map_was_simplified) {
+    affine_map_ = simplified_affine_map;
   }
-  affine_map_ = simplified_affine_map;
-  return true;
+  return affine_map_was_simplified || constraints_were_simplified;
+}
+
+bool IndexingMap::SimplifyConstraintExprs() {
+  // Simplify affine expression in the constraints_.
+  RangeEvaluator range_evaluator(dim_ranges_, symbol_ranges_, GetMLIRContext());
+  AffineExprSimplifier simplifier(&range_evaluator);
+  std::vector<AffineExpr> to_remove;
+  std::vector<std::pair<AffineExpr, Range>> to_add;
+  for (const auto& [expr, range] : constraints_) {
+    AffineExpr simplified = simplifier.Simplify(expr);
+
+    // Skip constraints that are always satisfied.
+    Range evaluated_range = range_evaluator.ComputeExpressionRange(simplified);
+    if (evaluated_range.upper_bound <= range.upper_bound &&
+        evaluated_range.lower_bound >= range.lower_bound) {
+      to_remove.push_back(expr);
+      continue;
+    }
+    if (simplified == expr) continue;
+    to_add.push_back({simplified, range});
+    to_remove.push_back(expr);
+  }
+  for (const auto& expr : to_remove) {
+    constraints_.erase(expr);
+  }
+  for (const auto& [expr, range] : to_add) {
+    AddConstraint(expr, range);
+  }
+  return !to_add.empty();
+}
+
+bool IndexingMap::SimplifyConstraintRanges() {
+  std::vector<AffineExpr> to_remove;
+  std::vector<std::pair<AffineExpr, Range>> to_add;
+  for (const auto& [expr, range] : constraints_) {
+    AffineExpr simplified_expr = expr;
+    Range simplified_range = range;
+    if (SimplifyConstraintRange(&simplified_expr, &simplified_range)) {
+      to_add.push_back({simplified_expr, simplified_range});
+      to_remove.push_back(expr);
+    }
+  }
+  for (const auto& expr : to_remove) {
+    constraints_.erase(expr);
+  }
+  for (const auto& [expr, range] : to_add) {
+    AddConstraint(expr, range);
+  }
+  return !to_add.empty();
+}
+
+void IndexingMap::RemoveUnusedSymbols() {
+  // Remove unused symbols from the affine_map.
+  unsigned num_symbols_before = affine_map_.getNumSymbols();
+  auto unused_symbols_bit_vector =
+      mlir::getUnusedSymbolsBitVector({affine_map_});
+  affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols_bit_vector);
+
+  // Remap symbols in the constraint expressions accordingly.
+  unsigned num_symbols_after = affine_map_.getNumSymbols();
+  if (num_symbols_after == num_symbols_before) return;
+
+  std::vector<Range> compressed_symbol_ranges_;
+  MLIRContext* mlir_context = GetMLIRContext();
+  int64_t used_symbols_count = 0;
+  unsigned kUnusedSymbol = std::numeric_limits<unsigned>::max();
+  std::vector<AffineExpr> symbol_replacements;
+  symbol_replacements.reserve(num_symbols_after);
+  for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
+    if (unused_symbols_bit_vector[i]) {
+      symbol_replacements.push_back(
+          getAffineSymbolExpr(kUnusedSymbol, mlir_context));
+    } else {
+      compressed_symbol_ranges_.push_back(symbol_ranges_[i]);
+      symbol_replacements.push_back(
+          getAffineSymbolExpr(used_symbols_count++, mlir_context));
+    }
+  }
+  symbol_ranges_ = std::move(compressed_symbol_ranges_);
+  std::vector<AffineExpr> to_remove;
+  std::vector<std::pair<AffineExpr, Range>> to_add;
+  for (const auto& [expr, range] : constraints_) {
+    auto updated_expr = expr.replaceSymbols(symbol_replacements);
+    if (updated_expr == expr) continue;
+    if (updated_expr.isFunctionOfSymbol(kUnusedSymbol)) {
+      LOG(FATAL) << "Found unused symbol in the constraints.";
+    }
+    to_add.push_back({updated_expr, range});
+    to_remove.push_back(expr);
+  }
+  for (const auto& expr : to_remove) {
+    constraints_.erase(expr);
+  }
+  for (const auto& [expr, range] : to_add) {
+    AddConstraint(expr, range);
+  }
 }
 
 std::optional<IndexingMap> ComposeIndexingMaps(
-    const std::optional<IndexingMap>& producer_map,
-    const std::optional<IndexingMap>& consumer_map) {
-  if (!producer_map.has_value() || !consumer_map.has_value()) {
+    const std::optional<IndexingMap>& first,
+    const std::optional<IndexingMap>& second, bool simplify) {
+  if (!second.has_value() || !first.has_value()) {
     return std::nullopt;
   }
-  // AffineMap::compose(some_affine_map) actually computes some_affine_map ∘
-  // this.
+  AffineMap producer_affine_map = second->GetAffineMap();
+  // map1.compose(map2) computes map2 ∘ map1 for some reason.
   AffineMap composed_map = mlir::simplifyAffineMap(
-      producer_map->GetAffineMap().compose(consumer_map->GetAffineMap()));
-
-  // After the composition some of the symbols might become unused, e.g. when a
-  // dimension was added by broadcasting as then reduced. We should remove these
-  // dimensions from the composed affine map and also from the resulting
-  // `domain.symbol_ranges_`.
-  //
-  // For example, if there is a reduction(broadcast):
-  //
-  //   param = f32[15] parameter(0)
-  //   bcast = f32[15, 20] broadcast(p0), dimensions={0}
-  //   reduce = f32[15, 20] reduce(bcast, init) dimensions={1}
-  //
-  // then `reduce` has (d0)[s0] -> (d0, s0) with s0 in [0, 20).
-  // and  `bcast` has (d0, d1) -> (d0) indexing map.
-  //
-  // The composition of there two maps yields (d0)[s0] -> (d0),
-  // although `s0` is not used in the mapping. In order to remove such symbols,
-  // we get the indices of unused symbols and remove them from the composed
-  // affine map and the `domain.symbol_ranges_`.
-  auto unused_symbols_bit_vector =
-      mlir::getUnusedSymbolsBitVector({composed_map});
-  composed_map = mlir::compressSymbols(composed_map, unused_symbols_bit_vector);
+      producer_affine_map.compose(first->GetAffineMap()));
 
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
-  // symbols(consumer_map)]. In that order we are adding the symbol ranges while
-  // skipping the symbols that are unused.
+  // symbols(consumer_map)].
   std::vector<Range> combined_symbol_ranges;
-  combined_symbol_ranges.reserve(producer_map->GetSymbolCount() +
-                                 consumer_map->GetSymbolCount());
-  int64_t symbol_id = 0;
+  combined_symbol_ranges.reserve(second->GetSymbolCount() +
+                                 first->GetSymbolCount());
   for (const Range& symbol_range : llvm::concat<const Range>(
-           producer_map->GetSymbolRanges(), consumer_map->GetSymbolRanges())) {
-    if (unused_symbols_bit_vector[symbol_id++]) {
-      continue;
-    }
+           second->GetSymbolRanges(), first->GetSymbolRanges())) {
     combined_symbol_ranges.push_back(symbol_range);
   }
 
-  IndexingMap composed_indexing_map(composed_map,
-                                    consumer_map->GetDimensionRanges(),
+  IndexingMap composed_indexing_map(composed_map, first->GetDimensionRanges(),
                                     std::move(combined_symbol_ranges));
-  composed_indexing_map.Simplify();
-
-  RangeEvaluator consumer_range_evaluator(consumer_map->GetDimensionRanges(),
-                                          consumer_map->GetSymbolRanges(),
-                                          consumer_map->GetMLIRContext());
+  // Add constraints that are already present in the producer_map. We have to
+  // compute consumer_map(producer_constraints). To keep all symbols and
+  // dimension IDs the same as in the `composed_indexing_map.affine_map`, we
+  // create an AffineMap
+  // (dims of producer_affine_map)[symbols_of_producer_affine_map] =
+  //   (constraint_1, ..., constraint_N) and then compose.
+  std::vector<AffineExpr> constraints;
+  std::vector<Range> constraints_ranges;
+  for (const auto& [expr, range] : second->GetConstraints()) {
+    constraints.push_back(expr);
+    constraints_ranges.push_back(range);
+  }
+  auto constraints_map = AffineMap::get(
+      producer_affine_map.getNumDims(), producer_affine_map.getNumSymbols(),
+      constraints, producer_affine_map.getContext());
+  auto remapped_constraints = constraints_map.compose(first->GetAffineMap());
+  for (const auto& [expr, range] :
+       llvm::zip(remapped_constraints.getResults(), constraints_ranges)) {
+    composed_indexing_map.AddConstraint(expr, range);
+  }
+  // Remap symbol ids and add constraints that are already present in the
+  // consumer_map.
+  for (const auto& [expr, range] : first->GetConstraints()) {
+    composed_indexing_map.AddConstraint(
+        expr.shiftSymbols(first->GetSymbolCount(), second->GetSymbolCount()),
+        range);
+  }
   // Add constraints for consumer's codomain w.r.t. producer's domain.
   for (auto [index, expr] :
-       llvm::enumerate(consumer_map->GetAffineMap().getResults())) {
-    Range consumer_result_range =
-        consumer_range_evaluator.ComputeExpressionRange(expr);
+       llvm::enumerate(first->GetAffineMap().getResults())) {
     Range producer_dim_range =
-        producer_map->GetDimensionRange(static_cast<int64_t>(index));
-    // If the constraint is always satisfied, we skip it.
-    if (consumer_result_range.upper_bound <= producer_dim_range.upper_bound &&
-        consumer_result_range.lower_bound >= producer_dim_range.lower_bound) {
-      continue;
-    }
-    composed_indexing_map.AddConstraint(expr, producer_dim_range);
+        second->GetDimensionRange(static_cast<int64_t>(index));
+    composed_indexing_map.AddConstraint(
+        expr.shiftSymbols(first->GetSymbolCount(), second->GetSymbolCount()),
+        producer_dim_range);
+  }
+  if (simplify) {
+    composed_indexing_map.Simplify();
   }
   return composed_indexing_map;
 }
