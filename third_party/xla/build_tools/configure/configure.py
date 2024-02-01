@@ -325,15 +325,11 @@ class XLAConfigOptions:
             f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
         )
       elif compiler_pair == (CudaCompiler.NVCC, HostCompiler.CLANG):
-        rc.append("build --config cuda")
-        # Disturbingly, I cannot get this to work without the below lines
-        # that appear to ask for cuda clang.
+        rc.append("build --config nvcc_clang")
+        # This is demanded by cuda_configure.bzl
         rc.append(
             f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
         )
-        rc.append("build --action_env TF_CUDA_CLANG=1")
-        rc.append("build --action_env TF_NVCC_CLANG=1")
-        rc.append("build --@local_config_cuda//:cuda_compiler=nvcc")
       elif compiler_pair == (CudaCompiler.NVCC, HostCompiler.GCC):
         rc.append("build --config cuda")
       else:
