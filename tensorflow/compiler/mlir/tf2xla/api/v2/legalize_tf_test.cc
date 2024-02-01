@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -52,6 +53,7 @@ using tpu::TPUCompileMetadataProto;
 
 static constexpr char kCompilationTimeStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_time";
+static constexpr char kFullBridge[] = "full_bridge";
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 static const char kMlirWithFallbackModeSuccess[] =
@@ -291,6 +293,20 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                         &arg_core_mapping, &per_core_arg_shapes, client);
 
   EXPECT_FALSE(compile_result.ok());
+}
+
+TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
+  CellReader<monitoring::testing::Histogram> compilation_time(
+      kCompilationTimeStreamzName);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          kMlirModuleStr,
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED));
+
+  // Compilation time should have been non-zero
+  EXPECT_GT(compilation_time.Delta(kFullBridge).sum(), 0);
 }
 
 }  // namespace v2
