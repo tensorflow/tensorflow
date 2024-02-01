@@ -12,14 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Combine TF public build cache and local disk cache
-# macOS does not use the disk cache because it can get pretty big and cause VM
-# timeouts. Note that "_push" cache configs write to GCS buckets and require
-# authentication. Use "tf_public_macos_cache" or "tf_public_cache" for public
-# read-only cache.
-# The cache configs are different for MacOS and Linux
+# Sourcing this enables local disk cache
 if [[ $(uname -s) == "Darwin" ]]; then
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
-else
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push --disk_cache=$TFCI_OUTPUT_DIR/cache"
+  echo "Please note that using disk cache on macOS is not recommended because the"
+  echo "cache can end up being pretty big and make the build process inefficient."
 fi
+TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --disk_cache=$TFCI_OUTPUT_DIR/cache"
