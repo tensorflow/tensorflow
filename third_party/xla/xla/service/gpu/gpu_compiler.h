@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -165,9 +164,6 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
     return absl::OkStatus();
   }
-
-  AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
-      const HloModuleConfig& config);
 
  private:
   struct CompileResultWithMetadata {
