@@ -329,6 +329,10 @@ class AsyncHostToDeviceTransferManager
     }
 
     ++transfers_in_flight_;
+    // Release the lock before transfer in case transfer or cleanup could be
+    // called on this thread, to avoid deadlock.
+    l.Release();
+
     auto event = device_->local_device_state()->event_pool().AllocateEvent(
         stream->parent());
     if (transfer_size != 0) {
@@ -336,9 +340,6 @@ class AsyncHostToDeviceTransferManager
     }
     device_->local_device_state()->event_pool().ThenRecordEvent(stream,
                                                                 event.value());
-    // Release the lock before calling ThenDoHostCallback in case cleanup
-    // could be called on this thread, to avoid deadlock.
-    l.Release();
 
     auto cleanup = [this, buffer_index, event = std::move(event).value(),
                     stream, is_last_transfer,
