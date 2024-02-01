@@ -779,20 +779,17 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
   // Add any additional allocators for alternate memory spaces.
-  if (allocator_config.collective_memory_size != 0) {
-    for (const auto& ordinal_and_device : addressable_devices) {
-      TF_ASSIGN_OR_RETURN(
-          auto collective_bfc_allocator,
-          CreateCollectiveBFCAllocator(
-              ordinal_and_device.second->executor(),
-              /*allocator_memory=*/allocator_config.collective_memory_size,
-              /*preallocate=*/true));
-      allocators.emplace_back(std::move(collective_bfc_allocator),
-                              ordinal_and_device.second->compute_stream(),
-                              /*memory_space=*/1);
-    }
+  for (const auto& ordinal_and_device : addressable_devices) {
+    TF_ASSIGN_OR_RETURN(
+        auto collective_bfc_allocator,
+        CreateCollectiveBFCAllocator(
+            ordinal_and_device.second->executor(),
+            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
+            allocator_config.collective_memory_size));
+    allocators.emplace_back(std::move(collective_bfc_allocator),
+                            ordinal_and_device.second->compute_stream(),
+                            /*memory_space=*/1);
   }
-
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }
