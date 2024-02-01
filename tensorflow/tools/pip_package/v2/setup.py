@@ -242,6 +242,9 @@ class InstallHeaders(Command):
 
   def mkdir_and_copy_file(self, header):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
+    # Windows platform uses "\" in path strings, the external header location
+    # expects "/" in paths. Hence, we replaced "\" with "/" for this reason
+    install_dir = install_dir.replace('\\', '/')
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
