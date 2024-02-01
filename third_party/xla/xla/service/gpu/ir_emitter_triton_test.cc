@@ -1609,7 +1609,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fused_computation
+; CHECK: fused_subtract
 ; CHECK: negate
 ; CHECK: negate
 ; CHECK: ROOT

@@ -67,12 +67,12 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
+; CHECK-LABEL: define amdgpu_kernel void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )"
                                          : R"(
-; CHECK-LABEL: define void @fusion
+; CHECK-LABEL: define void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )";
@@ -114,12 +114,12 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
+; CHECK-LABEL: define amdgpu_kernel void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )"
                                          : R"(
-; CHECK-LABEL: define void @fusion
+; CHECK-LABEL: define void @{{[a-z_]*}}fusion
 ; CHECK: slice2
 ; CHECK: }
 )";

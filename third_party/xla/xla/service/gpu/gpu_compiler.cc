@@ -164,6 +164,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_layout_normalizer.h"
 #include "xla/service/gpu/reduction_splitter.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/gpu/rename_fusions.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/scatter_slice_simplifier.h"
@@ -1137,6 +1138,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   {
     HloPassPipeline pipeline("post-fusion optimization");
+    pipeline.AddPass<RenameFusions>();
     pipeline.AddPass<AllGatherCombiner>(
         hlo_module->config()
             .debug_options()

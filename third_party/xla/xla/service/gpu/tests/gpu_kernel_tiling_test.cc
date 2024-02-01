@@ -134,7 +134,7 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";
@@ -170,7 +170,7 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";
@@ -202,7 +202,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
 ; CHECK-NOT: call void BARRIER()
 ; CHECK: }
 )";
@@ -231,7 +231,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
 ; CHECK-NOT: call void BARRIER()
 ; CHECK: }
 )";
@@ -268,7 +268,7 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{[a-z_]*}}fusion
 ; CHECK: call void BARRIER()
 ; CHECK: }
 )";

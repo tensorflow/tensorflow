@@ -91,8 +91,6 @@ class HloFusionAnalysis {
     return input_output_info_;
   }
 
-  static absl::string_view GetEmitterFusionKindString(EmitterFusionKind kind);
-
  private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
                     std::vector<const HloInstruction*> fusion_roots,

@@ -827,13 +827,13 @@ cc_library(
         ":buffer_allocations",
         ":gpu_executable_run_options",
         ":nccl_clique",
+        ":nccl_clique_key",
         "//xla:executable_run_options",
         "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:global_device_id",
-        "//xla/service/gpu:nccl_clique_key",
         "//xla/stream_executor",
         "//xla/translate/mhlo_to_hlo:location_exporter",
         "@com_google_absl//absl/algorithm:container",
@@ -872,6 +872,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":buffer_allocations",
+        ":gpu_executable_run_options",
         ":ir_emission_utils",
         ":nccl_api",
         ":nccl_clique",
@@ -891,7 +892,6 @@ cc_library(
         "//xla/service:computation_placer",
         "//xla/service:global_device_id",
         "//xla/service:hlo_parser",
-        "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_activation_header",
@@ -1238,6 +1238,7 @@ cc_library(
         ":gpu_constants",
         ":ir_emission_utils",
         ":nccl_clique",
+        ":nccl_clique_key",
         ":non_atomically_upgradeable_rw_lock",
         ":stream_executor_util",
         ":thunk",
@@ -1259,7 +1260,6 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:stream_pool",
         "//xla/service:xla_debug_info_manager",
-        "//xla/service/gpu:nccl_clique_key",
         "//xla/service/gpu/runtime:executable",
         "//xla/service/gpu/runtime:tracing",
         "//xla/stream_executor",
@@ -2601,6 +2601,35 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "rename_fusions",
+    srcs = ["rename_fusions.cc"],
+    hdrs = ["rename_fusions.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_traversal",
+        ":ir_emission_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_pass",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "rename_fusions_test",
+    srcs = ["rename_fusions_test.cc"],
+    deps = [
+        ":rename_fusions",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "softmax_rewriter_triton_test",
     srcs = ["softmax_rewriter_triton_test.cc"],
@@ -3288,6 +3317,7 @@ cc_library(
         ":instruction_fusion",
         ":multi_output_fusion",
         ":priority_fusion",
+        ":rename_fusions",
         ":variadic_op_splitter",
         "//xla:xla_proto_cc",
         "//xla/service:cpu_gpu_shape_verifier",
@@ -3558,6 +3588,7 @@ cc_library(
         ":ir_emitter_context",
         ":ir_emitter_unnested",
         ":prepare_hlo_for_ir_emitting_pipeline",
+        ":rename_fusions",
         ":thunk",
         "@llvm-project//mlir:FuncDialect",
         "@local_tsl//tsl/lib/monitoring:counter",

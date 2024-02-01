@@ -284,12 +284,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
-    absl::string_view emitter_fusion_kind =
-        HloFusionAnalysis::GetEmitterFusionKindString(
-            fusion_analysis_cache_.Get(*fusion).GetEmitterFusionKind());
-    fusion->SetAndSanitizeName(absl::StrCat(emitter_fusion_kind, "_fusion"));
-    fusion->UniquifyName(&fusion->GetModule()->instruction_name_uniquer());
-
     if (fusion_process_dump_) {
       auto* fusion_step =
           fusion_process_dump_->add_fusion_steps()->mutable_fusion();

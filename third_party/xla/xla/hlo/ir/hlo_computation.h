@@ -297,8 +297,20 @@ class HloComputation {
 
   absl::string_view name() const { return name_; }
 
+  // Sets the string identifier for this computation. Name will be sanitized to
+  // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
+  //
+  // See also HloModule::SetAndUniquifyComputationName(), which does this plus
+  // UniqufyName().
+  void SetAndSanitizeName(absl::string_view name) {
+    name_ = NameUniquer::GetSanitizedName(name);
+  }
+
   // Use the given NameUniquer to select a unique name for the computation based
   // on the computation's existing name.
+  //
+  // See also HloModule::SetAndUniquifyComputationName(), which does this plus
+  // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Prints a string representation of the computation.
