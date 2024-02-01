@@ -109,8 +109,19 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
 // shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
 // are thread indices (currently only 0 is used), dimensions 3 to 5 are block
 // indices (currently only 3 is used).
+mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
+                                         mlir::MLIRContext* ctx);
+mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
+                                          mlir::MLIRContext* ctx);
+
+// Convenience functions for the two functions above
+// (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
+// the ranges of dimensions and symbols.
 IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
                                     mlir::MLIRContext* ctx);
+IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
+                                    mlir::AffineMap thread_offsets,
+                                    const Tiling& tiling);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);

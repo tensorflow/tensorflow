@@ -30,7 +30,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -692,6 +694,28 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
   return out;
 }
 
+llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
+    mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
+    absl::Span<const int64_t> strides) {
+  llvm::SmallVector<AffineExpr> result;
+  result.reserve(sizes.size());
+  for (auto [size, stride] : llvm::zip(sizes, strides)) {
+    result.push_back(linear.floorDiv(stride) % size);
+  }
+  if (sizes[0] > 1) {
+    // Assumes the linear index is in bounds, so no % for the major dimension.
+    // If the size is 1, the dimension was already rewritten to 0 by operator%.
+    result[0] = linear.floorDiv(strides[0]);
+  }
+  return result;
+}
+
+AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
+                             const Tiling& tiling) {
+  return AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, exprs,
+                        exprs[0].getContext());
+}
+
 }  // namespace
 
 IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
@@ -717,37 +741,48 @@ IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
       shape.dimensions(), {});
 }
 
+AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
+                                   mlir::MLIRContext* ctx) {
+  auto offsets = DelinearizeInBoundsIndex(getAffineDimExpr(3, ctx),
+                                          tiling.GetBlockCounts(),
+                                          tiling.GetBlockStrides());
+  for (auto&& [offset, tile_size] :
+       llvm::zip(offsets, tiling.GetBlockTileSize())) {
+    offset = offset * tile_size;
+  }
+  return GetTilingAffineMap(offsets, tiling);
+}
+
+AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
+                                    mlir::MLIRContext* ctx) {
+  auto offsets = DelinearizeInBoundsIndex(getAffineDimExpr(0, ctx),
+                                          tiling.GetThreadsPerBlock(),
+                                          tiling.GetThreadStrides());
+  for (int dim = 0; dim < tiling.GetShape().size(); ++dim) {
+    if (tiling.GetThreadTileSize()[dim] > 1) {
+      offsets[dim] = offsets[dim] + getAffineSymbolExpr(dim, ctx) *
+                                        tiling.GetThreadsPerBlock()[dim];
+    }
+  }
+  return GetTilingAffineMap(offsets, tiling);
+}
+
 IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
                                     mlir::MLIRContext* ctx) {
-  // Note: this function intentionally creates already simplified expressions.
-  auto delinearize = [&](auto sizes, auto strides,
-                         int dim) -> absl::InlinedVector<AffineExpr, 4> {
-    auto linear = getAffineDimExpr(dim, ctx);
-    absl::InlinedVector<AffineExpr, 4> result;
-    for (auto [size, stride] : llvm::zip(sizes, strides)) {
-      result.push_back(linear.floorDiv(stride) % size);
-    }
-    if (sizes[0] > 1) {
-      result[0] = linear.floorDiv(strides[0]);  // Remove the mod.
-    }
-    return result;
-  };
+  return GetIndexingMapForTiling(GetBlockOffsetsForTiling(tiling, ctx),
+                                 GetThreadOffsetsForTiling(tiling, ctx),
+                                 tiling);
+}
 
-  auto block_idxs =
-      delinearize(tiling.GetBlockCounts(), tiling.GetBlockStrides(), 3);
-  auto thread_idxs =
-      delinearize(tiling.GetThreadsPerBlock(), tiling.GetThreadStrides(), 0);
-
-  std::vector<AffineExpr> element_idxs;
-  element_idxs.reserve(tiling.GetShape().size());
-  for (int dim = 0; dim < tiling.GetShape().size(); ++dim) {
-    auto& elem = element_idxs.emplace_back(
-        block_idxs[dim] * tiling.GetBlockTileSize()[dim] + thread_idxs[dim]);
-    if (tiling.GetThreadTileSize()[dim] > 1) {
-      elem = elem +
-             getAffineSymbolExpr(dim, ctx) * tiling.GetThreadsPerBlock()[dim];
-    }
-  };
+IndexingMap GetIndexingMapForTiling(AffineMap block_offsets,
+                                    AffineMap thread_offsets,
+                                    const Tiling& tiling) {
+  llvm::SmallVector<AffineExpr, 4> offsets;
+  offsets.reserve(block_offsets.getNumResults());
+  for (auto [block, thread] :
+       llvm::zip(block_offsets.getResults(), thread_offsets.getResults())) {
+    offsets.push_back(block + thread);
+  }
 
   // TODO(jreiffers): Use general constraints for symbols: in the last blocks
   // in each each dimension, the bounds can be different if we don't have a
@@ -756,8 +791,8 @@ IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
       {0, tiling.GetNumThreadsPerBlock() - 1}, {}, {},
       {0, tiling.GetNumBlocks() - 1},          {}, {},
   };
-  return {AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, element_idxs, ctx),
-          dimension_ranges, RangesFromUpperBounds(tiling.GetThreadTileSize())};
+  return {GetTilingAffineMap(offsets, tiling), dimension_ranges,
+          RangesFromUpperBounds(tiling.GetThreadTileSize())};
 }
 
 bool HloInstructionIndexing::Simplify() {
