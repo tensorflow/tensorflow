@@ -4245,7 +4245,7 @@ absl::Status MIOpenSupport::DoPoolForward(
   bool do_backward = false;
   uint8* workspace = nullptr;
   size_t workspace_size = 0;
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> wsp_mem;
+  ScopedDeviceMemory<uint8> wsp_mem;
   if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
     do_backward = true;
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4264,12 +4264,10 @@ absl::Status MIOpenSupport::DoPoolForward(
                                miopenFloat, pdesc);
       if (cache_hit) {
         // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(
-            pdesc->workspace->mutable_device_memory()->opaque());
+        workspace = reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
       } else {
-        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size).value();
-        workspace = reinterpret_cast<uint8*>(
-            wsp_mem->mutable_device_memory()->opaque());
+        wsp_mem = stream->AllocateOwnedArray<uint8>(workspace_size).value();
+        workspace = reinterpret_cast<uint8*>(wsp_mem->ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
                                miopenFloat, wsp_mem, workspace_size,
@@ -4326,7 +4324,7 @@ void PoolingWorkspaceCache::insert(
     const void* p, const dnn::BatchDescriptor& input_dimensions,
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace, size_t wsp_size,
+    ScopedDeviceMemory<uint8>& workspace, size_t wsp_size,
     hipStream_t hip_stream) {
   PoolingWorkspaceDescriptor* desc = 0;
   auto it = cache.find(p);
@@ -4423,8 +4421,8 @@ absl::Status MIOpenSupport::DoPoolBackward(
                                           miopen_dtype, pdesc);
     if (cache_hit) {
       assert(pdesc != 0);
-      workspace_ptr = reinterpret_cast<uint8*>(
-          pdesc->workspace->mutable_device_memory()->opaque());
+      workspace_ptr =
+          reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
     } else {
       VLOG(1) << "Pooling cache miss";

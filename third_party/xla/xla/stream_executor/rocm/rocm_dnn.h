@@ -24,7 +24,6 @@ limitations under the License.
 #include "rocm/include/miopen/miopen.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -41,7 +40,7 @@ struct PoolingWorkspaceDescriptor {
   dnn::PoolingDescriptor op;
   int dtype;
   uint64_t timestamp;
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> workspace;
+  ScopedDeviceMemory<uint8> workspace;
   size_t workspace_size;
   bool IsSame(const dnn::BatchDescriptor& input_dimensions,
               const dnn::BatchDescriptor& output_dimensions,
@@ -61,8 +60,8 @@ struct PoolingWorkspaceCache {
   void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
               const dnn::BatchDescriptor& output_dimensions,
               const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-              std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
-              size_t wsp_size, hipStream_t hip_stream);
+              ScopedDeviceMemory<uint8>& workspace, size_t wsp_size,
+              hipStream_t hip_stream);
 
  private:
   void trim(hipStream_t hip_stream);
