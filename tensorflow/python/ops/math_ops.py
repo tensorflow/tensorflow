@@ -86,6 +86,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -4990,6 +4991,7 @@ def sampled_addmm(indices,
   """
   indices = ops.convert_to_tensor(indices)
   values = ops.convert_to_tensor(values, dtype=output_type)
+  dense_shape = ops.convert_to_tensor(dense_shape, dtype=dtypes.int32)
   mat1 = ops.convert_to_tensor(mat1, dtype=output_type)
   mat2 = ops.convert_to_tensor(mat2, dtype=output_type)
 
@@ -5004,8 +5006,35 @@ def sampled_addmm(indices,
   dense_rows = mat1_shape[-2]
   dense_cols = mat2_shape[-1]
 
-  # TODO(mattbahr): Use dense_shape to validate matrix shapes
-  dense_shape = constant_op.constant([dense_rows, dense_cols])
+  output_shape = constant_op.constant([dense_rows, dense_cols], 
+                                      dtype=dtypes.int32)
+
+  condition = reduce_all(equal(dense_shape, output_shape))
+
+  # Use dense_shape to validate matrix shapes
+  if context.executing_eagerly():
+    if not condition:
+      raise ValueError(
+              f"Dense shape: {dense_shape} does not match "
+              f"output shape: {output_shape}")
+  else: # not context.executing_eagerly()
+    dense_shape_static = tensor_util.constant_value(dense_shape)
+    output_shape_static = tensor_util.constant_value(output_shape)
+    if dense_shape_static is not None and output_shape_static is not None:
+      condition_static = np.all(np.equal(dense_shape_static, output_shape_static)) 
+      if not condition_static:
+        raise ValueError(
+                f"Dense shape: {dense_shape} does not match "
+                f"output shape: {output_shape}")
+    
+    data = [
+        'Dense shape: ', 
+        dense_shape, 
+        ' does not match output shape: ', 
+        output_shape
+    ]
+ 
+    gen_logging_ops._assert(condition, data, None, name="Assert")
 
   # Extract row and column indices
   batch_indices = indices[..., :-2]
