@@ -261,6 +261,7 @@ AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
 }
 
 AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
+  affine_map = mlir::simplifyAffineMap(affine_map);
   mlir::SmallVector<AffineExpr, 4> results;
   results.reserve(affine_map.getNumResults());
   bool nothing_changed = true;
@@ -681,16 +682,13 @@ void IndexingMap::RemoveUnusedSymbols() {
 
 std::optional<IndexingMap> ComposeIndexingMaps(
     const std::optional<IndexingMap>& first,
-    const std::optional<IndexingMap>& second, bool simplify) {
+    const std::optional<IndexingMap>& second) {
   if (!second.has_value() || !first.has_value()) {
     return std::nullopt;
   }
   AffineMap producer_affine_map = second->GetAffineMap();
   // map1.compose(map2) computes map2 ∘ map1 for some reason.
   AffineMap composed_map = producer_affine_map.compose(first->GetAffineMap());
-  if (simplify) {
-    composed_map = mlir::simplifyAffineMap(composed_map);
-  }
 
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
@@ -740,9 +738,6 @@ std::optional<IndexingMap> ComposeIndexingMaps(
     composed_indexing_map.AddConstraint(
         expr.shiftSymbols(first->GetSymbolCount(), second->GetSymbolCount()),
         producer_dim_range);
-  }
-  if (simplify) {
-    composed_indexing_map.Simplify();
   }
   return composed_indexing_map;
 }

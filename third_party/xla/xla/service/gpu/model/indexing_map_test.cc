@@ -89,7 +89,7 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
   consumer.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
                          Range{0, 0});
 
-  auto composed = ComposeIndexingMaps(consumer, producer, /*simplify=*/false);
+  auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:

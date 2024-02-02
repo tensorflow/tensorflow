@@ -906,6 +906,8 @@ std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
              consumer_indexing_maps) {
           auto composed_map = ComposeIndexingMaps(consumer_map, producer_map);
           if (composed_map.has_value()) {
+            composed_map->Simplify();
+
             composed_map->RemoveUnusedSymbols();
           }
           grouped_indexing_maps[&producer_operand_adaptor.instruction()].insert(

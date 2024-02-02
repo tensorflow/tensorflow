@@ -308,8 +308,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
 
   return ComposeIndexingMaps(
       GetIndexingMapForTiling(block_offset, thread_offset, tiling_),
-      GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx),
-      /*simplify=*/false);
+      GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
 }
 
 std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
@@ -319,8 +318,7 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
 
   return ComposeIndexingMaps(
       GetIndexingMapForTiling(tiling_, ctx),
-      GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx),
-      /*simplify=*/false);
+      GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
 }
 
 }  // namespace gpu

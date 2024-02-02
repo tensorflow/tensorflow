@@ -192,7 +192,7 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 // Composes affine maps, i.e. first ∘ second.
 std::optional<IndexingMap> ComposeIndexingMaps(
     const std::optional<IndexingMap>& first,
-    const std::optional<IndexingMap>& second, bool simplify = true);
+    const std::optional<IndexingMap>& second);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
