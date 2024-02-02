@@ -1245,6 +1245,7 @@ cc_library(
         ":non_atomically_upgradeable_rw_lock",
         ":stream_executor_util",
         ":thunk",
+        "//xla:executable_run_options",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status",

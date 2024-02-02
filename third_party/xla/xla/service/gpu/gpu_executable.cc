@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/map_util.h"
 #include "xla/mlir/runtime/ir/rt_ops.h"
@@ -304,7 +305,7 @@ absl::Status MaybeSyncAndProfile(
 
 absl::Status MaybeRendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
-    std::atomic<int64_t>* thunks_initialized);
+    RendezvousSingleFlag& thunks_initialized);
 
 absl::Status ExecuteThunks(const std::string& module_name,
                            ModuleIdentifier module_id,
@@ -314,7 +315,7 @@ absl::Status ExecuteThunks(const std::string& module_name,
                            const BufferAllocations& buffer_allocations,
                            bool block_host_until_done,
                            bool use_highest_priority_for_async_stream,
-                           std::atomic<int64_t>* thunks_initialized) {
+                           RendezvousSingleFlag& thunks_initialized) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
   stream_executor::StreamPriority stream_priority =
@@ -425,9 +426,26 @@ absl::Status ExecuteThunks(const std::string& module_name,
                              block_host_until_done ? main_stream : nullptr);
 }
 
+namespace {
+// Wrap RunId into a unique struct to guarantee we do not accidentally try to
+// run multiple unrelated rendezvous for a same key.
+struct InitializationKey {
+  RunId run_id;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const InitializationKey& key) {
+    return H::combine(std::move(h), key.run_id);
+  }
+};
+
+bool operator==(const InitializationKey& a, const InitializationKey& b) {
+  return a.run_id == b.run_id;
+}
+}  // namespace
+
 absl::Status MaybeRendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
-    std::atomic<int64_t>* thunks_initialized) {
+    RendezvousSingleFlag& thunks_initialized) {
   // Thunk initialization can allocate new control data structures on device
   // that can lead to deadlocks if other replicas are executing concurrently
   // (i.e. this happens if we try to instantiate CUDA graph when other replica
@@ -441,23 +459,8 @@ absl::Status MaybeRendezvousAfterInitialization(
   // are running in a single Gpu config and don't need a rendezvous.
   if (!gpu_opts || !device_assn) return absl::OkStatus();
 
-  // If `thunks_initialized` value is `-1` it means that all thunks are
-  // initialized and we can go ahead and execute all of them. All other values
-  // signal how many threads are executing rendezvous (they can be from
-  // different run ids).
-  if (thunks_initialized->load() < 0) return absl::OkStatus();
-
-  // We rely on CAS operations to make sure that all participants of
-  // potentially multiple concurrent XLA executions join the rendezvous or
-  // none of them join, because otherwise we will get a dead lock.
-  int64_t participant_id = thunks_initialized->load();
-  while (participant_id >= 0 && !thunks_initialized->compare_exchange_weak(
-                                    participant_id, participant_id + 1)) {
-  }
-
-  // If we exited a CAS loop with participant id less than 0 it means that some
-  // other thread completed initialization rendezvous.
-  if (participant_id < 0) return absl::OkStatus();
+  // Return if thunk initialization was already completed.
+  if (thunks_initialized.IsCompleted()) return absl::OkStatus();
 
   // Assume that all participants execute locally first, if we have a local
   // device id to global device id map we will use it to get the real number of
@@ -484,31 +487,15 @@ absl::Status MaybeRendezvousAfterInitialization(
           << num_local_participants << " local participants"
           << "; device_ordinal=" << run_options->device_ordinal();
 
-  auto rendezvous_key = run_options->run_options().run_id();
+  auto rendezvous_key = InitializationKey{run_options->run_options().run_id()};
   auto rendezvous_name = absl::StrFormat(
       "thunk initialization completion for device ordinal %d; run_id=%d",
       run_options->device_ordinal(),
       run_options->run_options().run_id().ToInt());
 
-  RendezvousSingle(rendezvous_name, rendezvous_key, num_local_participants,
-                   absl::Seconds(10), absl::Seconds(30));
-
-  // Reload participant_id and use CAS to decide if we are the one who
-  // should mark initialization completed.
-  participant_id = thunks_initialized->load();
-
-  // Check that no one completed initialization process without us, and the
-  // number of participants inside the critical section is greater than 0 (we
-  // are here, so it can't be 0).
-  CHECK_GT(participant_id, 0);  // NOLINT
-
-  // If we are the last one, we try to mark executable initialization as
-  // completed by writing `-1` into the flag.
-  while (!thunks_initialized->compare_exchange_weak(
-      participant_id, participant_id == 1 ? -1 : participant_id - 1)) {
-    // Check precondition for participant id after CAS failure reloaded it.
-    CHECK_GT(participant_id, 0);  // NOLINT
-  }
+  RendezvousSingle(thunks_initialized, rendezvous_name, rendezvous_key,
+                   num_local_participants, absl::Seconds(10),
+                   absl::Seconds(30));
 
   return absl::OkStatus();
 }
@@ -1011,7 +998,7 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                            .debug_options()
                            .xla_gpu_enable_highest_priority_async_stream()
                      : false,
-        &thunks_initialized_);
+        thunks_initialized_flag_);
   }
 
   // Match IrEmitter's temp buffer allocation for kernel launches. See

@@ -15,14 +15,18 @@ limitations under the License.
 
 #include "xla/service/rendezvous.h"
 
+#include <atomic>
+#include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <string_view>
 
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tsl/platform/logging.h"
 
-namespace xla::internal {
+namespace xla {
+namespace internal {
 
 void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
                         size_t num_threads, absl::Duration warn_stuck_timeout,
@@ -52,4 +56,65 @@ void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
   std::exit(42);
 }
 
-}  // namespace xla::internal
+}  // namespace internal
+
+namespace {
+inline constexpr int32_t kPending = 0;
+inline constexpr int32_t kCompleted = std::numeric_limits<int32_t>::max();
+}  // namespace
+
+RendezvousSingleFlag::RendezvousSingleFlag() : state_(kPending) {}
+
+RendezvousSingleFlag::InFlightRendezvous::InFlightRendezvous(
+    RendezvousSingleFlag* flag)
+    : flag_(flag) {}
+
+RendezvousSingleFlag::InFlightRendezvous::~InFlightRendezvous() {
+  if (flag_ == nullptr) return;
+
+  // Reload state and use CAS to decide if we are the one who
+  // should mark rendezvous flag completed.
+  int32_t state = flag_->state_.load();
+
+  CHECK(state != kPending && state != kCompleted)  // NOLINT
+      << "rendezvous can't be in pending or completed state";
+
+  // Exit the critical section and maybe mark rendezvous as completed.
+  while (!flag_->state_.compare_exchange_weak(
+      state, state == 1 ? kCompleted : state - 1)) {
+    // Check state after CAS failure: while we are in this function no one
+    // should complete rendezvous without us or switch it back to pending.
+    CHECK(state != kPending && state != kCompleted);  // NOLINT
+  }
+}
+
+RendezvousSingleFlag::InFlightRendezvous::operator bool() const {
+  return flag_ != nullptr;
+}
+
+RendezvousSingleFlag::InFlightRendezvous RendezvousSingleFlag::TryJoin() {
+  // If `state_` is `kCompleted` it means that we have at least one completed
+  // rendezvous for this flag and can skip it.
+  if (state_.load() == kCompleted) return InFlightRendezvous(nullptr);
+
+  // Try to increment a state in a CAS loop to signal all other participants
+  // that we joined an in-flight rendezvous.
+  int32_t state = state_.load();
+  while (state != kCompleted &&
+         !state_.compare_exchange_weak(state, state + 1)) {
+    CHECK(state != kPending)  // NOLINT
+        << "rendezvous can't remain in pending state after state update "
+           "failure";
+  }
+
+  // Someone else completed the rendezvous and we don't need to join.
+  if (state == kCompleted) return InFlightRendezvous(nullptr);
+
+  return InFlightRendezvous(this);
+}
+
+bool RendezvousSingleFlag::IsCompleted() const {
+  return state_.load() == kCompleted;
+}
+
+}  // namespace xla
