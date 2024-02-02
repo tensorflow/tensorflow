@@ -121,7 +121,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
       fusion_adaptor, /*output_id=*/0, &mlir_context_);
   EXPECT_THAT(grouped_indexing,
-              Optional(UnorderedElementsAre(
+              UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingMap(R"(
                     (d0, d1) -> (d0, d1)
                     domain:
@@ -145,7 +145,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
                         domain:
                         d0 in [0, 999]
                         d1 in [0, 999]
-                      )"))))));
+                      )")))));
 }
 
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {

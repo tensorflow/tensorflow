@@ -80,7 +80,7 @@ using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
 
 // Computes indexing for every instruction within a fusion cluster.
-std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
+GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, int output_id,
     mlir::MLIRContext* ctx);
 

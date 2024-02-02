@@ -213,21 +213,12 @@ HloInstructionIndexing ComputeOutputToInputFusionOpIndexing(
   auto grouped_indexing_maps = ComputeGroupedOutputToInputIndexing(
       *fusion_adaptor, output_id, mlir_context);
 
-  HloInstructionIndexing fusion_indexing;
-
-  if (!grouped_indexing_maps.has_value()) {
-    fusion_indexing.indexing_maps =
-        std::vector<absl::flat_hash_set<std::optional<IndexingMap>>>(
-            fusion->operand_count(), {std::nullopt});
-    return fusion_indexing;
-  }
-
   // After the traversal, `grouped_indexing_maps` is keyed by
   // HloParameterInstructions. Convert them back to the operand id and return.
+  HloInstructionIndexing fusion_indexing;
   fusion_indexing.indexing_maps.resize(fusion->operand_count());
   for (auto [operand_id, operand] : llvm::enumerate(fusion->operands())) {
-    fusion_indexing.indexing_maps[operand_id] =
-        grouped_indexing_maps.value()[operand];
+    fusion_indexing.indexing_maps[operand_id] = grouped_indexing_maps[operand];
   }
   return fusion_indexing;
 }
@@ -881,7 +872,7 @@ GroupedByOpIndexingMap GroupIndexingMapsByProducers(
   return result;
 }
 
-std::optional<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
+GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, int output_id, MLIRContext* ctx) {
   auto root = fusion_adaptor.GetRoots()[output_id];
 
