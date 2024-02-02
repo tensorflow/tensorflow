@@ -58,6 +58,10 @@ using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
 using ::operations_research::MPVariable;
 
+// We need to nudge the maximum cost (if present) slightly, since the constraint
+// solver cannot guarantee exact numerical precision.
+constexpr double kMaxCostEpsilon = 1.0001;
+
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
   return status == other.status &&
@@ -558,10 +562,10 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
   if (request.has_max_cost()) {
+    double max_cost = kMaxCostEpsilon * request.max_cost().coeff();
+    max_cost -= solver->Objective().offset();
     MPConstraint* cost_constraint = solver->MakeRowConstraint(
-        -MPSolver::infinity(),
-        request.max_cost().coeff() - solver->Objective().offset(),
-        "cost_constraint");
+        -MPSolver::infinity(), max_cost, "cost_constraint");
     for (const auto [var, coeff] : solver->Objective().terms()) {
       cost_constraint->SetCoefficient(var, coeff);
     }
