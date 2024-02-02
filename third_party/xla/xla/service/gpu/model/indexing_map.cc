@@ -687,8 +687,10 @@ std::optional<IndexingMap> ComposeIndexingMaps(
   }
   AffineMap producer_affine_map = second->GetAffineMap();
   // map1.compose(map2) computes map2 ∘ map1 for some reason.
-  AffineMap composed_map = mlir::simplifyAffineMap(
-      producer_affine_map.compose(first->GetAffineMap()));
+  AffineMap composed_map = producer_affine_map.compose(first->GetAffineMap());
+  if (simplify) {
+    composed_map = mlir::simplifyAffineMap(composed_map);
+  }
 
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |

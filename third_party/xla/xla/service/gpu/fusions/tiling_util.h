@@ -65,6 +65,9 @@ class Tiling {
 
   // Number of elements in each dimension.
   const absl::InlinedVector<int64_t, 4>& GetShape() const { return shape_; }
+  xla::Shape GetXlaShape(PrimitiveType element_type = F32) const {
+    return ShapeUtil::MakeShape(element_type, shape_);
+  }
 
   const absl::InlinedVector<int64_t, 4>& GetBlockCounts() const {
     return num_blocks_;

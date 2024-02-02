@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
@@ -41,6 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -101,11 +104,25 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
                                  index.GetType()};
 }
 
+mlir::AffineMap PermuteAffineMapResults(mlir::AffineMap map,
+                                        absl::Span<const int64_t> permutation) {
+  return map.getSubMap(
+      std::vector<unsigned>(permutation.begin(), permutation.end()));
+}
+
 }  // namespace
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {}
+      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {
+  for (auto [root, hero] :
+       llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
+    if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
+      permutation_ = transpose->permutation;
+      break;
+    }
+  }
+}
 
 absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                                          const HloFusionInstruction& fusion,
@@ -136,7 +153,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   std::vector<std::pair<int64_t, const HloInstruction*>> extra_outputs;
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-    const auto& hero = FindNonTrivialHero(*root);
+    const auto& hero = *analysis_.fusion_heroes()[output_idx];
     auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
@@ -270,6 +287,40 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 LaunchDimensions TransposeFusion::launch_dimensions() const {
   return LaunchDimensions(tiling_.GetNumBlocks(),
                           tiling_.GetNumThreadsPerBlock());
+}
+
+std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
+    int64_t root_index, mlir::MLIRContext* ctx) const {
+  const auto& hero = *analysis_.fusion_heroes()[root_index];
+  const auto& root = *analysis_.fusion_roots()[root_index];
+  if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
+    // Non-transpose roots are elementwise by definition.
+    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+  }
+
+  // The block offsets are permuted, but the thread offsets remain the same.
+  auto block_offset = GetBlockOffsetsForTiling(tiling_, ctx)
+                          .getSubMap(std::vector<unsigned>{permutation_.begin(),
+                                                           permutation_.end()});
+  auto thread_offset = GetThreadOffsetsForTiling(tiling_, ctx);
+  auto permuted_tiled_shape =
+      ShapeUtil::MakeShape(U8, Permute(tiling_.GetShape(), permutation_));
+
+  return ComposeIndexingMaps(
+      GetIndexingMapForTiling(block_offset, thread_offset, tiling_),
+      GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx),
+      /*simplify=*/false);
+}
+
+std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  const auto& hero = *analysis_.fusion_heroes()[root_index];
+
+  return ComposeIndexingMaps(
+      GetIndexingMapForTiling(tiling_, ctx),
+      GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx),
+      /*simplify=*/false);
 }
 
 }  // namespace gpu

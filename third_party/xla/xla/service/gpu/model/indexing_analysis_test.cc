@@ -1659,7 +1659,7 @@ TEST_F(IndexingAnalysisTest, TilingIndexing) {
               MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           (d3 floordiv 64) * 8 + s0,
-          (d3 mod 64) * 4 + (d0 floordiv 4) mod 4,
+          (d3 mod 64) * 4 + d0 floordiv 4,
           d0 mod 4 + s2 * 4
         )
         domain:

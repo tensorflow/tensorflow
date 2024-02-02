@@ -702,10 +702,14 @@ llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
   for (auto [size, stride] : llvm::zip(sizes, strides)) {
     result.push_back(linear.floorDiv(stride) % size);
   }
-  if (sizes[0] > 1) {
-    // Assumes the linear index is in bounds, so no % for the major dimension.
-    // If the size is 1, the dimension was already rewritten to 0 by operator%.
-    result[0] = linear.floorDiv(strides[0]);
+  for (int dim = 0; dim < sizes.size(); ++dim) {
+    if (sizes[dim] > 1) {
+      // We assume the linear index is in bounds, so no mod for the first major
+      // non-degenerate dimension. Degenerate dimensions are already rewritten
+      // to 0 by operator%.
+      result[dim] = linear.floorDiv(strides[dim]);
+      break;
+    }
   }
   return result;
 }
