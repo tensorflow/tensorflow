@@ -27,7 +27,7 @@ function is_linux_gpu_job() {
 }
 
 function is_linux_cpu_arm64_job() {
-  [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/arm64/.*cpu.* ]]
+  [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*arm64.*/.*cpu.* ]]
 }
 
 function pull_docker_image_with_retries() {
