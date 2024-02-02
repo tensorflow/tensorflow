@@ -72,9 +72,9 @@ using ::mlir::quant::UniformQuantizedType;
 #define GEN_PASS_DEF_UNIFORMQUANTIZEDSTABLEHLOTOTFLPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
-class UniformQuantizedStablehloToTflPass
-    : public impl::UniformQuantizedStablehloToTflPassBase<
-          UniformQuantizedStablehloToTflPass> {
+class UniformQuantizedStableHloToTflPass
+    : public impl::UniformQuantizedStableHloToTflPassBase<
+          UniformQuantizedStableHloToTflPass> {
  private:
   void runOnOperation() override;
 };
@@ -1265,7 +1265,8 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
 
 // Rewrites quantized stablehlo.transpose to tfl.transpose.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteTransposeOp : public OpRewritePattern<stablehlo::TransposeOp> {
+class RewriteQuantizedTransposeOp
+    : public OpRewritePattern<stablehlo::TransposeOp> {
  public:
   using OpRewritePattern<stablehlo::TransposeOp>::OpRewritePattern;
 
@@ -1295,7 +1296,8 @@ class RewriteTransposeOp : public OpRewritePattern<stablehlo::TransposeOp> {
 
 // Rewrites quantized stablehlo.reshape to tfl.reshape.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteReshapeOp : public OpRewritePattern<stablehlo::ReshapeOp> {
+class RewriteQuantizedReshapeOp
+    : public OpRewritePattern<stablehlo::ReshapeOp> {
  public:
   using OpRewritePattern<stablehlo::ReshapeOp>::OpRewritePattern;
 
@@ -1323,7 +1325,7 @@ class RewriteReshapeOp : public OpRewritePattern<stablehlo::ReshapeOp> {
 
 // Rewrites quantized stablehlo.select to tfl.select_v2.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteSelectOp : public OpRewritePattern<stablehlo::SelectOp> {
+class RewriteQuantizedSelectOp : public OpRewritePattern<stablehlo::SelectOp> {
  public:
   using OpRewritePattern<stablehlo::SelectOp>::OpRewritePattern;
 
@@ -1351,7 +1353,8 @@ class RewriteSelectOp : public OpRewritePattern<stablehlo::SelectOp> {
 
 // Rewrites quantized stablehlo.concatenate to tfl.concatenation.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteConcatenateOp : public OpRewritePattern<stablehlo::ConcatenateOp> {
+class RewriteQuantizedConcatenateOp
+    : public OpRewritePattern<stablehlo::ConcatenateOp> {
  public:
   using OpRewritePattern<stablehlo::ConcatenateOp>::OpRewritePattern;
 
@@ -1372,7 +1375,7 @@ class RewriteConcatenateOp : public OpRewritePattern<stablehlo::ConcatenateOp> {
 // Rewrites quantized stablehlo.pad to tfl.padv2.
 // tfl.dilate is introduced in between when interior padding exists.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewritePadOp : public OpRewritePattern<stablehlo::PadOp> {
+class RewriteQuantizedPadOp : public OpRewritePattern<stablehlo::PadOp> {
  public:
   using OpRewritePattern<stablehlo::PadOp>::OpRewritePattern;
 
@@ -1446,7 +1449,7 @@ class RewritePadOp : public OpRewritePattern<stablehlo::PadOp> {
 
 // Rewrites quantized stablehlo.slice to tfl.slice or tfl.strided_slice.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
+class RewriteQuantizedSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
  public:
   using OpRewritePattern<stablehlo::SliceOp>::OpRewritePattern;
 
@@ -1507,7 +1510,7 @@ class RewriteSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
 // order. Also, tfl.expand_dims is introduced when input rank is smaller than
 // output rank.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
-class RewriteBroadcastInDimOp
+class RewriteQuantizedBroadcastInDimOp
     : public OpRewritePattern<stablehlo::BroadcastInDimOp> {
  public:
   using OpRewritePattern<stablehlo::BroadcastInDimOp>::OpRewritePattern;
@@ -1601,7 +1604,7 @@ class RewriteBroadcastInDimOp
   }
 };
 
-void UniformQuantizedStablehloToTflPass::runOnOperation() {
+void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
 
@@ -1611,9 +1614,10 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
                RewriteUpstreamQuantizedDotGeneralOpToBatchMatmulOp,
                RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
-               RewriteTransposeOp, RewriteReshapeOp, RewriteSelectOp,
-               RewriteConcatenateOp, RewritePadOp, RewriteSliceOp,
-               RewriteBroadcastInDimOp>(&ctx);
+               RewriteQuantizedTransposeOp, RewriteQuantizedReshapeOp,
+               RewriteQuantizedSelectOp, RewriteQuantizedConcatenateOp,
+               RewriteQuantizedPadOp, RewriteQuantizedSliceOp,
+               RewriteQuantizedBroadcastInDimOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
@@ -1625,11 +1629,11 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateUniformQuantizedStablehloToTflPass() {
-  return std::make_unique<UniformQuantizedStablehloToTflPass>();
+CreateUniformQuantizedStableHloToTflPass() {
+  return std::make_unique<UniformQuantizedStableHloToTflPass>();
 }
 
-static PassRegistration<UniformQuantizedStablehloToTflPass> pass;
+static PassRegistration<UniformQuantizedStableHloToTflPass> pass;
 
 }  // namespace odml
 }  // namespace mlir

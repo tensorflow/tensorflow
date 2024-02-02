@@ -169,7 +169,7 @@ void AddPreQuantizationStableHloToTfPasses(
   // no quantization patterns are found, it is a no-op.
   pass_manager.addPass(mlir::odml::CreateComposeUniformQuantizedTypePass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::odml::CreateUniformQuantizedStablehloToTflPass());
+      mlir::odml::CreateUniformQuantizedStableHloToTflPass());
 
   pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.
@@ -226,7 +226,7 @@ void AddPostQuantizationStableHloToTfPasses(
     // quantized types do not go through the TF dialect which doesn't support
     // quantized types.
     pass_manager.addNestedPass<mlir::func::FuncOp>(
-        mlir::odml::CreateUniformQuantizedStablehloToTflPass());
+        mlir::odml::CreateUniformQuantizedStableHloToTflPass());
 
     // StableHLO -> MHLO
     pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
