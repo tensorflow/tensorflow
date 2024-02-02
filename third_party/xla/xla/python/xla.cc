@@ -924,6 +924,16 @@ static void Init(py::module_& m) {
             xla::ThrowIfError(client.KeyValueSet(key, value));
           },
           py::arg("key"), py::arg("value"))
+      // The key must be a string, but the value must a Python bytes object.
+      // Use `key_value_set_bytes()` and `blocking_key_value_get_bytes()`.
+      .def(
+          "key_value_set_bytes",
+          [](DistributedRuntimeClient& client, std::string key,
+             py::bytes value) {
+            py::gil_scoped_release gil_release;
+            xla::ThrowIfError(client.KeyValueSet(key, value));
+          },
+          py::arg("key"), py::arg("value"))
       // Assumes that all values in the directory are Python strings.
       .def(
           "key_value_dir_get",
