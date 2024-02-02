@@ -105,10 +105,14 @@ namespace tsl {
 //
 // Returns an OK status, equivalent to a default constructed instance. Prefer
 // usage of `OkStatus()` when constructing such an OK status.
-Status OkStatus();
+ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
+  return absl::OkStatus();
+};
 
-absl::Status FromAbslStatus(const absl::Status& s);
-absl::Status ToAbslStatus(const ::absl::Status& s);
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status FromAbslStatus(const absl::Status& s) { return s; }
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 
 // Given `Status.message()` does not guarantee to be always backed by a
 // null-terminated string, we have this utility function when it's needed for
