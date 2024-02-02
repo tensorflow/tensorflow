@@ -824,7 +824,11 @@ static void Init(py::module_& m) {
       },
       py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
       py::arg("gpu_backend") = nullptr);
-
+  m.def("cuda_array_interface_to_buffer",
+        [](const pybind11::dict& cai, std::shared_ptr<PyClient> cuda_client) {
+          return xla::ValueOrThrow(
+              CudaArrayInterfaceToBuffer(cai, std::move(cuda_client)));
+        });
   BuildProfilerSubmodule(&m);
   BuildOpsSubmodule(&m);
   BuildOutfeedReceiverSubmodule(&m);

@@ -52,6 +52,9 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/shape.h"
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_driver.h"
+#endif
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -704,6 +707,121 @@ py::dict PyArray::CudaArrayInterface() {
   result["data"] = std::move(data);
   result["version"] = py::int_(2);
   return result;
+}
+
+StatusOr<pybind11::object> CudaArrayInterfaceToBuffer(
+    const pybind11::dict& cai, std::shared_ptr<PyClient> client) {
+#ifndef GOOGLE_CUDA
+  throw XlaRuntimeError("This operation requires CUDA support.");
+#else
+  if (!cai.contains("data")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `data`");
+  }
+  if (!cai.contains("shape")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `shape`");
+  }
+  if (!cai.contains("typestr")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `typestr`");
+  }
+  if (!cai.contains("version")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `version`");
+  }
+  auto version = py::cast<int>(cai["version"]);
+  if (version < 2 || version > 3) {
+    LOG(WARNING) << "CUDA Array Interface version " << version
+                 << " support is undefined";
+  }
+  auto data = py::cast<pybind11::tuple>(cai["data"]);
+  auto data_value = pybind11::cast<std::intptr_t>(data[0]);
+  void* data_ptr = reinterpret_cast<void*>(data_value);
+  auto dimensions = pybind11::cast<std::vector<int64_t>>(cai["shape"]);
+  if (data_value == 0 && absl::c_find(dimensions, 0) == dimensions.end()) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface `data`(=NULL) and `shape`(no zero-valued "
+        "dimensions) are inconsistent");
+  }
+  auto ndim = dimensions.size();
+  TF_ASSIGN_OR_RETURN(
+      PrimitiveType element_type,
+      DtypeToPrimitiveType(py::dtype::from_args(cai["typestr"])));
+
+  // cannot determine device_id/stream when device pointer is NULL.
+  int device_id =
+      (data_value == 0
+           ? 0
+           : stream_executor::gpu::CreatedContexts::GetDeviceOrdinal(data_ptr));
+  TF_ASSIGN_OR_RETURN(auto device,
+                      client->DeviceFromLocalHardwareId(device_id));
+  bool is_default_stream =
+      data_value == 0 || version == 2 ||
+      (version == 3 && (!cai.contains("stream") || cai["stream"].is_none()));
+  TF_ASSIGN_OR_RETURN(
+      std::intptr_t stream,
+      ([is_default_stream, cai, device]() -> StatusOr<std::intptr_t> {
+        if (is_default_stream) {
+          return device->GetStreamForExternalReadyEvents();
+        } else {
+          auto stream_ = py::cast<std::intptr_t>(cai["stream"]);
+          if (stream_ == 0) {
+            return absl::InvalidArgumentError(
+                "CUDA Array Interface does not allow zero stream value");
+          }
+          return stream_;
+        }
+      }()));
+
+  std::vector<int64_t> minor_to_major(ndim);
+  if (cai.contains("strides") && !cai["strides"].is_none() && data_value != 0) {
+    std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+    auto strides = pybind11::cast<std::vector<int64_t>>(cai["strides"]);
+    if (strides.size() != ndim) {
+      return absl::InvalidArgumentError(
+          "CUDA Array Interface `shape` and `strides` dimensionalities are "
+          "inconsistent");
+    }
+    absl::c_sort(minor_to_major, [&](int a, int b) {
+      // If two dimensions have the same stride, prefer the major-to-minor
+      // interpretation of the ordering, since that's what JAX wants.
+      return (strides[a] == strides[b] ? b < a : strides[a] < strides[b]);
+    });
+    int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+    for (int64_t d : minor_to_major) {
+      if (dimensions[d] > 1 && strides[d] != stride) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Only arrays with trivial (compact) striding are supported; "
+            "i.e., arrays whose striding represents a transposition of the "
+            "underlying buffer but not broadcasting. Dimensions were: [%s], "
+            "strides were [%s].",
+            absl::StrJoin(dimensions, ","), absl::StrJoin(strides, ",")));
+      }
+      stride *= dimensions[d];
+    }
+  } else {
+    std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
+  }
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
+  std::function<void()> on_delete_callback = []() {};
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_buffer,
+      device->client()->CreateViewOfDeviceBuffer(
+          static_cast<char*>(data_ptr), shape, device.get(), on_delete_callback,
+          stream <= 2 ? std::nullopt : std::make_optional(stream)));
+  auto* ifrt_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
+  if (ifrt_client == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                      ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
+#endif  // GOOGLE_CUDA
 }
 
 Status PyArray::Delete() {
