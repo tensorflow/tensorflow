@@ -741,6 +741,15 @@ struct ConvertTFLBroadcastToMulOp
           element_type.isInteger(32) || element_type.isInteger(16)))
       return rewriter.notifyMatchFailure(loc, "element_type_not_supported");
 
+    // TFL_FillOp is created only if is_output_shape_dynamic is true, otherwise
+    // a Arith.ConstOp is created.
+    if (is_output_shape_dynamic &&
+        output_type.getElementType().isUnsignedInteger()) {
+      return rewriter.notifyMatchFailure(
+          loc,
+          "Unsigned broadcast_to output with dynamic shape is not supported");
+    }
+
     Value mul_rhs_value;
     if (!output_type.hasRank() || (output_type.getNumDynamicDims() > 0)) {
       auto status_or_const_op =
