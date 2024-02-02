@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,34 +16,82 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/FPEnv.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -119,85 +167,33 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
-bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
-                          bool verify_no_strides) {
-  auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
-  if (!fusion) {
-    return false;
-  }
-
-  auto is_non_strided = [](mlir::DenseIntElementsAttr strides) -> bool {
-    return absl::c_all_of(
-        strides, [](const llvm::APInt& stride) { return stride == 1; });
-  };
-
-  for (mlir::Value value : fusion.getFusionResults()) {
-    auto slice =
-        mlir::dyn_cast_or_null<mlir::mhlo::SliceOp>(value.getDefiningOp());
-    if (!slice) {
-      return false;
-    }
-    if (verify_no_strides && !is_non_strided(slice.getStrides())) {
-      return false;
-    }
-  }
-  return true;
+bool IsCustomCallToTopK(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kTopKCustomCallTarget;
 }
 
-// This emits a device-side call to
-// "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
-// http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls
-llvm::Value* EmitPrintf(absl::string_view fmt,
-                        absl::Span<llvm::Value* const> arguments,
-                        llvm::IRBuilder<>* builder) {
-  std::vector<llvm::Type*> argument_types;
+bool IsSliceWithUnitStrides(const HloInstruction* instr) {
+  auto slice = DynCast<HloSliceInstruction>(instr);
+  return slice && absl::c_all_of(slice->slice_strides(),
+                                 [](int64_t stride) { return stride == 1; });
+}
 
-  // Variadic arguments implicit promotion [1] converts float to double,
-  // and bool/char/short are converted to int.
-  // [1] https://en.cppreference.com/w/cpp/language/variadic_arguments
-  auto requires_int32_promotion = [](llvm::Type* type) {
-    return type->isIntegerTy(/*BitWidth=*/1) ||
-           type->isIntegerTy(/*BitWidth=*/8) ||
-           type->isIntegerTy(/*BitWidth=*/16);
-  };
-  auto requires_double_promotion = [](llvm::Type* type) {
-    return type->isFloatingPointTy();
-  };
-
-  for (auto argument : arguments) {
-    llvm::Type* type = argument->getType();
-    if (requires_double_promotion(type)) {
-      argument_types.push_back(builder->getDoubleTy());
-    } else if (requires_int32_promotion(type)) {
-      argument_types.push_back(builder->getInt32Ty());
-    } else {
-      argument_types.push_back(type);
+bool IsContiguousSlice(const HloInstruction& instr) {
+  auto slice = DynCast<HloSliceInstruction>(&instr);
+  if (!slice) return false;
+  // No need to check for strides because if stride != 1 there's no way
+  // src and dst dimensions match.
+  const Shape& src_shape = slice->operand(0)->shape();
+  const Shape& dst_shape = slice->shape();
+  bool sliced_dim_found = false;
+  for (auto dim : src_shape.layout().minor_to_major()) {
+    if (!sliced_dim_found) {
+      sliced_dim_found = dst_shape.dimensions(dim) < src_shape.dimensions(dim);
+      continue;
     }
+    if (dst_shape.dimensions(dim) != 1) return false;
   }
-  auto* arguments_type = llvm::StructType::create(argument_types);
-  llvm::Value* arguments_ptr = builder->CreateAlloca(arguments_type);
-  for (size_t i = 0; i < arguments.size(); ++i) {
-    llvm::Value* value = arguments[i];
-    llvm::Type* type = value->getType();
-    if (requires_double_promotion(type)) {
-      value = builder->CreateFPCast(value, builder->getDoubleTy());
-    } else if (requires_int32_promotion(type)) {
-      value = builder->CreateIntCast(value, builder->getInt32Ty(),
-                                     /*isSigned=*/true);
-    }
-    builder->CreateStore(
-        value,
-        builder->CreateGEP(arguments_type, arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
-  }
-  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
-  return builder->CreateCall(
-      builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
-          "vprintf",
-          llvm::FunctionType::get(builder->getInt32Ty(), {ptr_ty, ptr_ty},
-                                  /*isVarArg=*/false)),
-      {builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)),
-       builder->CreatePointerCast(arguments_ptr, ptr_ty)});
+  return true;
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.
@@ -234,6 +230,29 @@ llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
       intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
 }
 
+// Helper function to emit call to SPIR shfl_down intrinsic.
+llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
+                              llvm::IRBuilder<>* b) {
+  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
+  if (value->getType()->isFloatTy()) {
+    return EmitDeviceFunctionCall(
+        "_Z34__spirv_GroupNonUniformShuffleDownffj",
+        {b->getInt32(3), value, offset}, {U32, F32, U32}, F32,
+        llvm::AttrBuilder(b->getContext())
+            .addAttribute(llvm::Attribute::NoUnwind)
+            .addAttribute(llvm::Attribute::Convergent),
+        b);
+  } else {
+    return EmitDeviceFunctionCall(
+        "_Z34__spirv_GroupNonUniformShuffleDownjjj",
+        {b->getInt32(3), value, offset}, {U32, U32, U32}, U32,
+        llvm::AttrBuilder(b->getContext())
+            .addAttribute(llvm::Attribute::NoUnwind)
+            .addAttribute(llvm::Attribute::Convergent),
+        b);
+  }
+}
+
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
@@ -246,6 +265,8 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       return EmitNVPTXShflDown(value, offset, builder);
     } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
       return EmitAMDGPUShflDown(value, offset, builder);
+    } else if (target_triple.isSPIR()) {
+      return EmitSPIRShflDown(value, offset, builder);
     } else {
       LOG(FATAL) << "Invalid triple " << target_triple.str();
     }
@@ -267,6 +288,9 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
     } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
       insert_val = EmitAMDGPUShflDown(builder->CreateExtractElement(x, i),
                                       offset, builder);
+    } else if (target_triple.isSPIR()) {
+      insert_val = EmitSPIRShflDown(builder->CreateExtractElement(x, i), offset,
+                                    builder);
     } else {
       LOG(FATAL) << "Invalid triple " << target_triple.str();
     }
@@ -386,8 +410,8 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
   return func_arg.getArgNumber();
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name) {
   if (constant_name) {
     constant_name->clear();
@@ -413,9 +437,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
     TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
 
+    const BufferAllocation* allocation = allocations[GetAllocationIndex(
+        view.getSource().cast<mlir::BlockArgument>(), constant_name)];
     return BufferAllocation::Slice(
-        &allocations[GetAllocationIndex(
-            view.getSource().cast<mlir::BlockArgument>(), constant_name)],
+        allocation,
         mlir::cast<mlir::arith::ConstantOp>(view.getByteShift().getDefiningOp())
             .getValue()
             .cast<mlir::IntegerAttr>()
@@ -433,17 +458,24 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
         module.lookupSymbol(get_global.getName()));
     int64_t index =
         global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-    return BufferAllocation::Slice(&allocations[index], 0,
-                                   allocations[index].size());
+
+    return BufferAllocation::Slice(allocations[index], 0,
+                                   allocations[index]->size());
   }
   if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
     return BufferAllocation::Slice(
-        &allocations[GetAllocationIndex(arg, constant_name)], 0, size);
+        allocations[GetAllocationIndex(arg, constant_name)], 0, size);
   }
 
   return Unimplemented(
       "Operand has to be in the form of ViewOp(arg) or "
       "StaticMemRefCastOp(ViewOp(arg)) or arg");
+}
+
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    const BufferAssignment& buffer_assignment, const HloInstruction* instr,
+    const ShapeIndex& index) {
+  return buffer_assignment.GetUniqueSlice(instr, index);
 }
 
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
@@ -490,9 +522,169 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
   return dus_ops;
 }
 
+template <typename T>
+absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
+  absl::InlinedVector<const HloInstruction*, 4> result;
+  for (int i = instr->first_index_operand_number(); i < instr->operand_count();
+       i++) {
+    const HloInstruction* index = instr->operand(i);
+    result.push_back(index);
+  }
+  return result;
+}
+
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+    const HloFusionInstruction* fusion,
+    const BufferAssignment* buffer_assignment,
+    const std::vector<const HloInstruction*>& roots) {
+  std::vector<const HloInstruction*> dus_instrs =
+      GetOutputDefiningDynamicUpdateSlices(roots);
+
+  // Get output buffers for fusion.
+  std::vector<BufferAllocation::Slice> output_buffers;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      fusion->shape(), [&](const Shape& shape, const ShapeIndex index) {
+        if (shape.IsArray()) {
+          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
+                              buffer_assignment->GetUniqueSlice(fusion, index));
+          output_buffers.push_back(buffer);
+        }
+        return absl::OkStatus();
+      }));
+
+  // This check could probably be relaxed: if code generation is made to use a
+  // separate parallel loop for each dynamic slice update, then it shouldn't be
+  // necessary for every output to be a dynamic slice update, nor to have the
+  // same shape.
+  if (dus_instrs.size() != output_buffers.size()) {
+    return false;
+  }
+
+  if (output_buffers.empty()) {
+    return Internal("Output buffers should not be empty");
+  }
+
+  Shape update_shape = dus_instrs[0]->operand(1)->shape();
+
+  // TODO(anlunx): Reuse this code in both HLO and LMHLO path.
+  for (int i = 0; i < dus_instrs.size(); ++i) {
+    auto* dus = Cast<HloDynamicUpdateSliceInstruction>(dus_instrs[i]);
+
+    // Dynamic slice updates should have a single path to the root to avoid
+    // allowing a dynamic slice update to depend on another, as this would not
+    // be guaranteed to work with the current codegen.
+    if (!dus->IsRoot() && dus->user_count() != 1) return false;
+
+    // We follow DUS users until we find a root instruction. We support only
+    // few patterns:
+    //
+    //   (1) ROOT dynamic-update-slice
+    //   (2) ROOT tuple(dynamic-update-slice)
+    //   (3) ROOT bitcast(dynamic-update-slice)
+    //   (4) ROOT tuple(bitcast(dynamic-update-slice))
+    HloInstruction* dus_user = dus->IsRoot() ? nullptr : dus->users().front();
+
+    // Since the direct consumer of an output dynamic slice update may be a
+    // bitcast, we also check that this bitcast is used a single time.
+    // This property is also important because reads and writes on the parameter
+    // to be updated are done using the shape and layout of the dynamic slice
+    // update. This is a valid approach only if a subsequent bitcast is not read
+    // by any other op within the fusion as this may result in codegen
+    // accessing elements using the wrong physical layout.
+    if (dus_user && dus_user->opcode() == HloOpcode::kBitcast) {
+      if (!dus_user->IsRoot() && dus_user->user_count() != 1) return false;
+
+      // Stop following DUS users if we found a root.
+      dus_user = dus_user->IsRoot() ? nullptr : dus_user->users().front();
+    }
+
+    // Check that last DUS user is a tuple operation at ROOT position.
+    if (dus_user && dus_user->opcode() == HloOpcode::kTuple) {
+      if (!dus_user->IsRoot()) return false;
+
+      // Stop following DUS users if we found a root.
+      dus_user = nullptr;
+    }
+
+    // We can't emit DUS fusion if we have unsupported DUS users.
+    if (dus_user != nullptr) return false;
+
+    // Find "real" DUS operand by skipping bitcasted operands.
+    const HloInstruction* operand = dus->operand(0);
+    if (operand->opcode() == HloOpcode::kBitcast) {
+      operand = operand->operand(0);
+    }
+
+    // Operand to a DUS (or Bitcast) must be a fusion parameter.
+    auto* parameter = DynCast<HloParameterInstruction>(operand);
+    if (!parameter) return false;
+
+    // We require that the parameter being updated is only read at the same
+    // index positions by all users, since we otherwise risk a race condition
+    // when updating the parameter inplace.
+    std::queue<const HloInstruction*> q;
+    absl::flat_hash_set<const HloInstruction*> visited;
+    q.push(parameter);
+    visited.insert(parameter);
+    // We have already checked above that the DUS only has one user. So we don't
+    // need to visit it during the breadth-first search.
+    visited.insert(dus);
+    while (!q.empty()) {
+      const HloInstruction* instr = q.front();
+      q.pop();
+      for (const HloInstruction* user : instr->users()) {
+        if (user->opcode() == HloOpcode::kDynamicSlice &&
+            dus->operand(0) == user->operand(0) &&
+            update_shape == user->shape()) {
+          // We can still emit in-place in this case if the same slice is
+          // accessed by the DUS and the DS. If they don't access the same
+          // slice, the two slices might partially overlap and read/write the
+          // same index at different times, and then we cannot guarantee that we
+          // read before it is overwritten. However if both access only a single
+          // element, there also can be no race condition.
+          absl::InlinedVector<const HloInstruction*, 4> user_start_indices =
+              GetStartIndices(Cast<HloDynamicSliceInstruction>(user));
+          absl::InlinedVector<const HloInstruction*, 4> dus_start_indices =
+              GetStartIndices(dus);
+          if (ShapeUtil::ElementsIn(update_shape) != 1 &&
+              user_start_indices != dus_start_indices) {
+            return false;
+          }
+        } else if (user != dus && !user->IsElementwise() &&
+                   user->opcode() != HloOpcode::kBitcast &&
+                   user->opcode() != HloOpcode::kTuple) {
+          return false;
+        }
+        if (visited.insert(user).second) {
+          q.push(user);
+        }
+      }
+    }
+
+    // This check could probably be relaxed: if code generation is made to use a
+    // separate parallel loop for each dynamic slice update, then it shouldn't
+    // be necessary for the shape to be the same for all the dynamic slice
+    // updates. Note that this equality check purposefully ignores the element
+    // type.
+    if (dus->operand(1)->shape() != update_shape) {
+      return false;
+    }
+
+    const HloInstruction* lhs = fusion->operand(parameter->parameter_number());
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
+                        buffer_assignment->GetUniqueSlice(lhs, {}));
+    BufferAllocation::Slice rhs_buffer = output_buffers[i];
+    if (lhs_buffer != rhs_buffer) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation> allocations) {
+    absl::Span<const BufferAllocation* const> allocations) {
   std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
       GetOutputDefiningDynamicUpdateSliceOps(fusion);
 
@@ -535,7 +727,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
       }
       dus_user = *bitcast->user_begin();
     }
-    if (!mlir::isa<mlir::memref::TensorStoreOp>(dus_user)) {
+    if (!mlir::isa<mlir::bufferization::MaterializeInDestinationOp>(dus_user)) {
       return false;
     }
     auto operand = dus.getOperand();
@@ -561,8 +753,8 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     q.push(parameter);
     visited.insert(parameter);
     // We have already checked above that the DUS only has one user: a
-    // (possibly bitcasted) TensorStoreOp. So we don't need to visit it during
-    // the breadth-first search.
+    // (possibly bitcasted) MaterializeInDestinationOp. So we don't need to
+    // visit it during the breadth-first search.
     visited.insert(dus);
     while (!q.empty()) {
       auto op = q.front();
@@ -620,18 +812,24 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 }
 
 Shape GetShape(mlir::Value value) {
+  Shape shape;
   if (value.getType().isa<mlir::MemRefType>()) {
-    return TypeToShape(value.getType());
+    shape = TypeToShape(value.getType());
   } else if (value.getType().isa<mlir::TensorType>()) {
-    return GetShapeFromTensorType(value);
+    shape = GetShapeFromTensorType(value);
   } else if (value.getType().isa<mlir::TupleType>()) {
-    return TypeToShape(value.getType());
+    shape = TypeToShape(value.getType());
+  } else {
+    LOG(FATAL) << "Unexpected value type to get shape for";
   }
-  LOG(FATAL) << "Unexpected value type to get shape for";
-  return {};
+  if (primitive_util::Is4BitType(shape.element_type())) {
+    // 4-bit types are always packed on the GPU
+    shape.mutable_layout()->set_element_size_in_bits(4);
+  }
+  return shape;
 }
 
-std::optional<TransposeDescription> FindTiledTranspose(
+static std::optional<TransposeDescription> FindTiledTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
@@ -663,7 +861,7 @@ std::optional<TransposeDescription> FindTiledTranspose(
 }
 
 // Find 021 or 210 transpose in logical + physical transposition.
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
+static std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
@@ -714,16 +912,29 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   return std::nullopt;
 }
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
+                    const HloFusionAdaptor* fusion,
+                    bool add_single_user_check) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||
       instr->operand_count() > allowed_operand_count) {
     return false;
   }
 
-  // Intermediate `instr` can't have multiple users.
-  if (instr->user_count() > 1) {
-    return false;
+  if (add_single_user_check) {
+    // Check that intermediate `instr` doesn't have multiple users. If we have a
+    // fusion, only consider users within the fusion.
+    // TODO(akuegel): Figure out why we still need this check for transpose
+    // fusions.
+    int64_t num_users =
+        fusion ? absl::c_count_if(HloInstructionAdaptor{*instr}.GetUsers(),
+                                  [&](auto user) {
+                                    return fusion->ContainsInstruction(user);
+                                  })
+               : instr->user_count();
+    if (num_users > 1) {
+      return false;
+    }
   }
 
   if (instr->IsElementwise()) {
@@ -751,57 +962,95 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 }
 
-static bool IsParameter(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kParameter;
-}
+static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
+    HloInstructionAdaptor root, const HloFusionAdaptor& fusion,
+    const std::function<bool(const HloInstruction&)>& predicate) {
+  std::optional<HloInstructionAdaptor> hero = std::nullopt;
+  auto visitor = [&](HloInstructionAdaptor node) {
+    if (predicate(node.instruction())) {
+      if (hero) {  // Bail out if we found multiple potential heros.
+        hero = std::nullopt;
+        return TraversalResult::kInterrupt;
+      }
+      hero = node;
+      return TraversalResult::kSkip;
+    }
 
-const HloInstruction& FindNonTrivialHero(
-    const HloInstruction& instr,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& is_boundary) {
-  const HloInstruction* idx = &instr;
-
-  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
-  // chains are bound to be quite small, as we restrict the number of users as
-  // well. Note that no memoization is needed due to user number constraints: we
-  // never have to revisit same nodes.
-  while (IsIntermediate(idx) && !is_boundary(*idx->operand(0), *idx)) {
-    idx = idx->operand(0);
+    // We set add_single_user_check to true because it could be that it causes
+    // problems if we have more than one user in a transpose fusion.
+    // TODO(akuegel): Verify and possibly fix this.
+    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3,
+                        /*fusion=*/nullptr, /*add_single_user_check=*/true)) {
+      return TraversalResult::kSkip;
+    }
+    return TraversalResult::kAdvance;
+  };
+  HloBfsConsumersFirstTraversal({root}, fusion, visitor);
+  if (!hero) {
+    return std::nullopt;
   }
 
-  const HloInstruction* transpose = nullptr;
-  // Try a bit harder to find a transpose hero. The shared memory transpose
-  // emitter also works if there are ops with more than 1 operand on the path
-  // between root and the transpose op, we still want the restriction though
-  // that each op on the path is elementwise and has only 1 user.
-  auto visit = [&transpose](const HloInstruction& node) {
-    if (FindTiledLogicalTranspose(node)) {
-      // If we do not find a unique transpose op, use the original non-trivial
-      // hero.
-      if (transpose) {
-        transpose = nullptr;
-        return TraversalResult::kAbortTraversal;
-      }
-      transpose = &node;
-      return TraversalResult::kDoNotVisitOperands;
-    }
-
-    if (node.opcode() != HloOpcode::kParameter &&
-        node.opcode() != HloOpcode::kFusion &&
-        !IsIntermediate(&node, /*allowed_operand_count=*/3)) {
-      return TraversalResult::kDoNotVisitOperands;
-    }
-    return TraversalResult::kVisitOperands;
+  // Make sure that no non-elementwise op is reachable from the transpose.
+  auto is_nontrivial = [](HloInstructionAdaptor node) {
+    // We set add_single_user_check to true because it could be that it causes
+    // problems if we have more than one user in a transpose fusion.
+    // TODO(akuegel): Verify and possibly fix this.
+    return node.instruction().opcode() != HloOpcode::kTuple &&
+           node.instruction().opcode() != HloOpcode::kParameter &&
+           !IsIntermediate(&node.instruction(),
+                           /*allowed_operand_count=*/3, /*fusion=*/nullptr,
+                           /*add_single_user_check=*/true);
   };
-  HloBfsConsumersFirstTraversal({idx}, is_boundary, visit);
-  return transpose ? *transpose : *idx;
+  bool visit_operands = false;
+  if (HloAnyOf(hero->GetUsers(), fusion, is_nontrivial, visit_operands)) {
+    return std::nullopt;
+  }
+
+  return hero;
+}
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion) {
+  HloInstructionAdaptor hero{instr};
+
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
+  // that no memoization is needed due to number of operands constraints: we
+  // never have to revisit same nodes.
+  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1,
+                        &fusion) &&
+         fusion.ContainsInstruction(hero.GetOperand(0))) {
+    hero = hero.GetOperand(0);
+  }
+
+  // Try a bit harder to find a transpose or concat hero. The shared memory
+  // transpose and concat emitters also work if there are elementwise ops with
+  // more than 1 operand on the path between root and the root op.
+  auto is_transpose = [](const HloInstruction& node) {
+    return FindTiledLogicalTranspose(node).has_value();
+  };
+  if (auto transpose = FindNonTrivialHero(hero, fusion, is_transpose)) {
+    return transpose->instruction();
+  }
+  auto is_concatenate = [](const HloInstruction& node) {
+    return node.opcode() == HloOpcode::kConcatenate;
+  };
+  if (auto concatenate = FindNonTrivialHero(hero, fusion, is_concatenate)) {
+    return concatenate->instruction();
+  }
+  if (hero.opcode() != HloOpcode::kReduce) {
+    return instr;
+  }
+  return hero.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
-  return FindNonTrivialHero(instr, [](const HloInstruction& producer,
-                                      const HloInstruction& consumer) {
-    return consumer.opcode() == HloOpcode::kParameter;
-  });
+  // It doesn't really make sense to call this function with a fusion, but it
+  // happens. Return the fusion itself for historical reasons.
+  // TODO(jreiffers): Clean this up.
+  if (instr.opcode() == HloOpcode::kFusion) return instr;
+
+  return FindNonTrivialHero(instr,
+                            *HloFusionAdaptor::ForComputation(instr.parent()));
 }
 
 void VLogModule(int level, const llvm::Module& module) {
@@ -929,6 +1178,33 @@ std::string GetIrNameFromLoc(mlir::Location loc) {
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
+}
+
+bool IsSPIR(const llvm::Module* module) {
+  return llvm::Triple(module->getTargetTriple()).isSPIR();
+}
+
+absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
+    const Literal& literal) {
+  PrimitiveType element_type = literal.shape().element_type();
+  if (!primitive_util::IsArrayType(element_type)) {
+    return Internal("Unsupported type in LiteralToXlaFormat");
+  }
+
+  int64_t byte_size = literal.size_bytes();
+  if (primitive_util::Is4BitType(element_type)) {
+    std::vector<uint8_t> output(CeilOfRatio(byte_size, int64_t{2}));
+    absl::Span<char> output_span =
+        absl::MakeSpan(reinterpret_cast<char*>(output.data()), output.size());
+    PackInt4(
+        absl::MakeSpan(reinterpret_cast<const char*>(literal.untyped_data()),
+                       byte_size),
+        output_span);
+    return DenseDataIntermediate::Own(std::move(output));
+  }
+
+  return DenseDataIntermediate::Alias(absl::MakeSpan(
+      reinterpret_cast<const uint8_t*>(literal.untyped_data()), byte_size));
 }
 
 }  // namespace gpu

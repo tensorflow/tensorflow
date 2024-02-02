@@ -4,7 +4,7 @@
 load("//tsl:tsl.bzl", "set_external_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
@@ -44,10 +44,10 @@ cc_library(
     srcs = [
         "android_armv7a_cpu_utils_helper.h",
         "cpu_utils.cc",
-        "i_cpu_utils_helper.h",
     ],
     hdrs = [
         "cpu_utils.h",
+        "i_cpu_utils_helper.h",
     ],
     copts = tsl_copts(),
     visibility = ["//visibility:public"],

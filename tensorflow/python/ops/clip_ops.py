@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Operations for clipping (gradient, weight) tensors to min/max values."""
+
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -212,9 +214,14 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values = ops.convert_to_tensor(
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
-    clip_norm = math_ops.cast(
-        math_ops.maximum(clip_norm, 0), dtype=values.dtype
-    )
+
+    if np.isscalar(clip_norm):
+      if clip_norm < 0:
+        clip_norm = 0
+    else:
+      clip_norm = math_ops.cast(
+          math_ops.maximum(clip_norm, 0), dtype=values.dtype
+      )
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)

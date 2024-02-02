@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,16 +15,26 @@ limitations under the License.
 
 #include "xla/client/executable_build_options.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/execution_options_util.h"
+#include "xla/layout_util.h"
+#include "xla/service/compilation_environments.h"
+#include "xla/service/computation_placer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -151,6 +161,10 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
         "Cannot serialize "
         "ExecutableBuildOptions::layout_canonicalization_callback");
   }
+  if (compile_thread_pool() != nullptr) {
+    return InvalidArgument(
+        "Cannot serialize ExecutableBuildOptions::compile_thread_pool");
+  }
   output.set_num_replicas(num_replicas());
   output.set_num_partitions(num_partitions());
   output.set_use_spmd_partitioning(use_spmd_partitioning());
@@ -170,6 +184,12 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   }
   *output.mutable_fdo_profile() = fdo_profile();
   output.set_device_memory_size(device_memory_size());
+  for (int64_t s : auto_spmd_partitioning_mesh_shape()) {
+    output.mutable_auto_spmd_partitioning_mesh_shape()->Add(s);
+  }
+  for (int64_t s : auto_spmd_partitioning_mesh_ids()) {
+    output.mutable_auto_spmd_partitioning_mesh_ids()->Add(s);
+  }
   return output;
 }
 
@@ -208,6 +228,12 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
       input.allow_spmd_sharding_propagation_to_output());
   *output.mutable_fdo_profile() = input.fdo_profile();
   output.set_device_memory_size(input.device_memory_size());
+  output.set_auto_spmd_partitioning_mesh_shape(
+      std::vector<int64_t>(input.auto_spmd_partitioning_mesh_shape().begin(),
+                           input.auto_spmd_partitioning_mesh_shape().end()));
+  output.set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t>(input.auto_spmd_partitioning_mesh_ids().begin(),
+                           input.auto_spmd_partitioning_mesh_ids().end()));
   return output;
 }
 

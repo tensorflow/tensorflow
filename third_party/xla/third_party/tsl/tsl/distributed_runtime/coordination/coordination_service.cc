@@ -62,6 +62,7 @@ constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 constexpr int kPendingTaskLogLimit = 20;
+constexpr int kPendingStragglerLogLimit = 3;
 
 std::string GetTaskName(absl::string_view job_name, int task_id) {
   return strings::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
@@ -104,6 +105,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void SetDeviceAggregationFunction(
       std::function<DeviceInfo(const DeviceInfo& devices)>
           post_aggregate_device_fn) override;
+
+  void LogConnectStatusLocked() const TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
   Status RegisterTask(const CoordinatedTask& task,
                       uint64_t incarnation) override;
   void WaitForAllTasks(const CoordinatedTask& task, const DeviceInfo& devices,
@@ -519,6 +523,26 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
 }
 
+// Helper to log progress to having waited for all tasks.
+void CoordinationServiceStandaloneImpl::LogConnectStatusLocked() const {
+  const int num_tasks = cluster_state_.size();
+  int pending_tasks = 0;
+  std::vector<std::string> task_names;
+  for (const auto& [task_name, task_state] : cluster_state_) {
+    if (task_state->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      pending_tasks++;
+      if (task_names.size() < kPendingStragglerLogLimit) {
+        task_names.push_back(task_name);
+      }
+    }
+  }
+  LOG(INFO) << "Waiting for " << pending_tasks << "/" << num_tasks
+            << " tasks to connect.";
+  if (!task_names.empty()) {
+    LOG(INFO) << "Example stragglers:\n" << absl::StrJoin(task_names, "\n");
+  }
+}
+
 Status CoordinationServiceStandaloneImpl::RegisterTask(
     const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
@@ -553,6 +577,7 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
                 << incarnation;
+      LogConnectStatusLocked();
       return OkStatus();
     } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
       // This may happen if the service processes the initial RegisterTask(),
@@ -565,6 +590,7 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
         LOG(INFO) << task_name
                   << " has connected to coordination service with the same "
                   << "incarnation again: " << incarnation;
+        LogConnectStatusLocked();
         return OkStatus();
       } else {
         error_message =

@@ -331,13 +331,13 @@ class CTCLossOpGPU : public OpKernel {
     StreamExecutor* executor = ctx->op_device_context()->stream()->parent();
     se::dnn::DataType data_type = ToDataType<float>::value;
 
-    auto probs_desc_s = executor->createRnnStateTensorDescriptor(
+    auto probs_desc_s = executor->AsDnn()->CreateRnnStateTensorDescriptor(
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, probs_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> probs_desc =
         std::move(probs_desc_s).value();
 
-    auto grads_desc_s = executor->createRnnStateTensorDescriptor(
+    auto grads_desc_s = executor->AsDnn()->CreateRnnStateTensorDescriptor(
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, grads_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> grads_desc =

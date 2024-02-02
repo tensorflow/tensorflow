@@ -225,11 +225,7 @@ cc_library(
 alias(
     name = "cc_api",
     actual = "cc_api_experimental",
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/kernels:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )
 
 # The key parts of the C++ API, including experimental APIs.
@@ -517,8 +513,8 @@ cc_test(
         ":framework_stable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,18 +37,31 @@ namespace xla {
 //    kTuple instructions, but also because it unlocks additional optimizations
 //    (e.g. removing unused loop parameters).
 //
+//  - Removing trivial compare instructions inside while bodies. Assuming a
+//    while loop with known trip count, k, loop induction variable i, and the
+//    initial loop induction value c, a compare(i,x) instruction is trivial if:
+//      1) x is a constant and x >= k + c.
+//      2) x is a constant x <= c.
+//
 // Flattening nested while loop tuples adds a whole mess of likely unnecessary
 // kGetTupleElement and kTuple operations to the graph.  We expect that tuple
 // simplifier will be run afterwards.
 //
 class WhileLoopSimplifier : public HloModulePass {
  public:
-  ~WhileLoopSimplifier() override {}
+  explicit WhileLoopSimplifier(bool simplify_compare_instrs = false)
+      : simplify_compare_instrs_(simplify_compare_instrs) {}
+
+  ~WhileLoopSimplifier() override = default;
   absl::string_view name() const override { return "simplify-while-loops"; }
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  // Whether to remove trivial compare instructions inside while loops.
+  const bool simplify_compare_instrs_;
 };
 
 }  // namespace xla

@@ -596,7 +596,7 @@ class ConvertUniformQuantizedAddOp
 
     // rhs (bias) is always 1D that broadcasts to the last dim of lhs.
     auto broadcast_dims =
-        mhlo::GetI64ElementsAttr({lhs_type.getRank() - 1}, &rewriter);
+        rewriter.getDenseI64ArrayAttr({lhs_type.getRank() - 1});
 
     auto rhs_type = GetUniformQuantizedType(
         op, op.getRhs().getType(), op.getRhsScales(), op.getRhsZeroPoints(),
@@ -651,8 +651,7 @@ class ConvertUniformQuantizedClipByValueOp
     if (quantization_axis >= 0) {
       broadcast_dims_values.push_back(quantization_axis);
     }
-    auto broadcast_dims =
-        mhlo::GetI64ElementsAttr(broadcast_dims_values, &rewriter);
+    auto broadcast_dims = rewriter.getDenseI64ArrayAttr(broadcast_dims_values);
 
     auto min_max_type = GetUniformQuantizedType(
         op, op.getMin().getType(), op.getScales(), op.getZeroPoints(),

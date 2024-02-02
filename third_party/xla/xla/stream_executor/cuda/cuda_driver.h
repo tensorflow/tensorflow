@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,9 +109,8 @@ class CreatedContexts {
     }
   }
 
-  // Return the context associated to that ptr.
-  static CUcontext GetAnyContext(void* ptr) {
-    absl::ReaderMutexLock lock(&mu_);
+  // Find device id from cuda pointer value.
+  static int GetDeviceOrdinal(void* ptr) {
     int device_ordinal;
     CUresult result = cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
                                             CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
@@ -120,6 +119,13 @@ class CreatedContexts {
       LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
                  << ". Error: " << ToString(result);
     }
+    return device_ordinal;
+  }
+
+  // Return the context associated to that ptr.
+  static CUcontext GetAnyContext(void* ptr) {
+    absl::ReaderMutexLock lock(&mu_);
+    int device_ordinal = GetDeviceOrdinal(ptr);
     CHECK_EQ(LiveOrdinal()->count(device_ordinal), 1);
     CHECK(!LiveOrdinal()->at(device_ordinal).empty())
         << "Need at least one context.";

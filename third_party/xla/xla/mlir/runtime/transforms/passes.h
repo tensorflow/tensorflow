@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ namespace xla {
 namespace runtime {
 
 #define GEN_PASS_DECL_ORDINALASSIGNMENT
+#define GEN_PASS_DECL_MOVEALLOCASTOENTRYBLOCK
 #define GEN_PASS_DECL_EXPORTFUNCTIONS
 #define GEN_PASS_DECL_CONVERTCUSTOMCALLS
 #define GEN_PASS_DECL_CONVERTASSERTS
@@ -41,6 +42,9 @@ namespace runtime {
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateOrdinalAssignmentPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateMoveAllocasToEntryBlockPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateExportRuntimeFunctionsPass();

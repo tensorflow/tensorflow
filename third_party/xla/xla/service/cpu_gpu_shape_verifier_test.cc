@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,29 +28,36 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using CpuGpuShapeVerifierTest = HloTestBase;
 using ::testing::HasSubstr;
 
-TEST_F(CpuGpuShapeVerifierTest, Int4NotSupported) {
+class CpuGpuShapeVerifierTest : public HloTestBase {
+ public:
+  CpuGpuShapeVerifierTest() {
+    // Create HloVerifier which uses CpuGpuShapeVerifier
+    HloVerifierOpts opts;
+    std::unique_ptr<TargetVerifierMetadata> metadata =
+        std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
+    hlo_verifier_ = std::make_unique<HloVerifier>(std::move(metadata));
+  }
+};
+
+TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
   const char* const hlo_string = R"(
   HloModule Module
 
   ENTRY main {
-    p0 = u4[10] parameter(0)
-    ROOT out = u8[10] convert(p0)
+    p0 = u4[2,5] parameter(0)
+    ROOT out = u4[2,5] add(p0, p0)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
 
-  HloVerifierOpts opts;
-  std::unique_ptr<TargetVerifierMetadata> metadata =
-      std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
-  HloVerifier hlo_verifier(std::move(metadata));
-  auto status = hlo_verifier.Run(module.get()).status();
+  auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("S4/U4 is currently not support on XLA CPU/GPU"));
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("S4/U4 is currently only supported in convert instructions"));
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/mlir/backends/gpu/transforms/uid_generator.h"
 #include "xla/mlir/runtime/utils/custom_calls.h"
@@ -179,9 +182,12 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     // Add kernel arguments.
     llvm::copy(op.getKernelOperands(), std::back_inserter(args));
 
+    auto computation = op->getAttr("__custom_fusion_computation");
+
     // Get or create a custom call function declaration.
     func::FuncOp callee = custom_calls_.GetOrCreate(
-        b, "xla.gpu.func.launch", TypeRange(ValueRange(args)), TypeRange());
+        b, computation ? "xla.gpu.func.custom_launch" : "xla.gpu.func.launch",
+        TypeRange(ValueRange(args)), TypeRange());
 
     // Create a function launch call operation.
     auto call = b.create<func::CallOp>(callee.getName(), TypeRange(), args);
@@ -196,6 +202,11 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
       call->setAttr(b.getStringAttr("stream"), stream);
     } else {
       call->setAttr(b.getStringAttr("stream"), b.getI64IntegerAttr(0));
+    }
+
+    // Copy custom fusion computation.
+    if (computation) {
+      call->setAttr("__custom_fusion_computation", computation);
     }
 
     // Erase the original gpu launch operation.

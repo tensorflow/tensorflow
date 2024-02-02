@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/service/gpu/cusolver_context.h"
-#include "xla/service/gpu/precompiled_kernels.h"
+#include "xla/service/gpu/make_batch_pointers.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -35,8 +35,9 @@ namespace gpu {
 namespace {
 
 template <typename T>
-Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
-                      se::Stream* stream, GpuSolverContext& context) {
+absl::Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts,
+                            CholeskyParams* params, se::Stream* stream,
+                            GpuSolverContext& context) {
   T* a_base = static_cast<T*>(params->a_buffer.opaque());
   se::DeviceMemory<int> infos(params->info_buffer);
 #if TENSORFLOW_USE_ROCSOLVER
@@ -54,7 +55,7 @@ Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
   // Run a kernel that sets as[i] = &a_base[i * stride].
   const int64_t stride_bytes = params->n * params->n * sizeof(T);
   TF_RETURN_IF_ERROR(MakeBatchPointers(
-      stream, asm_opts, se::DeviceMemoryBase(a_base), stride_bytes,
+      stream, se::DeviceMemoryBase(a_base), stride_bytes,
       static_cast<int>(params->batch_size), se::DeviceMemoryBase(as)));
 
   // Now that we've set up the `as` array, we can call cusolver.
@@ -82,7 +83,7 @@ CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
       batch_size_(batch_size),
       n_(n) {}
 
-Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "type=" << PrimitiveType_Name(type_)
           << " uplo=" << se::blas::UpperLowerString(uplo_)
           << " batch_size=" << batch_size_ << " n=" << n_
@@ -101,9 +102,10 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   return RunCholesky(asm_opts_, type_, &cholesky_params, params.stream);
 }
 
-Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
-                   CholeskyParams* cholesky_params, se::Stream* stream) {
-  thread_local StatusOr<GpuSolverContext> context = GpuSolverContext::Create();
+absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
+                         CholeskyParams* cholesky_params, se::Stream* stream) {
+  thread_local absl::StatusOr<GpuSolverContext> context =
+      GpuSolverContext::Create();
   TF_RETURN_IF_ERROR(context.status());
   TF_RETURN_IF_ERROR(context->SetStream(stream));
 

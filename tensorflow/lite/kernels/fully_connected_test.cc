@@ -455,6 +455,10 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
     SignedSymmetricQuantizeAndPopulate(weights_, f);
   }
 
+  void SetSignedPerChannelWeights(std::initializer_list<float> f) {
+    PerChannelSymmetricQuantizeAndPopulate(weights_, f);
+  }
+
   void SetSignedWeights4Bit(std::initializer_list<float> f) {
     SignedSymmetricQuantizeAndPopulate4Bit(weights_, f);
   }
@@ -1440,6 +1444,46 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt4) {
                                  /*max_abs_error=*/1.3f)));
 }
 
+TEST(HybridAsymmetricInputPerChannelWeightsFullyConnectedOpTest,
+     SimpleTestQuantizedPerChannelInt8) {
+  HybridFullyConnectedOpModel m(
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 10}},
+      /*weights=*/
+      {TensorType_INT8,
+       {3, 10},
+       0,
+       0,
+       0.0f,
+       0,
+       true,
+       {10.0 / 127.0, 20.0 / 127.0, 30.0 / 127.0},
+       {0, 0, 0}},
+      {TensorType_FLOAT32},
+      /*asymmetric_quantize_input*/ true);
+
+  m.SetSignedPerChannelWeights({
+      1,  2,  3,  4,  5,  6,  7,  8,  9,  10,  // u = 0
+      11, 12, 13, 14, 15, 16, 17, 18, 19, 20,  // u = 1
+      21, 22, 23, 24, 25, 26, 27, 28, 29, 30,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     24, 195, 366,  //
+                                     58, 251, 441,  //
+                                 },
+                                 /*max_abs_error=*/1.3f)));
+}
+
 TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
   // Note that it is not required that the first dimension be the number of
   // batches. All we care is that the input can be evenly distributed in
@@ -2105,6 +2149,44 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear(expected, 1e-3)));
   }
+}
+
+TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16PerChannelTest) {
+  std::vector<float> weight_data = {
+      1,  2,  3,  4,  -1, -2, -3, -4, 1,  2,  3,  4, -4, -3, -2, -1,  // u = 0
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0,  0,  0,   // u = 1
+      -1, -2, -3, -4, 4,  3,  2,  1,  -1, -2, -3, 4, 1,  2,  3,  4,   // u = 2
+  };
+  TensorData weight = {TensorType_INT8,
+                       {3, 16},
+                       0.0,
+                       0.0,
+                       0.0,
+                       0,
+                       true,
+                       {4.0 / 127.0, 1.0 / 127.0, 4.0 / 127.0},
+                       {0, 0, 0}};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {16};
+  SparseFullyConnectedOpModel<float> m(
+      GetRegistration(),
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 16}, 0, 0, 1}, weight, weight_data,
+      /*output=*/{TensorType_FLOAT32, {}, 0, 0, 1});
+
+  m.SetBias({1, 2, 3});
+  m.SetInput({
+      1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,  // b = 0
+      4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {10.9061, 2, 25.0938, 0, 2, 20.9691}, 1e-3)));
 }
 // TODO(b/148391360): Add tests for unsupported sparsity format.
 // TEST_P(SparseFullyConnectedOpTest, TestUnsupportedSparsityFormat)

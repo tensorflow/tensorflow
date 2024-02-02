@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,10 +26,26 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
 
 namespace xla {
+
+// Infers the shardings for a dot HLO op from the shardings on its operands,
+// which are expected to have sharding annotations.
+bool InferDotShardingFromOperands(
+    HloInstruction* instruction, const CallGraph& call_graph,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
+    bool may_combine_partial_sharding, bool is_spmd);
+
+// Infers the shardings for a convolution HLO op from the shardings on its
+// operands, which are expected to have sharding annotations.
+bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
+                                          const CallGraph& call_graph,
+                                          int64_t aggressiveness,
+                                          bool may_combine_partial_sharding,
+                                          bool is_spmd);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -54,7 +70,9 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_as_group = nullptr,
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
-        shard_group_id_to_shard_like_group = nullptr);
+        shard_group_id_to_shard_like_group = nullptr,
+    const std::vector<bool>*
+        allow_spmd_sharding_propagation_to_parameters_vector = nullptr);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
@@ -132,10 +150,10 @@ class ShardingPropagation : public HloModulePass {
       HloInstruction* instruction, const ComputationMap& computation_map,
       int64_t aggressiveness,
       const absl::flat_hash_set<HloInstruction*>& shard_group);
-  bool InferShardingFromOperands(HloInstruction* instruction,
-                                 const ComputationMap& computation_map,
-                                 int64_t aggressiveness,
-                                 const CallGraph& call_graph);
+  bool InferShardingFromOperands(
+      HloInstruction* instruction, const ComputationMap& computation_map,
+      int64_t aggressiveness, const CallGraph& call_graph,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
   bool InferShardingFromUsers(
       HloInstruction* instruction,
       const ShardingPropagation::ComputationMap& computation_map,

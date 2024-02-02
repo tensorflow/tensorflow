@@ -906,13 +906,14 @@ void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         int bit_width, bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
-                                        bool legacy_float_scale = false);
+                                        bool legacy_float_scale = false,
+                                        bool is_qdq_conversion = false);
 
 void ApplyQuantizationParamsPropagation(
     mlir::func::FuncOp func, bool is_signed, int bit_width,
     bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale = false);
+    bool legacy_float_scale = false, bool is_qdq_conversion = false);
 
 // Gets quantization scale specs (e.g. fixed output range, same result and
 // operand scales) from the default quantization interfaces. The op should

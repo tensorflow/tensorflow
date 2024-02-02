@@ -131,7 +131,8 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate1x16(
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result);
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    const float* per_channel_scale);
 
 // Dot product of two vectors.
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,

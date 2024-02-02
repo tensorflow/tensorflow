@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,10 +28,10 @@ using DriverVersion = gpu::DriverVersion;
 string DriverVersionToString(DriverVersion version);
 
 // Converts a parsed driver version or status value to natural string form.
-string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version);
+string DriverVersionStatusToString(absl::StatusOr<DriverVersion> version);
 
 // Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
+absl::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
 
 using Diagnostician = gpu::Diagnostician;
 

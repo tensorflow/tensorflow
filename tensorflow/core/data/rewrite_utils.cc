@@ -249,7 +249,8 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
 }
 
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
-    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks) {
+    GraphDef* graph_def, std::string* dataset_node, bool add_fake_sinks,
+    bool apply_optimizations) {
   // Add an identity node as the fetch node, otherwise we might get 'placeholder
   // is both fed and fetched' errors in some cases when using input list with
   // placeholder dataset nodes.
@@ -285,7 +286,7 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
 
   // Create Grappler item.
   tensorflow::grappler::ItemConfig item_config;
-  item_config.apply_optimizations = true;
+  item_config.apply_optimizations = apply_optimizations;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
@@ -331,7 +332,7 @@ absl::flat_hash_set<tstring> SelectOptimizations(
 StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       return node.input(0);
     }
   }

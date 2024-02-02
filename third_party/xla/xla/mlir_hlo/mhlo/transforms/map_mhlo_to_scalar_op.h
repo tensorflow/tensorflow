@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -27,7 +26,6 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -1096,8 +1094,9 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(Location loc,
                                                  mhlo::PowOp::Adaptor adaptor,
                                                  OpBuilder* b) {
   auto lb = ImplicitLocOpBuilder(loc, *b);
-  // Floating point can use std::powf
-  auto resultType = resultTypes.front();
+  // TODO: b/315868720 Consider alternate lowerings of mhlo::PowOp with integer
+  // operands. Floating point can use std::powf
+  auto resultType = getElementTypeOrSelf(resultTypes.front());
   if (resultType.isa<ComplexType, FloatType>()) {
     return MapMhloOpToScalarOpImpl<IsFloatType, math::PowFOp, IsComplexType,
                                    complex::PowOp>{}(loc, resultTypes, argTypes,

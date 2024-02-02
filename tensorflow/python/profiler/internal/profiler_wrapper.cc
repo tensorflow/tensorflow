@@ -180,7 +180,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
   m.def("xspace_to_tools_data_from_byte_string",
         [](const py::list& xspace_string_list, const py::list& filenames_list,
-           const py::str& py_tool_name) {
+           const py::str& py_tool_name, const py::dict options = py::dict()) {
           std::vector<std::unique_ptr<tensorflow::profiler::XSpace>> xspaces;
           xspaces.reserve(xspace_string_list.size());
           std::vector<std::string> xspace_paths;
@@ -215,10 +215,10 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
           }
 
           std::string tool_name = std::string(py_tool_name);
+          ToolOptions tool_options = ToolOptionsFromPythonDict(options);
           auto status_or_tool_data =
               tensorflow::profiler::ConvertMultiXSpacesToToolData(
-                  status_or_session_snapshot.value(), tool_name,
-                  /*options=*/{});
+                  status_or_session_snapshot.value(), tool_name, tool_options);
           if (!status_or_tool_data.ok()) {
             LOG(ERROR) << status_or_tool_data.status().message();
             return py::make_tuple(py::bytes(""), py::bool_(false));

@@ -1,4 +1,4 @@
-// Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+// Copyright 2019 The OpenXLA Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ class GrpcCompiledProgramHandle : public CompiledProgramHandle {
   Status program_shape(xla::ProgramShapeProto* program_shape) override {
     auto opt_status = OnReady()->AwaitWithTimeout(absl::Hours(1));
     if (!opt_status.has_value()) {
-      return xla::InternalError("Compile failed to finish within 1 hour.");
+      return xla::Internal("Compile failed to finish within 1 hour.");
     }
 
     Status status = opt_status.value();

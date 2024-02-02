@@ -12,17 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tsl/platform/default/dso_loader.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tsl {
 namespace internal {
 namespace DsoLoader {
 
-Status TryDlopenCUDALibraries() {
+absl::Status TryDlopenCUDALibraries() {
   namespace CachedLoader = ::tsl::internal::CachedDsoLoader;
   auto cudart_status = CachedLoader::GetCudaRuntimeDsoHandle();
   auto cublas_status = CachedLoader::GetCublasDsoHandle();
@@ -36,14 +36,14 @@ Status TryDlopenCUDALibraries() {
       !cufft_status.status().ok() || !cusolver_status.status().ok() ||
       !cusparse_status.status().ok() || !cudnn_status.status().ok() ||
       !cublaslt_status.status().ok()) {
-    return Status(absl::StatusCode::kInternal,
-                  absl::StrCat("Cannot dlopen all CUDA libraries."));
+    return absl::Status(absl::StatusCode::kInternal,
+                        absl::StrCat("Cannot dlopen all CUDA libraries."));
   } else {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status TryDlopenROCmLibraries() {
+absl::Status TryDlopenROCmLibraries() {
   auto rocblas_status = GetRocblasDsoHandle();
   auto miopen_status = GetMiopenDsoHandle();
   auto rocfft_status = GetHipfftDsoHandle();
@@ -57,32 +57,30 @@ Status TryDlopenROCmLibraries() {
       || !hipblaslt_status.status().ok()
 #endif
   ) {
-    return Status(absl::StatusCode::kInternal,
-                  absl::StrCat("Cannot dlopen all ROCm libraries."));
+    return absl::InternalError("Cannot dlopen all ROCm libraries.");
   } else {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 }
 
-Status MaybeTryDlopenGPULibraries() {
+absl::Status MaybeTryDlopenGPULibraries() {
 #if GOOGLE_CUDA
   return TryDlopenCUDALibraries();
 #elif TENSORFLOW_USE_ROCM
   return TryDlopenROCmLibraries();
 #else
   LOG(INFO) << "Not built with GPU enabled. Skip GPU library dlopen check.";
-  return tsl::OkStatus();
+  return absl::OkStatus();
 #endif
 }
 
-Status TryDlopenTensorRTLibraries() {
+absl::Status TryDlopenTensorRTLibraries() {
   auto nvinfer_status = GetNvInferDsoHandle();
   auto nvinferplugin_status = GetNvInferPluginDsoHandle();
   if (!nvinfer_status.status().ok() || !nvinferplugin_status.status().ok()) {
-    return Status(absl::StatusCode::kInternal,
-                  absl::StrCat("Cannot dlopen all TensorRT libraries."));
+    return absl::InternalError("Cannot dlopen all TensorRT libraries.");
   } else {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 }
 

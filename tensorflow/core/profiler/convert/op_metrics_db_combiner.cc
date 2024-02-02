@@ -72,6 +72,7 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst,
   dst->set_time_ps(src.time_ps() + dst->time_ps());
   dst->set_self_time_ps(src.self_time_ps() + dst->self_time_ps());
   dst->set_flops(src.flops() + dst->flops());
+  dst->set_model_flops(src.model_flops() + dst->model_flops());
   dst->set_bytes_accessed(src.bytes_accessed() + dst->bytes_accessed());
   dst->set_autotuned(dst->autotuned() || src.autotuned());
   if (update_num_cores) {

@@ -16,12 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_TFDATAZ_METRICS_H_
 
 #include <cstdint>
-#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
@@ -29,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -96,7 +94,7 @@ class TfDatazMetricsCollector {
   // We only collect metrics for CPU devices. This is a heuristic to avoid
   // collecting metrics for device-side iterators created by the multi-device
   // iterator mechanism.
-  TfDatazMetricsCollector(const Env& env, IteratorBase* iterator);
+  TfDatazMetricsCollector(const Env& env, DatasetBaseIterator* iterator);
 
   // Records `GetNext` call latency.
   void RecordGetNextLatency(int64_t get_next_latency_usec);
@@ -110,13 +108,16 @@ class TfDatazMetricsCollector {
   // Returns the average `GetNext` latency for past 60 minutes.
   absl::Duration GetAverageLatencyForLastSixtyMinutes();
 
+  // Returns the dataset name if one was set.
+  std::optional<std::string> DatasetName();
+
   // Returns the total memory (in bytes) used by the iterator.
   // Total memory used by the iterator includes the total number of bytes
   // buffered in all nodes in the subtree.
   int64_t GetIteratorTotalMemoryUsage();
 
  private:
-  IteratorBase* iterator_;  // not owned
+  DatasetBaseIterator* iterator_;  // not owned
   ApproximateLatencyEstimator latency_estimator_;
 };
 

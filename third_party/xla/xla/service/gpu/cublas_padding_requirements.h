@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,15 +31,23 @@ struct CublasPaddingRequirement {
   int multiple_of;
 };
 
+struct HipblasPaddingRequirement {
+  PrimitiveType data_type;
+  int multiple_of;
+};
+
 // List of padding requirements per compute capability and data type.
 constexpr std::array<CublasPaddingRequirement, 3> CublasPaddingRequirements{
     {{se::CudaComputeCapability::VOLTA, S8, 4},
      {se::CudaComputeCapability::VOLTA, F16, 8},
      {se::CudaComputeCapability::AMPERE, BF16, 8}}};
 
+constexpr std::array<HipblasPaddingRequirement, 2> HipblasPaddingRequirements{
+    {{/*rocm gpu arch,*/ F16, 8}, {/*rocm gpu arch,*/ BF16, 8}}};
+
 // Tell if either of the operands of the dot requires padding.
 bool CublasRequiresPadding(const HloDotInstruction& dot,
-                           se::CudaComputeCapability cc);
+                           const se::GpuComputeCapability& cc);
 
 }  // namespace gpu
 }  // namespace xla

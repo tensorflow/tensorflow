@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,8 +56,8 @@ class ParallelLoopEmitter {
       absl::string_view loop_name, llvm::Type* index_type,
       llvm::Value* base_index);
 
-  Status EmitLoop(absl::string_view loop_name = "",
-                  llvm::Type* index_type = nullptr);
+  absl::Status EmitLoop(absl::string_view loop_name = "",
+                        llvm::Type* index_type = nullptr);
 
  private:
   struct LinearBaseAndThreadIdx {
@@ -67,8 +67,9 @@ class ParallelLoopEmitter {
 
   LinearBaseAndThreadIdx EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
                                                     llvm::Value* base_index);
-  Status EmitSerialLoop(absl::string_view loop_name, llvm::Type* index_type,
-                        llvm::Value* base_indvar = nullptr);
+  absl::Status EmitSerialLoop(absl::string_view loop_name,
+                              llvm::Type* index_type,
+                              llvm::Value* base_indvar = nullptr);
 
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;
@@ -80,8 +81,7 @@ class ParallelLoopEmitter {
   // The shape that the emitted loop iterates through.
   Shape shape_;
 
-  // Points to the exit block of the emitted loop. If the given shape is
-  // scalar, no loops are emitted and exit_bb_ is nullptr in that case.
+  // Points to the exit block of the emitted loop.
   llvm::BasicBlock* exit_bb_;
 
   llvm::IRBuilder<>* b_;

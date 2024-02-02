@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -25,12 +25,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -77,7 +80,7 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
       if (key == kOptimalSecondsKey) {
         return;
       }
-      float per_second_rate = options_.per_second_rates[key];
+      float per_second_rate = options_.per_second_rate(key);
       if (per_second_rate != 0) {
         optimal_seconds = std::max(optimal_seconds, val / per_second_rate);
       }
@@ -222,7 +225,11 @@ Status HloCostAnalysis::FusionCalculateUtilizations(
   // instruction.
   for (const HloInstruction* instr :
        fusion->fused_instructions_computation()->instructions()) {
-    hlo_properties_[instr][kUtilizationKey] = 1.f;
+    if (ShouldFilterFusionInstruction(fusion, instr)) {
+      hlo_properties_[instr][kUtilizationKey] = 0.f;
+    } else {
+      hlo_properties_[instr][kUtilizationKey] = 1.f;
+    }
   }
   return OkStatus();
 }
@@ -405,11 +412,12 @@ Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
 Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
   // Count nested infeed output tuples.
   int64_t size = 0;
-  for (const auto& indexed_shape : ShapeUtil::GetLeafShapes(infeed->shape())) {
-    size += GetShapeSize(indexed_shape.shape);
-    current_properties_.set_output_bytes_accessed(
-        indexed_shape.index, GetShapeSize(indexed_shape.shape));
-  }
+  ShapeUtil::ForEachLeafShape(
+      infeed->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        size += GetShapeSize(sub_shape);
+        current_properties_.set_output_bytes_accessed(index,
+                                                      GetShapeSize(sub_shape));
+      });
   current_properties_.set_output_bytes_accessed(size);
   current_properties_[kBytesAccessedKey] = size;
   return OkStatus();
@@ -421,12 +429,14 @@ Status HloCostAnalysis::HandleOutfeed(const HloInstruction* outfeed) {
   for (int64_t i = 0; i < outfeed->operand_count(); ++i) {
     const HloInstruction* operand = outfeed->operand(i);
     int64_t size = 0;
-    for (const auto& indexed_shape :
-         ShapeUtil::GetLeafShapes(operand->shape())) {
-      size += GetShapeSize(indexed_shape.shape);
-      current_properties_.set_operand_bytes_accessed(
-          i, indexed_shape.index, GetShapeSize(indexed_shape.shape));
-    }
+
+    ShapeUtil::ForEachLeafShape(
+        operand->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+          size += GetShapeSize(sub_shape);
+          current_properties_.set_operand_bytes_accessed(
+              i, index, GetShapeSize(sub_shape));
+        });
+
     current_properties_.set_operand_bytes_accessed(i, size);
     current_properties_[kBytesAccessedKey] += size;
   }
@@ -600,7 +610,7 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
 Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
   if (options_.count_multiple_input_accesses) {
     current_properties_.set_operand_bytes_accessed(
-        0, ShapeUtil::ElementsIn(broadcast->shape()));
+        0, GetShapeSize(broadcast->shape()));
     current_properties_.set_operand_utilization(
         0, 1.0 * ShapeUtil::ElementsIn(broadcast->shape()) /
                ShapeUtil::ElementsIn(broadcast->operand(0)->shape()));
@@ -1009,28 +1019,11 @@ Status HloCostAnalysis::HandleRngGetAndUpdateState(
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
-  VLOG(8) << "Processing fusion " << fusion->ToString();
-
-  if (fusion->IsCustomFusion()) {
-    for (const HloInstruction* hlo :
-         fusion->fused_instructions_computation()->instructions()) {
-      if (hlo->opcode() == HloOpcode::kGather) {
-        return HandleGather(hlo);
-      }
-      if (hlo->opcode() == HloOpcode::kScatter) {
-        return HandleScatter(hlo);
-      }
-    }
-  }
-  TF_ASSIGN_OR_RETURN(
-      current_properties_,
-      ProcessSubcomputation(fusion->fused_instructions_computation()));
-
+Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
+    const HloInstruction* fusion) {
   // Fusion nodes that produce a tuple also produce the entries in the tuple.
   // Ignore the memory accessed inside fused ops, since fusion is supposed to
   // prevent intermediate data from touching slow memory.
-  current_properties_[kBytesAccessedKey] = 0;
   ShapeUtil::ForEachSubshape(
       fusion->shape(),
       [this, fusion](const Shape& subshape, const ShapeIndex& shape_index) {
@@ -1039,7 +1032,17 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
         }
 
         const HloInstruction* root = fusion->fused_expression_root();
-        if (shape_index.size() == 1 && root->opcode() == HloOpcode::kTuple) {
+
+        auto further_examine_index =
+            shape_index.size() == 1 && root->opcode() == HloOpcode::kTuple;
+        if (further_examine_index &&
+            ShouldFilterFusionOutputIndex(fusion, shape_index)) {
+          current_properties_.set_output_bytes_accessed(shape_index, 0);
+          hlo_properties_[root->operand(shape_index[0])]
+                         [GetOperandUtilizationKey(0)] = 0;
+          return;
+        }
+        if (further_examine_index) {
           root = root->operand(shape_index[0]);
         }
 
@@ -1072,6 +1075,9 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
       }
       for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
         const Shape& subshape = shape.tuple_shapes(i);
+        if (!subshape.IsTuple() && ShouldFilterFusionOutputIndex(fusion, {i})) {
+          continue;
+        }
         ShapeIndex subshape_index(shape_index);
         subshape_index.push_back(i);
         bytes_accessed +=
@@ -1082,9 +1088,53 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     current_properties_[GetOutputBytesAccessedKey()] = 0;
     propagate_output_size_to_parent(fusion->shape(), {});
   }
+  return OkStatus();
+}
 
-  TF_RETURN_IF_ERROR(FusionCalculateUtilizations(fusion));
+Status HloCostAnalysis::FusionProcessOperandBytesRead(
+    const HloInstruction* fusion) {
+  for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
+    const HloInstruction* operand = fusion->fused_parameter(i);
+    int64_t operand_size = 0;
+    if (ShouldFilterFusionInput(fusion, i)) {
+      current_properties_.set_operand_bytes_accessed(i, operand_size);
+      current_properties_.set_operand_utilization(
+          i, hlo_properties_[operand][kUtilizationKey]);
+      continue;
+    }
+    if (!operand->shape().IsTuple()) {
+      operand_size = FusionParameterReadBytes(operand);
+    } else {
+      // If the fusion parameter is a tuple type, find the gte for the leaf
+      // shape and calculate the bytes accessed for those array types.
+      ShapeUtil::ForEachLeafShape(
+          operand->shape(),
+          [&](const Shape& /*sub_shape*/, const ShapeIndex& index) {
+            const HloInstruction* gte = operand;
+            for (int64_t sub_index : index) {
+              for (const HloInstruction* user : gte->users()) {
+                if (user->opcode() == HloOpcode::kGetTupleElement &&
+                    user->tuple_index() == sub_index) {
+                  gte = user;
+                  break;
+                }
+              }
+            }
+            int64_t size = FusionParameterReadBytes(gte);
+            operand_size += size;
+            current_properties_.set_operand_bytes_accessed(i, index, size);
+          });
+    }
+    current_properties_[kBytesAccessedKey] += operand_size;
+    current_properties_.set_operand_bytes_accessed(i, operand_size);
+    current_properties_.set_operand_utilization(
+        i, hlo_properties_[operand][kUtilizationKey]);
+  }
+  return OkStatus();
+}
 
+Status HloCostAnalysis::FusionCountConstantsMemoryAccess(
+    const HloInstruction* fusion) {
   // Count memory access to all large constants.
   for (const HloInstruction* instr :
        fusion->fused_instructions_computation()->instructions()) {
@@ -1099,38 +1149,32 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
           GetShapeSize(instr->shape()) * utilization;
     }
   }
+  return OkStatus();
+}
 
-  for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
-    const HloInstruction* operand = fusion->fused_parameter(i);
-    int64_t operand_size = 0;
-    if (!operand->shape().IsTuple()) {
-      operand_size = FusionParameterReadBytes(operand);
-    } else {
-      // If the fusion parameter is a tuple type, find the gte for the leaf
-      // shape and calculate the bytes accessed for those array types.
-      for (const auto& indexed_shape :
-           ShapeUtil::GetLeafShapes(operand->shape())) {
-        const HloInstruction* gte = operand;
-        for (int64_t index : indexed_shape.index) {
-          for (const HloInstruction* user : gte->users()) {
-            if (user->opcode() == HloOpcode::kGetTupleElement &&
-                user->tuple_index() == index) {
-              gte = user;
-              break;
-            }
-          }
-        }
-        int64_t size = FusionParameterReadBytes(gte);
-        operand_size += size;
-        current_properties_.set_operand_bytes_accessed(i, indexed_shape.index,
-                                                       size);
+Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
+  VLOG(8) << "Processing fusion " << fusion->ToString();
+
+  if (fusion->IsCustomFusion()) {
+    for (const HloInstruction* hlo :
+         fusion->fused_instructions_computation()->instructions()) {
+      if (hlo->opcode() == HloOpcode::kGather) {
+        return HandleGather(hlo);
+      }
+      if (hlo->opcode() == HloOpcode::kScatter) {
+        return HandleScatter(hlo);
       }
     }
-    current_properties_[kBytesAccessedKey] += operand_size;
-    current_properties_.set_operand_bytes_accessed(i, operand_size);
-    current_properties_.set_operand_utilization(
-        i, hlo_properties_[operand][kUtilizationKey]);
   }
+  TF_ASSIGN_OR_RETURN(
+      current_properties_,
+      ProcessSubcomputation(fusion->fused_instructions_computation()));
+
+  current_properties_[kBytesAccessedKey] = 0;
+  TF_RETURN_IF_ERROR(FusionProcessOutputBytesAccessed(fusion));
+  TF_RETURN_IF_ERROR(FusionCalculateUtilizations(fusion));
+  TF_RETURN_IF_ERROR(FusionCountConstantsMemoryAccess(fusion));
+  TF_RETURN_IF_ERROR(FusionProcessOperandBytesRead(fusion));
 
   return OkStatus();
 }
@@ -1351,16 +1395,18 @@ int64_t HloCostAnalysis::GetBytesRead(
 int64_t HloCostAnalysis::GetBytesWritten(
     const HloInstruction& hlo, std::optional<int64_t> memory_space) const {
   int64_t bytes_written = 0;
-  for (const ShapeUtil::IndexedShape& indexed_shape :
-       ShapeUtil::GetLeafShapes(hlo.shape())) {
-    std::optional<int64_t> index_memory_space;
-    if (indexed_shape.shape.has_layout()) {
-      index_memory_space = indexed_shape.shape.layout().memory_space();
-    }
-    if (!memory_space || memory_space == index_memory_space) {
-      bytes_written += output_bytes_accessed(hlo, indexed_shape.index);
-    }
-  }
+
+  ShapeUtil::ForEachLeafShape(
+      hlo.shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        std::optional<int64_t> index_memory_space;
+        if (sub_shape.has_layout()) {
+          index_memory_space = sub_shape.layout().memory_space();
+        }
+        if (!memory_space || memory_space == index_memory_space) {
+          bytes_written += output_bytes_accessed(hlo, index);
+        }
+      });
+
   return bytes_written;
 }
 
@@ -1381,19 +1427,17 @@ std::unique_ptr<HloCostAnalysis> HloCostAnalysis::CreateNestedCostAnalysis() {
 
 /*static*/ std::string HloCostAnalysis::GetOperandBytesAccessedKey(
     int64_t operand_num, const ShapeIndex& index) {
-  return absl::StrCat(kBytesAccessedKey, " operand ", operand_num, " ",
-                      index.ToString());
+  return absl::StrCat(kBytesAccessedKey, operand_num, index.ToString());
 }
 
 /*static*/ std::string HloCostAnalysis::GetOperandUtilizationKey(
     int64_t operand_num, const ShapeIndex& index) {
-  return absl::StrCat(kUtilizationKey, " operand ", operand_num, " ",
-                      index.ToString());
+  return absl::StrCat(kUtilizationKey, operand_num, index.ToString());
 }
 
 /*static*/ std::string HloCostAnalysis::GetOutputBytesAccessedKey(
     const ShapeIndex& index) {
-  return absl::StrCat(kBytesAccessedKey, " output ", index.ToString());
+  return absl::StrCat(kBytesAccessedKey, "out", index.ToString());
 }
 
 bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {

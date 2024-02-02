@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,15 +17,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -44,10 +48,15 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -63,10 +72,18 @@ struct MatchFwdResult {
   HloInstruction* matched_mask = nullptr;
   HloInstruction* matched_scale = nullptr;
   HloInstruction* matched_softmax_input = nullptr;
+  HloInstruction* matched_reduce_sum = nullptr;
 
   double matched_dropout_rate = 0.0;
   bool need_canonicalization = false;
   bool is_training = false;
+  // We use this to keep track of whether the bias or the mask that is being
+  // applied to the bmm1 is a causal mask, cuDNN can generate causal mask inside
+  // the attention kernel to save I/O.
+  bool is_causal_mask = false;
+  // We use this to keep track of whether the attention block should be lowered
+  // to flash attention or regular fused attention in cuDNN.
+  bool is_flash_attention = false;
   bool has_match = false;
   std::string matched_custom_call_name;
 };
@@ -79,7 +96,7 @@ struct MatchBwdResult {
 
   HloInstruction* matched_bmm_2_grad_1 = nullptr;
   HloInstruction* matched_bmm_2_grad_2 = nullptr;
-  HloInstruction* matched_d_intermediate = nullptr;
+  HloInstruction* matched_dbias = nullptr;
   // We use this to keep track of all gradient bmms that need
   // canonicalization.
   bool bmm_1_grad_1_need_canonicalization = false;
@@ -212,22 +229,33 @@ auto GetUnfusedReduceMaxSumSoftmaxPattern(
     HloInstruction** softmax_reduce_sum = nullptr,
     HloInstruction** softmax_reduce_sum_bcast = nullptr) {
   // The reduce-max part of the softmax
-  auto unfused_softmax_max_subpattern = m::SharedSubpattern(m::Subtract(
-      m::Op(), m::Broadcast(OptionalConvert(OptionalConvert(
-                   m::Op()
-                       .WithPredicate(IsReduceMax)
-                       .WithOperand(0, OptionalBitcast(OptionalConvert(
-                                           m::Op(softmax_input)))))))));
+  // reduce_max and subtract will always have exactly 1 user
+  // in both training and inference
+  // softmax_input should always have exactly 2 users
+  auto unfused_softmax_max_subpattern = m::SharedSubpattern(
+      m::Subtract(
+          m::Op(),
+          m::Broadcast(OptionalConvert(
+              m::Op()
+                  .WithPredicate(IsReduceMax)
+                  .WithOneUse()
+                  .WithOperand(0, OptionalBitcast(OptionalConvert(
+                                      m::Op(softmax_input).WithNumUser(2)))))))
+          .WithOneUse());
   // The reduce-add part of the softmax
+  // reduce_sum and reduce_sum_broadcast should have 2 users in training
+  // and 1 user in inference
   auto unfused_softmax_sum_subpattern = m::SharedSubpattern(m::Divide(
       OptionalBitcast(m::Exp(unfused_softmax_max_subpattern)),
       m::Broadcast(
           softmax_reduce_sum_bcast,
-          OptionalConvert(OptionalConvert(
+          OptionalConvert(
               m::Op(softmax_reduce_sum)
                   .WithOperand(0, OptionalBitcast(OptionalConvert(
                                       m::Exp(unfused_softmax_max_subpattern))))
-                  .WithPredicate(IsReduceSum))))));
+                  .WithPredicate(IsReduceSum)
+                  .WithAtMostNumUser(2)))
+          .WithAtMostNumUser(2)));
   return unfused_softmax_sum_subpattern;
 }
 
@@ -261,23 +289,28 @@ double GetDropoutRateFromHlo(HloInstruction* dropout) {
   return (1.0 - (1.0 / *dropout_rate_inv));
 }
 
-bool IsComputeCapabilityAndCudnnSupported(
-    stream_executor::CudaComputeCapability cc,
+se::dnn::VersionInfo GetRealCuDNNVersion(
     stream_executor::dnn::VersionInfo cudnn_version,
-    stream_executor::StreamExecutor* stream_exec,
-    stream_executor::dnn::VersionInfo supported_cudnn_version) {
+    stream_executor::StreamExecutor* stream_exec) {
   se::dnn::VersionInfo real_cudnn_version;
   if (stream_exec) {
     stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
+    absl::StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
     if (se_cudnn_version.ok()) {
       real_cudnn_version = (*se_cudnn_version);
     }
   } else {
     real_cudnn_version = cudnn_version;
   }
+  return real_cudnn_version;
+}
+
+bool IsComputeCapabilityAndCudnnSupported(
+    stream_executor::CudaComputeCapability cc,
+    stream_executor::dnn::VersionInfo cudnn_version,
+    stream_executor::dnn::VersionInfo supported_cudnn_version) {
   if (!((cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0) &&
-        (real_cudnn_version >= supported_cudnn_version))) {
+        (cudnn_version >= supported_cudnn_version))) {
     VLOG(2) << absl::StrFormat(
         "CudnnFusedMHARewriter did not run. Unsupported compute "
         "capability(==8.0) or cudnn version(>=%d.%d.%d)",
@@ -300,9 +333,11 @@ bool IsContractingDimSupported(absl::Span<const int64_t> contracting_dims) {
 }
 
 bool IsNonContractingDimSupported(
-    const std::vector<int64_t>& non_contracting_dims) {
-  return absl::c_all_of(non_contracting_dims,
-                        [](int64_t dim) { return dim <= 512; });
+    const std::vector<int64_t>& non_contracting_dims, bool is_training) {
+  // For training, cuDNN require non_contracting_dim to be Divisible by 64
+  return absl::c_all_of(non_contracting_dims, [&](int64_t dim) {
+    return dim <= 512 && (!is_training || dim % 64 == 0);
+  });
 }
 
 std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
@@ -314,7 +349,8 @@ std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
   return vec;
 }
 
-StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
+absl::StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1,
+                                     bool is_training) {
   const DotDimensionNumbers& dot_dims_bmm1 = bmm_1->dot_dimension_numbers();
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
@@ -334,8 +370,10 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
                          rhs_non_contracting_dim_nums_bmm1);
   // The non contracting dimensions for BMM1 need to be less than or equal to
   // 512.
-  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1) ||
-      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1)) {
+  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1,
+                                    is_training) ||
+      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1,
+                                    is_training)) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "BMM1 lhs_non_contracting_dims: "
               << absl::StrJoin(lhs_non_contracting_dims_bmm1, ",")
@@ -369,8 +407,8 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
   return true;
 }
 
-StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
-                               bool need_canonicalization) {
+absl::StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
+                                     bool need_canonicalization) {
   const DotDimensionNumbers& dot_dims_bmm2 = bmm_2->dot_dimension_numbers();
   // need swap lhs and rhs for bmm2 if canonicalization is needed
   int operand_index = need_canonicalization ? 0 : 1;
@@ -402,6 +440,98 @@ StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
   return true;
 }
 
+StatusOr<bool> IsFlashAttention(
+    HloInstruction* bmm_1, bool is_causal_mask,
+    absl::string_view custom_call_name,
+    stream_executor::CudaComputeCapability cc,
+    stream_executor::dnn::VersionInfo cudnn_version) {
+  const DotDimensionNumbers& dnums = bmm_1->dot_dimension_numbers();
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> seq_q_dims,
+      GetNonContractingDims(bmm_1->operand(0)->shape(),
+                            dnums.lhs_batch_dimensions(),
+                            dnums.lhs_contracting_dimensions()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> seq_k_dims,
+      GetNonContractingDims(bmm_1->operand(1)->shape(),
+                            dnums.rhs_batch_dimensions(),
+                            dnums.rhs_contracting_dimensions()));
+
+  std::vector<int64_t> seq_q =
+      GetDimensionVector(bmm_1->operand(0)->shape().dimensions(), seq_q_dims);
+
+  std::vector<int64_t> seq_k =
+      GetDimensionVector(bmm_1->operand(1)->shape().dimensions(), seq_k_dims);
+
+  std::vector<int64_t> hidden_dim =
+      GetDimensionVector(bmm_1->operand(0)->shape().dimensions(),
+                         dnums.lhs_contracting_dimensions());
+  // for now, seq_q and seq_k should be equal for flash attention to work
+  // flash attention only supports fixed topology so we check if custom call is
+  // such topology by checking custom_call_name
+  TF_RET_CHECK(seq_q.size() == 1);
+  TF_RET_CHECK(seq_k.size() == 1);
+  TF_RET_CHECK(hidden_dim.size() == 1);
+
+  auto is_seqlen_supported = seq_q[0] > 512 && seq_k[0] > 512 &&
+                             seq_q[0] % 64 == 0 && seq_k[0] % 64 == 0;
+  auto is_hidden_dim_supported = hidden_dim[0] == 64 || hidden_dim[0] == 128;
+  auto is_flash_attention = is_seqlen_supported && is_hidden_dim_supported;
+  auto is_cross_attention = seq_q[0] != seq_k[0];
+
+  // flash attention requires cuDNN 8.9.3 to run non-fused QKV
+  // once we have fused QKV support, we can relax this contraint
+  if (is_flash_attention &&
+      !IsComputeCapabilityAndCudnnSupported(
+          cc, cudnn_version, stream_executor::dnn::VersionInfo(8, 9, 3))) {
+    VLOG(2) << "Require cuDNN 8.9.3 to run flash attention.";
+    return false;
+  }
+  // flash attention cross attention requires cuDNN 8.9.4 to run
+  if (is_cross_attention &&
+      !IsComputeCapabilityAndCudnnSupported(
+          cc, cudnn_version, stream_executor::dnn::VersionInfo(8, 9, 4))) {
+    VLOG(2) << "Require cuDNN 8.9.4 to run flash cross attention.";
+    return false;
+  }
+  return is_flash_attention;
+}
+
+bool IsCausalMaskPattern(HloInstruction* mask) {
+  auto causal_mask =
+      m::Select(m::Compare(m::Iota(), m::Iota()), m::Broadcast(m::Constant()),
+                m::Broadcast(m::Constant()));
+  auto causal_mask_pattern_fwd_remat =
+      m::Broadcast(OptionalBitcast(causal_mask));
+  auto causal_mask_pattern_bwd = m::Broadcast(m::Convert(OptionalBitcast(
+      m::Minimum(m::Op(), m::Broadcast(OptionalBitcast(causal_mask))))));
+  HloInstruction* param = nullptr;
+  HloInstruction* gte = nullptr;
+  auto causal_mask_pattern_fwd = m::Broadcast(
+      OptionalBitcast(m::GetTupleElement(&gte, m::Parameter(&param))));
+  auto causal_mask_pattern = m::AnyOf<HloInstruction>(
+      causal_mask_pattern_fwd_remat, causal_mask_pattern_fwd,
+      causal_mask_pattern_bwd);
+  if (Match(mask, causal_mask_pattern)) {
+    if (param != nullptr && param->parent()->IsWhileBodyComputation()) {
+      // need to track to outside of the while loop body to find the real mask.
+      auto while_instr = param->parent()->WhileCallInstruction();
+      auto mask_index = gte->tuple_index();
+      auto actual_mask =
+          while_instr->mutable_operand(0)->mutable_operand(mask_index);
+      auto causal_mask_pattern_fwd =
+          OptionalBitcast(m::Convert(m::MinimumAnyOrder(
+              m::Op(),
+              OptionalBitcast(m::MinimumAnyOrder(
+                  m::Op(), m::Broadcast(OptionalBitcast(causal_mask)))))));
+      return Match(actual_mask, causal_mask_pattern_fwd);
+    }
+    return true;
+  }
+  return false;
+}
+
 MatchFwdResult MatchDefaultFwdBmmBmm(MatchFwdResult previous_result,
                                      int64_t bmm2_operand_position,
                                      HloInstruction* instr) {
@@ -409,12 +539,16 @@ MatchFwdResult MatchDefaultFwdBmmBmm(MatchFwdResult previous_result,
   // Try matching default bmm1-bmm2 pattern
   HloInstruction* bmm_1;
   HloInstruction* bmm_2;
-
+  // bmm1 should have at most 2 users at this case
+  // 1. 1 user(bmm2) in case of inference
+  // 2. 2 users(bmm2 and backward bmm) in case of training
   auto default_bmm_bmm_pattern =
       m::Op(&bmm_2)
           .WithPredicate(IsBatchedMatmul)
           .WithOperand(bmm2_operand_position,
-                       m::Op(&bmm_1).WithPredicate(IsBatchedMatmul));
+                       m::Op(&bmm_1)
+                           .WithPredicate(IsBatchedMatmul)
+                           .WithAtMostNumUser(2));
 
   // If any of bmm1's operands is coming from a forward fMHA call, then return
   // false
@@ -472,6 +606,14 @@ MatchFwdResult MatchSoftmaxDropoutBmm(MatchFwdResult previous_result,
                   m::Broadcast(m::Constant(&dropout).WithPredicate(IsScalar)),
                   m::Op())))))))));
 
+  // Form3 -> softmax - mul(dropout) - mul(scale) - BMM2
+  auto dropout_softmax_pattern_form_3 = m::MultiplyAnyOrder(
+      m::MultiplyAnyOrder(
+          OptionalConvert(GetUnfusedReduceMaxSumSoftmaxPattern(
+              &softmax_input, &softmax_reduce_sum, &softmax_reduce_sum_bcast)),
+          m::Op()),
+      m::Broadcast(m::Constant(&dropout).WithPredicate(IsScalar)));
+
   // Try matching BMM1 - (Scale) - (Bias) - (Mask) - Softmax - (Dropout) -
   // BMM2 Dropout with non-zero drop rate has select(divide(softmax_output,
   // broadcast(1-dropout_rate)))
@@ -485,7 +627,8 @@ MatchFwdResult MatchSoftmaxDropoutBmm(MatchFwdResult previous_result,
                                    &softmax_input, &softmax_reduce_sum,
                                    &softmax_reduce_sum_bcast))),
                            dropout_softmax_pattern_form_1,
-                           dropout_softmax_pattern_form_2));
+                           dropout_softmax_pattern_form_2,
+                           dropout_softmax_pattern_form_3));
 
   if (!Match(instr, softmax_dropout_bmm2_pattern) ||
       !IsSupportedPrimitiveType(bmm_2)) {
@@ -502,6 +645,7 @@ MatchFwdResult MatchSoftmaxDropoutBmm(MatchFwdResult previous_result,
     match_result.matched_dropout_rate = GetDropoutRateFromHlo(dropout);
   }
   match_result.matched_softmax_input = softmax_input;
+  match_result.matched_reduce_sum = softmax_reduce_sum;
   match_result.has_match = true;
   return match_result;
 }
@@ -513,16 +657,18 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
   HloInstruction* bmm_1;
   HloInstruction* bias = nullptr;
   HloInstruction* scale = nullptr;
-
+  // bmm1/scale/bias add should have 2 users if being connected to softmax
+  // otherwise should have exactly 1 user
   auto first_bmm_pattern =
       m::SharedSubpattern(m::Op(&bmm_1).WithPredicate(IsBatchedMatmul));
   auto unfused_scaled_bmm_subpattern = m::MultiplyAnyOrder(
-      OptionalConvert(first_bmm_pattern),
+      OptionalConvert(first_bmm_pattern.WithOneUse()),
       OptionalConvert(
           m::Broadcast(m::Constant(&scale).WithPredicate(IsScalar))));
-
   if (Match(softmax_input,
-            OptionalConvert(OptionalBitcast(first_bmm_pattern)))) {
+            OptionalConvert(OptionalBitcast(m::AnyOf<HloInstruction>(
+                first_bmm_pattern, unfused_scaled_bmm_subpattern))))) {
+    // bmm1 - (scale) - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHASoftmaxDropoutCallTarget
@@ -531,14 +677,17 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
   } else if (Match(softmax_input,
                    OptionalBitcast(m::AddAnyOrder(
                        OptionalConvert(OptionalBitcast(m::AnyOf<HloInstruction>(
-                           unfused_scaled_bmm_subpattern, first_bmm_pattern))),
+                           unfused_scaled_bmm_subpattern.WithOneUse(),
+                           first_bmm_pattern.WithOneUse()))),
                        m::Op(&bias))))) {
+    // bmm1 - (scale) - bias - softmax
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_scale = scale;
     match_result.matched_bias = bias;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget
                     : kCudnnfMHAScaleBiasSoftmaxCallTarget;
+    match_result.is_causal_mask |= IsCausalMaskPattern(bias);
     match_result.has_match = true;
   } else {
     match_result.has_match = false;
@@ -561,36 +710,36 @@ MatchFwdResult MatchBmm1ScaleBiasMaskSoftmaxDropoutBmm2(
       OptionalConvert(
           m::Op(&bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse()),
       m::Broadcast(m::Constant(&scale).WithPredicate(IsScalar))));
-
-  if (Match(
-          softmax_input,
-          OptionalConvert(m::Select(
-              m::Op(&mask).WithPredicate([](const HloInstruction* instr) {
-                return instr->shape().element_type() == PRED;
-              }),
-              // Match bmm1-scale-bias-mask
-              m::AnyOf<HloInstruction>(
-                  // Scale and bias might or might not be fused
-                  // with gemm
-                  m::Op(&bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse(),
-                  OptionalConvert(m::AnyOf<HloInstruction>(
-                      // Try to match unfused bias
-                      m::AddAnyOrder(m::Op(&bias),
-                                     m::AnyOf<HloInstruction>(
-                                         OptionalConvert(
-                                             m::Op(&bmm_1)
-                                                 .WithPredicate(IsBatchedMatmul)
-                                                 .WithOneUse()),
-                                         unfused_scaled_bmm_subpattern)),
-                      unfused_scaled_bmm_subpattern))),
-              m::Op())))) {
+  // bmm1/scale/bias add/mask should have 2 users if being connected to softmax
+  // otherwise should have exactly 1 user
+  if (Match(softmax_input,
+            OptionalConvert(m::Select(
+                m::Op(&mask).WithPredicate([](const HloInstruction* instr) {
+                  return instr->shape().element_type() == PRED;
+                }),
+                // Match bmm1-scale-bias-mask
+                m::AnyOf<HloInstruction>(
+                    // Scale and bias might or might not be fused
+                    // with gemm
+                    m::Op(&bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse(),
+                    OptionalConvert(m::AnyOf<HloInstruction>(
+                        // Try to match unfused bias
+                        m::AddAnyOrder(
+                            m::Op(&bias),
+                            m::AnyOf<HloInstruction>(
+                                OptionalConvert(
+                                    m::Op(&bmm_1)
+                                        .WithPredicate(IsBatchedMatmul)
+                                        .WithOneUse()),
+                                unfused_scaled_bmm_subpattern.WithOneUse())),
+                        unfused_scaled_bmm_subpattern.WithOneUse()))),
+                m::Op())))) {
     if (!IsSupportedPrimitiveType(bmm_1)) {
       matched_result.has_match = false;
       return matched_result;
     }
-
     if (has_dropout) {
-      // Found BMM1 - Scale - (bias) - Mask - Softmax - dropout - BMM2
+      // Found BMM1 - (Scale) - (bias) - Mask - Softmax - dropout - BMM2
       matched_result.matched_custom_call_name =
           bias == nullptr ? kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget
                           : kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
@@ -671,11 +820,10 @@ bool IsBmm2GradGemm2(HloInstruction* instr) {
 }
 
 MatchBwdResult MatchBmm1GradGemm1(MatchBwdResult previous_result,
-                                  HloInstruction* fwd_fmha_call,
                                   HloInstruction* bmm_1) {
   MatchBwdResult match_result = previous_result;
   match_result.has_match = false;
-  const HloInstruction* q_tensor = fwd_fmha_call->operand(0);
+  const HloInstruction* q_tensor = bmm_1->operand(0);
   for (int64_t i = 0; i < q_tensor->user_count(); i++) {
     HloInstruction* q_tensor_user_i = q_tensor->users()[i];
     if (IsBatchedMatmul(q_tensor_user_i) && q_tensor_user_i != bmm_1) {
@@ -695,40 +843,31 @@ MatchBwdResult MatchBmm1GradGemm2(MatchBwdResult previous_result,
   HloInstruction* bmm_1_grad_2 = nullptr;
   MatchBwdResult match_result = previous_result;
   match_result.has_match = false;
-  // bmm1 gradient gemm2 shares the same input as bmm1 gradient gemm1.
+  // bmm1 gradient gemm2 shares the same input d_s as bmm1 gradient gemm1.
   // Check to see if bmm1 grad gemm1 needs canonicalization or not, if not,
   // then the shared input is the first operand.
-  int64_t parent_nodex_index =
-      match_result.bmm_1_grad_1_need_canonicalization ? 1 : 0;
+  int64_t d_s_index = match_result.bmm_1_grad_1_need_canonicalization ? 1 : 0;
   HloInstruction* d_s_user_0 = match_result.matched_bmm_1_grad_1;
 
-  HloInstruction* parent_node = d_s_user_0->mutable_operand(parent_nodex_index);
-  if (parent_node->opcode() == HloOpcode::kBitcast &&
-      parent_node->user_count() == 1) {
-    d_s_user_0 = parent_node;
-    parent_node = parent_node->mutable_operand(0);
+  HloInstruction* d_s = d_s_user_0->mutable_operand(d_s_index);
+  if (d_s->opcode() == HloOpcode::kBitcast && d_s->user_count() == 1) {
+    d_s = d_s->mutable_operand(0);
   }
 
-  auto bmm_1_grad_2_it =
-      std::find_if(parent_node->users().begin(), parent_node->users().end(),
-                   [&](HloInstruction* instr) {
-                     return instr != match_result.matched_bmm_1_grad_1 &&
-                            instr->opcode() != HloOpcode::kReduce;
-                   });
-  if (bmm_1_grad_2_it != parent_node->users().end()) {
+  auto bmm_1_grad_2_it = std::find_if(
+      d_s->users().begin(), d_s->users().end(), [&](HloInstruction* instr) {
+        return instr != match_result.matched_bmm_1_grad_1 &&
+               instr->opcode() == HloOpcode::kDot;
+      });
+  if (bmm_1_grad_2_it != d_s->users().end()) {
     bmm_1_grad_2 = *bmm_1_grad_2_it;
   } else {
     return match_result;
   }
-  if (bmm_1_grad_2->opcode() == HloOpcode::kBitcast &&
-      bmm_1_grad_2->user_count() == 1) {
-    parent_node = bmm_1_grad_2;
-    bmm_1_grad_2 = bmm_1_grad_2->users()[0];
-  }
 
   match_result.matched_bmm_1_grad_2 = bmm_1_grad_2;
 
-  if (match_result.matched_bmm_1_grad_2->operand_index(parent_node) != 0) {
+  if (match_result.matched_bmm_1_grad_2->operand_index(d_s) != 0) {
     match_result.bmm_1_grad_2_need_canonicalization = true;
   }
   match_result.has_match = true;
@@ -787,6 +926,33 @@ MatchBwdResult MatchBmm2GradGemm2(MatchBwdResult previous_result,
   return match_result;
 }
 
+MatchBwdResult MatchDbias(MatchBwdResult previous_result,
+                          HloInstruction* d_intermediate,
+                          const absl::flat_hash_set<HloInstruction*> users) {
+  MatchBwdResult match_result = previous_result;
+  auto user_count = d_intermediate->user_count();
+  HloInstruction* dbias_user = nullptr;
+  HloInstruction* dbias = nullptr;
+  for (auto user : d_intermediate->users()) {
+    if (users.contains(user)) {
+      user_count -= 1;
+    } else {
+      dbias_user = user;
+    }
+  }
+  auto ConsumeExtraConvert = [](HloInstruction* instr) {
+    Match(instr->users()[0], m::Convert(&instr, m::Op()).WithOneUse());
+    return true;
+  };
+  // user_count == 1 && (reduce-> {convert} ->bitcast)
+  match_result.has_match =
+      user_count == 1 &&
+      Match(dbias_user, m::Reduce(&dbias, m::Op(), m::Op()).WithOneUse()) &&
+      dbias->shape().rank() == 3 && ConsumeExtraConvert(dbias);
+  match_result.matched_dbias = dbias;
+  return match_result;
+}
+
 MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
                                             HloInstruction* fwd_fmha_call,
                                             HloInstruction* mask) {
@@ -794,6 +960,7 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
   bool is_bmm1_grad1_canonicalized =
       match_result.bmm_1_grad_1_need_canonicalization;
   match_result.has_match = false;
+  bool has_scale = false;
   bool has_dropout = false;
   bool has_mask = false;
   // Backward dropout pattern
@@ -818,54 +985,76 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
                         m::Broadcast(OptionalConvert(
                             m::Constant().WithPredicate(IsScalar))),
                         m::Op()))))))));
+  auto bwd_dropout_pattern_form_3 = OptionalConvert(m::MultiplyAnyOrder(
+      m::MultiplyAnyOrder(
+          m::Op().WithPredicate([&](const HloInstruction* instr) {
+            return instr == match_result.matched_bmm_2_grad_2;
+          }),
+          m::Broadcast(m::Constant().WithPredicate(IsScalar))),
+      m::Op()));
   auto bwd_dropout_pattern = m::AnyOf<HloInstruction>(
-      bwd_dropout_pattern_form_1, bwd_dropout_pattern_form_2);
+      bwd_dropout_pattern_form_1, bwd_dropout_pattern_form_2,
+      bwd_dropout_pattern_form_3);
   // Backward softmax pattern
   HloInstruction* bwd_softmax_input = nullptr;
   HloInstruction* exp_1;
   HloInstruction* exp_2;
   HloInstruction* d_softmax;
 
-  auto bwd_softmax_pattern =
-      OptionalBitcast(OptionalConvert(m::MultiplyAnyOrder(
+  // d_softmax = exp * (dy / s_b - sum(dy * exp * 1 / s^2))
+  // there could be at most 3 users of d_softmax: bmm1grad1 bmm1grad2 and dbias
+  auto bwd_softmax_pattern = OptionalBitcast(OptionalConvert(
+      m::MultiplyAnyOrder(
           &d_softmax,
           m::AddAnyOrder(
-              m::Divide(),
-              m::Broadcast(OptionalBitcast(
-                  OptionalConvert(OptionalConvert(m::Negate(OptionalBitcast(
-                      m::Op()
-                          .WithPredicate(IsReduceSum)
-                          .WithOperand(0, OptionalBitcast(m::MultiplyAnyOrder(
-                                              m::MultiplyAnyOrder(
-                                                  m::Op(&bwd_softmax_input),
-                                                  m::Broadcast()),
-                                              m::Exp(&exp_2, m::Op()))))))))))),
-          m::Exp(&exp_1, m::Op()))));
+              m::Divide().WithOneUse(),
+              m::Broadcast(OptionalBitcast(OptionalConvert(
+                  m::Negate(
+                      OptionalBitcast(
+                          m::Op()
+                              .WithPredicate(IsReduceSum)
+                              .WithOneUse()
+                              .WithOperand(
+                                  0, OptionalBitcast(
+                                         m::MultiplyAnyOrder(
+                                             m::MultiplyAnyOrder(
+                                                 m::Op(&bwd_softmax_input),
+                                                 m::Broadcast())
+                                                 .WithOneUse(),
+                                             m::Exp(&exp_2, m::Op()))
+                                             .WithOneUse()))))
+                      .WithOneUse())))),
+          m::Exp(&exp_1, m::Op()))
+          .WithAtMostNumUser(3)));
 
   // Backward mask input pattern
   // we already matched this in the fwd. Just make sure the same mask is used in
   // the bwd
   HloInstruction* bwd_mask_input = nullptr;
   HloInstruction* bwd_mask = nullptr;
-  auto bwd_mask_pattern = OptionalConvert(
-      m::Select(m::Op(&bwd_mask).WithPredicate([](const HloInstruction* instr) {
+  HloInstruction* d_mask = nullptr;
+  auto bwd_mask_pattern = OptionalConvert(m::Select(
+      &d_mask, m::Op(&bwd_mask).WithPredicate([](const HloInstruction* instr) {
         return instr->shape().element_type() == PRED;
       }),
-                m::Op(&bwd_mask_input), m::Op()));
+      m::Op(&bwd_mask_input), m::Op()));
 
   // Backward scale input pattern
   HloInstruction* bwd_scale_input = nullptr;
 
   auto bwd_scale_pattern =
       m::MultiplyAnyOrder(m::Op(&bwd_scale_input),
-                          m::Broadcast(m::Constant().WithPredicate(IsScalar)));
+                          m::Broadcast(m::Constant().WithPredicate(IsScalar)))
+          .WithNumUser(2);
   int intermediate_input_pos = is_bmm1_grad1_canonicalized ? 1 : 0;
 
   HloInstruction* intermediate_input =
       match_result.matched_bmm_1_grad_1->mutable_operand(
           intermediate_input_pos);
 
-  if (Match(intermediate_input, bwd_scale_pattern)) {
+  has_scale = Match(intermediate_input, bwd_scale_pattern);
+
+  if (has_scale) {
     intermediate_input = bwd_scale_input;
   }
 
@@ -933,22 +1122,36 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
       match_result.matched_custom_call_name =
           kCudnnfMHASoftmaxBackwardCallTarget;
   }
-
-  // If d_softmax tensor has 3 consumers, then we need to output the
-  // intermediate tensor.
-  bool need_d_intermediate = d_softmax->user_count() == 3;
-  if ((match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget) &&
-      need_d_intermediate) {
-    match_result.matched_d_intermediate = d_softmax;
+  // try to pattern match dbias
+  HloInstruction* dS = has_mask ? d_mask : d_softmax;
+  if (dS->users()[0]->opcode() == HloOpcode::kConvert) {
+    dS = dS->users()[0];
   }
-  match_result.has_match = true;
+  if (has_scale) {
+    // bmm1-(scale)-(bias)-(mask)-softmax pattern
+    // users could be dbias besides mask bwd or scale bwd
+    if (dS->user_count() == 1) {
+      // no dbias
+      match_result.has_match = true;
+    } else if (dS->user_count() == 2) {
+      match_result =
+          MatchDbias(match_result, dS, {bwd_scale_input, bwd_mask_input});
+    } else {
+      match_result.has_match = false;
+    }
+  } else {
+    // bmm1-(bias)-softmax pattern
+    // users could be dbias besides bmm1grad1 bmm1grad2
+    if (dS->user_count() == 2) {
+      match_result.has_match = true;
+    } else if (dS->user_count() == 3) {
+      match_result = MatchDbias(match_result, dS,
+                                {match_result.matched_bmm_1_grad_1,
+                                 match_result.matched_bmm_1_grad_2});
+    } else {
+      match_result.has_match = false;
+    }
+  }
   return match_result;
 }
 // First, we look for the bmm2 gradient gemm 1 which takes the activation
@@ -972,7 +1175,7 @@ MatchBwdResult MatchBackwardBmms(HloInstruction* fwd_fmha_call,
     return matched_result;
   }
 
-  matched_result = MatchBmm1GradGemm1(matched_result, fwd_fmha_call, bmm_1);
+  matched_result = MatchBmm1GradGemm1(matched_result, bmm_1);
   if (!matched_result.has_match) {
     return matched_result;
   }
@@ -993,7 +1196,6 @@ MatchBwdResult MatchBwdMHAPatternsForCanonicalization(
   if (!match_result.has_match) {
     return match_result;
   }
-
   // Found default bmm-bmm backward graph.
   if (match_result.matched_bmm_2_grad_2->users().size() == 2 &&
       (match_result.matched_bmm_1_grad_1->IsUserOf(
@@ -1009,21 +1211,20 @@ MatchBwdResult MatchBwdMHAPatternsForCanonicalization(
   return match_result;
 }
 
-StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
-                                   bool need_canonicalization, bool is_training,
-                                   std::string& custom_call_name,
-                                   const DebugOptions& debug_options) {
+absl::StatusOr<bool> IsMHABlockSupported(
+    HloInstruction* bmm_1, HloInstruction* bmm_2, bool need_canonicalization,
+    bool is_training, bool is_causal_mask, bool& is_flash_attention,
+    std::string& custom_call_name, const DebugOptions& debug_options,
+    stream_executor::CudaComputeCapability cc,
+    stream_executor::dnn::VersionInfo cudnn_version) {
   if (MHACallHasDropout(custom_call_name) &&
       !debug_options.xla_gpu_fused_attention_use_cudnn_rng()) {
     VLOG(3) << "Using CUDNN RNG for fused attention dropout is not enabled.\n";
     return false;
   }
 
-  if (is_training &&
-      (custom_call_name != kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasSoftmaxCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget &&
-       custom_call_name != kCudnnfMHAScaleBiasMaskSoftmaxCallTarget)) {
+  // cuDNN FMHA requires softmax for backward
+  if (is_training && custom_call_name == kCudnnfMHABmmBmmCallTarget) {
     VLOG(3) << "Unsupported fused MHA training pattern.\n";
     return false;
   }
@@ -1039,7 +1240,39 @@ StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported, IsSupportedBMM1(bmm_1));
+  if (bmm_1->shape().rank() != 4 || bmm_2->shape().rank() != 4) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "Unsupported bmm rank for cuDNN MHA fusion:\n"
+              << bmm_1->ToString() << "\nOR\n"
+              << bmm_2->ToString() << "\n"
+              << "Only bmm with rank 4 is supported.";
+    }
+    return false;
+  }
+
+  // check if matched attention block is supported by cuDNN flash attention.
+  TF_ASSIGN_OR_RETURN(is_flash_attention,
+                      IsFlashAttention(bmm_1, is_causal_mask, custom_call_name,
+                                       cc, cudnn_version));
+  if (is_flash_attention) {
+    if (is_causal_mask) {
+      // if bias is causal mask, needs to remove bias from name
+      if (custom_call_name == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget) {
+        custom_call_name = kCudnnfMHASoftmaxDropoutCallTarget;
+      } else if (custom_call_name == kCudnnfMHAScaleBiasSoftmaxCallTarget) {
+        custom_call_name = kCudnnfMHASoftmaxCallTarget;
+      } else if (custom_call_name ==
+                 kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget) {
+        custom_call_name = kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+      } else if (custom_call_name == kCudnnfMHAScaleBiasMaskSoftmaxCallTarget) {
+        custom_call_name = kCudnnfMHAScaleMaskSoftmaxCallTarget;
+      }
+    }
+    return true;
+  }
+  // otherwise check if it is supported by regular attention
+  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported,
+                      IsSupportedBMM1(bmm_1, is_training));
   if (!is_bmm1_supported) return false;
   TF_ASSIGN_OR_RETURN(bool is_bmm2_supported,
                       IsSupportedBMM2(bmm_2, need_canonicalization));
@@ -1047,7 +1280,7 @@ StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
   return true;
 }
 
-StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
+absl::StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
     HloInstruction* bmm, HloComputation* comp) {
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Before FMHA Dot Cannonicalization: \n"
@@ -1085,7 +1318,7 @@ StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
   return new_dot;
 }
 
-StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
+absl::StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
     HloComputation* comp, HloInstruction* bmm, bool is_lhs,
     bool should_contracting_be_fastest) {
   const DotDimensionNumbers& dot_dims_bmm = bmm->dot_dimension_numbers();
@@ -1106,28 +1339,27 @@ StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
       is_lhs ? lhs_minor_to_major_bmm : rhs_minor_to_major_bmm;
 
   CHECK_EQ(contracting_dims.size(), 1);
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> non_contracting_dim_nums_bmm,
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> non_contracting_dims,
                       GetNonContractingDims(bmm->operand(bmm_operand)->shape(),
                                             batch_dims, contracting_dims));
-  CHECK_EQ(non_contracting_dim_nums_bmm.size(), 1);
+  CHECK_EQ(non_contracting_dims.size(), 1);
   HloInstruction* operand_bmm = bmm->mutable_operand(bmm_operand);
-  std::vector<int64_t> contracting_dims_to_check{contracting_dims[0]};
-  std::vector<int64_t> dims_to_set = should_contracting_be_fastest
-                                         ? contracting_dims_to_check
-                                         : non_contracting_dim_nums_bmm;
-  // If the dimension being checked(contracting or non-contracting) of the
-  // target operand is not the fastest moving dimension, make it so.
-  if (minor_to_major_to_check[0] != dims_to_set[0]) {
+  int64_t hidden_dim = should_contracting_be_fastest ? contracting_dims[0]
+                                                     : non_contracting_dims[0];
+  int64_t minor_dim = minor_to_major_to_check[0];
+  // If the hidden dim of the target operand is not the fastest moving
+  // dimension, make it so.
+  if (minor_dim != hidden_dim) {
     std::vector<int64_t> perm(bmm->shape().dimensions_size());
     std::iota(perm.begin(), perm.end(), 0);
-    std::swap(perm[dims_to_set[0]], perm[minor_to_major_to_check[0]]);
+    std::swap(perm[hidden_dim], perm[minor_dim]);
 
     if (is_lhs) {
-      new_dot_dims_bmm.set_lhs_contracting_dimensions(
-          0, non_contracting_dim_nums_bmm[0]);
+      new_dot_dims_bmm.set_lhs_contracting_dimensions(0,
+                                                      non_contracting_dims[0]);
     } else {
-      new_dot_dims_bmm.set_rhs_contracting_dimensions(
-          0, non_contracting_dim_nums_bmm[0]);
+      new_dot_dims_bmm.set_rhs_contracting_dimensions(0,
+                                                      non_contracting_dims[0]);
     }
 
     operand_bmm = comp->AddInstruction(
@@ -1135,7 +1367,7 @@ StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
             ShapeUtil::MakeShapeWithDenseLayout(
                 bmm->shape().element_type(),
                 Permute(operand_bmm->shape().dimensions(), perm),
-                rhs_minor_to_major_bmm),
+                minor_to_major_to_check),
             operand_bmm, perm),
         &operand_bmm->metadata());
     *((DynCast<HloDotInstruction>(bmm))->mutable_dot_dimension_numbers()) =
@@ -1144,16 +1376,20 @@ StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
   return operand_bmm;
 }
 
-StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
+absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     HloComputation* comp, HloInstruction* bmm_1, HloInstruction* bmm_2,
     HloInstruction* bias, HloInstruction* mask, HloInstruction* scale,
+    HloInstruction* reduce_sum, HloInstruction* softmax_input,
     double dropout_rate, std::string& custom_call_name,
     stream_executor::CudaComputeCapability cc, bool is_training, bool& changed,
-    bool& v_transposed) {
+    bool& v_transposed, bool is_causal_mask, bool is_flash_attention) {
   double scale_value = 1.0;
   HloInstruction* lhs_bmm1;
   HloInstruction* rhs_bmm1;
   HloInstruction* rhs_bmm2;
+  DotDimensionNumbers orig_bmm1_dot_dim = bmm_1->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm2_dot_dim = bmm_2->dot_dimension_numbers();
+
   TF_ASSIGN_OR_RETURN(rhs_bmm1, ChangeCheckedDimToFastest(
                                     comp, bmm_1, false /*is_lhs*/,
                                     true /*should_contracting_be_fastest*/));
@@ -1169,13 +1405,21 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     v_transposed = true;
   }
 
-  CudnnfMHABackendConfig fmha_config;
+  GpuBackendConfig gpu_config;
+  CudnnfMHABackendConfig& fmha_config =
+      *gpu_config.mutable_cudnn_fmha_backend_config();
+
   *fmha_config.mutable_bmm1_dot_dimension_numbers() =
       bmm_1->dot_dimension_numbers();
   *fmha_config.mutable_bmm2_dot_dimension_numbers() =
       bmm_2->dot_dimension_numbers();
 
   TF_RET_CHECK((dropout_rate >= 0.0 && dropout_rate <= 1.0));
+  // Restore original DotDimensionNumbers.
+  *((DynCast<HloDotInstruction>(bmm_1))->mutable_dot_dimension_numbers()) =
+      orig_bmm1_dot_dim;
+  *((DynCast<HloDotInstruction>(bmm_2))->mutable_dot_dimension_numbers()) =
+      orig_bmm2_dot_dim;
 
   // If scale node is assigned, extract value from it.
   if (scale != nullptr) {
@@ -1205,38 +1449,66 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     algorithm->set_is_cudnn_frontend(true);
     algorithm->mutable_workspace_size()->set_value(0);
   }
+
+  // set is flash attention here
+  // choose to use flash attention or non-fa attention based on this flag.
+  fmha_config.set_is_flash_attention(is_flash_attention);
+  // set is_causal_mask here
+  // choose to generate causal mask inside cuDNN attention or not
+  fmha_config.set_is_causal_mask(is_causal_mask);
+
+  // Output Order: {O, scratch, Fwd act*}
   const Shape& output_shape = bmm_2->shape();
 
   Shape call_shape;
   // Activation output is used by backward gemm.
   HloInstruction* activation_output = nullptr;
 
-  std::vector<Shape> output_shapes = {output_shape,
-                                      ShapeUtil::MakeShape(U8, {0})};
+  std::vector<Shape> output_shapes = {
+      output_shape,
+      ShapeUtil::MakeShape(
+          U8, {is_flash_attention
+                   ? 16
+                   : 0})};  // reserved 2 int64 for dropout seed and offset
   if (is_training) {
-    // TODO Flush attention will have a different shape in training.
     activation_output = bmm_2->mutable_operand(0);
     // Sometimes activation output is bitcast, the actual activation is the
-    // second user of the producer of bmm_2's first operand.
+    // other user of the producer of bmm_2's first operand.
     if (activation_output->user_count() < 2 &&
         activation_output->opcode() == HloOpcode::kBitcast) {
       HloInstruction* producer = activation_output->mutable_operand(0);
       TF_RET_CHECK(producer->user_count() == 2);
-      activation_output = producer->UserId(activation_output) == 0
-                              ? producer->users()[1]
-                              : producer->users()[0];
+      HloInstruction* bmm2_grad2_user =
+          producer->users()[0] == activation_output ? producer->users()[1]
+                                                    : producer->users()[0];
+      // might be (transpose) - bmm2_grad2
+      if (IsBatchedMatmul(bmm2_grad2_user)) {
+        activation_output = producer;
+      } else if (bmm2_grad2_user->opcode() == HloOpcode::kTranspose) {
+        activation_output = bmm2_grad2_user;
+      } else {
+        return Internal("Unexpected activation patterns");
+      }
     }
-    output_shapes.push_back(activation_output->shape());
+    // if it is flash attention, should output softmax stats to the bwd
+    if (is_flash_attention) {
+      TF_RET_CHECK(reduce_sum != nullptr);
+      output_shapes.push_back(
+          ShapeUtil::MakeShape(F32, reduce_sum->shape().dimensions()));
+    } else {
+      output_shapes.push_back(activation_output->shape());
+    }
   }
   call_shape = ShapeUtil::MakeTupleShape(output_shapes);
 
+  // Input Order: {Q, K, V, mask*, bias*}
   std::vector<HloInstruction*> operands = {lhs_bmm1, rhs_bmm1, rhs_bmm2};
   if (mask != nullptr) {
     HloInstruction* converted_mask = comp->AddInstruction(
         HloInstruction::CreateConvert(bmm_1->shape(), mask));
     operands.push_back(converted_mask);
   }
-  if (bias != nullptr) {
+  if ((!is_flash_attention || !is_causal_mask) && bias != nullptr) {
     HloInstruction* original_bias;
     HloInstruction* original_broadcast;
     // There will be cases where the bias is up-casted to wider float type,
@@ -1280,7 +1552,7 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   HloInstruction* fmha_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, operands, absl::string_view(custom_call_name)));
-  TF_RETURN_IF_ERROR(fmha_call->set_backend_config(fmha_config));
+  TF_RETURN_IF_ERROR(fmha_call->set_backend_config(gpu_config));
   TF_RETURN_IF_ERROR(SetFMHAInstructionName(bmm_1->GetModule(), fmha_call));
 
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
@@ -1288,9 +1560,15 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
       HloInstruction::CreateGetTupleElement(bmm_2->shape(), fmha_call, 0)));
 
   if (activation_output) {
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-        activation_output, HloInstruction::CreateGetTupleElement(
-                               activation_output->shape(), fmha_call, 2)));
+    HloInstruction* activation_gte =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            activation_output->shape(), fmha_call, 2));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstructionWithDifferentShape(
+                               activation_output, activation_gte,
+                               /*preserve_sharding=*/false,
+                               /*relay_control_dependency=*/false,
+                               /*remove_unused_operands=*/false)
+                           .status());
   }
 
   if (VLOG_IS_ON(2)) {
@@ -1300,49 +1578,33 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   return fmha_call;
 }
 
-bool IsDbiasOnlyUserBesidesGradGemm(HloInstruction* d_intermediate,
-                                    HloInstruction* bmm_1_grad_1,
-                                    HloInstruction* bmm_1_grad_2,
-                                    HloInstruction** dbias) {
-  auto user_count = d_intermediate->user_count();
-  HloInstruction* dbias_user = nullptr;
-  for (auto user : d_intermediate->users()) {
-    if (user == bmm_1_grad_1) {
-      user_count -= 1;
-    } else if (user == bmm_1_grad_2) {
-      user_count -= 1;
-    } else {
-      dbias_user = user;
-    }
-  }
-  HloInstruction* reduce;
-  auto ConsumeExtraConvert = [](HloInstruction** instr) {
-    Match((*instr)->users()[0], m::Convert(instr, m::Op()).WithOneUse());
-    return true;
-  };
-  // user_count == 1 && (reduce-> {convert} ->bitcast)
-  return user_count == 1 &&
-         Match(dbias_user, m::Reduce(&reduce, m::Op(), m::Op()).WithOneUse()) &&
-         ConsumeExtraConvert(&reduce) &&
-         Match(reduce->users()[0],
-               m::AnyOf<HloInstruction>(m::Reshape(dbias, m::Op()),
-                                        m::Bitcast(dbias, m::Op()))
-                   .WithOneUse());
-}
-
-StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
+absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloComputation* comp, HloInstruction* bmm_1_grad_1,
     HloInstruction* bmm_1_grad_2, HloInstruction* bmm_2_grad_1,
     HloInstruction* bmm_2_grad_2, HloInstruction* fwd_fmha_call,
-    HloInstruction* d_intermediate, HloInstruction* mask,
-    std::string& bwd_custom_call_name, bool fwd_bmm_2_canonicalized,
-    bool is_bmm2_grad1_canonicalized) {
+    HloInstruction* dbias, HloInstruction* mask, HloInstruction* bias,
+    std::string& bwd_custom_call_name) {
   HloInstruction* rhs_bmm1_grad_gemm1;
   HloInstruction* lhs_bmm1_grad_gemm2;
   HloInstruction* lhs_bmm2_grad_gemm1;
   HloInstruction* rhs_bmm2_grad_gemm2;
   HloInstruction* d_output_grad;
 
+  DotDimensionNumbers orig_bmm1_grad1_config =
+      bmm_1_grad_1->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm1_grad2_config =
+      bmm_1_grad_2->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm2_grad1_config =
+      bmm_2_grad_1->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm2_grad2_config =
+      bmm_2_grad_2->dot_dimension_numbers();
+
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      fwd_fmha_call->backend_config<GpuBackendConfig>());
+  CudnnfMHABackendConfig fwd_config = gpu_config.cudnn_fmha_backend_config();
+  bool is_flash_attention = fwd_config.is_flash_attention();
+  bool is_causal_mask = fwd_config.is_causal_mask();
+  CudnnfMHABackendConfig bwd_fmha_config;
   // Q tensor
   TF_ASSIGN_OR_RETURN(
       rhs_bmm1_grad_gemm1,
@@ -1353,67 +1615,74 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
       lhs_bmm1_grad_gemm2,
       ChangeCheckedDimToFastest(comp, bmm_1_grad_2, false /*is_lhs*/,
                                 false /*should_contracting_be_fastest*/));
-  // Forward activation
+  // P tensor
   TF_ASSIGN_OR_RETURN(
       lhs_bmm2_grad_gemm1,
       ChangeCheckedDimToFastest(comp, bmm_2_grad_1, true /*is_lhs*/,
                                 false /*should_contracting_be_fastest*/));
+
+  // Forward activation
+  // if it is not flash attention, fwd activation is the P tensor
+  // else it is the softmax_stats
+  HloInstruction* fwd_act;
+  if (fwd_config.is_flash_attention()) {
+    auto fwd_act_index = 2;
+    fwd_act = comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+        fwd_fmha_call->shape().tuple_shapes(fwd_act_index), fwd_fmha_call,
+        fwd_act_index));
+  } else {
+    fwd_act = lhs_bmm2_grad_gemm1;
+  }
+
   // V tensor
   TF_ASSIGN_OR_RETURN(
       rhs_bmm2_grad_gemm2,
       ChangeCheckedDimToFastest(comp, bmm_2_grad_2, false /*is_lhs*/,
                                 true /*should_contracting_be_fastest*/));
-  // d output
+  // d output to bmm2_grad2
   // Since d_o is the input of 2 bmms, we set the dim number using the
   // constraint
   // -> the contracting dimension of the lhs of bmm_2_grad_2 needs to be the
   // fastest moving dimension.
-  TF_ASSIGN_OR_RETURN(d_output_grad, ChangeCheckedDimToFastest(
-                                         comp, bmm_2_grad_2, true /*is_lhs*/,
-                                         true /*check_contracting_dim*/));
-  // Operand order {Q, K, V, Fwd act, d_o, mask*}
+  TF_ASSIGN_OR_RETURN(
+      d_output_grad,
+      ChangeCheckedDimToFastest(comp, bmm_2_grad_2, true /*is_lhs*/,
+                                true /*should_contracting_be_fastest*/));
+  // d output to bmm2_grad1
+  // we don't use this value but we call this to make sure dot number is being
+  // set correctly
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * bmm_2_grad_1_rhs,
+      ChangeCheckedDimToFastest(comp, bmm_2_grad_1, false /*is_lhs*/,
+                                false /*should_contracting_be_fastest*/));
+  (void)bmm_2_grad_1_rhs;
+  // Operand order: {Q, K, V, Fwd act, d_o, mask*, bias*, O*}
   std::vector<HloInstruction*> operands = {
-      rhs_bmm1_grad_gemm1, lhs_bmm1_grad_gemm2, rhs_bmm2_grad_gemm2,
-      lhs_bmm2_grad_gemm1, d_output_grad};
+      rhs_bmm1_grad_gemm1, lhs_bmm1_grad_gemm2, rhs_bmm2_grad_gemm2, fwd_act,
+      d_output_grad};
   if (mask) {
     HloInstruction* converted_mask = comp->AddInstruction(
         HloInstruction::CreateConvert(bmm_2_grad_2->shape(), mask));
     operands.push_back(converted_mask);
   }
-  TF_ASSIGN_OR_RETURN(CudnnfMHABackendConfig fwd_config,
-                      fwd_fmha_call->backend_config<CudnnfMHABackendConfig>());
-  CudnnfMHABackendConfig bwd_fmha_config;
 
-  // If forward bmm_2 is canonicalized, the contracting dimension of lhs
-  // of bmm_2_grad_1 needs to be changed to the non-contracting dimension.
-
-  if (fwd_bmm_2_canonicalized) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<int64_t> bmm_2_grad_1_lhs_non_contracting_dims,
-        GetNonContractingDims(
-            bmm_2_grad_1->shape(),
-            bmm_2_grad_1->dot_dimension_numbers().lhs_batch_dimensions(),
-            bmm_2_grad_1->dot_dimension_numbers()
-                .lhs_contracting_dimensions()));
-    CHECK_EQ(bmm_2_grad_1_lhs_non_contracting_dims.size(), 1);
-    (DynCast<HloDotInstruction>(bmm_2_grad_1))
-        ->mutable_dot_dimension_numbers()
-        ->set_lhs_contracting_dimensions(
-            0, bmm_2_grad_1_lhs_non_contracting_dims[0]);
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> bmm_2_grad_1_new_contracting_dims,
-      GetNonContractingDims(
-          bmm_2_grad_1->shape(),
-          bmm_2_grad_1->dot_dimension_numbers().rhs_batch_dimensions(),
-          bmm_2_grad_1->dot_dimension_numbers().rhs_contracting_dimensions()));
-
-  if (is_bmm2_grad1_canonicalized) {
-    (DynCast<HloDotInstruction>(bmm_2_grad_1))
-        ->mutable_dot_dimension_numbers()
-        ->set_rhs_contracting_dimensions(0,
-                                         bmm_2_grad_1_new_contracting_dims[0]);
+  // if is flash attention, add fwd output to input list
+  if (is_flash_attention) {
+    if (!is_causal_mask && bias) {
+      operands.push_back(bias);
+    }
+    HloInstruction* fwd_output;
+    for (auto user : fwd_fmha_call->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == 0) {
+        fwd_output = user;
+      }
+    }
+    // should be able to find the instruction
+    TF_RET_CHECK(fwd_output != nullptr);
+    // check dO and O have the same layout as it is required by cuDNN
+    TF_RET_CHECK(fwd_output->shape() == d_output_grad->shape());
+    operands.push_back(fwd_output);
   }
 
   *bwd_fmha_config.mutable_bmm1_grad_gemm1_dot_dimension_numbers() =
@@ -1425,12 +1694,26 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   *bwd_fmha_config.mutable_bmm2_grad_gemm2_dot_dimension_numbers() =
       bmm_2_grad_2->dot_dimension_numbers();
 
+  // Restore original DotDimensionNumbers
+  *((DynCast<HloDotInstruction>(bmm_1_grad_1))
+        ->mutable_dot_dimension_numbers()) = orig_bmm1_grad1_config;
+  *((DynCast<HloDotInstruction>(bmm_1_grad_2))
+        ->mutable_dot_dimension_numbers()) = orig_bmm1_grad2_config;
+  *((DynCast<HloDotInstruction>(bmm_2_grad_1))
+        ->mutable_dot_dimension_numbers()) = orig_bmm2_grad1_config;
+  *((DynCast<HloDotInstruction>(bmm_2_grad_2))
+        ->mutable_dot_dimension_numbers()) = orig_bmm2_grad2_config;
+
   bwd_fmha_config.set_fmha_scale(fwd_config.fmha_scale());
   bwd_fmha_config.set_dropout_rate(fwd_config.dropout_rate());
   // Set to an arbitrary seed for now, seed is not exposed to XLA in HLO
   // graph.
   // TODO Find a way to compute original seed from dropout keys.
   bwd_fmha_config.set_seed(fwd_config.seed());
+
+  // Set is flash attention
+  bwd_fmha_config.set_is_flash_attention(is_flash_attention);
+  bwd_fmha_config.set_is_causal_mask(is_causal_mask);
 
   *bwd_fmha_config.mutable_intermediate_tensor_shape() =
       fwd_config.intermediate_tensor_shape();
@@ -1448,28 +1731,44 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   }
 
   // Output order:
-  // dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1),
-  // d_intermediate_tensor, d_bias_tensor
+  // {dQ(bmm_1_grad_2), dK(bmm_1_grad_1), dV(bmm_2_grad_1),
+  // d_intermediate_tensor*, softmax_sum*, d_Q_accum*, scratch, dbias*}
   std::vector<Shape> output_shapes = {
       bmm_1_grad_2->shape(), bmm_1_grad_1->shape(), bmm_2_grad_1->shape()};
-  // d_intermediate is required to be output
-  output_shapes.push_back(lhs_bmm2_grad_gemm1->shape());
-
-  // Reserved placeholder for workspace
-  output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
-
-  HloInstruction* dbias = nullptr;
-  if (d_intermediate &&
-      IsDbiasOnlyUserBesidesGradGemm(d_intermediate, bmm_1_grad_1, bmm_1_grad_2,
-                                     &dbias)) {
-    output_shapes.push_back(dbias->shape());
+  if (!fwd_config.is_flash_attention()) {
+    output_shapes.push_back(lhs_bmm2_grad_gemm1->shape());
+  } else {
+    // softmax_sum, d_Q_accum
+    // add softmax sum here and change the data type
+    // softmax sum and d_Q_accum should both be fp32 datatype
+    output_shapes.push_back(
+        ShapeUtil::MakeShape(F32, fwd_act->shape().dimensions()));
+    output_shapes.push_back(
+        ShapeUtil::MakeShape(F32, bmm_1_grad_2->shape().dimensions()));
   }
+  // Reserved placeholder for workspace
+  output_shapes.push_back(ShapeUtil::MakeShape(
+      U8, {is_flash_attention
+               ? 16
+               : 0}));  // reserved 2 int64 for dropout seed and offset
 
+  if (dbias) {
+    // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
+    // so we add a dimension of 1 to existing dbias' shape.
+    std::vector<int64_t> dbias_shape_vector =
+        SpanToVector(dbias->shape().dimensions());
+    dbias_shape_vector.insert(dbias_shape_vector.begin(), 1);
+    Shape cudnn_dbias_shape =
+        ShapeUtil::MakeShape(dbias->shape().element_type(), dbias_shape_vector);
+    output_shapes.push_back(cudnn_dbias_shape);
+  }
   Shape call_shape = ShapeUtil::MakeTupleShape(output_shapes);
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, operands, absl::string_view(bwd_custom_call_name)));
-  TF_RETURN_IF_ERROR(fmha_bwd_call->set_backend_config(bwd_fmha_config));
+  GpuBackendConfig bwd_gpu_config;
+  *bwd_gpu_config.mutable_cudnn_fmha_backend_config() = bwd_fmha_config;
+  TF_RETURN_IF_ERROR(fmha_bwd_call->set_backend_config(bwd_gpu_config));
   TF_RETURN_IF_ERROR(
       SetFMHAInstructionName(bmm_1_grad_1->GetModule(), fmha_bwd_call));
 
@@ -1485,33 +1784,91 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
       bmm_2_grad_1, HloInstruction::CreateGetTupleElement(bmm_2_grad_1->shape(),
                                                           fmha_bwd_call, 2)));
-  // d_intermediate tensor
+
   if (dbias) {
-    // does not really need d_intermediate
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-        dbias, HloInstruction::CreateGetTupleElement(dbias->shape(),
-                                                     fmha_bwd_call, 5)));
+    // Reshape fmha dbias output to original user's input shape.
+    // If the reshape doesn't involve physical data movement,
+    // algebraic simplifer can change it to a no-op bitcast.
+    Shape original_shape = dbias->shape();
+    HloInstruction* dbias_user = dbias->users()[0];
+    HloInstruction* cudnn_dbias_output =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            output_shapes.back(), fmha_bwd_call, 5));
+    HloInstruction* reshape_dbias = comp->AddInstruction(
+        HloInstruction::CreateReshape(original_shape, cudnn_dbias_output));
+    TF_RETURN_IF_ERROR(dbias_user->ReplaceOperandWith(
+        dbias_user->operand_index(dbias), reshape_dbias));
+
+    TF_RETURN_IF_ERROR(
+        comp->ReplaceInstructionWithDifferentShape(dbias, cudnn_dbias_output));
   }
   return true;
 }
+
+Status RestoreFwdGraph(
+    HloComputation* comp, HloInstruction* fwd_fmha_call, HloInstruction* bmm2,
+    HloInstruction* activation, HloInstruction* original_bmm2_producer0,
+    HloInstruction* original_bmm2_producer1,
+    std::vector<HloInstruction*>& original_activation_producers,
+    bool bmm_2_need_canonicalization) {
+  // If backward pattern is not matched, we need to restore the
+  // original graph structure.
+  // Replacing new GTEs added by forward FMHA call with cloned old
+  // activations and bmm2.
+  HloInstruction* output_gte = fwd_fmha_call->users()[0];
+  HloInstruction* activation_gte = fwd_fmha_call->users()[1];
+  std::string suffix = "fmha_no_match_clone";
+  HloInstruction* cloned_activation =
+      comp->AddInstruction(activation->CloneWithNewOperands(
+          activation->shape(), original_activation_producers, suffix));
+
+  // Since old activation is detached by forward FMHA rewrite, we need
+  // to use the newly cloned activation.
+  HloInstruction* lhs = activation == original_bmm2_producer0
+                            ? cloned_activation
+                            : original_bmm2_producer0;
+  HloInstruction* rhs = activation == original_bmm2_producer0
+                            ? original_bmm2_producer1
+                            : cloned_activation;
+  HloInstruction* cloned_bmm2 = comp->AddInstruction(
+      bmm2->CloneWithNewOperands(bmm2->shape(), {lhs, rhs}, suffix));
+  if (bmm_2_need_canonicalization) {
+    TF_RET_CHECK(output_gte->users()[0]->opcode() == HloOpcode::kTranspose);
+    TF_RETURN_IF_ERROR(
+        comp->ReplaceInstruction(output_gte->users()[0], cloned_bmm2));
+  } else {
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(output_gte, cloned_bmm2));
+  }
+  TF_RETURN_IF_ERROR(
+      comp->ReplaceInstruction(activation_gte, cloned_activation));
+  return OkStatus();
+}
 }  // namespace
 
-StatusOr<bool> CudnnFusedMHARewriter::Run(
+absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;
+  // we use this set to keep track of all already matched attention block
+  absl::flat_hash_set<HloInstruction*> matched_bmm1;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     const DebugOptions& debug_options =
         comp->parent()->config().debug_options();
+    const auto cudnn_version =
+        GetRealCuDNNVersion(cudnn_version_, stream_executor_);
+#if CUDA_VERSION < 12000
+    return false;
+#endif
     if (!debug_options.xla_gpu_enable_cudnn_fmha() ||
         !IsComputeCapabilityAndCudnnSupported(
-            compute_capability_, cudnn_version_, stream_executor_,
+            compute_capability_, cudnn_version,
             stream_executor::dnn::VersionInfo(8, 8, 0))) {
       return false;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
       bool v_transposed = false;
+      bool changed = false;
       MatchFwdResult matched_result =
           MatchFwdMHAPatternsForCanonicalization(instr);
       if (!matched_result.has_match) {
@@ -1519,13 +1876,43 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
       }
       // We check the validity of bmms here before canonicalization so we don't
       // modify the graph if mha fusion is not possible
+      // Relax 512 constraint if it is flash attention
       TF_ASSIGN_OR_RETURN(
           bool is_mha_module_supported,
           IsMHABlockSupported(
               matched_result.matched_bmm_1, matched_result.matched_bmm_2,
               matched_result.need_canonicalization, matched_result.is_training,
-              matched_result.matched_custom_call_name, debug_options));
+              matched_result.is_causal_mask, matched_result.is_flash_attention,
+              matched_result.matched_custom_call_name, debug_options,
+              compute_capability_, cudnn_version));
+
       if (!is_mha_module_supported) continue;
+      // If we have an activation with more than 1 users in non-training mode,
+      // we cannot rewrite the graph. So skip processing the rest.
+      HloInstruction* activation =
+          matched_result.need_canonicalization
+              ? matched_result.matched_bmm_2->mutable_operand(1)
+              : matched_result.matched_bmm_2->mutable_operand(0);
+      if (!matched_result.is_training && activation->user_count() > 1) {
+        VLOG(2)
+            << "Activation: " << activation->ToString()
+            << " cannot have more than 1 users in non-training mode. Skipping.";
+        continue;
+      }
+      HloInstruction* original_bmm2_producer0 =
+          matched_result.matched_bmm_2->mutable_operand(0);
+      HloInstruction* original_bmm2_producer1 =
+          matched_result.matched_bmm_2->mutable_operand(1);
+
+      HloInstruction* original_bmm2 = matched_result.matched_bmm_2;
+      std::vector<HloInstruction*> original_activation_producers;
+      for (HloInstruction* operand : activation->mutable_operands()) {
+        original_activation_producers.push_back(operand);
+      }
+      // We make sure no attention block is matched and replaced twice here
+      if (!matched_bmm1.insert(matched_result.matched_bmm_1).second) {
+        continue;
+      }
       // If we need to canonicalize the bmm, we will assign the newly
       // canonicalized bmm to bmm_2.
       if (matched_result.need_canonicalization) {
@@ -1533,7 +1920,7 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
                             CanonicalizeBatchedGemmForcuDNNFMHA(
                                 matched_result.matched_bmm_2, comp));
       }
-      bool changed = false;
+
       // Fuse the bmms and intermediate nodes into fMHA call, the fused call
       // will replace bmm_2.
       TF_ASSIGN_OR_RETURN(
@@ -1541,40 +1928,56 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
           FuseFwdMultiHeadedAttentionBlock(
               comp, matched_result.matched_bmm_1, matched_result.matched_bmm_2,
               matched_result.matched_bias, matched_result.matched_mask,
-              matched_result.matched_scale, matched_result.matched_dropout_rate,
+              matched_result.matched_scale, matched_result.matched_reduce_sum,
+              matched_result.matched_softmax_input,
+              matched_result.matched_dropout_rate,
               matched_result.matched_custom_call_name, compute_capability_,
-              matched_result.is_training, changed, v_transposed));
+              matched_result.is_training, changed, v_transposed,
+              matched_result.is_causal_mask,
+              matched_result.is_flash_attention));
       any_changed |= changed;
-
       if (matched_result.is_training) {
-        // if fwd uses mask input, then bwd needs cudnn 8.9.1 to take in a mask
-        // input if cudnn version < 8.9.1 we won't lower the bwd pass
-        if (matched_result.matched_mask != nullptr &&
-            !IsComputeCapabilityAndCudnnSupported(
-                compute_capability_, cudnn_version_, stream_executor_,
-                stream_executor::dnn::VersionInfo(8, 9, 1))) {
-          continue;
-        }
         MatchBwdResult matched_bwd_result =
             MatchBwdMHAPatternsForCanonicalization(
                 fwd_fmha_call, matched_result.matched_bmm_1,
                 matched_result.matched_mask, v_transposed);
         if (!matched_bwd_result.has_match) {
+          VLOG(2) << "Backward pattern not matching, skipping.";
+          // restore fwd graph if bwd pattern match failed
+          TF_RETURN_IF_ERROR(
+              RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,
+                              original_bmm2_producer0, original_bmm2_producer1,
+                              original_activation_producers,
+                              matched_result.need_canonicalization));
           continue;
         }
-        // check if dbias is the only user of d_intermediate besides
-        // bmm_1_grad_1 and bmm_1_grad_2 and the cudnn version is > 8.9.1. We
+        // if fwd uses mask input, then bwd needs cudnn 8.9.1 to take in a mask
+        // input if cudnn version < 8.9.1 we won't lower the bwd pass
+        if (matched_result.matched_mask != nullptr &&
+            !IsComputeCapabilityAndCudnnSupported(
+                compute_capability_, cudnn_version,
+                stream_executor::dnn::VersionInfo(8, 9, 1))) {
+          // restore fwd graph if bwd pattern match failed
+          TF_RETURN_IF_ERROR(
+              RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,
+                              original_bmm2_producer0, original_bmm2_producer1,
+                              original_activation_producers,
+                              matched_result.need_canonicalization));
+          continue;
+        }
+        // check if dbias exist and the cudnn version is > 8.9.1. We
         // won't lower bwd if this condition is not met as we won't deal with
         // unswizzling now
-        HloInstruction* dbias = nullptr;
-        if (matched_bwd_result.matched_d_intermediate &&
-            !IsDbiasOnlyUserBesidesGradGemm(
-                matched_bwd_result.matched_d_intermediate,
-                matched_bwd_result.matched_bmm_1_grad_1,
-                matched_bwd_result.matched_bmm_1_grad_2, &dbias) &&
+        if (matched_bwd_result.matched_dbias &&
             !IsComputeCapabilityAndCudnnSupported(
-                compute_capability_, cudnn_version_, stream_executor_,
+                compute_capability_, cudnn_version,
                 stream_executor::dnn::VersionInfo(8, 9, 1))) {
+          // restore fwd graph if bwd pattern match failed
+          TF_RETURN_IF_ERROR(
+              RestoreFwdGraph(comp, fwd_fmha_call, original_bmm2, activation,
+                              original_bmm2_producer0, original_bmm2_producer1,
+                              original_activation_producers,
+                              matched_result.need_canonicalization));
           continue;
         }
         // Canonicalize gemms
@@ -1611,11 +2014,9 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
                 matched_bwd_result.matched_bmm_1_grad_2,
                 matched_bwd_result.matched_bmm_2_grad_1,
                 matched_bwd_result.matched_bmm_2_grad_2, fwd_fmha_call,
-                matched_bwd_result.matched_d_intermediate,
-                matched_result.matched_mask,
-                matched_bwd_result.matched_custom_call_name,
-                matched_result.need_canonicalization,
-                matched_bwd_result.bmm_2_grad_1_need_canonicalization));
+                matched_bwd_result.matched_dbias, matched_result.matched_mask,
+                matched_result.matched_bias,
+                matched_bwd_result.matched_custom_call_name));
         any_changed |= changed;
       }
     }

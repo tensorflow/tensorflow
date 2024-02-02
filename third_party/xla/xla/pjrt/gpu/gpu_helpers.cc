@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/service/platform_util.h"
 #include "xla/statusor.h"
-#include "xla/stream_executor/device_host_allocator.h"
-#include "xla/stream_executor/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/device_host_allocator.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/util.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/util/env_var.h"
@@ -84,7 +84,9 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   int device_ordinal = executor->device_ordinal();
   auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
       executor, tsl::PlatformDeviceId(device_ordinal),
-      /*use_unified_memory=*/enable_unified_memory,
+      /*memory_type=*/
+      enable_unified_memory ? stream_executor::MemoryType::kUnified
+                            : stream_executor::MemoryType::kDevice,
       /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
       /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
 
@@ -114,6 +116,44 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   return std::make_unique<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
+}
+
+// Builds a BFCAllocator for all local GPUs that uses collective memory.
+StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size) {
+  int device_ordinal = executor->device_ordinal();
+  auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+      executor, tsl::PlatformDeviceId(device_ordinal),
+      /*memory_type=*/stream_executor::MemoryType::kCollective,
+      /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
+      /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
+
+  int64_t free_memory;
+  int64_t total_memory;
+  if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+    return Unavailable("Failed to query available memory from device %i",
+                       device_ordinal);
+  }
+  bool preallocate = collective_memory_size != 0;
+  size_t allocator_memory =
+      preallocate ? collective_memory_size : total_memory * memory_fraction;
+
+  if (preallocate) {
+    LOG(INFO) << "XLA backend allocating " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CollectiveBFCAllocator.";
+  } else {
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CollectiveBFCAllocator.";
+  }
+
+  tsl::BFCAllocator::Options opts;
+  opts.allow_growth = !preallocate;
+  return std::make_unique<tsl::BFCAllocator>(
+      std::move(sub_allocator), allocator_memory,
+      absl::StrCat("GPU_collectivememory_", device_ordinal, "_bfc"), opts);
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU

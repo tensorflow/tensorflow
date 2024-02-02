@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -39,13 +40,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/gpu/conditional_thunk.h"
-#include "xla/service/gpu/copy_thunk.h"
-#include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/memset_thunk.h"
-#include "xla/service/gpu/sequential_thunk.h"
-#include "xla/service/gpu/while_thunk.h"
+#include "xla/service/gpu/runtime3/conditional_thunk.h"
+#include "xla/service/gpu/runtime3/copy_thunk.h"
+#include "xla/service/gpu/runtime3/kernel_thunk.h"
+#include "xla/service/gpu/runtime3/memset_thunk.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/while_thunk.h"
 
 namespace xla {
 namespace gpu {
@@ -203,9 +204,9 @@ static absl::StatusOr<std::unique_ptr<ThunkSequence>> Match(
 
   // Check if we know how to lower a Thunk to Gpu operation(s).
   auto is_supported = [](const std::unique_ptr<Thunk>& thunk) -> bool {
-    Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy,
-                           Thunk::kMemset32BitValue, Thunk::kMemzero,
-                           Thunk::kSequential};
+    Thunk::Kind kinds[] = {Thunk::kKernel,  Thunk::kCustomKernel,
+                           Thunk::kCopy,    Thunk::kMemset32BitValue,
+                           Thunk::kMemzero, Thunk::kSequential};
     return llvm::any_of(
         kinds, [&](Thunk::Kind kind) { return thunk->kind() == kind; });
   };
@@ -281,6 +282,57 @@ static void LowerKernelThunkToGpuOp(
                          kernel_args);
 }
 
+static void LowerCustomKernelThunkToGpuOp(
+    Operation* op, OpBuilder& b, GPUModuleOp gpu_module,
+    const CustomKernelThunk& thunk, const SmallVector<Value>& kernel_args,
+    const SmallVector<bool>& kernel_args_written) {
+  mlir::Location loc = op->getLoc();
+  b.setInsertionPointToStart(gpu_module.getBody());
+
+  auto func_type =
+      b.getType<FunctionType>(TypeRange(ValueRange(kernel_args)), TypeRange());
+
+  gpu::GPUFuncOp kernel_func =
+      b.create<gpu::GPUFuncOp>(loc, thunk.custom_kernel_name(), func_type);
+  kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
+
+  for (int i = 0; i < kernel_args.size(); ++i) {
+    if (kernel_args_written[i]) {
+      kernel_func.setArgAttr(i, "lmhlo.written", b.getUnitAttr());
+    }
+  }
+
+  b.setInsertionPointToEnd(&kernel_func.getBody().back());
+  b.create<ReturnOp>(loc);
+
+  auto make_const_idx = [&](int64_t value) {
+    auto attr = b.getIndexAttr(value);
+    return b.create<arith::ConstantOp>(loc, attr).getResult();
+  };
+
+  auto make_kernel_dim3 = [&](const auto& dim3) {
+    return KernelDim3{make_const_idx(dim3.x), make_const_idx(dim3.y),
+                      make_const_idx(dim3.z)};
+  };
+
+  b.setInsertionPoint(op);
+  auto launch_dims = thunk.launch_dimensions();
+  auto grid_size = make_kernel_dim3(launch_dims.block_counts());
+  auto block_size = make_kernel_dim3(launch_dims.thread_counts_per_block());
+  auto shmem_size = b.create<arith::ConstantOp>(
+      loc, b.getI32IntegerAttr(thunk.shmem_bytes()));
+
+  auto launch_func = b.create<LaunchFuncOp>(
+      loc, kernel_func, grid_size, block_size, shmem_size, kernel_args);
+
+  if (auto computation = op->getAttr("__custom_fusion_computation")) {
+    launch_func->setAttr("__custom_fusion_computation", computation);
+  } else {
+    launch_func->setAttr("__custom_fusion_computation",
+                         b.getStringAttr("<UNKNOWN>"));
+  }
+}
+
 static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
                               GPUModuleOp gpu_module, Thunk* thunk) {
   auto loc = op->getLoc();
@@ -338,6 +390,23 @@ static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
 
     LowerKernelThunkToGpuOp(op, b, gpu_module, *kernel_thunk, kernel_args,
                             kernel_args_written);
+    return;
+  }
+
+  if (thunk->kind() == Thunk::kCustomKernel) {
+    const auto* kernel_thunk = static_cast<const CustomKernelThunk*>(thunk);
+
+    SmallVector<Value> kernel_args;
+    for (auto kernel_arg : kernel_thunk->values())
+      kernel_args.push_back(kernel_arg);
+
+    SmallVector<bool> kernel_args_written;
+    for (auto written : kernel_thunk->written()) {
+      kernel_args_written.push_back(written);
+    }
+
+    LowerCustomKernelThunkToGpuOp(op, b, gpu_module, *kernel_thunk, kernel_args,
+                                  kernel_args_written);
     return;
   }
 

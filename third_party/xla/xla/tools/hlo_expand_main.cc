@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,9 +97,9 @@ int main(int argc, char** argv) {
     config.input_format = std::string(tsl::io::Extension(hlo_filename));
   }
   if (config.input_format != "hlo" && config.input_format != "pb" &&
-      config.input_format != "pbtxt") {
+      config.input_format != "pbtxt" && config.input_format != "txt") {
     std::cerr << absl::StrCat(
-        "input_format must be specified as [hlo|pb|pbtxt].\n", kHelpString);
+        "input_format must be specified as [hlo|pb|pbtxt|txt].\n", kHelpString);
     return 1;
   }
 
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
             : std::string(tsl::io::Extension(output_filename));
   }
   if (config.output_format != "hlo" && config.output_format != "pb" &&
-      config.output_format != "pbtxt") {
+      config.output_format != "pbtxt" && config.output_format != "txt") {
     std::cerr << absl::StrCat(
         "output_format must be specified as [hlo|pb|pbtxt].\n", kHelpString);
     return 1;
@@ -126,13 +126,12 @@ int main(int argc, char** argv) {
   // 1. Load HloModule from stdin or file.
   absl::StatusOr<std::unique_ptr<xla::HloModule>> status_or_module;
   if (hlo_filename == "-") {
-    std::string stdin;
-    std::getline(std::cin, stdin, static_cast<char>(EOF));
-    status_or_module = xla::LoadModuleFromData(stdin, config.input_format);
+    std::string input;
+    std::getline(std::cin, input, static_cast<char>(EOF));
+    status_or_module = xla::LoadModuleFromData(input, config.input_format);
   } else {
-    status_or_module = xla::LoadModuleFromFile(
-        hlo_filename, xla::hlo_module_loader_details::Config(),
-        config.input_format);
+    status_or_module =
+        xla::LoadModuleFromFile(hlo_filename, config.input_format);
   }
   if (!status_or_module.ok()) {
     std::cerr << status_or_module.status() << "\nTry: hlo-expand --help\n";
@@ -141,10 +140,10 @@ int main(int argc, char** argv) {
 
   // 2. Add a set of passes to the HloPassPipeline.
   xla::HloPassPipeline pipeline("expand_pass_pipeline");
-  AddPassesToPipeline(config, pipeline);
+  auto& hlo_module = status_or_module.value();
+  AddPassesToPipeline(config, pipeline, hlo_module->config());
 
   // 3. Run a set of expander passes on the module.
-  auto& hlo_module = status_or_module.value();
   auto pipeline_status = pipeline.Run(hlo_module.get()).status();
   if (!pipeline_status.ok()) {
     std::cerr << pipeline_status;
@@ -153,14 +152,14 @@ int main(int argc, char** argv) {
 
   // 4. Optionally print the output to stdout.
   if (output_filename == "-") {
-    if (config.output_format == "hlo") {
+    if (config.output_format == "hlo" || config.output_format == "txt") {
       std::cout << hlo_module->ToString();
     } else if (config.output_format == "pbtxt") {
       std::cout << hlo_module->ToProto().DebugString();
     } else {
       std::cerr << absl::StrCat(
           "Printing to stdout must specify supported "
-          "output_format=[hlo|pbtxt].\n",
+          "output_format=[hlo|pbtxt|txt].\n",
           kHelpString);
       return 1;
     }

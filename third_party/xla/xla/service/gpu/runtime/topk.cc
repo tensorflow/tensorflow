@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,9 +47,9 @@ static absl::Status TopkImpl(const ServiceExecutableRunOptions* run_options,
   size_t batch_size = has_batch ? data.sizes[0] : 1;
   size_t n = has_batch ? data.sizes[1] : data.sizes[0];
   size_t k = has_batch ? top_elements.sizes[1] : top_elements.sizes[0];
-  return RunTopk(se::gpu::AsGpuStreamValue(run_options->stream()), data.dtype,
-                 data.data, n, top_elements.data,
-                 static_cast<uint32_t*>(indices.data), k, batch_size);
+  return RunTopk(run_options->stream(), data.dtype, GetDeviceAddress(data), n,
+                 GetDeviceAddress(top_elements), GetDeviceAddress(indices), k,
+                 batch_size);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

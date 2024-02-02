@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/layout_util.h"
@@ -523,7 +524,8 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-    const optional<ErrorSpec>& error, bool run_hlo_passes) {
+    const optional<ErrorSpec>& error, bool run_hlo_passes,
+    std::optional<int64_t> args_max_bits_of_precision) {
   const auto params_0 = module_0->entry_computation()->parameter_instructions();
   const auto params_1 = module_1->entry_computation()->parameter_instructions();
   for (int i = 0; i < params_0.size(); ++i) {
@@ -559,11 +561,14 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     }
   }
 
-  auto fake_arguments = MakeFakeArguments(module_0.get()).value();
+  absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
+      module_0.get(), /*pseudo_random=*/true, /*use_large_range=*/false,
+      /*treat_gte_as_data_formatting=*/false, args_max_bits_of_precision);
+  CHECK_OK(fake_arguments);
 
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
-      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      *fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
   return RunAndCompareTwoModules(std::move(module_0), std::move(module_1),
@@ -572,7 +577,8 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     string_view hlo_string_module_0, string_view hlo_string_module_1,
-    const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
+    const std::optional<ErrorSpec>& error, bool run_hlo_passes,
+    std::optional<int64_t> args_max_bits_of_precision) {
   auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
   if (!module_0_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -588,7 +594,30 @@ HloTestBase::RunAndCompareTwoModulesInternal(
   }
   return RunAndCompareTwoModules(std::move(module_0_or_status).value(),
                                  std::move(module_1_or_status).value(), error,
-                                 run_hlo_passes);
+                                 run_hlo_passes, args_max_bits_of_precision);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
+    absl::string_view hlo_string_module_0,
+    absl::string_view hlo_string_module_1,
+    const absl::Span<Literal* const> arguments,
+    const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
+  auto module_0_or_status = ParseAndReturnVerifiedModule(hlo_string_module_0);
+  if (!module_0_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_0_or_status.status().ToString();
+  }
+
+  auto module_1_or_status = ParseAndReturnVerifiedModule(hlo_string_module_1);
+  if (!module_1_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_1_or_status.status().ToString();
+  }
+  return RunAndCompareTwoModules(std::move(module_0_or_status).value(),
+                                 std::move(module_1_or_status).value(),
+                                 arguments, error, run_hlo_passes);
 }
 
 ::testing::AssertionResult HloTestBase::Run(

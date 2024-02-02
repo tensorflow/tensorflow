@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
     case BF16:
       return DLDataType{kDLBfloat, 16, 1};
     case PRED:
-      return DLDataType{kDLUInt, 8, 1};
+      return DLDataType{kDLBool, 8, 1};
     case C64:
       return DLDataType{kDLComplex, 64, 1};
     case C128:
@@ -117,6 +117,15 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
                          type.lanes);
   }
   switch (type.code) {
+    case kDLBool:
+      switch (type.bits) {
+        case 8:
+          return PRED;
+        default:
+          return Unimplemented(
+              "Only 8-bit DLPack booleans are supported, got %d bits",
+              type.bits);
+      }
     case kDLInt:
       switch (type.bits) {
         case 8:
@@ -376,6 +385,21 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   }
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
                                                     minor_to_major);
+
+  // Raise an error if the resulting PjRtBuffer would have a non-default layout.
+  // TODO(skyewm): we do this because JAX doesn't currently have good support
+  // for non-default layouts, and will return wrong results if a non-default
+  // layout is passed to a computation expecting default layouts. Remove this
+  // special case when non-default layouts are better supported by JAX.
+  TF_ASSIGN_OR_RETURN(Layout default_layout, device->client()->GetDefaultLayout(
+                                                 element_type, dimensions));
+  if (shape.layout() != default_layout) {
+    return Unimplemented(
+        "from_dlpack got array with non-default layout with minor-to-major "
+        "dimensions (%s), expected (%s)",
+        absl::StrJoin(shape.layout().minor_to_major(), ","),
+        absl::StrJoin(default_layout.minor_to_major(), ","));
+  }
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {

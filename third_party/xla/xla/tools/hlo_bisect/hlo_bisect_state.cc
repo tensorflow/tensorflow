@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -271,7 +271,7 @@ StatusOr<bool> HloBisectState::TrimByInstructions() {
 
   // Sanity check for the bug checker.
   if (bisect_high == computation->num_parameters()) {
-    return InternalError(
+    return Internal(
         "The checker fails on an empty computation! Something is not right. "
         "Can't bisect.");
   }
@@ -337,11 +337,10 @@ Status HloBisectState::ExpectModuleIsBuggy() {
     }
   }
   if (bug_count != 0) {
-    return InternalErrorStrCat("The checker is non deterministic! (only ",
-                               bug_count, " failures seen in ",
-                               (retry_count + 1), " runs)");
+    return InternalStrCat("The checker is non deterministic! (only ", bug_count,
+                          " failures seen in ", (retry_count + 1), " runs)");
   }
-  return InternalError("We \"lost\" the bug while bisecting!");
+  return Internal("We \"lost\" the bug while bisecting!");
 }
 
 }  // namespace bisect

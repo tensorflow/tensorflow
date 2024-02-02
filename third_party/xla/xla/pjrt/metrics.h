@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,18 +29,12 @@ inline constexpr absl::string_view kPjrtCompilerCompileComputationMetricName =
     "/pjrt/compiler/is_compiling_computation";
 inline constexpr absl::string_view kPjrtCompilerCompileModuleMetricName =
     "/pjrt/compiler/is_compiling_module";
-inline constexpr absl::string_view kPjrtCompilerFreeGpuSystemMemoryMetricName =
-    "/pjrt/compiler/free_gpu_system_memory";
 
 void ReportExecutableEnqueueTime(uint64_t running_time_usecs);
 
 void RecordPjrtCompilerCompileComputationStatus(bool is_compiling);
 
 void RecordPjrtCompilerCompileModuleStatus(bool is_compiling);
-
-void RecordFreeGpuSystemMemory();
-
-int64_t GetFreeGpuSystemMemory(int gpu_id);
 
 }  // namespace metrics
 }  // namespace xla

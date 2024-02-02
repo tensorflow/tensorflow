@@ -30,14 +30,11 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 import distutils as _distutils
 import importlib
 import inspect as _inspect
-import logging as _logging
 import os as _os
 import site as _site
 import sys as _sys
-import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
-from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
@@ -62,31 +59,11 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
-# Import compat before trying to import summary from tensorboard, so that
-# reexport_tf_summary can get compat from sys.modules. Only needed if using
-# lazy loading.
-_current_module.compat.v2  # pylint: disable=pointless-statement
-try:
-  from tensorboard.summary._tf import summary
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
-  setattr(_current_module, "summary", summary)
-except ImportError:
-  _logging.warning(
-      "Limited tf.summary API due to missing TensorBoard installation.")
 
 # Load tensorflow-io-gcs-filesystem if enabled
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
-
-# Lazy-load estimator.
-_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
-estimator = _LazyLoader("estimator", globals(), _estimator_module)
-_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "estimator", estimator)
 
 # Lazy-load Keras v2/3.
 _tf_uses_legacy_keras = (
@@ -182,18 +159,11 @@ except (ImportError, AttributeError):
 
 del importlib
 
-# Explicitly import lazy-loaded modules to support autocompletion.
-if _typing.TYPE_CHECKING:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
-
-# pylint: enable=undefined-variable
-
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
 # does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
-# pylint: disable=undefined-variable
 try:
   del python
 except NameError:

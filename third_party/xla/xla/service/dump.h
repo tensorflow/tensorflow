@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/status.h"
 #include "xla/xla.pb.h"
 
@@ -83,17 +84,28 @@ void DumpToFileInDirOrStdout(const HloModule& module,
 
 // Dumps the given protobuf to the given filename if dumping is enabled.
 // Exactly where and in what formats it's dumped is determined by the debug
-// options.
+// options. Allows for an optional custom serialization function to be used for
+// added customization.
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,
                         const DebugOptions& debug_options,
-                        absl::string_view filename);
+                        absl::string_view filename,
+                        absl::AnyInvocable<StatusOr<std::string>(
+                            tsl::Env*, const tsl::protobuf::Message&)>
+                            text_formatter = nullptr);
+
+// Render graph in a given format.
+std::string RenderGraph(absl::string_view label, const HloModule& module,
+                        RenderedGraphFormat format,
+                        bool show_fusion_subcomputations = true);
 
 // Similar to above, but the filename depends on module's information and the
-// given name.
-void DumpPerModuleProtobufToFile(const HloModule& module,
-                                 const tsl::protobuf::Message& proto,
-                                 const DebugOptions& debug_options,
-                                 absl::string_view name);
+// given name. Also allows for the optional serialization function.
+void DumpPerModuleProtobufToFile(
+    const HloModule& module, const tsl::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<StatusOr<std::string>(tsl::Env*,
+                                             const tsl::protobuf::Message&)>
+        text_formatter = nullptr);
 
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
@@ -135,6 +147,11 @@ void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
 // generating an expensive string.
 bool DumpingEnabledForHloModule(absl::string_view hlo_module_name,
                                 const DebugOptions& opts);
+
+// Returns true if we should dump data for an HLO pass
+bool DumpingEnabledForHloPass(absl::string_view hlo_pass_name,
+                              const DebugOptions& opts);
+
 inline bool DumpingEnabledForHloModule(const HloModule& module) {
   return DumpingEnabledForHloModule(module.name(),
                                     module.config().debug_options());

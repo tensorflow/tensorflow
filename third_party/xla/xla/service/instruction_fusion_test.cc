@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -768,58 +768,6 @@ TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
   a = {};
   b = {};
   EXPECT_FALSE(!a || !b);
-}
-
-TEST_F(FusionDecisionTest, AllExecutesAllChecks) {
-  bool first_called = false;
-  bool second_called = false;
-  auto result = FusionDecision::All(std::tuple{
-      [&]() -> FusionDecision {
-        first_called = true;
-        return {};
-      },
-      [&]() -> FusionDecision {
-        second_called = true;
-        return {};
-      },
-  });
-
-  EXPECT_TRUE(result.CanFuse());
-  EXPECT_TRUE(first_called);
-  EXPECT_TRUE(second_called);
-}
-
-TEST_F(FusionDecisionTest, AllShortCircuits) {
-  bool second_called = false;
-  auto result = FusionDecision::All(std::tuple{
-      [&]() -> FusionDecision { return "failure"; },
-      [&]() -> FusionDecision {
-        second_called = true;
-        return {};
-      },
-  });
-
-  EXPECT_EQ(result.Explain(), "failure");
-  EXPECT_FALSE(second_called);
-}
-
-TEST_F(FusionDecisionTest, AllForwardsArgs) {
-  int64_t sum = 0;
-  auto result = FusionDecision::All(
-      std::tuple{
-          [&](int64_t value1, int64_t value2) -> FusionDecision {
-            sum += value1;
-            return {};
-          },
-          [&](int64_t value1, int64_t value2) -> FusionDecision {
-            sum += value2;
-            return {};
-          },
-      },
-      42, 9000);
-
-  EXPECT_TRUE(result.CanFuse());
-  EXPECT_EQ(sum, 9042);
 }
 
 }  // namespace xla

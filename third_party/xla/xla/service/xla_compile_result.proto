@@ -1,0 +1,51 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package xla;
+
+import "google/protobuf/duration.proto";
+import "xla/service/hlo.proto";
+import "tsl/protobuf/status.proto";
+
+// Statistics on how long various parts of compilation took.
+// Not all durations may be relevant for all producers of this message, in
+// which irrelevant fields should simply be skipped.
+message CompilerPerfStats {
+  // How long did it take to initialize the compiler?
+  optional google.protobuf.Duration init_duration = 1;
+  // How long did it take to verify the HLO?
+  optional google.protobuf.Duration hlo_verification_duration = 2;
+  // How long did it take to prepare for compilation after verification?
+  optional google.protobuf.Duration compilation_prologue_duration = 3;
+  // How long did it take to compile?
+  optional google.protobuf.Duration compilation_duration = 4;
+  // How long did everything take?
+  optional google.protobuf.Duration total_duration = 5;
+}
+
+message CompilationResult {
+  // The compiled HLO. Only set when compilation succeeds.
+  optional xla.HloModuleProto hlo_module = 1;
+  // Always set when compilation succeeds. May or may not be set when
+  // compilation fails.
+  optional CompilerPerfStats perf_stats = 2;
+  // Always set when compilation fails; never set when compilation succeeds.
+  optional tensorflow.StatusProto status = 3;
+  // Collects counters collected during compilation. Not every producer may
+  // include counter support at all or any particular counter.
+  map<string, int64> counters = 4;
+}

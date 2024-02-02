@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1246,9 +1246,6 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
     `called_computation` is the function that will be run asynchronously
     `execution_thread` is the name of the thread in which it will be run. The main
       thread is called "main". All threads have names.
-    `group_id` labels a set of async-start, async-done, and zero or more
-      async-update ops corresponding to the same computation. We
-      represent a missing group_id with either an negative value or None.
 
     This returns all the state needed between async ops. After buffer
     assignment, the return values represents the space needed to hold the input,
@@ -1258,8 +1255,7 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
   let arguments = (ins
     Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
   );
 
   let results = (outs MHLO_AsyncBundle);
@@ -1282,8 +1278,7 @@ def MHLO_AsyncUpdateOp : MHLO_Op<"async_update", [DeclareOpInterfaceMethods<Infe
   let arguments = (ins
     MHLO_AsyncBundle:$bundle,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
     );
 
   let results = (outs MHLO_AsyncBundle);
@@ -1307,8 +1302,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
   let arguments = (ins
     MHLO_AsyncBundle:$bundle,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
     );
 
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
@@ -1455,8 +1449,9 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   string summary = "AllGather operation";
   string description = [{
     Within each process group in the process grid, concatenates the values of the
-    `operand` tensor from each process along `all_gather_dim` and produces a
-    `result` tensor.
+    operand tensor from each process along `all_gather_dim` and produces a
+    result tensor. The `computation` is applied separately for each operand in
+    `operands`, producing one result per operand.
 
     See:
     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#all_gather
@@ -1474,13 +1469,13 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   }];
 
   let arguments = (ins
-    MHLO_Tensor:$operand,
+    Variadic<MHLO_Tensor>:$operands,
     I64Attr:$all_gather_dim,
     I64ElementsAttr:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
-  let results = (outs MHLO_Tensor);
+  let results = (outs Variadic<MHLO_Tensor>);
   // use_global_device_ids is rarely used, so we add simplified builder methods
   // for convenience.
   let builders = [
@@ -1495,7 +1490,6 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
 }
 
 def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
-    SameOperandsAndResultElementType,
     SingleBlockImplicitTerminator<"ReturnOp">,
     InferTensorType
   ]> {
@@ -1549,8 +1543,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
-    [SameOperandsAndResultElementType]> {
+def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
   let summary = "ReduceScatter operation";
   let description = [{
      Within each process group in the process grid, performs reduction, using
@@ -1695,6 +1688,12 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
+
+  // Builder
+  let builders = [
+    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
+      "DenseIntElementsAttr":$dimensions, "TypeRange":$element_types)>,
+  ];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -2241,6 +2240,42 @@ def MHLO_ConcatenateOp : MHLO_ShapedInterfaceOp<"concatenate",
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+}
+
+def MHLO_CollectiveBroadcastOp: MHLO_Op<"collective_broadcast",
+    [HLO_CompatibleOperandsAndResultType]> {
+  let summary = "CollectiveBroadcast operation";
+  let description = [{
+    Within each process group in the process grid, send the value of the
+    `operand` tensor from the source process to the target processes and produce a
+    `result` tensor.
+
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#collective_broadcast
+
+    Example:
+    ```mlir
+    %result = "mhlo.collective_broadcast"(%operand) {
+      replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+      channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+    } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+    ```
+  }];
+
+  let arguments = (ins
+    MHLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<MHLO_ChannelHandle>:$channel_handle
+  );
+  let results = (outs MHLO_Tensor);
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+  // channel_handle is only used for the SPMD partitioner, so we add a
+  // simplified builder method for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::DenseIntElementsAttr":$replica_groups)>];
 }
 
 def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
@@ -2976,33 +3011,29 @@ def MHLO_TopKOp : MHLO_Op<"topk", [RecursiveMemoryEffects, InferTensorType]> {
   let summary = "TopK operation";
   let description = [{
     Returns top `k` values and their indices, along the last
-    dimension of the operand using the given `comparator` (for usual topk
-    behavior, it should be strict-greater-than operation).
+    dimension of the operand if `largest=true` or the bottom `k` values if
+    `largest=false`.
 
     See:
     https://www.tensorflow.org/xla/operation_semantics#top-k
 
     Example:
     ```mlir
-    %values, %indices = mhlo.topk(%operand, k=5) {
-      ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
-        %predicate = mhlo.compare GT, %arg0, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
-        mhlo.return %predicate : tensor<i1>
-    } : tensor<100xf32> -> (tensor<5xf32>, tensor<5xi32>)
+    %values, %indices = mhlo.topk(%operand, k=5, largest=true)
+      : tensor<100xf32> -> (tensor<5xf32>, tensor<5xi32>)
     ```
   }];
 
   let arguments = (ins
     MHLO_Tensor:$operand,
-    I64Attr:$k
+    I64Attr:$k,
+    DefaultValuedOptionalAttr<BoolAttr, "true">:$largest
   );
-  let regions = (region SizedRegion<1>:$body);
   let results = (outs MHLO_Tensor:$values,
                       MHLO_Tensor:$indices);
 
-  let hasVerifier = 1;
   let assemblyFormat = [{
-    `(`$operand `,` `k` `=` $k`)` $body attr-dict `:`
+    `(`$operand `,` `k` `=` $k (`,` `largest` `=` $largest^)? `)` attr-dict `:`
     type($operand) `->` `(`type($values)`,` type($indices)`)`
   }];
   let hasCustomHLOConverter = 1;

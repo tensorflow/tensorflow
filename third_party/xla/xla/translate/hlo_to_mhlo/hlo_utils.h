@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,9 +34,6 @@ namespace xla {
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
-Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8_t>* output);
-
 StatusOr<int> GetElementTypeBytes(mlir::Type type);
 
 // Creates an DenseIntElementsAttr using the elements of the vector and the
@@ -59,22 +56,24 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
       ConvertPrimitiveTypeToMLIRType(xla_ty.element_type(), builder);
   if (!element_type_or.ok()) return element_type_or.status();
 
-  bool is_dynamic = false;
+  bool is_bounded_dynamic = false;
   int64_t rank = xla_ty.rank();
   llvm::SmallVector<int64_t, 4> shape(rank, mlir::ShapedType::kDynamic);
   llvm::SmallVector<int64_t, 4> bounds(rank, mlir::ShapedType::kDynamic);
   for (int64_t dim = 0; dim < rank; ++dim) {
     int64_t dim_size = xla_ty.dimensions(dim);
     if (xla_ty.is_dynamic_dimension(dim)) {
-      bounds[dim] = dim_size;
-      is_dynamic = true;
+      if (!xla_ty.is_unbounded_dynamic_dimension(dim)) {
+        bounds[dim] = dim_size;
+        is_bounded_dynamic = true;
+      }
     } else {
       shape[dim] = dim_size;
     }
   }
   using mlir::mhlo::TypeExtensionsAttr;
   mlir::Attribute encoding;
-  if (is_dynamic) {
+  if (is_bounded_dynamic) {
     encoding = TypeExtensionsAttr::get(builder.getContext(), bounds);
   }
 
@@ -89,31 +88,31 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   if (xla_ty.has_layout()) {
     auto layout = xla_ty.layout();
     if (LayoutUtil::IsSparse(layout)) {
-      if (is_dynamic)
+      if (is_bounded_dynamic)
         return Unimplemented(
             "MHLO doesn't support bounded dynamic shapes for sparse tensors");
-      llvm::SmallVector<mlir::sparse_tensor::DimLevelType> dlts;
-      for (size_t i = 0, e = layout.dim_level_types().size(); i < e; ++i) {
-        auto dlt = layout.dim_level_types()[i];
+      llvm::SmallVector<mlir::sparse_tensor::LevelType> lts;
+      for (size_t i = 0, e = layout.dim_level_types_size(); i < e; ++i) {
+        auto dlt = layout.dim_level_type(i);
         bool ordered =
-            i < layout.dim_ordered().size() ? layout.dim_ordered()[i] : true;
+            i < layout.dim_ordered_size() ? layout.dim_ordered(i) : true;
         bool unique =
-            i < layout.dim_unique().size() ? layout.dim_unique()[i] : true;
+            i < layout.dim_unique_size() ? layout.dim_unique(i) : true;
         switch (dlt) {
           case DimLevelType::DIM_DENSE:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Dense, ordered, unique));
             break;
           case DimLevelType::DIM_COMPRESSED:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Compressed, ordered, unique));
             break;
           case DimLevelType::DIM_SINGLETON:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
           case DimLevelType::DIM_LOOSE_COMPRESSED:
-            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
+            lts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::LooseCompressed, ordered,
                 unique));
             break;
@@ -128,7 +127,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
                                                        builder.getContext());
       // TODO(atondwal): support sizes other than 32 when XLA does
       encoding = SparseTensorEncodingAttr::get(
-          builder.getContext(), dlts, id_map, mlir::AffineMap(), 32, 32);
+          builder.getContext(), lts, id_map, mlir::AffineMap(), 32, 32);
     }
   }
   return TypeT::get(shape, element_type_or.value(), encoding);

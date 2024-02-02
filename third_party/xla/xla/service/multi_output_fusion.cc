@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,11 @@ StatusOr<bool> MultiOutputFusion::Run(
 
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    // Do not operate over async computations (computations of async
+    // instructions).
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
     computation_ = computation;
     candidates_.clear();
     candidates_index_.clear();

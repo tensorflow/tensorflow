@@ -34,15 +34,18 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace {
@@ -187,9 +190,32 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   return {{gpu_ids}};
 }
 
+xla::StatusOr<DeviceType> GetCompilationDeviceType(
+    const DeviceType& platform_device_type) {
+  DeviceType compilation_device_type = platform_device_type;
+  const XlaOpRegistry::DeviceRegistration* registration = nullptr;
+  if (!XlaOpRegistry::GetCompilationDevice(platform_device_type.type(),
+                                           &registration)) {
+    return errors::InvalidArgument("No JIT device registered for ",
+                                   platform_device_type.type());
+  }
+  compilation_device_type = DeviceType(registration->compilation_device_name);
+  return compilation_device_type;
+}
+
 Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                               const XlaPlatformInfo& platform_info,
+                              DeviceType compilation_device_type,
                               XlaDeviceCompiler** xla_device_compiler) {
+  if (platform_info.platform_id() == nullptr &&
+      platform_info.device_type() == DEVICE_GPU) {
+    // We do not need to (and cannot) build a real device compiler for GPU
+    // if the platform ID is null. We just return a placeholder for supporting
+    // cross platform lowering.
+    *xla_device_compiler = new XlaDeviceCompiler(/*persistor=*/nullptr,
+                                                 /*compiler_client=*/nullptr);
+    return OkStatus();
+  }
   std::string persistent_cache_directory =
       GetPersistentCacheDirectory(platform_info.device_type());
 
@@ -218,6 +244,9 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     return OkStatus();
   }
 
+  if (platform_info.platform_id() == nullptr) {
+    return errors::InvalidArgument("platform_id is null.");
+  }
   auto platform =
       se::MultiPlatformManager::PlatformWithId(platform_info.platform_id());
   if (!platform.ok()) {
@@ -232,11 +261,11 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     // (which would normally force the cluster to be compiled using XLA:GPU)
     // into an XLA cluster with no GPU operations (i.e. containing only CPU
     // operations).  Such a cluster can fail compilation (in way that
-    // MarkForCompilation could not have detected) if the CPU JIT is not linked
-    // in.
+    // MarkForCompilation could not have detected) if the CPU JIT is not
+    // linked in.
     //
-    // So bail out of _XlaCompile in this case, and let the executor handle the
-    // situation for us.
+    // So bail out of _XlaCompile in this case, and let the executor handle
+    // the situation for us.
     const Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
       return errors::Unimplemented("Could not find compiler for platform ",
@@ -247,26 +276,21 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.value());
-  client_options.set_intra_op_parallelism_threads(
-      device->tensorflow_cpu_worker_threads()->num_threads);
-
-  TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
-  client_options.set_allowed_devices(allowed_gpus);
-
-  auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
-  if (!client.ok()) {
-    return client.status();
+  if (device != nullptr) {
+    client_options.set_intra_op_parallelism_threads(
+        device->tensorflow_cpu_worker_threads()->num_threads);
   }
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(platform_info.device_type().type(),
-                                           &registration)) {
-    return errors::InvalidArgument("No JIT device registered for ",
-                                   platform_info.device_type().type());
+
+  if (flr != nullptr) {
+    TF_ASSIGN_OR_RETURN(auto allowed_gpus, GetAllowedGpus(flr));
+    client_options.set_allowed_devices(allowed_gpus);
   }
+
+  TF_ASSIGN_OR_RETURN(
+      auto client, xla::ClientLibrary::GetOrCreateLocalClient(client_options));
 
   *xla_device_compiler = CreateXlaDeviceCompiler(
-      persistor_config, DeviceType(registration->compilation_device_name),
-      client.value());
+      persistor_config, compilation_device_type, client);
   return OkStatus();
 }
 
@@ -277,11 +301,32 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
   const auto& device_type = platform_info.device_type();
   const std::string& compiler_name =
       GetPjRtDeviceCompilerResourceName(device_type);
+  const std::string& profiler_name =
+      GetPjRtDeviceCompilationProfilerResourceName(device_type);
+  bool deleted_old_device_compiler = false;
 
   // Lookup the DeviceCompiler, create one if not found.
   Status s = rm->Lookup<PjRtDeviceCompiler>(
       rm->default_container(), compiler_name, pjrt_device_compiler);
-  if (!s.ok()) {
+  if (s.ok() && device_type == DEVICE_TPU) {
+    auto* existing_pjrt_client = (*pjrt_device_compiler)->client();
+    TF_ASSIGN_OR_RETURN(auto* latest_pjrt_client, GetPjRtClient(device_type));
+
+    if (existing_pjrt_client != latest_pjrt_client) {
+      // PjRtClient has changed. Delete the PjRtDeviceCompiler (and the cache
+      // within) and create a new one.
+      TF_RETURN_IF_ERROR(rm->Delete<PjRtDeviceCompiler>(rm->default_container(),
+                                                        compiler_name));
+      TF_RETURN_IF_ERROR(rm->Delete<DeviceCompilationProfiler>(
+          rm->default_container(), profiler_name));
+
+      deleted_old_device_compiler = true;
+    }
+  }
+
+  // TODO(b/308698131): Try consolidating all PJRT-related state into one class
+  // instead of directly storing it in the ResourceMgr.
+  if (!s.ok() || deleted_old_device_compiler) {
     DeviceType compilation_device_type("");
     xla::PjRtClient* pjrt_client = nullptr;
     TF_RETURN_IF_ERROR(GetCompilationDeviceTypeAndPjRtClient(
@@ -296,8 +341,6 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
         }));
   }
 
-  const std::string& profiler_name =
-      GetPjRtDeviceCompilationProfilerResourceName(device_type);
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
       rm->default_container(), profiler_name, profiler,
       [](DeviceCompilationProfiler** profiler) {
@@ -321,20 +364,21 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
 }
 
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
-  auto device = static_cast<Device*>(device_base);
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
 
-  if (device->device_type() == DEVICE_CPU) {
+  const std::string& device_type = device_base->device_type();
+  if (device_type == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
-  } else if (device->device_type() == DEVICE_GPU) {
+  } else if (device_type == DEVICE_GPU) {
+    auto device = static_cast<Device*>(device_base);
     platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();
-  } else if (XlaDevice::GetMetadataFromDevice(device, &xla_device_metadata)
+  } else if (XlaDevice::GetMetadataFromDevice(device_base, &xla_device_metadata)
                  .ok()) {
     // If we are on an XlaDevice, use the underlying XLA platform's allocator
     // directly. We could use the StreamExecutor's allocator which may
@@ -348,12 +392,12 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     platform_id = xla_device_metadata->platform()->id();
     custom_allocator =
         xla_device_metadata->client()->backend().shared_memory_allocator();
-  } else if (auto metadata = PjRtBaseDevice::GetMetadataFromDevice(device);
+  } else if (auto metadata = PjRtBaseDevice::GetMetadataFromDevice(device_base);
              metadata.ok()) {
     pjrt_device_metadata = *metadata;
   }
 
-  return XlaPlatformInfo(DeviceType(device->device_type()), platform_id,
+  return XlaPlatformInfo(DeviceType(device_type), platform_id,
                          xla_device_metadata, pjrt_device_metadata,
                          custom_allocator);
 }

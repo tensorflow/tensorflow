@@ -15,13 +15,6 @@ package(
 py_strict_library(
     name = "tools_pip",
     data = [
-        ":freeze_graph",
-        ":import_pb_to_tensorboard",
-        ":inspect_checkpoint",
-        ":optimize_for_inference",
-        ":print_selective_registration_header",
-        ":saved_model_cli",
-        ":strip_unused",
         # Include the TF upgrade script to users can run it directly after install TF
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
@@ -36,6 +29,13 @@ py_strict_library(
         ":optimize_for_inference_lib",
         ":selective_registration_header_lib",
         ":strip_unused_lib",
+        ":freeze_graph",
+        ":import_pb_to_tensorboard",
+        ":inspect_checkpoint",
+        ":optimize_for_inference",
+        ":print_selective_registration_header",
+        ":saved_model_cli",
+        ":strip_unused",
     ],
 )
 
@@ -45,7 +45,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/util:compat",
     ],
@@ -61,9 +61,10 @@ py_strict_test(
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_utils",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:builder",
@@ -80,8 +81,8 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:convert_to_constants",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
@@ -114,7 +115,7 @@ py_strict_library(
     deps = [
         ":saved_model_utils",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/summary:summary_py",
         "@absl_py//absl:app",
@@ -135,6 +136,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":freeze_graph_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:dtypes",
@@ -219,6 +221,7 @@ py_strict_test(
     tags = ["notap"],
     deps = [
         ":strip_unused_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
@@ -279,6 +282,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":optimize_for_inference_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -292,7 +297,6 @@ py_strict_test(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -339,6 +343,7 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":selective_registration_header_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -375,12 +380,13 @@ py_strict_library(
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:load_options",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
@@ -397,6 +403,7 @@ py_strict_library(
     srcs = ["saved_model_aot_compile.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
         "//tensorflow/python/client:session",
@@ -405,15 +412,13 @@ py_strict_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:versions",
         "//tensorflow/python/grappler:tf_optimizer",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:sysconfig",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:saver",
-    ] + if_xla_available(
-        ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
-    ),
+    ],
 )
 
 py_strict_test(
@@ -426,21 +431,23 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":saved_model_cli_lib",
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:parsing_config",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

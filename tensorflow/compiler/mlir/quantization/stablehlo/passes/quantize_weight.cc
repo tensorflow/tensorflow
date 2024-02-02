@@ -66,23 +66,9 @@ constexpr float kMinFloat16Value = -65504.f;
 class QuantizeWeightPass
     : public impl::QuantizeWeightPassBase<QuantizeWeightPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightPass)
-
-  explicit QuantizeWeightPass() = default;
-
   explicit QuantizeWeightPass(
       QuantizationComponentSpec quantization_component_spec)
       : quantization_component_spec_(quantization_component_spec) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "stablehlo-quantize-weight";
-  }
-
-  StringRef getDescription() const final {
-    return "Apply the specified quantization methods to weights.";
-  }
 
  private:
   void runOnOperation() override;

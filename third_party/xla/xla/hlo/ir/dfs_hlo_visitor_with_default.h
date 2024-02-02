@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -284,7 +284,8 @@ class DfsHloVisitorWithDefaultBase
       delete;
 };
 
-// Users should use these type aliases which are only two valid instantiations.
+// Users should use one of these two type aliases, which are the only two valid
+// instantiations of DfsHloVisitorWithDefaultBase.
 using DfsHloVisitorWithDefault = DfsHloVisitorWithDefaultBase<HloInstruction*>;
 using ConstDfsHloVisitorWithDefault =
     DfsHloVisitorWithDefaultBase<const HloInstruction*>;

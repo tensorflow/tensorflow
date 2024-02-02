@@ -259,7 +259,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result);
+    float* __restrict__ result, const float* per_channel_scale = nullptr);
 
 // Same as the above 8, 8, 8 integer matmul except for the presence of zero
 // point and non-accumulative.

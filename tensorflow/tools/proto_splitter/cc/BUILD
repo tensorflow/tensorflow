@@ -1,11 +1,12 @@
-# Description:
-#   Utilities for splitting and joining large protos > 2GB.
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
     "tf_cc_test",
 )
+
+# Description:
+#   Utilities for splitting and joining large protos > 2GB.
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,11 +44,16 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
+        "@riegeli//riegeli/bytes:cord_writer",
         "@riegeli//riegeli/bytes:fd_writer",
+        "@riegeli//riegeli/bytes:string_writer",
         "@riegeli//riegeli/records:record_writer",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
@@ -85,11 +91,15 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
+        "@riegeli//riegeli/bytes:cord_reader",
         "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
@@ -197,6 +207,7 @@ cc_library(
         ":composable_splitter",
         ":max_size",
         ":size_splitter",
+        ":split",
         ":util",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",

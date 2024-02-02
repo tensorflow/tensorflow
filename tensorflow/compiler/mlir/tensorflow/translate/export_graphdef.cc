@@ -821,9 +821,8 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
   // Construct one in that case.
   if (configs.export_entry_func_to_flib) {
     graph = std::make_unique<Graph>(OpRegistry::Global());
-    // TODO(hinsu): Avoid Proto -> Memory -> Proto conversion here.
-    FunctionDefLibrary flib = flib_def.ToProto();
-    TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(flib));
+    TF_RETURN_IF_ERROR(
+        graph->mutable_flib_def()->AddLibrary(std::move(flib_def)));
   }
 
   auto graphdef = std::make_unique<GraphDef>();

@@ -20,20 +20,26 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/xla_builder.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/proto_helper.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/tpu_embedding_spmd_sharding_utils.h"
 
@@ -248,7 +254,11 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
     auto builder = ctx->builder();
     gradient_shapes.reserve(gradients.size());
     for (xla::XlaOp op : gradients) {
-      gradient_shapes.push_back(builder->GetShape(op).value());
+      // Gradient layout information is added by XLA, so we can just create
+      // default layout information.
+      xla::Shape gradient_shape = builder->GetShape(op).value();
+      xla::LayoutUtil::SetToDefaultLayout(&gradient_shape);
+      gradient_shapes.push_back(gradient_shape);
     }
 
     std::vector<xla::XlaOp> learning_rates;
@@ -692,6 +702,52 @@ class MergeDedupDataOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("MergeDedupData").AllowVariantTypes(), MergeDedupDataOp);
 
+// This op computes the size of the deduplication data from infeed.
+class ComputeDedupDataSizeOp : public XlaOpKernel {
+ public:
+  explicit ComputeDedupDataSizeOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    OP_REQUIRES(
+        ctx,
+        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
+            config_string_),
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr."));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    VLOG(1) << "Compile ComputeDedupDataSizeOp";
+
+    TpuEmbeddingEngine_DedupDataSizeComputation_Params params;
+    params.tpu_embedding_config.bytes = config_string_.c_str();
+    params.tpu_embedding_config.size = config_string_.size();
+    int num_elements = -1;
+    params.num_elements = &num_elements;
+    StatusHelper status;
+    params.status = status.c_status;
+
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingEngine_DedupDataSizeComputationFn(&params);
+    OP_REQUIRES_OK(ctx, status.status());
+
+    auto output = xla::ConstantLiteral(
+        ctx->builder(), LiteralUtil::CreateR0<int32_t>(num_elements));
+    ctx->SetOutput(0, output);
+
+    VLOG(1) << "Compile ComputeDedupDataSizeOp done";
+  }
+
+ private:
+  // TPU Embedding config string.
+  std::string config_string_;
+
+  ComputeDedupDataSizeOp(const ComputeDedupDataSizeOp&) = delete;
+  void operator=(const ComputeDedupDataSizeOp&) = delete;
+};
+
+REGISTER_XLA_OP(Name("ComputeDedupDataSize"), ComputeDedupDataSizeOp);
+
 // This op computes deduplication data tuple mask.
 class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
  public:
@@ -707,7 +763,7 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    VLOG(1) << "Compile ComputeDeduplicationDataShapeOp";
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskOp";
 
     TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
     params.tpu_embedding_config.bytes = config_string_.c_str();

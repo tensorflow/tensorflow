@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -422,6 +422,7 @@ void RegisterDeviceList(py::module& m) {
       .def("__getitem__", &PyDeviceList::GetSlice)
       .def("__iter__", &PyDeviceList::Iter, py::keep_alive<0, 1>())
       .def("__str__", &PyDeviceList::Str)
+      .def("__repr__", &PyDeviceList::Str)
       .def(py::pickle([](PyDeviceList* l) { return l->Dump(); },
                       [](py::tuple t) { return PyDeviceList::Load(t); }))
       .def_property_readonly("is_fully_addressable",

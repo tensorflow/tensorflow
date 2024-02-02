@@ -150,6 +150,10 @@ TfLiteStatus DeepOrShallowCopyTensorsShapeTypeData(
       TfLiteTensorRealloc(src_tensor->bytes, dst_tensor);
       TF_LITE_ENSURE_OK(context, TfLiteTensorCopy(src_tensor, dst_tensor));
     } else {
+      // Make a shallow copy of the data. This is only safe because the caller
+      // is expected to have previously set dst_tensor->allocation_type to
+      // kTfLiteCustom, to ensure the buffer is never double-freed later on.
+      TF_LITE_ENSURE_EQ(context, dst_tensor->allocation_type, kTfLiteCustom);
       dst_tensor->bytes = src_tensor->bytes;
       dst_tensor->data.raw = src_tensor->data.raw;
     }

@@ -425,20 +425,6 @@ cc_library(
 )
 
 cc_library(
-    name = "logger",
-    hdrs = ["logger.h"],
-    deps = [
-        ":env",
-        ":logging",
-        ":protobuf",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logger",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "logging",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
@@ -515,11 +501,12 @@ py_strict_test(
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
+        # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
@@ -1404,7 +1391,6 @@ filegroup(
         "fingerprint.h",
         "float8.h",
         "init_main.h",
-        "logger.h",
         "mem.h",
         "mutex.h",
         "net.h",

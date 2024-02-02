@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_padding_requirements.h"
 
-#include <vector>
+#include <cstdint>
+#include <variant>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/variant_visitor.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -27,20 +31,31 @@ namespace gpu {
 namespace {
 
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
-                              const se::CudaComputeCapability cc) {
-  for (const CublasPaddingRequirement& requirement :
-       CublasPaddingRequirements) {
-    if (cc.IsAtLeast(requirement.min_compute_capability) &&
-        data_type == requirement.data_type &&
-        size % requirement.multiple_of != 0) {
-      return true;
-    }
-  }
-  return false;
+                              const se::GpuComputeCapability& gpu_cc) {
+  return std::visit(
+      VariantVisitor{
+          [&](const se::CudaComputeCapability& cc) {
+            for (const auto& req : CublasPaddingRequirements) {
+              if (cc.IsAtLeast(req.min_compute_capability) &&
+                  data_type == req.data_type && size % req.multiple_of != 0) {
+                return true;
+              }
+            }
+            return false;
+          },
+          [&](const se::RocmComputeCapability& cc) {
+            for (const auto& req : HipblasPaddingRequirements) {
+              if (data_type == req.data_type && size % req.multiple_of != 0) {
+                return true;
+              }
+            }
+            return false;
+          }},
+      gpu_cc);
 }
 
 bool ShapeRequiresPadding(const Shape& shape,
-                          const se::CudaComputeCapability cc) {
+                          const se::GpuComputeCapability& cc) {
   // Since dots are canonicalized before padding only the last two dimensions
   // of each operand represent non-batch dimensions and may need padding.
   return DimensionRequiresPadding(shape.dimensions(shape.rank() - 1),
@@ -52,7 +67,7 @@ bool ShapeRequiresPadding(const Shape& shape,
 }  // namespace
 
 bool CublasRequiresPadding(const HloDotInstruction& dot,
-                           const se::CudaComputeCapability cc) {
+                           const se::GpuComputeCapability& cc) {
   return ShapeRequiresPadding(dot.operand(0)->shape(), cc) ||
          ShapeRequiresPadding(dot.operand(1)->shape(), cc);
 }

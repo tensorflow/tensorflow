@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/fusion_merger.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/horizontal_input_fusion.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/instruction_fusion.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/multi_output_fusion.h"
 #include "xla/service/gpu/priority_fusion.h"
 #include "xla/service/gpu/variadic_op_splitter.h"
@@ -43,6 +43,7 @@ namespace gpu {
 HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
+    tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info) {
   HloPassFix<HloPassPipeline> fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
@@ -56,12 +57,13 @@ HloPassPipeline FusionPipeline(
                   LayoutAssignment::InstructionCanChangeLayout)),
       "hlo verifier (debug)");
 
-  GpuHloCostAnalysis::Options cost_analysis_options{
-      shape_size_bytes_function,
-      /*per_second_rates=*/{},
-      /*count_multiple_input_accesses=*/true};
   if (debug_options.xla_gpu_enable_priority_fusion()) {
-    fusion.AddPass<GpuPriorityFusion>(gpu_device_info, cost_analysis_options);
+    GpuHloCostAnalysis::Options cost_analysis_options{
+        shape_size_bytes_function,
+        /*per_second_rates=*/{},
+        /*count_multiple_input_accesses=*/true};
+    fusion.AddPass<GpuPriorityFusion>(thread_pool, gpu_device_info,
+                                      std::move(cost_analysis_options));
   } else {
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
                                          gpu_device_info);

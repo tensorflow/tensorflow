@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -137,8 +137,9 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
 
   // Use 90% of the available shared memory to verify that a fractional
   // amount works as well, not only the full size.
-  const int n_cols = executor->GetDeviceDescription().threads_per_block_limit();
-  const int n_rows =
+  const unsigned n_cols =
+      executor->GetDeviceDescription().threads_per_block_limit();
+  const unsigned n_rows =
       0.9 * executor->GetDeviceDescription().shared_memory_per_block_optin() /
       n_cols;
   const int n_elements = n_cols * n_rows;
@@ -151,7 +152,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
       se::CompileGpuAsm(executor->device_ordinal(), kPTX.data(),
                         PtxOptsFromDebugOptions(DebugOptions{}))
           .value();
-  std::unique_ptr<stream_executor::KernelBase> kernel =
+  std::unique_ptr<stream_executor::Kernel> kernel =
       CreateKernel("dyn_shmem_kernel", /*num_args=*/3,
                    reinterpret_cast<char*>(compiled_ptx.data()),
                    /*cubin_data=*/{}, executor,

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,100 @@ limitations under the License.
 
 #include "xla/service/gpu_compilation_environment.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/strings/str_join.h"
+#include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 
-// TODO(b/284274097): Create flags with default values when flags
-// are moved from DebugOptions to GpuCompilationEnvironment.
-std::unique_ptr<GpuCompilationEnvironment> CreateDefaultGpuCompEnv() {
-  return std::make_unique<GpuCompilationEnvironment>();
+void InitializeFlagsForGpuCompEnv(std::vector<tsl::Flag>* flag_list,
+                                  GpuCompilationEnvironment* gpu_comp_env) {
+  auto int64_setter_for =
+      [gpu_comp_env](
+          void (GpuCompilationEnvironment::*member_setter)(int64_t)) {
+        return [gpu_comp_env, member_setter](int64_t value) {
+          (gpu_comp_env->*member_setter)(value);
+          return true;
+        };
+      };
+  flag_list->push_back(tsl::Flag(
+      "dummy_flag",
+      int64_setter_for(&GpuCompilationEnvironment::set_dummy_flag),
+      gpu_comp_env->dummy_flag(), "Dummy flag to demonstrate the flow"));
+}
+
+StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromFlagStrings(
+    std::vector<std::string>& flags, bool strict) {
+  GpuCompilationEnvironment gpu_comp_env;
+  std::vector<tsl::Flag> flag_objects;
+  InitializeFlagsForGpuCompEnv(&flag_objects, &gpu_comp_env);
+  bool result = tsl::Flags::Parse(flags, flag_objects);
+  if (!result || (strict && !flags.empty())) {
+    return InvalidArgument("Could not parse flags: %s",
+                           absl::StrJoin(flags, ", "));
+  }
+  return gpu_comp_env;
+}
+
+StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar() {
+  GpuCompilationEnvironment env;
+  std::vector<tsl::Flag> flag_objects;
+  InitializeFlagsForGpuCompEnv(&flag_objects, &env);
+  bool result = ParseFlagsFromEnvAndIgnoreUnknown("XLA_FLAGS", flag_objects);
+  if (!result) {
+    return InvalidArgument("Could not parse XLA_FLAGS.");
+  }
+  return env;
+}
+
+GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues() {
+  GpuCompilationEnvironment env;
+  env.set_dummy_flag(1);
+  return env;
+}
+
+Status InitializeMissingFieldsFromXLAFlags(GpuCompilationEnvironment& env) {
+  TF_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
+                      CreateGpuCompEnvFromEnvVar());
+
+  auto default_env = CreateGpuCompEnvWithDefaultValues();
+
+  auto reflection = env.GetReflection();
+  auto reflection_from_env = from_env.GetReflection();
+  auto descriptor = GpuCompilationEnvironment::descriptor();
+  std::vector<const tsl::protobuf::FieldDescriptor*> missing_fields;
+
+  for (int j = 0; j < descriptor->field_count(); ++j) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(j);
+    if (reflection->HasField(env, field) &&
+        reflection_from_env->HasField(from_env, field)) {
+      return InvalidArgument(
+          "Flag %s is set in both XLA_FLAGS env var and "
+          "GpuCompilationEnvironment.",
+          field->name());
+    } else if (!reflection->HasField(env, field) &&
+               !reflection_from_env->HasField(from_env, field)) {
+      missing_fields.push_back(field);
+    }
+  }
+  env.MergeFrom(from_env);
+
+  if (!missing_fields.empty()) {
+    reflection->SwapFields(&env, &default_env, missing_fields);
+  }
+  return OkStatus();
 }
 
 namespace {
@@ -34,12 +117,13 @@ namespace {
 // GpuCompilationEnvironment, so that we can add GpuCompilationEnvironments
 // to CompilationEnvironments.
 //
-// The implementation returns Default env if one doesn't exist already.
+// The implementation returns Empty env if one doesn't exist already.
 // NOLINTNEXTLINE
-std::unique_ptr<tsl::protobuf::Message> ProcessNewGpuCompilationEnvironment(
+StatusOr<std::unique_ptr<tsl::protobuf::Message>>
+ProcessNewGpuCompilationEnvironment(
     std::unique_ptr<tsl::protobuf::Message> env) {  // NOLINT
   if (!env) {
-    return xla::CreateDefaultGpuCompEnv();
+    env = std::make_unique<GpuCompilationEnvironment>();
   }
   return env;
 }

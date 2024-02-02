@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
+
+#include "absl/base/prefetch.h"
+#include "absl/numeric/int128.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
@@ -43,32 +45,6 @@ namespace tensorflow {
 // "slots" for key/value entries).  Uses breadth-first-search to find
 // a good cuckoo path with less data movement (see
 // http://www.cs.cmu.edu/~dga/papers/cuckoo-eurosys14.pdf )
-
-namespace presized_cuckoo_map {
-// Utility function to compute (x * y) >> 64, or "multiply high".
-// On x86-64, this is a single instruction, but not all platforms
-// support the __uint128_t type, so we provide a generic
-// implementation as well.
-inline uint64 multiply_high_u64(uint64 x, uint64 y) {
-#if defined(__SIZEOF_INT128__)
-  return (uint64)(((__uint128_t)x * (__uint128_t)y) >> 64);
-#else
-  // For platforms without int128 support, do it the long way.
-  uint64 x_lo = x & 0xffffffff;
-  uint64 x_hi = x >> 32;
-  uint64 buckets_lo = y & 0xffffffff;
-  uint64 buckets_hi = y >> 32;
-  uint64 prod_hi = x_hi * buckets_hi;
-  uint64 prod_lo = x_lo * buckets_lo;
-  uint64 prod_mid1 = x_hi * buckets_lo;
-  uint64 prod_mid2 = x_lo * buckets_hi;
-  uint64 carry =
-      ((prod_mid1 & 0xffffffff) + (prod_mid2 & 0xffffffff) + (prod_lo >> 32)) >>
-      32;
-  return prod_hi + (prod_mid1 >> 32) + (prod_mid2 >> 32) + carry;
-#endif
-}
-}  // namespace presized_cuckoo_map
 
 template <class value>
 class PresizedCuckooMap {
@@ -133,13 +109,11 @@ class PresizedCuckooMap {
            FindInBucket(k, fast_map_to_buckets(h2(tk)), out);
   }
 
-  // Prefetch memory associated with the key k into cache levels specified by
-  // hint.
-  template <port::PrefetchHint hint = port::PREFETCH_HINT_T0>
+  // Prefetch memory associated with the key k into cache.
   void PrefetchKey(const key_type k) const {
     const uint64 tk = key_transform(k);
-    port::prefetch<hint>(&buckets_[fast_map_to_buckets(tk)].keys);
-    port::prefetch<hint>(&buckets_[fast_map_to_buckets(h2(tk))].keys);
+    absl::PrefetchToLocalCache(&buckets_[fast_map_to_buckets(tk)].keys);
+    absl::PrefetchToLocalCache(&buckets_[fast_map_to_buckets(h2(tk))].keys);
   }
 
   int64_t MemoryUsed() const {
@@ -346,7 +320,7 @@ class PresizedCuckooMap {
     // using Lemire's alternative to modulo reduction:
     // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
     // Instead of x % N, use (x * N) >> 64.
-    return presized_cuckoo_map::multiply_high_u64(x, num_buckets_);
+    return absl::Uint128High64(absl::uint128(x) * absl::uint128(num_buckets_));
   }
 
   // Set upon initialization: num_entries / kLoadFactor / kSlotsPerBucket.

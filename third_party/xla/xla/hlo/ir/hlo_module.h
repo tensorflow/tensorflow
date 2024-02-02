@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -546,6 +546,12 @@ class HloModule {
     instr->UniquifyName(&instruction_name_uniquer_);
   }
 
+  void SetAndUniquifyComputationName(HloComputation* computation,
+                                     absl::string_view name) {
+    computation->SetAndSanitizeName(name);
+    computation->UniquifyName(&computation_name_uniquer_);
+  }
+
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
   // Checks if this config has a list of entry parameters' HLO shardings for
@@ -674,7 +680,7 @@ class HloModule {
     autofdo_fingerprint_ = std::string(fingerprint);
   }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+  std::string autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 

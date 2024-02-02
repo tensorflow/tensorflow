@@ -19,8 +19,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 

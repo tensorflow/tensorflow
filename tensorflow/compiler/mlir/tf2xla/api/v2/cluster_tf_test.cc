@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -28,7 +29,9 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
@@ -38,17 +41,21 @@ namespace tf2xla {
 namespace v2 {
 namespace {
 
-using mlir::DialectRegistry;
-using mlir::MLIRContext;
-using mlir::ModuleOp;
-using mlir::OwningOpRef;
-using mlir::WalkResult;
-using mlir::func::FuncOp;
+using ::mlir::DialectRegistry;
+using ::mlir::MLIRContext;
+using ::mlir::ModuleOp;
+using ::mlir::OwningOpRef;
+using ::mlir::WalkResult;
+using ::mlir::func::FuncOp;
+using ::tensorflow::monitoring::testing::CellReader;
 
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
       "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
 }
+
+static constexpr char kCompilationStreamz[] =
+    "/tensorflow/core/tf_mlir_bridge_first_phase_count";
 
 class FunctionClusterTensorflowDialectTest : public ::testing::Test {
  public:
@@ -75,7 +82,9 @@ class FunctionClusterTensorflowDialectTest : public ::testing::Test {
   OwningOpRef<mlir::ModuleOp> mlir_module_;
 };
 
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTfTPU) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(
@@ -85,22 +94,78 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
 
-  bool has_graph_op = false;
-  main.walk([&](mlir::tf_executor::GraphOp graph) {
-    has_graph_op = true;
+  EXPECT_EQ(
+      compilation_status.Delta("tpu", "v2", "fallback_disabled", "success"), 1);
+}
+
+TEST_F(FunctionClusterTensorflowDialectTest, RunsOutsideCompilationTPU) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("outside_compilation.mlir"));
+
+  TF_EXPECT_OK(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/false));
+
+  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  bool has_cluster_op = false;
+  main.walk([&](mlir::tf_device::ClusterFuncOp cluster_op) {
+    has_cluster_op = true;
     return WalkResult::advance();
   });
 
-  EXPECT_TRUE(has_graph_op);
+  EXPECT_TRUE(has_cluster_op);
+  EXPECT_EQ(
+      compilation_status.Delta("tpu", "v2", "fallback_disabled", "success"), 1);
 }
 
-TEST_F(FunctionClusterTensorflowDialectTest, FailsOnGPU) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  EXPECT_FALSE(
+  TF_EXPECT_OK(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_CPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/false));
+
+  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  EXPECT_EQ(
+      compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),
+      1);
+}
+
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(
       RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_GPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false)
-          .ok());
+                                        /*is_in_fallback_enabled_mode=*/false));
+
+  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  EXPECT_EQ(
+      compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),
+      1);
+}
+
+TEST_F(FunctionClusterTensorflowDialectTest, LogsFallbackMode) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/true));
+
+  EXPECT_EQ(
+      compilation_status.Delta("tpu", "v2", "fallback_enabled", "success"), 1);
 }
 
 }  // namespace

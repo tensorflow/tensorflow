@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "third_party/protobuf/text_format.h"
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -39,11 +38,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/service/gpu/gpu_target_config.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -83,71 +83,80 @@ void ValidateResult(
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
-  auto gpu_compiler = gpu::NVPTXCompiler();
-  gpu::GpuTargetConfig gpu_target_config = gpu_compiler.GetGpuTargetConfig(
+  Compiler::TargetConfig gpu_target_config = xla::Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
-  StreamExecutorGpuCompiler compiler(gpu_target_config);
+  StreamExecutorGpuCompiler compiler;
 
   mlir::MLIRContext context;
   context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
   TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable, compiler.Compile(xla::CompileOptions(),
-                                        mlir_module.get(), *topology, nullptr));
+  xla::CompileOptions opts;
+  opts.target_config = gpu_target_config;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          compiler.Compile(opts, mlir_module.get(), *topology,
+                                           /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
                           se_client->Load(std::move(executable)));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
   auto gpu_compiler = gpu::NVPTXCompiler();
-  gpu::GpuTargetConfig gpu_target_config = gpu_compiler.GetGpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
-  StreamExecutorGpuCompiler compiler(gpu_target_config);
+  Compiler::TargetConfig gpu_target_config{
+      se_client->client()->backend().default_stream_executor()};
+  StreamExecutorGpuCompiler compiler;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
+                          GetXlaComputation(kProgram));
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          se_client->GetTopologyDescription());
+  xla::CompileOptions opts;
+  opts.target_config = gpu_target_config;
+
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(xla::CompileOptions(), computation, *topology, nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          se_client->Load(std::move(executable)));
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
+      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+      se_client->Load(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
-  auto gpu_compiler = gpu::NVPTXCompiler();
-  gpu::GpuTargetConfig gpu_target_config = gpu_compiler.GetGpuTargetConfig(
+  StreamExecutorGpuCompiler compiler;
+  xla::CompileOptions opts;
+  opts.target_config = Compiler::TargetConfig(
       se_client->client()->backend().default_stream_executor());
-  StreamExecutorGpuCompiler compiler(gpu_target_config);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
+                          GetXlaComputation(kProgram));
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          se_client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(xla::CompileOptions(), computation, *topology, nullptr));
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
 
   // Serialize the executable and load it.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,

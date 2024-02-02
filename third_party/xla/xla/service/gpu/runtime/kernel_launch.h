@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ void RegisterKernelLaunchCustomCalls(
 
 // Kernels loaded by Gpu executable for a single stream executor.
 class StreamExecutorKernels
-    : public runtime::StateVector<std::unique_ptr<se::KernelBase>> {};
+    : public runtime::StateVector<std::unique_ptr<se::Kernel>> {};
 
 // Xla runtime Gpu executable owns the pre-compiled device module (PTX and
 // Cubin for Nvidia Gpus) for all device kernels, and the cache keeps a mapping

@@ -57,6 +57,14 @@ class DatasetCardinalityOp : public OpKernel {
   std::unique_ptr<CardinalityOptions> cardinality_options_;
 };
 
+// An OpKernel that computes the fingerprint of a dataset.
+class DatasetFingerprintOp : public OpKernel {
+ public:
+  explicit DatasetFingerprintOp(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
+};
+
 class DatasetFromGraphOp : public OpKernel {
  public:
   static constexpr const char* const kGraphDef = "graph_def";

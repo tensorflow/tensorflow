@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_assignment.pb.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
@@ -368,14 +368,6 @@ class BufferAssignment {
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
-  }
-
-  // This is similar to copying Allocations(), but since it's moved out, it
-  // preserves the addresses. Since BufferAllocation::Slice keeps a
-  // BufferAllocation*, and some backends keep BufferAllocation::Slice in
-  // xla::Executables, migrating off the use of addresses can be hard.
-  std::vector<BufferAllocation> ReleaseAllocations() {
-    return std::move(allocations_);
   }
 
   // Returns the total size allocation holding all temporary buffers.

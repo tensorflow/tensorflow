@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
     return inst->GetModule()->AddEmbeddedComputation(promoted.Build());
   }();
   new_inst->set_to_apply(to_apply_promoted);
+  to_apply_promoted->SetCollectiveCallInstruction(new_inst.get());
   return new_inst;
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -78,10 +78,20 @@ class ComputationLayout {
   // Sets layouts of all parameters and the result to the default layout.
   void SetToDefaultLayout();
 
-  void SetToDefaultLayoutIfEmpty();
-
   // Returns true if all layouts (parameters and result) have been set.
   bool LayoutIsSet() const;
+  // Returns true if any layouts (parameters and result) have been set.
+  bool AnyLayoutSet() const;
+
+  // Returns a list of each parameter's layout. If the parameters are tupled,
+  // returns an untupled list. Must only be called if all parameters have
+  // layouts set (check with LayoutIsSet()).
+  StatusOr<std::vector<Layout>> FlattenedParameterLayouts() const;
+
+  // Returns a list of each output's layout. If the result shape is a tuple,
+  // returns an untupled list. Must only be called if all outputs have layouts
+  // set (check with LayoutIsSet()).
+  StatusOr<std::vector<Layout>> FlattenedResultLayouts() const;
 
   // Prints a string representation of this object.
   void Print(Printer* printer) const;

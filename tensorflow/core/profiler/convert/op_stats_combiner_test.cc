@@ -60,6 +60,26 @@ TEST(CombineAllOpStatsTest, CombineRunEnvironment) {
                      .profile_duration_ms());
 }
 
+TEST(CombineAllOpStatsTest, CombineRunEnvironmentWithUnknownDevice) {
+  OpStats dst_op_stats, op_stats_1, op_stats_2;
+  op_stats_1.mutable_run_environment()->set_device_type("TPU");
+  op_stats_2.mutable_run_environment()->set_device_type("Device");
+  OpStatsInfo op_stats_info_1(&op_stats_1, TPU, 0),
+      op_stats_info_2(&op_stats_2, TPU, 0);
+  std::vector<OpStatsInfo> all_op_stats_info = {op_stats_info_1,
+                                                op_stats_info_2};
+
+  // Construct dummy step_intersection.
+  StepDatabaseResult dummy_step_db_result;
+  absl::flat_hash_map<uint32 /*=host_id*/, const StepDatabaseResult*> result;
+  result.insert({0, &dummy_step_db_result});
+  StepIntersection dummy_step_intersection = StepIntersection(1, result);
+
+  CombineAllOpStats(all_op_stats_info, dummy_step_intersection, &dst_op_stats);
+
+  EXPECT_EQ("TPU", dst_op_stats.run_environment().device_type());
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

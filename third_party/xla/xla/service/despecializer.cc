@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,8 @@ Despecializer::Despecializer() : pipeline_("despecializer") {
   pipeline_.AddPass<ControlDepRemover>();
   pipeline_.AddPass<Defuser>();
   pipeline_.AddPass<BFloat16MixedPrecisionRemoval>();
-  pipeline_.AddPass<SubByteNormalization>();
+  pipeline_.AddPass<SubByteNormalization>(
+      SubByteNormalization::REMOVE_ELEMENT_SIZE);
 }
 
 void Despecializer::AddReduceWindowToReduceBroadcastDeconstruct() {

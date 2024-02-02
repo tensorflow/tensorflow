@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -80,12 +80,6 @@ class ServiceOptions {
 // (target-specific compiler, StreamExecutor).
 class Service : public ServiceInterface {
  public:
-  // Factory method for creating a new Service.
-  static StatusOr<std::unique_ptr<Service>> NewService(
-      se::Platform* platform = nullptr);
-  static StatusOr<std::unique_ptr<Service>> NewService(
-      const ServiceOptions& options);
-
   // Unregisters a previously-allocated global handle.
   //
   // If the handle given is not currently allocated, a NOT_FOUND status is
@@ -123,13 +117,6 @@ class Service : public ServiceInterface {
   // replica id 0.
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override;
-
-  // Waits until the specified execution is complete and returns the result.
-  // Calling this API multiple times with the same execution handle returns the
-  // method with an error since the execution handle is destroyed after the
-  // first call.
-  Status WaitForExecution(const WaitForExecutionRequest* arg,
-                          WaitForExecutionResponse* result) override;
 
   // Requests that global data be transferred to the client in literal form.
   Status TransferToClient(const TransferToClientRequest* arg,
@@ -232,6 +219,7 @@ class Service : public ServiceInterface {
       absl::Span<const GlobalDataHandle* const> arguments,
       absl::Span<se::StreamExecutor* const> stream_executors) const;
 
+ public:
   // Builds an Executable for the given parameters.
   //
   // If device_allocator is not null, the compiler may use it to allocate temp
@@ -251,6 +239,7 @@ class Service : public ServiceInterface {
       Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
       const Compiler::CompileOptions& options, bool run_backend_only = false);
 
+ protected:
   // Same as BuildExecutable() above, but builds a list of
   // AotCompilationResult(s), which can be persisted to later load Executable
   // objects.

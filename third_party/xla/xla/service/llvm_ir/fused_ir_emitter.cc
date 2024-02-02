@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,11 +109,7 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
   global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
 
   llvm::Type* shape_type = llvm_ir::ShapeToIrType(constant.shape(), module);
-  llvm::Constant* global_with_shape =
-      llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
-          global, shape_type->getPointerTo());
-
-  IrArray array(global_with_shape, shape_type, constant.shape());
+  IrArray array(global, shape_type, constant.shape());
 
   return [&, b, array = std::move(array)](const IrArray::Index& index) {
     return array.EmitReadArrayElement(index, b, constant.name());
@@ -132,24 +128,22 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   llvm::IRBuilder<>* b = elemental_emitter_.b();
   llvm::Type* type = llvm::StructType::get(b->getContext(), element_ir_types);
 
-  return StatusOr<IndexedGenerator>(
-      [&, b, type](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        llvm::Value* ret = llvm::UndefValue::get(type);
-        for (size_t i = 0; i < tuple.operand_count(); ++i) {
-          IrArray::Index used_index = index;
-          if (i > 0 &&
-              !ShapeUtil::EqualIgnoringElementType(tuple.operand(i)->shape(),
-                                                   tuple.operand(0)->shape())) {
-            used_index = used_index.SourceIndexOfBitcast(
-                tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
-          }
-          TF_ASSIGN_OR_RETURN(
-              llvm::Value * value,
-              indexed_generators_.at(tuple.operand(i))(used_index));
-          ret = b->CreateInsertValue(ret, value, i);
-        }
-        return ret;
-      });
+  return StatusOr<IndexedGenerator>([&, b, type](const IrArray::Index& index)
+                                        -> StatusOr<llvm::Value*> {
+    llvm::Value* ret = llvm::UndefValue::get(type);
+    for (size_t i = 0; i < tuple.operand_count(); ++i) {
+      IrArray::Index used_index = index;
+      if (i > 0 && !ShapeUtil::EqualIgnoringElementType(
+                       tuple.operand(i)->shape(), tuple.operand(0)->shape())) {
+        used_index = used_index.SourceIndexOfBitcast(
+            tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
+      }
+      TF_ASSIGN_OR_RETURN(llvm::Value * value,
+                          indexed_generators_.at(tuple.operand(i))(used_index));
+      ret = b->CreateInsertValue(ret, value, i);
+    }
+    return ret;
+  });
 }
 
 StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
@@ -158,7 +152,7 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
     case HloOpcode::kConstant:
       return HandleConstant(instruction);
     case HloOpcode::kGetTupleElement:
-      return InternalError("Tuple parameters are not supported for fusion");
+      return Internal("Tuple parameters are not supported for fusion");
     case HloOpcode::kParameter:
       return InvalidArgument("Unbound parameter: %s", instruction.ToString());
     case HloOpcode::kTuple:

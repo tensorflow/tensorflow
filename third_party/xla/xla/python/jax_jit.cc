@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,10 +46,10 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/py_values.h"
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -334,7 +334,16 @@ void BuildJaxjitSubmodule(py::module& m) {
       "thread_local_state", [&]() { return &ThreadLocalJitState(); },
       py::return_value_policy::reference);
 
-  jitlib.def("jit_is_disabled", &GetDisableJit);
+  jitlib.def(
+      "swap_thread_local_state_disable_jit",
+      [&](std::optional<bool> value) -> std::optional<bool> {
+        auto tls = &ThreadLocalJitState();
+        auto result = tls->disable_jit;
+        tls->disable_jit = value;
+        return result;
+      },
+      py::return_value_policy::reference);
+
   jitlib.def("get_enable_x64", &GetEnableX64);
   jitlib.def("set_thread_local_state_initialization_callback",
              [](py::object f) { initialize_local_state = f; });

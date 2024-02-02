@@ -39,14 +39,14 @@ func.func @main(%arg0: tensor<8x4x32xf32> {tf._layout = "sharding_specs:unsharde
   // CHECK:       "tf_device.cluster"
   // CHECK-NEXT:    %[[AXIS:.*]] = "tf.Const"()
   // CHECK-NEXT:    %[[ARG1_RELAYOUT:.*]] = "tf.DTensorAllGather"(%[[ARG1]])
-  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:unsharded,x,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<8x2x32xf32>) -> tensor<8x8x32xf32>
   // CHECK-NEXT:    %[[ARG2_RELAYOUT:.*]] = "tf.DTensorAllGather"(%[[ARG2]])
-  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:unsharded,x,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<8x4x32xf32>) -> tensor<8x16x32xf32>
   // CHECK-NEXT:    %[[CONCAT_OUT:.*]] = "tf.ConcatV2"(%[[ARG0]], %[[ARG1_RELAYOUT]], %[[ARG2_RELAYOUT]], %[[AXIS]])
   // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=4|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
@@ -80,14 +80,14 @@ func.func @main(%arg0: tensor<8x4x32xf32> {tf._layout = "sharding_specs:x,unshar
   // CHECK:       "tf_device.cluster"
   // CHECK-NEXT:    %[[AXIS:.*]] = "tf.Const"()
   // CHECK-NEXT:    %[[ARG0_RELAYOUT:.*]] = "tf.DTensorAllScatter"(%[[ARG0]])
-  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<4x4x32xf32>) -> tensor<4x4x16xf32>
   // CHECK-NEXT:    %[[ARG1_RELAYOUT:.*]] = "tf.DTensorAllScatter"(%[[ARG1]])
-  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:unsharded,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<8x8x16xf32>) -> tensor<4x8x16xf32>
   // CHECK-NEXT:    %[[CONCAT_OUT:.*]] = "tf.ConcatV2"(%[[ARG0_RELAYOUT]], %[[ARG1_RELAYOUT]], %[[ARG2]], %[[AXIS]])
   // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,y, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
@@ -118,14 +118,14 @@ func.func @main(%arg0: tensor<8x8x32xf32> {tf._layout = "sharding_specs:unsharde
   // CHECK:       "tf_device.cluster"
   // CHECK-NEXT:    %[[AXIS:.*]] = "tf.Const"()
   // CHECK-NEXT:    %[[ARG0_RELAYOUT:.*]] = "tf.DTensorAllGather"(%[[ARG0]])
-  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:unsharded,x,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<8x4x32xf32>) -> tensor<8x8x32xf32>
   // CHECK-NEXT:    %[[ARG1_RELAYOUT:.*]] = "tf.DTensorAllGather"(%[[ARG1]])
-  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:unsharded,unsharded,x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<16x8x16xf32>) -> tensor<16x8x32xf32>
   // CHECK-NEXT:    %[[CONCAT_OUT:.*]] = "tf.ConcatV2"(%[[ARG0_RELAYOUT]], %[[ARG1_RELAYOUT]], %[[AXIS]])
   // CHECK-SAME:      _layout = ["sharding_specs:unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
@@ -158,19 +158,19 @@ func.func @main(%arg0: tensor<8x4x32xf32> {tf._layout = "sharding_specs:x,unshar
   // CHECK:       "tf_device.cluster"
   // CHECK-NEXT:    %[[AXIS:.*]] = "tf.Const"()
   // CHECK-NEXT:    %[[ARG1_SCATTER:.*]] = "tf.DTensorAllScatter"(%[[ARG1]])
-  // CHECK-SAME:      _layout = ["sharding_specs:x,y,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:unsharded,y,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:x,y,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:x,y,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<8x4x32xf32>) -> tensor<4x4x32xf32>
   // CHECK-NEXT:    %[[ARG1_RELAYOUT:.*]] = "tf.DTensorAllGather"(%[[ARG1_SCATTER]])
-  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:x,y,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<4x4x32xf32>) -> tensor<4x8x32xf32>
   // CHECK-NEXT:    %[[ARG2_RELAYOUT:.*]] = "tf.DTensorAllGather"(%[[ARG2]])
-  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      input_layout = #dtensor.layout<sharding_specs:x,y,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   // CHECK-SAME:      output_layout = #dtensor.layout<sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
+  // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]
   // CHECK-SAME:      (tensor<4x8x32xf32>) -> tensor<4x16x32xf32>
   // CHECK-NEXT:    %[[CONCAT_OUT:.*]] = "tf.ConcatV2"(%[[ARG0]], %[[ARG1_RELAYOUT]], %[[ARG2_RELAYOUT]], %[[AXIS]])
   // CHECK-SAME:      _layout = ["sharding_specs:x,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]

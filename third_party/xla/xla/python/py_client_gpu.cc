@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "xla/pjrt/exceptions.h"
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
-#include "xla/python/exceptions.h"
 
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
@@ -121,11 +121,13 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     } else {
       void* temp = new char[result.size_in_bytes];
       temp_buffers.push_back(temp);
+      xla::TransposePlan::Options options;
+      options.elem_size_in_bytes = xla::primitive_util::ByteWidth(result.type);
+      options.dims = dims;
+      options.permutation = result.reversed_layout;
+      options.input_layout = xla::TransposePlan::Striding{strides};
       xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
-          callback->transpose_cache().GetOrCreate(
-              xla::primitive_util::ByteWidth(result.type), dims,
-              result.reversed_layout,
-              /*input_layout=*/xla::TransposePlan::Striding{strides});
+          callback->transpose_cache().GetOrCreate(options);
       if (!plan.ok()) {
         throw xla::XlaRuntimeError(plan.status().ToString());
       }

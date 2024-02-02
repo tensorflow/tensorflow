@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <map>
@@ -78,6 +79,10 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   absl::string_view DebugString() const override { return debug_string_; }
 
+  int core_on_chip() const { return core_index_; }
+
+  absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
+
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     return attributes_;
@@ -94,13 +99,19 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
 
+  void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
+
+  void SetCoreOnChip(int core_index) { core_index_ = core_index; }
+
  private:
   const int id_;
   const int process_index_;
   const std::string device_kind_;
+  int core_index_ = -1;
   std::string debug_string_ = "<unknown SE device>";
   std::string to_string_ = "<unknown SE device>";
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+  std::array<int, 1> coords_;
 };
 
 class PjRtStreamExecutorDevice : public PjRtDevice {
@@ -109,8 +120,12 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
       std::string device_kind, int process_index = 0)
       : description_(id, std::move(device_kind), process_index),
-        device_ordinal_(
-            local_device_state ? local_device_state->device_ordinal() : -1),
+        local_device_id_(local_device_state
+                             ? local_device_state->local_device_id()
+                             : PjRtLocalDeviceId(-1)),
+        local_hardware_id_(local_device_state
+                               ? local_device_state->local_hardware_id()
+                               : PjRtLocalHardwareId(-1)),
         local_device_state_(std::move(local_device_state)) {}
   ~PjRtStreamExecutorDevice() override = default;
 
@@ -137,9 +152,19 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   PjRtClient* client() const override { return client_; }
 
-  bool IsAddressable() const override { return device_ordinal_ != -1; }
+  bool IsAddressable() const override { return local_device_id_ != -1; }
 
-  int local_hardware_id() const override { return device_ordinal_; }
+  int local_hardware_id() const override {
+    return local_hardware_id_typed().value();
+  }
+
+  PjRtLocalDeviceId local_device_id() const override {
+    return local_device_id_;
+  }
+
+  PjRtLocalHardwareId local_hardware_id_typed() const override {
+    return local_hardware_id_;
+  }
 
   // If this is a device local to this host, returns a LocalDeviceState object
   // that can be used to manipulate the device. Returns nullptr if the device is
@@ -170,7 +195,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
  private:
   PjRtStreamExecutorDeviceDescription description_;
-  const int device_ordinal_;  // -1 means not local.
+  const PjRtLocalDeviceId local_device_id_;
+  const PjRtLocalHardwareId local_hardware_id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   PjRtClient* client_ = nullptr;
 };
@@ -199,16 +225,23 @@ class PjRtStreamExecutorClient : public PjRtClient {
   }
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    auto it = id_to_device_.find(device_id);
+    return LookupDevice(PjRtGlobalDeviceId(device_id));
+  }
+
+  StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const override {
+    auto it = id_to_device_.find(global_device_id.value());
     if (it != id_to_device_.end()) {
       return it->second;
     }
     return InvalidArgument("No matching device found for device_id %d",
-                           device_id);
+                           global_device_id.value());
   }
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+  StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -225,15 +258,13 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
+  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
+                                    absl::Span<const int64_t> dims) override;
+
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
-
-  StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtLoadedExecutable& executable) const override {
-    return std::optional<std::string>();
-  }
 
   virtual StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const;
@@ -281,14 +312,14 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
-      const Layout* device_layout) override;
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtDevice* device, const Layout* device_layout) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
@@ -873,6 +904,12 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
     return executables_;
   }
+
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
+    return compile_options_;
+  }
+
+  absl::StatusOr<std::string> FingerprintExecutable() const override;
 
  protected:
   bool parameter_is_tupled_arguments() const {

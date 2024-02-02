@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/plugin.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -49,22 +48,22 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   XlaInterpreterExecutor() = default;
 
   tsl::Status Init(int device_ordinal, DeviceOptions device_options) override {
+    device_ordinal_ = device_ordinal;
     return ::tsl::OkStatus();
   }
 
+  int device_ordinal() const override { return device_ordinal_; };
   tsl::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                        KernelBase *kernel) override {
+                        Kernel *kernel) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
   tsl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
-                     const BlockDim &block_dims, const KernelBase &kernel,
-                     const KernelArgsArrayBase &args) override {
+                     const BlockDim &block_dims, const Kernel &kernel,
+                     const KernelArgs &args) override {
     return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset_bytes,
-                     uint64_t size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
@@ -183,6 +182,10 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
  private:
+  // The device ordinal value that this executor was initialized with; recorded
+  // for use in getting device metadata. Immutable post-initialization.
+  int device_ordinal_;
+
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
   tsl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape &shape);

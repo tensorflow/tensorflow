@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -379,7 +379,19 @@ class Executable {
                ? module_config().debug_options().xla_dump_hlo_snapshots()
                : false;
   }
-  HloProto const* hlo_proto() const { return hlo_proto_.get(); }
+
+  HloProto const* hlo_proto() const {
+    if (hlo_proto_ != nullptr && !hlo_proto_->has_hlo_module()) {
+      *hlo_proto_->mutable_hlo_module() = module().ToProto();
+    }
+    return hlo_proto_.get();
+  }
+
+  const BufferAssignmentProto* buffer_assignment_proto() const {
+    return hlo_proto_ != nullptr && hlo_proto_->has_buffer_assignment()
+               ? &hlo_proto_->buffer_assignment()
+               : nullptr;
+  }
 
   std::string& debug_info() { return debug_info_; }
   void set_debug_info(const std::string& debug_info) {
@@ -403,9 +415,6 @@ class Executable {
   // for execution.
   const std::shared_ptr<HloModule> hlo_module_;
 
-  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
-  std::unique_ptr<HloProto const> hlo_proto_;
-
   // Execution count, used to generate a unique filename for each dumped
   // execution.
   int64_t execution_count_ = 0;
@@ -415,6 +424,14 @@ class Executable {
 
   // Generic debug information as a string.
   std::string debug_info_;
+
+ private:
+  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
+  // This field may also be only partially set: if only
+  // hlo_proto_->buffer_assignment is set and hlo_proto_->hlo_module isn't, the
+  // hlo_module proto will be computed on the fly when requested with
+  // hlo_proto(). This avoids wasting CPU and memory if the proto isn't needed.
+  std::unique_ptr<HloProto> hlo_proto_;
 };
 
 }  // namespace xla

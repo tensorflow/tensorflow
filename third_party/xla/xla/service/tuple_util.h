@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_TUPLE_UTIL_H_
 #define XLA_SERVICE_TUPLE_UTIL_H_
 
+#include <cstdint>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
 
 namespace xla {
 class TupleUtil {
@@ -29,7 +36,8 @@ class TupleUtil {
   // The instructions are generated into the computation containing
   // `input_tuple`.
   static HloInstruction* ExtractPrefix(HloInstruction* input_tuple,
-                                       int64_t elements);
+                                       int64_t elements,
+                                       absl::string_view name = "");
 
   // Generates HLO instructions to create a tuple that consists of the values in
   // `trailing_values` appended to `input_tuple` (which must be of tuple shape).
@@ -59,6 +67,24 @@ class TupleUtil {
   // Recursively create kGetTupleElement instructions if the defining position
   // shape is not an array. Returns the new instruction that has array shape.
   static HloInstruction* AddGetTupleElements(const HloPosition& position);
+
+  // Returns a ShapeTree where each index is a GetTupleElement instruction for
+  // that subshape of the tuple.  The root index is the original argument.
+  // The new instructions are added to the parent computation of the argument.
+  // This function is similar to `xla::DisassembleTuple` except it operates
+  // directly on `HloInstruction*`.
+  static ShapeTree<HloInstruction*> DisassembleTupleInstruction(
+      HloInstruction* tuple);
+
+  // Assembles a tuple from a ShapeTree that contains the leaves of the tuple.
+  // Non-leaf elements of the ShapeTree are ignored.  DisassembleTuple and
+  // AssembleTuple are essentially inverse operations.
+  // The new instructions are added to the given computation.
+  // This function is similar to `xla::AssembleTuple` except it operates
+  // directly on `HloInstruction*`.
+  static HloInstruction* AssembleTupleInstruction(
+      HloComputation* computation, ShapeTree<HloInstruction*> elements,
+      absl::string_view name = "");
 };
 }  // namespace xla
 

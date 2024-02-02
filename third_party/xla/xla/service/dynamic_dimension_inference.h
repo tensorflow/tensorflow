@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,21 +16,44 @@ limitations under the License.
 #ifndef XLA_SERVICE_DYNAMIC_DIMENSION_INFERENCE_H_
 #define XLA_SERVICE_DYNAMIC_DIMENSION_INFERENCE_H_
 
+#include <cstdint>
 #include <functional>
-#include <memory>
+#include <map>
+#include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/span.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 
 namespace xla {
+
+// Each instruction can have one of the three modes in supporting dynamic
+// lowering.
+enum OpDynamismSupport : uint8_t {
+  // There is no support for dynamic lowering -- dynamic padder will make sure
+  // the input to that op has static bound by rewriting the op (e.g, extra space
+  // in reduce_sum will be padded with 0).
+  kNoSupport = 0,
+  // The op can take either dynamic input or static input.
+  kOptional,
+  // The op only has a dynamic lowering, dynamic padder will make sure the input
+  // to this op is in dynamic form.
+  kRequired,
+};
+
+// Returns true if given instruction supports native dynamic lowering. If
+// so, dynamic padder will not attempt to pad it.
+using OpSupportsDynamismHandler =
+    std::function<OpDynamismSupport(HloInstruction*)>;
 
 // DynamicDimensionInference analyzes each HLO instruction in a graph and
 // inferences which dimensions are dynamic and which scalar instructions
@@ -56,6 +79,7 @@ class DynamicDimensionInference {
 
   static StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
+      OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr,
       CustomCallInferenceHandler custom_call_handler = nullptr,
       ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore,
       const AssertionGenerator& assertion_generator = nullptr,
@@ -98,15 +122,23 @@ class DynamicDimensionInference {
   void ReplaceAllDynamicDimensionUsesWith(HloInstruction* replace,
                                           HloInstruction* with);
 
-  // Update dynamic dimension inference to analyze `inst`. Useful to
-  // incrementally track new instructions added after initial run.
-  Status Update(HloInstruction* inst);
+  // Get the original dynamic shape of the given instruction.
+  Shape GetDynamicShape(HloInstruction* inst);
+
+  // Returns true iff all dynamic dimensions on the operands of the given
+  // instruction have inferred dynamic sizes.
+  bool CanInfer(HloInstruction* hlo);
+
+  // Returns true iff DynamicDimensionInferenceVisitor made changes to the
+  // module.
+  bool changed() const { return changed_; }
 
   friend class DynamicDimensionInferenceVisitor;
 
  private:
   explicit DynamicDimensionInference(
-      HloModule* module, CustomCallInferenceHandler custom_call_handler,
+      HloModule* module, OpSupportsDynamismHandler op_supports_dynamism_handler,
+      CustomCallInferenceHandler custom_call_handler,
       ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator,
       const absl::flat_hash_set<absl::string_view>& execution_threads_);
 
@@ -151,7 +183,13 @@ class DynamicDimensionInference {
   // Copies the internal mapping from instruction `from` to instruction `to`.
   // This is useful when an instruction is replaced by the other during the
   // inferencing process.
-  void CopyMapping(HloInstruction* from, HloInstruction* to);
+  // For cases where the `from` and `to` instructions are in different
+  // computations, a `dynamic_size_map` can be provided which maps the dynamic
+  // size instructions in the `from` computation into the corresponding
+  // instruction in the `to` computation.
+  void CopyMapping(HloInstruction* from, HloInstruction* to,
+                   const absl::flat_hash_map<HloInstruction*, HloInstruction*>*
+                       dynamic_size_map = nullptr);
 
   // AnalyzeDynamicDimensions starts the analysis of the dynamic dimensions in
   // module_.
@@ -172,6 +210,8 @@ class DynamicDimensionInference {
       ConstHloInstructionMap<std::set<DynamicDimension>>;
   PerHloDynamicDimensions per_hlo_dynamic_dimensions_;
 
+  OpSupportsDynamismHandler op_supports_dynamism_handler_;
+
   // A handler for custom calls.
   CustomCallInferenceHandler custom_call_handler_;
 
@@ -179,6 +219,8 @@ class DynamicDimensionInference {
   ShapeCheckMode shape_check_mode_;
 
   AssertionGenerator assertion_generator_;
+
+  bool changed_ = false;
 
   const absl::flat_hash_set<absl::string_view>& execution_threads_;
 };

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,14 +18,20 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/matrix.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/shape_util.h"
 namespace xla {
 namespace spmd {
 
@@ -33,17 +39,17 @@ namespace spmd {
 // It merges nodes and does path compression.
 class CostGraph {
  public:
-  CostGraph(const LeafStrategies& leaf_strategies,
+  CostGraph(const StrategyGroups& strategy_groups,
             const AssociativeDotPairs& associative_dot_pairs) {
-    node_lens_.reserve(leaf_strategies.size());
-    extra_node_costs_.reserve(leaf_strategies.size());
-    adjacency_.assign(leaf_strategies.size(), StableHashSet<int>());
+    node_lens_.reserve(strategy_groups.size());
+    extra_node_costs_.reserve(strategy_groups.size());
+    adjacency_.assign(strategy_groups.size(), StableHashSet<int>());
 
     // Build the cost graph
-    for (const auto& strategies : leaf_strategies) {
-      node_lens_.push_back(strategies->leaf_vector.size());
+    for (const auto& strategies : strategy_groups) {
+      node_lens_.push_back(strategies->strategies.size());
       extra_node_costs_.push_back(
-          std::vector<double>(strategies->leaf_vector.size(), 0.0));
+          std::vector<double>(strategies->strategies.size(), 0.0));
 
       for (size_t i = 0; i < strategies->in_nodes.size(); ++i) {
         if (!strategies->in_nodes[i]->is_tuple) {
@@ -91,20 +97,29 @@ class CostGraph {
       NodeIdx src_idx = pair.first->node_idx;
       NodeIdx dst_idx = pair.second->node_idx;
 
-      if (node_lens_[src_idx] != node_lens_[dst_idx]) {
-        continue;
-      }
-
       Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
+      absl::flat_hash_map<std::string, NodeStrategyIdx>
+          src_strategy_name_to_idx_map;
       for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
-        if (leaf_strategies[src_idx]->leaf_vector[i].communication_cost > 0) {
-          CHECK_LE(
-              std::abs(
-                  leaf_strategies[src_idx]->leaf_vector[i].communication_cost -
-                  leaf_strategies[dst_idx]->leaf_vector[i].communication_cost),
-              1e-6);
-          edge_cost(i, i) =
-              -leaf_strategies[src_idx]->leaf_vector[i].communication_cost;
+        const ShardingStrategy& strategy =
+            strategy_groups[src_idx]->strategies[i];
+        if (strategy.communication_cost > 0) {
+          src_strategy_name_to_idx_map[strategy.name] = i;
+        }
+      }
+      for (NodeStrategyIdx i = 0; i < node_lens_[dst_idx]; ++i) {
+        const ShardingStrategy& dst_strategy =
+            strategy_groups[dst_idx]->strategies[i];
+        if (dst_strategy.communication_cost > 0) {
+          auto it = src_strategy_name_to_idx_map.find(dst_strategy.name);
+          if (it != src_strategy_name_to_idx_map.end()) {
+            const ShardingStrategy& src_strategy =
+                strategy_groups[src_idx]->strategies[it->second];
+            CHECK_LE(std::abs(src_strategy.communication_cost -
+                              dst_strategy.communication_cost),
+                     1e-6);
+            edge_cost(it->second, i) = -src_strategy.communication_cost;
+          }
         }
       }
       AddEdgeCost(src_idx, dst_idx, edge_cost);
@@ -112,12 +127,12 @@ class CostGraph {
   }
 
   Matrix CreateEdgeCost(NodeIdx src_idx, NodeIdx dst_idx, size_t in_node_idx,
-                        StrategyVector* strategies, bool zero_cost = false) {
-    CHECK_GE(node_lens_.size(), src_idx);
-    CHECK_GE(node_lens_.size(), dst_idx);
+                        StrategyGroup* strategy_group, bool zero_cost = false) {
+    CHECK_LT(src_idx, node_lens_.size());
+    CHECK_LT(dst_idx, node_lens_.size());
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-    for (NodeStrategyIdx k = 0; k < strategies->leaf_vector.size(); ++k) {
-      const ShardingStrategy& strategy = strategies->leaf_vector[k];
+    for (NodeStrategyIdx k = 0; k < strategy_group->strategies.size(); ++k) {
+      const ShardingStrategy& strategy = strategy_group->strategies[k];
       size_t start_idx = 0;
       if (strategy.resharding_costs[in_node_idx].size() > node_lens_[src_idx]) {
         start_idx =
@@ -358,11 +373,11 @@ class CostGraph {
 inline const ShardingStrategy& GetShardingStrategy(
     const HloInstruction* inst, const StrategyMap& strategy_map,
     const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val) {
-  const StrategyVector* strategies = strategy_map.at(inst).get();
-  CHECK(!strategies->is_tuple);
-  NodeIdx node_idx = strategies->node_idx;
+  const StrategyGroup* strategy_group = strategy_map.at(inst).get();
+  CHECK(!strategy_group->is_tuple);
+  NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategies->leaf_vector[stra_idx];
+  return strategy_group->strategies[stra_idx];
 }
 
 // Get the final sharding strategy according to the ilp solution.
@@ -370,16 +385,16 @@ inline const ShardingStrategy& GetShardingStrategyForTuple(
     const HloInstruction* inst, ShapeIndex index,
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
     absl::Span<const NodeStrategyIdx> s_val) {
-  const StrategyVector* tuple_strategies = strategy_map.at(inst).get();
-  CHECK(tuple_strategies->is_tuple);
+  const StrategyGroup* strategy_group = strategy_map.at(inst).get();
+  CHECK(strategy_group->is_tuple);
   for (auto index_element : index) {
-    CHECK_LT(index_element, tuple_strategies->childs.size());
-    const auto& strategies = tuple_strategies->childs[index_element];
-    tuple_strategies = strategies.get();
+    CHECK_LT(index_element, strategy_group->childs.size());
+    const auto& strategies = strategy_group->childs[index_element];
+    strategy_group = strategies.get();
   }
-  NodeIdx node_idx = tuple_strategies->node_idx;
+  NodeIdx node_idx = strategy_group->node_idx;
   NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return tuple_strategies->leaf_vector[stra_idx];
+  return strategy_group->strategies[stra_idx];
 }
 
 }  // namespace spmd

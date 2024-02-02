@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
@@ -27,9 +28,9 @@ limitations under the License.
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/profiler/internal/traceme_wrapper.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/status.h"
@@ -120,6 +121,22 @@ void BuildProfilerSubmodule(py::module* m) {
              xla::ThrowIfError(sess->CollectData(&xspace));
              xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
                  xspace, tensorboard_dir, /* also_export_trace_json= */ true));
+           })
+      .def("stop",
+           [](tsl::ProfilerSession* sess) -> pybind11::bytes {
+             tensorflow::profiler::XSpace xspace;
+             // Disables the ProfilerSession
+             xla::ThrowIfError(sess->CollectData(&xspace));
+             return xspace.SerializeAsString();
+           })
+      .def("export",
+           [](tsl::ProfilerSession* sess, const std::string& xspace,
+              const std::string& tensorboard_dir) -> void {
+             tensorflow::profiler::XSpace xspace_proto;
+             xspace_proto.ParseFromString(xspace);
+             xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                 xspace_proto, tensorboard_dir,
+                 /* also_export_trace_json= */ true));
            });
 
   py::class_<tensorflow::ProfileOptions> profile_options_class(
@@ -166,11 +183,22 @@ void BuildProfilerSubmodule(py::module* m) {
       "get_profiled_instructions_proto",
       [](py::str tensorboard_dir) -> pybind11::bytes {
         tensorflow::profiler::ProfiledInstructionsProto profile_proto;
-        xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
-            tensorboard_dir, &profile_proto));
+        xla::ThrowIfError(
+            xla::ConvertXplaneUnderLogdirToProfiledInstructionsProto(
+                tensorboard_dir, &profile_proto));
         return profile_proto.SerializeAsString();
       },
       py::arg("tensorboard_dir"));
+
+  profiler.def(
+      "get_fdo_profile", [](const std::string& xspace) -> pybind11::bytes {
+        tensorflow::profiler::XSpace xspace_proto;
+        xspace_proto.ParseFromString(xspace);
+        tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
+        xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
+            {xspace_proto}, &fdo_profile));
+        return fdo_profile.SerializeAsString();
+      });
 }
 
 }  // namespace xla

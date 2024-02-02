@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/test.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -114,6 +114,8 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
+  MOCK_METHOD((absl::flat_hash_map<std::string, Client::ClientAttribute>),
+              attributes, (), (const, final));
   MOCK_METHOD(int, device_count, (), (const, final));
   MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, addressable_device_count, (), (const, final));
@@ -170,9 +172,12 @@ class MockDevice final : public Device {
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
   MOCK_METHOD(const xla::PjRtDeviceDescription&, description, (),
               (const, final));
-  MOCK_METHOD(int, id, (), (const, final));
+  MOCK_METHOD(xla::PjRtGlobalDeviceId, global_device_id, (), (const, final));
   MOCK_METHOD(int, process_index, (), (const, final));
   MOCK_METHOD(int, local_hardware_id, (), (const, final));
+  MOCK_METHOD(xla::PjRtLocalDeviceId, local_device_id, (), (const, final));
+  MOCK_METHOD(xla::PjRtLocalHardwareId, local_hardware_id_typed, (),
+              (const, final));
   MOCK_METHOD(absl::string_view, device_kind, (), (const, final));
   MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
   MOCK_METHOD(absl::string_view, ToString, (), (const, final));
@@ -228,6 +233,10 @@ class MockExecutable final
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetOutputLayouts, (),
+              (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
   MOCK_METHOD((StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>),
@@ -251,6 +260,10 @@ class MockLoadedExecutable final
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetParameterShardings, (),
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetOutputLayouts, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));

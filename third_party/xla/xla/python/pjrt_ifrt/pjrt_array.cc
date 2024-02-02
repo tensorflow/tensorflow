@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,55 +19,129 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
+
+namespace {
+
+// Validates the sharding and PjRtBuffers have consistent device and memory
+// kind.
+Status ValidateArrayCreationInput(std::shared_ptr<const Sharding> sharding,
+                                  const PjRtArray::PjRtBuffers& pjrt_buffers) {
+  if (pjrt_buffers.empty()) {
+    return InvalidArgument("pjrt_buffers must be non-empty");
+  }
+  if (sharding->devices().size() != pjrt_buffers.size()) {
+    return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
+                           sharding->devices().size(), pjrt_buffers.size());
+  }
+
+  // Canonicalize memory kind in case it hasn't been done before.
+  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
+      sharding->memory_kind(), sharding->devices().front());
+  for (int i = 0; i < sharding->devices().size(); ++i) {
+    if (pjrt_buffers[i]->device() != sharding->devices()[i]) {
+      return InvalidArgument(
+          "PjRtBuffer's memory space is addressed by device %s vs sharding is "
+          "on device %s",
+          pjrt_buffers[i]->device()->DebugString(),
+          sharding->devices()[i]->DebugString());
+    }
+    MemoryKind buffer_memory_kind =
+        MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
+    if (canonicalized_sharding_memory_kind != buffer_memory_kind) {
+      return InvalidArgument(
+          "PjRtBuffer's memory kind does not match sharding's memory kind. Got "
+          "PjRtBuffer's memory kind: %s vs shardings's memory kind: %s",
+          buffer_memory_kind.DebugString(),
+          canonicalized_sharding_memory_kind.DebugString());
+    }
+  }
+  return OkStatus();
+}
+
+// Validates the PjRtBuffers have consistent memory kind and returns the memory
+// kind.
+StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
+    const PjRtArray::PjRtBuffers& pjrt_buffers) {
+  const auto first_memory_kind =
+      MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
+  const MemoryKind canonical_first_memory_kind =
+      CanonicalizeMemoryKind(first_memory_kind, pjrt_buffers.front()->device());
+  for (const auto& pjrt_buffer : pjrt_buffers) {
+    if (auto memory_kind = MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get());
+        canonical_first_memory_kind !=
+        CanonicalizeMemoryKind(memory_kind, pjrt_buffer->device())) {
+      return InvalidArgument(
+          "Memory kind mismatch between PjRtBuffers. Got one buffer with "
+          "memory kind: %s and another with memory_kind: %s",
+          first_memory_kind.DebugString(), memory_kind.DebugString());
+    }
+  }
+  return first_memory_kind;
+}
+
+}  // namespace
 
 char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
 
 StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
-    case DType::kInvalid:
-    case DType::kPred:
-    case DType::kS4:
-    case DType::kS8:
-    case DType::kS16:
-    case DType::kS32:
-    case DType::kS64:
-    case DType::kU4:
-    case DType::kU8:
-    case DType::kU16:
-    case DType::kU32:
-    case DType::kU64:
-    case DType::kF8E4M3FN:
-    case DType::kF8E4M3B11FNUZ:
-    case DType::kF8E4M3FNUZ:
-    case DType::kF8E5M2:
-    case DType::kF8E5M2FNUZ:
-    case DType::kF16:
-    case DType::kF32:
-    case DType::kBF16:
-    case DType::kF64:
-    case DType::kC64:
-    case DType::kC128:
-    case DType::kToken:
-      return static_cast<xla::PrimitiveType>(static_cast<int>(dtype.kind()));
+#define CASE(DT, PT)                                                      \
+  case DT:                                                                \
+    static_assert(PT ==                                                   \
+                  static_cast<xla::PrimitiveType>(static_cast<int>(DT))); \
+    return PT
+    CASE(DType::kInvalid, xla::PrimitiveType::PRIMITIVE_TYPE_INVALID);
+    CASE(DType::kPred, xla::PrimitiveType::PRED);
+    CASE(DType::kS4, xla::PrimitiveType::S4);
+    CASE(DType::kS8, xla::PrimitiveType::S8);
+    CASE(DType::kS16, xla::PrimitiveType::S16);
+    CASE(DType::kS32, xla::PrimitiveType::S32);
+    CASE(DType::kS64, xla::PrimitiveType::S64);
+    CASE(DType::kU4, xla::PrimitiveType::U4);
+    CASE(DType::kU8, xla::PrimitiveType::U8);
+    CASE(DType::kU16, xla::PrimitiveType::U16);
+    CASE(DType::kU32, xla::PrimitiveType::U32);
+    CASE(DType::kU64, xla::PrimitiveType::U64);
+    CASE(DType::kF8E4M3FN, xla::PrimitiveType::F8E4M3FN);
+    CASE(DType::kF8E4M3B11FNUZ, xla::PrimitiveType::F8E4M3B11FNUZ);
+    CASE(DType::kF8E4M3FNUZ, xla::PrimitiveType::F8E4M3FNUZ);
+    CASE(DType::kF8E5M2, xla::PrimitiveType::F8E5M2);
+    CASE(DType::kF8E5M2FNUZ, xla::PrimitiveType::F8E5M2FNUZ);
+    CASE(DType::kF16, xla::PrimitiveType::F16);
+    CASE(DType::kF32, xla::PrimitiveType::F32);
+    CASE(DType::kBF16, xla::PrimitiveType::BF16);
+    CASE(DType::kF64, xla::PrimitiveType::F64);
+    CASE(DType::kC64, xla::PrimitiveType::C64);
+    CASE(DType::kC128, xla::PrimitiveType::C128);
+    CASE(DType::kToken, xla::PrimitiveType::TOKEN);
+#undef CASE
     case DType::kString:
       return InvalidArgument("Not supported as XLA PrimitiveType: %d",
                              static_cast<int>(dtype.kind()));
@@ -118,36 +192,16 @@ MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
-  if (pjrt_buffers.empty()) {
-    return InvalidArgument("pjrt_buffers must be non-empty");
-  }
-  if (sharding->devices().size() != pjrt_buffers.size()) {
-    return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
-                           sharding->devices().size(), pjrt_buffers.size());
-  }
-
-  // Canonicalize memory kind in case it hasn't been done before.
-  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
-      sharding->memory_kind(), sharding->devices().front());
-  for (int i = 0; i < sharding->devices().size(); ++i) {
-    if (pjrt_buffers[i]->device() != sharding->devices()[i]) {
-      return InvalidArgument(
-          "PjRtBuffer's memory space is addressed by device %s vs sharding is "
-          "on device %s",
-          pjrt_buffers[i]->device()->DebugString(),
-          sharding->devices()[i]->DebugString());
-    }
-    MemoryKind buffer_memory_kind =
-        MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
-    if (canonicalized_sharding_memory_kind != buffer_memory_kind) {
-      return InvalidArgument(
-          "PjRtBuffer's memory kind does not match sharding's memory kind. Got "
-          "PjRtBuffer's memory kind: %s vs shardings's memory kind: %s",
-          buffer_memory_kind.DebugString(),
-          canonicalized_sharding_memory_kind.DebugString());
-    }
-  }
+  TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding), std::move(pjrt_buffers));
+}
+
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
+    std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
+  TF_RETURN_IF_ERROR(ValidateArrayCreationInput(sharding, pjrt_buffers));
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(dynamic_shape),
                                  std::move(sharding), std::move(pjrt_buffers));
 }
 
@@ -187,33 +241,55 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers) {
   TF_ASSIGN_OR_RETURN(auto dtype,
                       xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
+  TF_ASSIGN_OR_RETURN(MemoryKind memory_kind,
+                      GetMemoryKindFromPjRtBuffers(pjrt_buffers));
+
   DeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
   std::vector<Shape> shapes;
   shapes.reserve(pjrt_buffers.size());
 
-  const auto first_memory_kind =
-      MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
-  const MemoryKind canonical_first_memory_kind =
-      CanonicalizeMemoryKind(first_memory_kind, pjrt_buffers.front()->device());
   for (const auto& pjrt_buffer : pjrt_buffers) {
     devices.push_back(pjrt_buffer->device());
     shapes.push_back(Shape(pjrt_buffer->dimensions()));
-    if (auto memory_kind = MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get());
-        canonical_first_memory_kind !=
-        CanonicalizeMemoryKind(memory_kind, devices.back())) {
-      return InvalidArgument(
-          "Memory kind mismatch between PjRtBuffers. Got one buffer with "
-          "memory kind: %s and another with memory_kind: %s",
-          first_memory_kind.DebugString(), memory_kind.DebugString());
-    }
   }
   auto sharding = ifrt::ConcreteSharding::Create(DeviceList(std::move(devices)),
-                                                 first_memory_kind,
+                                                 memory_kind,
                                                  /*shape=*/shape,
                                                  /*shard_shapes=*/shapes);
   return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
                            std::move(pjrt_buffers));
+}
+
+StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, DynamicShape dynamic_shape,
+    PjRtBuffers pjrt_buffers) {
+  TF_ASSIGN_OR_RETURN(auto dtype,
+                      xla::ifrt::ToDType(pjrt_buffers.front()->element_type()));
+  TF_ASSIGN_OR_RETURN(auto memory_kind,
+                      GetMemoryKindFromPjRtBuffers(pjrt_buffers));
+
+  DeviceList::Devices devices;
+  devices.reserve(pjrt_buffers.size());
+  std::vector<DynamicShape> dynamic_shapes;
+  dynamic_shapes.reserve(pjrt_buffers.size());
+
+  for (const auto& pjrt_buffer : pjrt_buffers) {
+    devices.push_back(pjrt_buffer->device());
+    TF_ASSIGN_OR_RETURN(
+        DynamicShape dynamic_shape,
+        // Extracts dynamic shape info from the buffers.
+        DynamicShape::Create(
+            Shape(pjrt_buffer->dimensions()),
+            BoundedDynamicShapeTag(pjrt_buffer->is_dynamic_dimension())));
+    dynamic_shapes.push_back(std::move(dynamic_shape));
+  }
+  auto sharding = ifrt::ConcreteSharding::Create(
+      DeviceList(std::move(devices)), memory_kind,
+      /*dynamic_shape=*/dynamic_shape,
+      /*shard_dynamic_shapes=*/dynamic_shapes);
+  return PjRtArray::Create(client, dtype, std::move(dynamic_shape),
+                           std::move(sharding), std::move(pjrt_buffers));
 }
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
@@ -225,23 +301,41 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)) {}
 
+PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
+                     DynamicShape dynamic_shape,
+                     std::shared_ptr<const Sharding> sharding,
+                     PjRtBuffers pjrt_buffers)
+    : client_(client),
+      dtype_(dtype),
+      shape_(std::move(dynamic_shape)),
+      sharding_(std::move(sharding)),
+      pjrt_buffers_(std::move(pjrt_buffers)) {}
+
 StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
   std::vector<tsl::RCReference<Array>> result;
   result.reserve(sharding_->devices().size());
-  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
-  for (int i = 0; i < sharding_->devices().size(); ++i) {
-    PjRtBuffers buffers;
-    buffers.reserve(1);
-    buffers.push_back(GetPjRtBuffer(semantics, i));
-    TF_ASSIGN_OR_RETURN(
-        auto array, PjRtArray::Create(client_, dtype_,
-                                      std::move(shape_and_shardings[i].first),
-                                      std::move(shape_and_shardings[i].second),
-                                      std::move(buffers)));
-    result.push_back(std::move(array));
-  }
+  TF_RETURN_IF_ERROR(std::visit(
+      [&](const auto& this_shape) {
+        TF_ASSIGN_OR_RETURN(auto shape_and_shardings,
+                            sharding_->Disassemble(this_shape));
+        for (int i = 0; i < sharding_->devices().size(); ++i) {
+          PjRtBuffers buffers;
+          buffers.reserve(1);
+          buffers.push_back(GetPjRtBuffer(semantics, i));
+          TF_ASSIGN_OR_RETURN(
+              auto array,
+              PjRtArray::Create(client_, dtype_,
+                                std::move(shape_and_shardings[i].first),
+                                std::move(shape_and_shardings[i].second),
+                                std::move(buffers)));
+          result.push_back(std::move(array));
+        }
+        return xla::OkStatus();
+      },
+      shape_));
+
   return result;
 }
 
@@ -264,13 +358,14 @@ Future<Status> PjRtArray::CopyToHostBuffer(
   absl::Span<const int64_t> dims;
   StatusOr<std::vector<int64_t>> logical_dims;
   if (!pjrt_buffer->has_dynamic_dimensions()) {
-    dims = shape_.dims();
+    dims = std::get<Shape>(shape_).dims();
   } else {
     // TODO(b/182461453): This is a blocking call. If we further implemented
     // populating dynamic shape metadata while fetching the literal, we wouldn't
     // need this static approach.
     // TODO(hyeontaek): Clean up this dynamic shape access once we formalize
     // dynamic shape support in IFRT.
+    // TODO(b/314805296): Use the new dynamic shape here.
     logical_dims = pjrt_buffer->logical_dimensions();
     if (!logical_dims.ok()) {
       return Future<Status>(std::move(logical_dims).status());
@@ -412,8 +507,12 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
       }
     }
   }
-  return PjRtArray::Create(client_, dtype_, shape_, std::move(new_sharding),
-                           std::move(buffers));
+  return std::visit(
+      [this, &new_sharding, &buffers](const auto& shape) {
+        return PjRtArray::Create(client_, dtype_, shape,
+                                 std::move(new_sharding), std::move(buffers));
+      },
+      shape_);
 }
 
 Future<Status> PjRtArray::GetReadyFuture() const {
@@ -447,9 +546,10 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
-  return absl::StrFormat("PjRtArray(dtype=%s; shape=%s; sharding=%s)",
-                         dtype_.DebugString(), shape_.DebugString(),
-                         sharding_->DebugString());
+  return absl::StrFormat(
+      "PjRtArray(dtype=%s; shape=%s; sharding=%s)", dtype_.DebugString(),
+      std::visit([](const auto& shape) { return shape.DebugString(); }, shape_),
+      sharding_->DebugString());
 }
 
 }  // namespace ifrt

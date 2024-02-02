@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -628,6 +628,23 @@ TEST_F(HloCostAnalysisTest, Broadcast) {
 
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 1);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 10 * 7);
+}
+
+TEST_F(HloCostAnalysisTest, BroadcastCountMultipleInputAccesses) {
+  XlaBuilder b("broadcast");
+  Broadcast(ConstantR0<float>(&b, 42), {10, 7});
+  auto hlo_module = BuildHloGraph(&b);
+  HloCostAnalysis analysis(HloCostAnalysis::Options{
+      .shape_size = ShapeSize, .count_multiple_input_accesses = true});
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+  EXPECT_EQ(analysis.flop_count(), 0);
+
+  EXPECT_EQ(analysis.bytes_accessed(), sizeof(float) * (1 + 10 * 7));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 7);
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 10 * 7);
 }
 

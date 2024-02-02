@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -230,9 +230,8 @@ template <typename PointedToTy>
 Status MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
     size_t unordered_container_index, size_t partial_order) {
   if (partial_order >= mapped_element_indices_by_partial_order_.size()) {
-    return InternalErrorStrCat(
-        "invalid partial order: ", partial_order, " v max(",
-        mapped_element_indices_by_partial_order_.size(), ")");
+    return InternalStrCat("invalid partial order: ", partial_order, " v max(",
+                          mapped_element_indices_by_partial_order_.size(), ")");
   }
 
   mapped_element_indices_by_partial_order_[partial_order].push_back(
@@ -290,7 +289,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
   size_t next_available_index = 0;
   auto next_index_fn = [&]() -> StatusOr<size_t> {
     if (next_available_index >= unordered_container_size_) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "invalid unordered_container index: ", next_available_index,
           " v size(", unordered_container_size_, ")");
     }
@@ -335,7 +334,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
   absl::flat_hash_set<size_t> used_indices;
   for (size_t index : result) {
     if (used_indices.contains(index)) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "2 elements in unordered_container are destined for the same "
           "index: ",
           index);

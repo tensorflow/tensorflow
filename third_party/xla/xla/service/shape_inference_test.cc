@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +15,29 @@ limitations under the License.
 
 #include "xla/service/shape_inference.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/client/padding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -70,8 +79,7 @@ class ReduceShapeInferenceTest : public ShapeInferenceTest {
     auto inferred_status = ShapeInference::InferReduceShape(
         {&arg, &f32_}, dimensions_to_reduce, to_apply);
     EXPECT_IS_OK(inferred_status.status());
-    EXPECT_TRUE(
-        ShapeUtil::Equal(expected_inferred_shape, inferred_status.value()));
+    EXPECT_TRUE(ShapeUtil::Equal(expected_inferred_shape, *inferred_status));
   }
 };
 
@@ -105,12 +113,52 @@ class SelectAndScatterShapeInferenceTest : public ShapeInferenceTest {
   ProgramShape scatter_program_shape_;
 };
 
+struct BinaryOpTestCase {
+  std::string lhs;
+  std::string rhs;
+  std::string expected;
+};
+
+// Subclass for testing unbounded dynamic and op
+class UnboundedAndOpShapeInferenceTest
+    : public ::testing::TestWithParam<BinaryOpTestCase> {};
+
+// Subclass for testing unbounded dynamic binary ops
+class UnboundedBinaryOpShapeInferenceTest
+    : public ::testing::TestWithParam<BinaryOpTestCase> {};
+
+// Subclass for testing unbounded dynamic compare op
+class UnboundedCompareOpShapeInferenceTest
+    : public ::testing::TestWithParam<BinaryOpTestCase> {};
+
+// Subclass for testing unbounded dynamic concatenate op
+class UnboundedConcatenateOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
+struct UnaryOpTestCase {
+  std::string operand;
+  std::string expected;
+  HloOpcode opcode;
+};
+
+// Subclass for testing unbounded dynamic unary ops
+class UnboundedUnaryOpShapeInferenceTest
+    : public ::testing::TestWithParam<UnaryOpTestCase> {};
+
+// Subclass for testing unbounded dynamic clamp op
+class UnboundedClampOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
+// Subclass for testing unbounded dynamic select op
+class UnboundedSelectOpShapeInferenceTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
 TEST_F(ShapeInferenceTest, UnaryNegateMatrix) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
       ShapeInference::InferUnaryOpShape(HloOpcode::kNegate, matrix_shape);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_shape, inferred_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_shape, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, SelectScalarPredBetweenTuples) {
@@ -136,7 +184,7 @@ TEST_F(ShapeInferenceTest, SelectArrayPredBetweenArrays) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kSelect, predarray, matrix_64_48_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, SelectBadShapes) {
@@ -174,14 +222,14 @@ TEST_F(ShapeInferenceTest, ClampAllMatrix) {
   auto inferred_status = ShapeInference::InferTernaryOpShape(
       HloOpcode::kClamp, matrix_64_48_, matrix_64_48_, matrix_64_48_);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, ClampAllScalar) {
   auto inferred_status =
       ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_, f32_, f32_);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(f32_, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, ClampMinScalar) {
@@ -189,7 +237,7 @@ TEST_F(ShapeInferenceTest, ClampMinScalar) {
       HloOpcode::kClamp, f32_, matrix_64_48_, matrix_64_48_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxScalar) {
@@ -197,7 +245,7 @@ TEST_F(ShapeInferenceTest, ClampMaxScalar) {
       HloOpcode::kClamp, matrix_64_48_, matrix_64_48_, f32_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandScalar) {
@@ -205,7 +253,7 @@ TEST_F(ShapeInferenceTest, ClampOperandScalar) {
       HloOpcode::kClamp, matrix_64_48_, f32_, matrix_64_48_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMinMatrix) {
@@ -213,7 +261,7 @@ TEST_F(ShapeInferenceTest, ClampMinMatrix) {
       HloOpcode::kClamp, matrix_64_48_, f32_, f32_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
@@ -221,7 +269,7 @@ TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
       HloOpcode::kClamp, f32_, f32_, matrix_64_48_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
@@ -229,7 +277,7 @@ TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
       HloOpcode::kClamp, f32_, matrix_64_48_, f32_);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Clamp with different shapes"));
+              HasSubstr("Clamp with incompatible shapes"));
 }
 
 TEST_F(ShapeInferenceTest, ClampBadShapes) {
@@ -310,8 +358,8 @@ TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
   StatusOr<Shape> result =
       ShapeInference::InferVariadicOpShape(HloOpcode::kTuple, {&s32_, &f32_});
   ASSERT_IS_OK(result.status());
-  ASSERT_TRUE(ShapeUtil::Equal(result.value(),
-                               ShapeUtil::MakeTupleShape({s32_, f32_})));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(*result, ShapeUtil::MakeTupleShape({s32_, f32_})));
 }
 
 TEST_F(ShapeInferenceTest, ReduceWindowInHalf) {
@@ -335,8 +383,8 @@ TEST_F(ShapeInferenceTest, ReduceWindowInHalf) {
       matrix_shape, init_value_shape, window, to_apply);
 
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 4}), inferred));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 4}), *inferred_status));
 }
 
 TEST_F(SelectAndScatterShapeInferenceTest, SelectAndScatterProperShapes) {
@@ -344,8 +392,7 @@ TEST_F(SelectAndScatterShapeInferenceTest, SelectAndScatterProperShapes) {
       operand_shape_, select_program_shape_, window_, source_shape_,
       init_value_shape_, scatter_program_shape_);
   ASSERT_IS_OK(inferred_status_ok.status());
-  Shape inferred = inferred_status_ok.value();
-  ASSERT_TRUE(ShapeUtil::Equal(operand_shape_, inferred));
+  ASSERT_TRUE(ShapeUtil::Equal(operand_shape_, *inferred_status_ok));
 }
 
 TEST_F(SelectAndScatterShapeInferenceTest, SelectAndScatterWrongSourceShape) {
@@ -410,7 +457,7 @@ TEST_F(ShapeInferenceTest, AllGatherStart) {
   auto inferred_ag_shape = ShapeInference::InferAllGatherStartShape(
       {&operand}, /*all_gather_dimension=*/0, /*shard_count=*/8);
   EXPECT_TRUE(inferred_ag_shape.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_shape.value(), expected_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_ag_shape, expected_shape));
 }
 
 TEST_F(ShapeInferenceTest, AllGatherStartMultiOperand) {
@@ -428,7 +475,7 @@ TEST_F(ShapeInferenceTest, AllGatherStartMultiOperand) {
   auto inferred_ag_shape = ShapeInference::InferAllGatherStartShape(
       {&operand0, &operand1}, /*all_gather_dimension=*/0, /*shard_count=*/8);
   EXPECT_TRUE(inferred_ag_shape.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_shape.value(), expected_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_ag_shape, expected_shape));
 }
 
 TEST_F(ShapeInferenceTest, AllGatherDone) {
@@ -440,7 +487,7 @@ TEST_F(ShapeInferenceTest, AllGatherDone) {
   auto inferred_ag_done_shape =
       ShapeInference::InferAllGatherDoneShape(input_shape);
   EXPECT_TRUE(inferred_ag_done_shape.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_done_shape.value(), expected_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_ag_done_shape, expected_shape));
 }
 
 TEST_F(ShapeInferenceTest, AllGatherDoneMultiOperand) {
@@ -461,7 +508,7 @@ TEST_F(ShapeInferenceTest, AllGatherDoneMultiOperand) {
   auto inferred_ag_done_shape =
       ShapeInference::InferAllGatherDoneShape(input_shape);
   EXPECT_TRUE(inferred_ag_done_shape.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_ag_done_shape.value(), expected_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_ag_done_shape, expected_shape));
 }
 
 TEST_F(ShapeInferenceTest, Convolve) {
@@ -504,9 +551,8 @@ TEST_F(ShapeInferenceTest, Convolve) {
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred_shape = inferred_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 2, 3}),
-                               inferred_shape));
+                               *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
@@ -550,9 +596,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithWindowDilation) {
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred_shape = inferred_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 31, 5}),
-                               inferred_shape));
+                               *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
@@ -596,9 +641,8 @@ TEST_F(ShapeInferenceTest, ConvolveWithBaseDilation) {
       lhs_shape, rhs_shape, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred_shape = inferred_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {10, 12, 4, 9}),
-                               inferred_shape));
+                               *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, ConvolveDimensionNumbersOverlapError) {
@@ -873,8 +917,7 @@ static void Pass(const Shape& shape, FftType type,
                  const Shape& expected_shape) {
   auto inferred_status = ShapeInference::InferFftShape(shape, type, length);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred_shape = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_shape, expected_shape));
+  ASSERT_TRUE(ShapeUtil::Equal(expected_shape, *inferred_status));
 }
 
 static void Fail(const Shape& shape, FftType type,
@@ -1007,7 +1050,7 @@ TEST_F(ShapeInferenceTest, MapThatChangesElementType) {
   auto inferred_status = ShapeInference::InferMapShape({&arg}, to_apply, {0});
   EXPECT_IS_OK(inferred_status.status());
   Shape expected = ShapeUtil::MakeShape(S32, {20});
-  EXPECT_TRUE(ShapeUtil::Equal(expected, inferred_status.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(expected, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, Map) {
@@ -1015,21 +1058,20 @@ TEST_F(ShapeInferenceTest, Map) {
       {&vector_32_, &vector_32_},
       ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {0});
   EXPECT_IS_OK(inferred_status_r1f32.status());
-  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, inferred_status_r1f32.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, *inferred_status_r1f32));
 
   // It's OK to provide a single argument, as long as the applied arity matches
   // (this degenerates to a Map).
   auto inferred_status_r1f32_one = ShapeInference::InferMapShape(
       {&vector_32_}, ShapeUtil::MakeProgramShape({f32_}, f32_), {0});
   EXPECT_IS_OK(inferred_status_r1f32_one.status());
-  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, inferred_status_r1f32_one.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, *inferred_status_r1f32_one));
 
   auto inferred_status_r2s32 = ShapeInference::InferMapShape(
       {&s32matrix_64_64_, &s32matrix_64_64_, &s32matrix_64_64_},
       ShapeUtil::MakeProgramShape({s32_, s32_, s32_}, s32_), {0, 1});
   EXPECT_IS_OK(inferred_status_r2s32.status());
-  EXPECT_TRUE(
-      ShapeUtil::Equal(s32matrix_64_64_, inferred_status_r2s32.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(s32matrix_64_64_, *inferred_status_r2s32));
 
   auto no_args_error = ShapeInference::InferMapShape(
       {}, ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {});
@@ -1076,7 +1118,7 @@ TEST_F(ShapeInferenceTest, Map) {
   ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_}, f32_);
   auto inferred_status = ShapeInference::InferMapShape({&arg}, to_apply, {0});
   EXPECT_IS_OK(inferred_status.status());
-  EXPECT_TRUE(ShapeUtil::Equal(arg, inferred_status.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(arg, *inferred_status));
 
   auto inferred_status_error1 = ShapeInference::InferMapShape(
       {&arg}, ShapeUtil::MakeProgramShape({f32_, f32_}, f32_), {0});
@@ -1111,7 +1153,7 @@ TEST_F(ShapeInferenceTest, MapWithDifferentInputTypes) {
       ShapeInference::InferMapShape({&arg0, &arg1}, to_apply, {0});
   EXPECT_IS_OK(inferred_status.status());
   Shape expected = ShapeUtil::MakeShape(S32, {20});
-  EXPECT_TRUE(ShapeUtil::Equal(expected, inferred_status.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(expected, *inferred_status));
 }
 
 TEST_F(ReduceShapeInferenceTest, ReduceVectorToScalar) {
@@ -1168,7 +1210,7 @@ TEST_F(ReduceShapeInferenceTest, ReduceMultiOutput) {
       {&f32_arg_shape, &s32_arg_shape, &f32_, &s32_}, {0, 1}, to_apply);
   EXPECT_IS_OK(inferred_status.status());
   EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeTupleShape({f32_, s32_}),
-                               inferred_status.value()));
+                               *inferred_status));
 }
 
 TEST_F(ReduceShapeInferenceTest, ReduceWindowMultiOutput) {
@@ -1189,12 +1231,12 @@ TEST_F(ReduceShapeInferenceTest, ReduceWindowMultiOutput) {
           window_dimensions, window_strides, padding_values, {}, {}));
   auto inferred_status = ShapeInference::InferReduceWindowShape(
       absl::MakeSpan(args), absl::MakeSpan(inits), window, to_apply);
-  VLOG(2) << inferred_status.value().ToString() << "\n";
+  VLOG(2) << inferred_status->ToString() << "\n";
   EXPECT_IS_OK(inferred_status.status());
   EXPECT_TRUE(ShapeUtil::Equal(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {5, 2, 0}),
                                  ShapeUtil::MakeShape(S32, {5, 2, 0})}),
-      inferred_status.value()));
+      *inferred_status));
 }
 
 TEST_F(ReduceShapeInferenceTest, ErrorMultiOutputBadReducerInput1) {
@@ -1343,8 +1385,8 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {64, 64}, {1, 1});
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 64}), inferred));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 64}), *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferSliceWithDynamicDimensions) {
@@ -1352,9 +1394,8 @@ TEST_F(ShapeInferenceTest, InferSliceWithDynamicDimensions) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {33, 64}, {1, 1});
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::MakeShape(F32, {1, 64}, {false, true}), inferred));
+      ShapeUtil::MakeShape(F32, {1, 64}, {false, true}), *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
@@ -1362,8 +1403,8 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {32, 0}, {64, 64}, {2, 4});
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {16, 16}), inferred));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {16, 16}), *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStridesNotIntegral) {
@@ -1371,8 +1412,8 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStridesNotIntegral) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {15, 0}, {20, 13}, {2, 4});
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {3, 4}), inferred));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {3, 4}), *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferInvalidStride) {
@@ -1396,8 +1437,8 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank1) {
   auto inferred_status =
       ShapeInference::InferSliceShape(vector_shape, {2}, {4}, {1});
   ASSERT_TRUE(inferred_status.ok());
-  Shape inferred = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(inferred, ShapeUtil::MakeShape(F32, {2})));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {2}), *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferConstIndexShape) {
@@ -1408,8 +1449,8 @@ TEST_F(ShapeInferenceTest, InferConstIndexShape) {
       ShapeInference::InferGetTupleElementShape(tuple_shape, 1);
   ASSERT_IS_OK(inferred0_status.status());
   ASSERT_IS_OK(inferred1_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred0_status.value()));
-  ASSERT_TRUE(ShapeUtil::Equal(s32_, inferred1_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(f32_, *inferred0_status));
+  ASSERT_TRUE(ShapeUtil::Equal(s32_, *inferred1_status));
 }
 
 TEST_F(ShapeInferenceTest, InferTupleElementShapeOutOfBound) {
@@ -1431,7 +1472,7 @@ TEST_F(ShapeInferenceTest, InferPowShape) {
   auto inferred_status = ShapeInference::InferBinaryOpShape(
       HloOpcode::kPower, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ten_floats, inferred_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(ten_floats, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferCompareShape) {
@@ -1439,8 +1480,8 @@ TEST_F(ShapeInferenceTest, InferCompareShape) {
   auto inferred_status = ShapeInference::InferBinaryOpShape(
       HloOpcode::kCompare, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
-                               inferred_status.value()));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}), *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, InferReshapeDegenerateCombine) {
@@ -1452,7 +1493,7 @@ TEST_F(ShapeInferenceTest, InferReshapeDegenerateCombine) {
   auto operand = ShapeUtil::MakeShape(F32, {1, 1}, {false, true});
   auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {1},
                                                   /*inferred_dimension=*/-1);
-  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1}, {true}), status.value());
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1}, {true}), *status);
 }
 
 TEST_F(ShapeInferenceTest, InferReshapeSplit) {
@@ -1464,7 +1505,7 @@ TEST_F(ShapeInferenceTest, InferReshapeSplit) {
   auto operand = ShapeUtil::MakeShape(F32, {10}, {true});
   auto status = ShapeInference::InferReshapeShape(operand, {0}, {1, 10},
                                                   /*inferred_dimension=*/0);
-  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}), status.value());
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {1, 10}, {true, false}), *status);
 }
 
 TEST_F(ShapeInferenceTest, InferReshapeCombine) {
@@ -1474,7 +1515,7 @@ TEST_F(ShapeInferenceTest, InferReshapeCombine) {
   auto operand = ShapeUtil::MakeShape(F32, {6, 10}, {false, true});
   auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {60},
                                                   /*inferred_dimension=*/-11);
-  ASSERT_EQ(ShapeUtil::MakeShape(F32, {60}, {true}), status.value());
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {60}, {true}), *status);
 }
 
 TEST_F(ShapeInferenceTest, UnchangedDimension) {
@@ -1485,7 +1526,7 @@ TEST_F(ShapeInferenceTest, UnchangedDimension) {
   auto status = ShapeInference::InferReshapeShape(operand, {1, 0}, {2, 3, 10},
                                                   /*inferred_dimension=*/-11);
   ASSERT_EQ(ShapeUtil::MakeShape(F32, {2, 3, 10}, {false, false, true}),
-            status.value());
+            *status);
 }
 
 TEST_F(ShapeInferenceTest, InferDynamicBroadcast) {
@@ -1496,8 +1537,8 @@ TEST_F(ShapeInferenceTest, InferDynamicBroadcast) {
   auto inferred_status =
       ShapeInference::InferBroadcastShape(operand_shape, {15});
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
-  ASSERT_EQ(ShapeUtil::MakeShape(F32, {15, 15}, {false, true}), inferred);
+  ASSERT_EQ(ShapeUtil::MakeShape(F32, {15, 15}, {false, true}),
+            *inferred_status);
 }
 
 TEST_F(ShapeInferenceTest, BroadcastScalar) {
@@ -1506,29 +1547,29 @@ TEST_F(ShapeInferenceTest, BroadcastScalar) {
     {  // no-op scalar broadcast
       auto status = ShapeInference::InferBroadcastShape(scalar_shape, {});
       ASSERT_IS_OK(status.status());
-      ASSERT_TRUE(ShapeUtil::Equal(scalar_shape, status.value()));
+      ASSERT_TRUE(ShapeUtil::Equal(scalar_shape, *status));
     }
     const Shape oned_shape = ShapeUtil::MakeShape(element_type, {3});
     {  // scalar -> 1d broadcast
       auto status = ShapeInference::InferBroadcastShape(scalar_shape, {3});
       ASSERT_IS_OK(status.status());
-      ASSERT_TRUE(ShapeUtil::Equal(oned_shape, status.value()));
+      ASSERT_TRUE(ShapeUtil::Equal(oned_shape, *status));
     }
     {  // no-op 1d broadcast
       auto status = ShapeInference::InferBroadcastShape(oned_shape, {});
       ASSERT_IS_OK(status.status());
-      ASSERT_TRUE(ShapeUtil::Equal(oned_shape, status.value()));
+      ASSERT_TRUE(ShapeUtil::Equal(oned_shape, *status));
     }
     const Shape twod_shape = ShapeUtil::MakeShape(element_type, {2, 3});
     {  // scalar -> 2d broadcast
       auto status = ShapeInference::InferBroadcastShape(scalar_shape, {2, 3});
       ASSERT_IS_OK(status.status());
-      ASSERT_TRUE(ShapeUtil::Equal(twod_shape, status.value()));
+      ASSERT_TRUE(ShapeUtil::Equal(twod_shape, *status));
     }
     {  // 1d -> 2d broadcast
       auto status = ShapeInference::InferBroadcastShape(oned_shape, {2});
       ASSERT_IS_OK(status.status());
-      ASSERT_TRUE(ShapeUtil::Equal(twod_shape, status.value()));
+      ASSERT_TRUE(ShapeUtil::Equal(twod_shape, *status));
     }
   }
 }
@@ -1539,7 +1580,7 @@ TEST_F(ShapeInferenceTest, ScalarDotVector) {
   auto inferred_status = ShapeInference::InferDotOpShape(
       f32_, vector_32_, dot_dnums, /*preferred_element_type=*/std::nullopt);
   EXPECT_TRUE(inferred_status.ok());
-  EXPECT_EQ(inferred_status.value(), vector_32_);
+  EXPECT_EQ(*inferred_status, vector_32_);
 }
 
 // 3D <dot> 2D: error
@@ -1551,7 +1592,7 @@ TEST_F(ShapeInferenceTest, DotWithRankHigherThanTwo) {
       ShapeUtil::MakeShape(F32, {32, 32, 32}), matrix_32_64_, dot_dnums,
       /*preferred_element_type=*/std::nullopt);
   EXPECT_TRUE(inferred_status.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(),
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_status,
                                ShapeUtil::MakeShape(F32, {32, 32, 64})));
 }
 
@@ -1564,7 +1605,7 @@ TEST_F(ShapeInferenceTest, VectorDotVector) {
       ShapeInference::InferDotOpShape(vector_64_, vector_64_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred_status.value()));
+  ASSERT_TRUE(ShapeUtil::Equal(f32_, *inferred_status));
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(vector_64_, vector_32_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
@@ -1580,7 +1621,7 @@ TEST_F(ShapeInferenceTest, MatrixDotVector) {
       ShapeInference::InferDotOpShape(matrix_32_64_, vector_64_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), vector_32_));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status, vector_32_));
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(matrix_32_64_, vector_32_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
@@ -1596,7 +1637,7 @@ TEST_F(ShapeInferenceTest, VectorDotMatrix) {
       ShapeInference::InferDotOpShape(vector_32_, matrix_32_64_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), vector_64_));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status, vector_64_));
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(vector_64_, matrix_32_64_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
@@ -1612,8 +1653,8 @@ TEST_F(ShapeInferenceTest, MatrixDotMatrix) {
       ShapeInference::InferDotOpShape(matrix_32_64_, matrix_64_48_, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), matrix_32_48_))
-      << "inferred: " << ShapeUtil::HumanString(inferred_status_match.value())
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, matrix_32_48_))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_status_match)
       << " expected: " << ShapeUtil::HumanString(matrix_64_48_);
   auto inferred_status_mismatch =
       ShapeInference::InferDotOpShape(matrix_32_64_, matrix_32_64_, dot_dnums,
@@ -1640,8 +1681,8 @@ TEST_F(ShapeInferenceTest, DotGeneral) {
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), output_shape))
-      << "inferred: " << ShapeUtil::HumanString(inferred_status_match.value())
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_status_match)
       << " expected: " << ShapeUtil::HumanString(output_shape);
 }
 
@@ -1685,7 +1726,7 @@ TEST_F(ShapeInferenceTest, DotWithTwoContractingDimsPasses) {
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   EXPECT_TRUE(inferred_status.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), output_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, output_shape));
 }
 
 TEST_F(ShapeInferenceTest, ErrorSetDimensionSize) {
@@ -1727,7 +1768,7 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimSizesFails) {
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().message(),
-              HasSubstr("Batch dimension sizes must match"));
+              HasSubstr("Batch dimension sizes are not compatible"));
 }
 
 // BatchMatMul with different batch dimension numbers passes
@@ -1746,7 +1787,7 @@ TEST_F(ShapeInferenceTest, DotWithMismatchedBatchDimNumbersPasses) {
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums,
                                       /*preferred_element_type=*/std::nullopt);
   ASSERT_TRUE(inferred_status.ok());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(),
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status,
                                ShapeUtil::MakeShape(F32, {2, 11, 14})));
 }
 
@@ -1891,7 +1932,7 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
   auto inferred_status_match =
       ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec8, {1});
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), mat));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, mat));
 
   auto inferred_status_mismatch =
       ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec8, {0});
@@ -1900,7 +1941,7 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
   inferred_status_match =
       ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec16, {0});
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), mat));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, mat));
 
   inferred_status_mismatch =
       ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, mat, vec16, {1});
@@ -1917,17 +1958,17 @@ TEST_F(ShapeInferenceTest, BinOpBroadcastCubeMatrix) {
   auto inferred_status_match = ShapeInference::InferBinaryOpShape(
       HloOpcode::kAdd, cube, matrix8_4, {1, 2});
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), cube));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, cube));
 
   inferred_status_match = ShapeInference::InferBinaryOpShape(
       HloOpcode::kAdd, cube, matrix16_4, {0, 2});
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), cube));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, cube));
 
   inferred_status_match = ShapeInference::InferBinaryOpShape(
       HloOpcode::kAdd, cube, matrix16_8, {0, 1});
   ASSERT_IS_OK(inferred_status_match.status());
-  ASSERT_TRUE(ShapeUtil::Equal(inferred_status_match.value(), cube));
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_status_match, cube));
 }
 
 TEST_F(ShapeInferenceTest, BinOpBroadcastBadDimension) {
@@ -2004,8 +2045,7 @@ TEST_F(ShapeInferenceTest, WhileWithCorrectShapes) {
   auto inferred_status =
       ShapeInference::InferWhileShape(cond, body, result_shape);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, inferred));
+  ASSERT_TRUE(ShapeUtil::Equal(result_shape, *inferred_status));
 }
 
 // Tests for the while instruction with wrong shapes.
@@ -2053,9 +2093,9 @@ TEST_F(ShapeInferenceTest, ConcatenateWithDynamicShapes) {
   auto inferred_status = ShapeInference::InferConcatOpShape(
       {&dynamic_shape_1, &dynamic_shape_2}, /*dimension=*/0);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::MakeShape(F32, {64, 160, 10}, {true, true, false}), inferred));
+      ShapeUtil::MakeShape(F32, {64, 160, 10}, {true, true, false}),
+      *inferred_status));
 }
 
 // Tests for the concatenate instruction with proper shapes.
@@ -2063,21 +2103,20 @@ TEST_F(ShapeInferenceTest, ConcatenateWithCorrectShapes) {
   auto inferred_status_1 = ShapeInference::InferConcatOpShape(
       {&vector_32_, &vector_64_}, /*dimension=*/0);
   ASSERT_IS_OK(inferred_status_1.status());
-  Shape inferred_1 = inferred_status_1.value();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {96}), inferred_1));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {96}), *inferred_status_1));
 
   auto inferred_status_2 = ShapeInference::InferConcatOpShape(
       {&vector_32_, &vector_64_, &vector_32_}, /*dimension=*/0);
   ASSERT_IS_OK(inferred_status_2.status());
-  Shape inferred_2 = inferred_status_2.value();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {128}), inferred_2));
+  ASSERT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {128}), *inferred_status_2));
 
   auto inferred_status_3 = ShapeInference::InferConcatOpShape(
       {&matrix_32_48_, &matrix_32_64_, &matrix_32_48_}, /*dimension=*/1);
   ASSERT_IS_OK(inferred_status_3.status());
-  Shape inferred_3 = inferred_status_3.value();
-  ASSERT_TRUE(
-      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 160}), inferred_3));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 160}),
+                               *inferred_status_3));
 }
 
 // Tests for the concatenate instruction with wrong shapes.
@@ -2142,9 +2181,8 @@ TEST_F(ShapeInferenceTest, Pad) {
   auto inferred_status = ShapeInference::InferPadShape(
       input_shape, padding_value_shape, padding_config);
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred_shape = inferred_status.value();
   ASSERT_TRUE(
-      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {39, 31}), inferred_shape));
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {39, 31}), *inferred_status));
 
   dimension1->set_edge_padding_low(-20);
   dimension1->set_edge_padding_high(-10);
@@ -2160,8 +2198,7 @@ TEST_F(ShapeInferenceTest, Reverse) {
 
   auto inferred_status = ShapeInference::InferReverseShape(input_shape, {0, 1});
   ASSERT_IS_OK(inferred_status.status());
-  Shape inferred_shape = inferred_status.value();
-  ASSERT_TRUE(ShapeUtil::Equal(input_shape, inferred_shape));
+  ASSERT_TRUE(ShapeUtil::Equal(input_shape, *inferred_status));
 }
 
 TEST_F(ShapeInferenceTest, ReverseInvalidDimension) {
@@ -2197,14 +2234,14 @@ TEST_F(ShapeInferenceTest, Call) {
   auto inferred_status0 =
       ShapeInference::InferCallShape({}, ShapeUtil::MakeProgramShape({}, f32_));
   EXPECT_IS_OK(inferred_status0.status());
-  EXPECT_TRUE(ShapeUtil::Equal(f32_, inferred_status0.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(f32_, *inferred_status0));
 
   auto inferred_status1 = ShapeInference::InferCallShape(
       {&f32_, &s32_, &pred_, &vector_32_, &matrix_32_48_},
       ShapeUtil::MakeProgramShape(
           {f32_, s32_, pred_, vector_32_, matrix_32_48_}, s32matrix_64_64_));
   EXPECT_IS_OK(inferred_status1.status());
-  EXPECT_TRUE(ShapeUtil::Equal(s32matrix_64_64_, inferred_status1.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(s32matrix_64_64_, *inferred_status1));
 
   auto inferred_status_error0 = ShapeInference::InferCallShape(
       {}, ShapeUtil::MakeProgramShape({f32_}, f32_));
@@ -2230,9 +2267,8 @@ TEST_F(ShapeInferenceTest, Transpose) {
   auto inferred_shape_and_status =
       ShapeInference::InferTransposeShape(a_shape, {1, 2, 3, 0});
   EXPECT_IS_OK(inferred_shape_and_status);
-  Shape inferred_shape = inferred_shape_and_status.value();
-  EXPECT_TRUE(ShapeUtil::Compatible(inferred_shape,
-                                    ShapeUtil::MakeShape(F32, {3, 4, 5, 2})));
+  EXPECT_TRUE(ShapeUtil::Compatible(ShapeUtil::MakeShape(F32, {3, 4, 5, 2}),
+                                    *inferred_shape_and_status));
 }
 
 TEST_F(ShapeInferenceTest, Rank1Transpose) {
@@ -2240,9 +2276,8 @@ TEST_F(ShapeInferenceTest, Rank1Transpose) {
   auto inferred_shape_and_status =
       ShapeInference::InferTransposeShape(a_shape, {0});
   EXPECT_IS_OK(inferred_shape_and_status);
-  Shape inferred_shape = inferred_shape_and_status.value();
-  EXPECT_TRUE(
-      ShapeUtil::Compatible(inferred_shape, ShapeUtil::MakeShape(F32, {5})));
+  EXPECT_TRUE(ShapeUtil::Compatible(ShapeUtil::MakeShape(F32, {5}),
+                                    *inferred_shape_and_status));
 }
 
 TEST_F(ShapeInferenceTest, ConditionalPred) {
@@ -2252,7 +2287,7 @@ TEST_F(ShapeInferenceTest, ConditionalPred) {
        ShapeUtil::MakeProgramShape({vector_64_}, f32_)},
       {vector_32_, vector_64_});
   EXPECT_IS_OK(inferred_status0.status());
-  EXPECT_TRUE(ShapeUtil::Equal(f32_, inferred_status0.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(f32_, *inferred_status0));
 
   auto inferred_status1 = ShapeInference::InferConditionalShape(
       pred_,
@@ -2260,7 +2295,7 @@ TEST_F(ShapeInferenceTest, ConditionalPred) {
        ShapeUtil::MakeProgramShape({vector_32_}, vector_64_)},
       {matrix_32_48_, vector_32_});
   EXPECT_IS_OK(inferred_status1.status());
-  EXPECT_TRUE(ShapeUtil::Equal(vector_64_, inferred_status1.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(vector_64_, *inferred_status1));
 
   auto tuple_f32_v32 = ShapeUtil::MakeTupleShape({f32_, vector_32_});
   auto inferred_status2 = ShapeInference::InferConditionalShape(
@@ -2269,7 +2304,7 @@ TEST_F(ShapeInferenceTest, ConditionalPred) {
        ShapeUtil::MakeProgramShape({tuple_f32_v32}, vector_32_)},
       {matrix_32_48_, tuple_f32_v32});
   EXPECT_IS_OK(inferred_status2.status());
-  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, inferred_status2.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, *inferred_status2));
 
   auto inferred_status_error0 = ShapeInference::InferConditionalShape(
       f32_,
@@ -2338,7 +2373,7 @@ TEST_F(ShapeInferenceTest, ConditionalIndexed) {
        ShapeUtil::MakeProgramShape({vector_64_}, f32_)},
       {vector_32_, vector_64_, vector_64_});
   EXPECT_IS_OK(inferred_status0.status());
-  EXPECT_TRUE(ShapeUtil::Equal(f32_, inferred_status0.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(f32_, *inferred_status0));
 
   auto inferred_status1 = ShapeInference::InferConditionalShape(
       r0s32,
@@ -2347,14 +2382,14 @@ TEST_F(ShapeInferenceTest, ConditionalIndexed) {
        ShapeUtil::MakeProgramShape({matrix_32_48_}, vector_64_)},
       {matrix_32_48_, vector_32_, matrix_32_48_});
   EXPECT_IS_OK(inferred_status1.status());
-  EXPECT_TRUE(ShapeUtil::Equal(vector_64_, inferred_status1.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(vector_64_, *inferred_status1));
 
   auto tuple_f32_v32 = ShapeUtil::MakeTupleShape({f32_, vector_32_});
   auto inferred_status2 = ShapeInference::InferConditionalShape(
       r0s32, {ShapeUtil::MakeProgramShape({tuple_f32_v32}, vector_32_)},
       {tuple_f32_v32});
   EXPECT_IS_OK(inferred_status2.status());
-  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, inferred_status2.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(vector_32_, *inferred_status2));
 
   auto inferred_status_error0 = ShapeInference::InferConditionalShape(
       pred_,
@@ -2418,7 +2453,7 @@ TEST_F(ShapeInferenceTest, ConditionalDynamic) {
        ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape)},
       {vector_32_, vector_64_, vector_64_});
   EXPECT_IS_OK(inferred_status0.status());
-  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, inferred_status0.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, *inferred_status0));
 
   auto inferred_status1 = ShapeInference::InferConditionalShape(
       r0s32,
@@ -2427,7 +2462,7 @@ TEST_F(ShapeInferenceTest, ConditionalDynamic) {
        ShapeUtil::MakeProgramShape({vector_64_}, dynamic_shape)},
       {vector_32_, vector_64_, vector_64_});
   EXPECT_IS_OK(inferred_status1.status());
-  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, inferred_status1.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(dynamic_shape, *inferred_status1));
 }
 
 TEST_F(ShapeInferenceTest, BadSlice) {
@@ -2473,7 +2508,7 @@ TEST_F(ShapeInferenceTest, SortManyValues) {
   StatusOr<Shape> statusor = ShapeInference::InferVariadicOpShape(
       HloOpcode::kSort, {&keys, &values_s32, &values_u32});
   EXPECT_IS_OK(statusor);
-  Shape inferred_shape = statusor.value();
+  Shape inferred_shape = *statusor;
   EXPECT_TRUE(ShapeUtil::Compatible(
       inferred_shape,
       ShapeUtil::MakeTupleShape({keys, values_s32, values_u32})));
@@ -2502,7 +2537,7 @@ TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {
   auto inferred_sr_shape =
       ShapeInference::InferStochasticConvertShape(operand, random, S8);
   EXPECT_TRUE(inferred_sr_shape.ok());
-  EXPECT_TRUE(ShapeUtil::Equal(inferred_sr_shape.value(), expected_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(*inferred_sr_shape, expected_shape));
 }
 
 TEST_F(ShapeInferenceTest, InvalidStochasticConvert_MismatchRandomElementType) {
@@ -3732,6 +3767,820 @@ INSTANTIATE_TEST_SUITE_P(All, ScatterShapeInferenceTest,
                                            std::vector<PrimitiveType>{F32,
                                                                       BF16}),
                          ScatterTestName());
+
+TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedUnaryOps) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam().operand));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred,
+      ShapeInference::InferUnaryOpShape(GetParam().opcode, operand));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAdd, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op add with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedAndOpShapeInferenceTest, UnboundedAnd) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAnd, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op and with incompatible shapes"));
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBatchNormGrad) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scale, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape mean, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape variance, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_scale, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_offset, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_output, ParseShape("f32[5, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
+                          ShapeInference::InferBatchNormGradShape(
+                              operand, scale, mean, variance, grad_output, 1));
+  Shape expected_tuple_shape =
+      ShapeUtil::MakeTupleShape({grad_operand, grad_scale, grad_offset});
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected_tuple_shape))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBatchNormInference) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scale, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape offset, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape mean, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape variance, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
+                          ShapeInference::InferBatchNormInferenceShape(
+                              operand, scale, offset, mean, variance, 1));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, 7]"));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBatchNormTraining) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape output, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scale, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape offset, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape batch_mean, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape batch_var, ParseShape("f32[?]"));
+  Shape expected_tuple_shape =
+      ShapeUtil::MakeTupleShape({output, batch_mean, batch_var});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result_shape,
+      ShapeInference::InferBatchNormTrainingShape(operand, scale, offset, 1));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected_tuple_shape))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBroadcastUnsupportedOperand) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, <=2, ?]"));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBroadcastShape(operand, /*broadcast_sizes=*/{1});
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("is_unbounded_dynamic"));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBroadcastUnsupportedBroadcastSize) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=2, 4]"));
+  StatusOr<Shape> inferred_status = ShapeInference::InferBroadcastShape(
+      operand, /*broadcast_sizes=*/{Shape::kUnboundedSize});
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("Non-broadcast dimensions must not be dynamic."));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBroadcastInDim) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[<=2, 3, 4]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_status,
+      ShapeInference::InferBroadcastShape(operand, expected,
+                                          /*broadcast_dimensions=*/{0, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_status, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBroadcastInDimToBounded) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[<=2, 3, <=4]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_status,
+      ShapeInference::InferBroadcastShape(operand, expected,
+                                          /*broadcast_dimensions=*/{0, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_status, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_status)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBroadcastInDimUnsupportedOutput) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[<=2, 3, ?]"));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBroadcastShape(operand, expected,
+                                          /*broadcast_dimensions=*/{0, 2});
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("is_unbounded_dynamic"));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedBroadcastInDimUnsupported) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[<=2, 4]"));
+  StatusOr<Shape> inferred_status = ShapeInference::InferBroadcastShape(
+      operand, /*broadcast_sizes=*/{2, Shape::kUnboundedSize, 4});
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("Non-broadcast dimensions must not be dynamic."));
+}
+
+TEST_P(UnboundedClampOpShapeInferenceTest, UnboundedClamp) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam()[1]));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape(GetParam()[2]));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, lhs, rhs, ehs);
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[3]));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_EQ(inferred_status.status().message(), GetParam()[4]);
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedClampWithTuple) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("(f32[2], f32[?])"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("(f32[?], f32[2])"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("(f32[2], f32[?])"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("(f32[?], f32[2])"));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, lhs, rhs, ehs);
+  EXPECT_THAT(
+      inferred_status.status().message(),
+      HasSubstr(
+          "Expected array argument for clamp min, but got (f32[2], f32[?])."));
+}
+
+TEST_P(UnboundedCompareOpShapeInferenceTest, UnboundedCompare) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kCompare, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op compare with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedConcatenateOpShapeInferenceTest, UnboundedConcatenate) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand1, ParseShape(GetParam()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand2, ParseShape(GetParam()[1]));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferConcatOpShape({&operand1, &operand2},
+                                         /*dimension=*/0);
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_EQ(inferred_status.status().message(), GetParam()[3]);
+  }
+}
+
+TEST_F(UnboundedConcatenateOpShapeInferenceTest,
+       UnboundedConcatenateMismatchedDimensions) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand1, ParseShape("f32[2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand2, ParseShape("f32[2, 3]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand3, ParseShape("f32[2, 4]"));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferConcatOpShape({&operand1, &operand2, &operand3},
+                                         /*dimension=*/0);
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("Mismatched dimension sizes 3 and 4 in dimension 1"));
+}
+
+TEST_F(UnboundedConcatenateOpShapeInferenceTest,
+       UnboundedConcatenateMismatchedBoundSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand1, ParseShape("f32[2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand2, ParseShape("f32[2, <=3]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand3, ParseShape("f32[2, <=4]"));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferConcatOpShape({&operand1, &operand2, &operand3},
+                                         /*dimension=*/0);
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("Mismatched bound sizes 3 and 4 in dimension 1"));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedConvert) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f64[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result, ShapeInference::InferConvertShape(
+                                            operand, PrimitiveType::F64));
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "inferred: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedConvolution) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 2, ?, 128]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2, 2, <=128, 8]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 1, ?, 8]"));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Window window,
+      ShapeInference::InferWindowFromDimensions(
+          /*window_dimensions=*/{2, 2}, /*window_strides=*/{1, 1},
+          MakePadding(/*input_dimensions=*/{2, Shape::kUnboundedSize},
+                      /*window_dimensions=*/{2, 2},
+                      /*window_strides=*/{1, 1}, Padding::kValid),
+          /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
+                          ShapeInference::InferConvolveShape(
+                              lhs, rhs, /*feature_group_count=*/1,
+                              /*batch_group_count=*/1, window, dnums,
+                              /*preferred_element_type=*/std::nullopt));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kDivide, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op divide with incompatible shapes"));
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedDot) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 10]"));
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_rhs_contracting_dimensions(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result_shape,
+      ShapeInference::InferDotOpShape(lhs, rhs, dnums,
+                                      /*preferred_element_type=*/std::nullopt));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedDotGeneral) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, <=3, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2, 4, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, <=3, 5]"));
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result_shape,
+      ShapeInference::InferDotOpShape(lhs, rhs, dnums,
+                                      /*preferred_element_type=*/std::nullopt));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedGather) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[3, 4, 2]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape start_indices, ParseShape("s32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, 2, 2]"));
+
+  GatherDimensionNumbers dimension_numbers;
+  dimension_numbers.add_offset_dims(2);
+  dimension_numbers.add_offset_dims(3);
+  dimension_numbers.add_collapsed_slice_dims(0);
+  dimension_numbers.add_start_index_map(1);
+  dimension_numbers.add_start_index_map(0);
+  dimension_numbers.set_index_vector_dim(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
+                          ShapeInference::InferGatherShape(
+                              operand, start_indices, dimension_numbers,
+                              /*slice_sizes=*/{1, 2, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMax) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kMaximum, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op maximum with incompatible shapes"));
+  }
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kMultiply, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op multiply with incompatible shapes"));
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedPad) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape padding_value, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 21]"));
+
+  PaddingConfig padding_config;
+  for (int i = 0; i < 2; i++) {
+    auto dimension = padding_config.add_dimensions();
+    dimension->set_edge_padding_low(1);
+    dimension->set_edge_padding_high(1);
+    dimension->set_interior_padding(1);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result_shape,
+      ShapeInference::InferPadShape(operand, padding_value, padding_config));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kPower, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op power with incompatible shapes"));
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReduce) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape input0, ParseShape("f32[7, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape input1, ParseShape("f32[?, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape input2, ParseShape("f32[7, ?]"));
+
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, f32_, f32_, f32_, f32_, f32_},
+      ShapeUtil::MakeTupleShape({f32_, f32_, f32_}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result_shape,
+      ShapeInference::InferReduceShape(
+          {&input0, &input1, &input2, &f32_, &f32_, &f32_}, {1}, to_apply));
+  Shape shape = ShapeUtil::MakeShape(F32, {7});
+  Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReduceInvalidReduceDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape input0, ParseShape("f32[7, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape input1, ParseShape("f32[?, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape input2, ParseShape("f32[5, ?]"));
+
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape(
+      {f32_, f32_, f32_, f32_, f32_, f32_},
+      ShapeUtil::MakeTupleShape({f32_, f32_, f32_}));
+  StatusOr<Shape> inferred_status = ShapeInference::InferReduceShape(
+      {&input0, &input1, &input2, &f32_, &f32_, &f32_}, {1}, to_apply);
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("All reduced tensors must have compatible dimension"));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReduceWindow) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape input, ParseShape("f32[?, 4, 8]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 3, 5]"));
+
+  Window window;
+  WindowDimension dim0, dim1, dim2;
+  dim0.set_stride(1);
+  dim0.set_padding_low(0);
+  dim0.set_padding_high(0);
+  dim0.set_window_dilation(1);
+  dim0.set_base_dilation(1);
+  dim1 = dim2 = dim0;
+  dim0.set_size(1);
+  dim1.set_size(2);
+  dim2.set_size(4);
+  *window.add_dimensions() = dim0;
+  *window.add_dimensions() = dim1;
+  *window.add_dimensions() = dim2;
+
+  ProgramShape body = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+  TF_ASSERT_OK_AND_ASSIGN(Shape infered_shape,
+                          ShapeInference::InferReduceWindowShape(
+                              input, /*init_value=*/f32_, window, body));
+  EXPECT_TRUE(ShapeUtil::Equal(infered_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(infered_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReshape) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[2,3]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred, ShapeInference::InferReshapeShape(
+                                              operand, /*dimensions=*/{0},
+                                              /*new_sizes=*/{2, 3}, -1));
+  ASSERT_TRUE(ShapeUtil::Equal(inferred, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupportedOutputShape) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[6]"));
+  StatusOr<Shape> inferred_status = ShapeInference::InferReshapeShape(
+      operand, /*dimensions=*/{0},
+      /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize}, -1);
+  EXPECT_THAT(
+      inferred_status.status().message(),
+      HasSubstr("Reshaping with unbounded result shape is not supported."));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupportedMixOfDynamism) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, <=3]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[<=3]"));
+  auto inferred_status =
+      ShapeInference::InferReshapeShape(operand, /*dimensions=*/{0},
+                                        /*new_sizes=*/{3}, -1);
+  ASSERT_THAT(inferred_status.status().message(),
+              HasSubstr("Reshape operand with bounded and unbounded dynamism "
+                        "not supported."));
+}
+
+TEST_P(UnboundedSelectOpShapeInferenceTest, UnboundedSelect) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam()[1]));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape(GetParam()[2]));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kSelect, lhs, rhs, ehs);
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[3]));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_EQ(inferred_status.status().message(), GetParam()[4]);
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedSelectWithTupleUnsupported) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("(pred[2], pred[?])"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("(f32[?], f32[2])"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("(f32[2], f32[?])"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("(f32[?], f32[2])"));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kSelect, lhs, rhs, ehs);
+  EXPECT_THAT(inferred_status.status().message(),
+              HasSubstr("Expected array argument for select pred, but got "
+                        "(pred[2], pred[?])."));
+}
+
+TEST_F(ShapeInferenceTest, UnboundedSlice) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, <=3, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, <=2, 3]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferSliceShape(
+                                                  operand, /*starts=*/{0, 1, 2},
+                                                  /*limits=*/{1, 3, 5},
+                                                  /*strides=*/{1, 1, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam().lhs));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam().rhs));
+  StatusOr<Shape> inferred_status =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kSubtract, lhs, rhs,
+                                         /*broadcast_dimensions=*/{});
+  if (inferred_status.ok()) {
+    TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+    EXPECT_TRUE(ShapeUtil::Equal(*inferred_status, expected))
+        << "inferred: " << ShapeUtil::HumanString(*inferred_status)
+        << " expected: " << ShapeUtil::HumanString(expected);
+  } else {
+    EXPECT_THAT(inferred_status.status().message(),
+                HasSubstr("Binary op subtract with incompatible shapes"));
+  }
+}
+
+TEST_F(ShapeInferenceTest, UnboundedScatter) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape input, ParseShape("f32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_indices, ParseShape("s32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape updates, ParseShape("f32[?, ?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, ?]"));
+
+  const ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+
+  ScatterDimensionNumbers dimension_numbers;
+  dimension_numbers.add_update_window_dims(2);
+  dimension_numbers.add_update_window_dims(3);
+  dimension_numbers.add_inserted_window_dims(0);
+  dimension_numbers.add_scatter_dims_to_operand_dims(1);
+  dimension_numbers.add_scatter_dims_to_operand_dims(0);
+  dimension_numbers.set_index_vector_dim(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result,
+      ShapeInference::InferScatterShape({&input, &scatter_indices, &updates},
+                                        to_apply, dimension_numbers));
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "inferred: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedTranspose) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand,
+                          ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[<=2, 1, ?, 2, ?]{0,2,3,4,1}"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
+                          ShapeInference::InferTransposeShape(
+                              operand, /*dimensions=*/{4, 0, 3, 2, 1}));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result_shape,
+      ShapeInference::InferTransposeShape(operand, /*dimensions=*/{0}));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedAndOpShapeInferenceTest,
+    ::testing::ValuesIn<BinaryOpTestCase>({// LHS | RHS | Result
+                                           // 1   | ?   | ?
+                                           {"s32[1]", "s32[?]", "s32[?]"},
+                                           // ?   | 1   | ?
+                                           {"s32[?]", "s32[1]", "s32[?]"},
+                                           // 2   | ?   | 2
+                                           {"s32[2]", "s32[?]", "s32[2]"},
+                                           // ?   | 2   | 2
+                                           {"s32[?]", "s32[2]", "s32[2]"},
+                                           // <=2 | ?   | <=2
+                                           {"s32[<=2]", "s32[?]", "s32[<=2]"},
+                                           // ?   | <=2 | <=2
+                                           {"s32[?]", "s32[<=2]", "s32[<=2]"},
+                                           // ?   | ?   | ?
+                                           {"s32[?]", "s32[?]", "s32[?]"},
+                                           // ?,2 | ?,3 | error
+                                           {"s32[?,2]", "s32[?,3]", ""}}));
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedBinaryOpShapeInferenceTest,
+    ::testing::ValuesIn<BinaryOpTestCase>({// LHS | RHS | Result
+                                           // 1   | ?   | ?
+                                           {"f32[1]", "f32[?]", "f32[?]"},
+                                           // ?   | 1   | ?
+                                           {"f32[?]", "f32[1]", "f32[?]"},
+                                           // 2   | ?   | 2
+                                           {"f32[2]", "f32[?]", "f32[2]"},
+                                           // ?   | 2   | 2
+                                           {"f32[?]", "f32[2]", "f32[2]"},
+                                           // <=2 | ?   | <=2
+                                           {"f32[<=2]", "f32[?]", "f32[<=2]"},
+                                           // ?   | <=2 | <=2
+                                           {"f32[?]", "f32[<=2]", "f32[<=2]"},
+                                           // ?   | ?   | ?
+                                           {"f32[?]", "f32[?]", "f32[?]"},
+                                           // ?,2 | ?,3 | error
+                                           {"f32[?,2]", "f32[?,3]", ""}}));
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedCompareOpShapeInferenceTest,
+    ::testing::ValuesIn<BinaryOpTestCase>({// LHS | RHS | Result
+                                           // 1   | ?   | ?
+                                           {"f32[1]", "f32[?]", "pred[?]"},
+                                           // ?   | 1   | ?
+                                           {"f32[?]", "f32[1]", "pred[?]"},
+                                           // 2   | ?   | 2
+                                           {"f32[2]", "f32[?]", "pred[2]"},
+                                           // ?   | 2   | 2
+                                           {"f32[?]", "f32[2]", "pred[2]"},
+                                           // <=2 | ?   | <=2
+                                           {"f32[<=2]", "f32[?]", "pred[<=2]"},
+                                           // ?   | <=2 | <=2
+                                           {"f32[?]", "f32[<=2]", "pred[<=2]"},
+                                           // ?   | ?   | ?
+                                           {"f32[?]", "f32[?]", "pred[?]"},
+                                           // ?,2 | ?,3 | error
+                                           {"f32[?,2]", "f32[?,3]", ""}}));
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedConcatenateOpShapeInferenceTest,
+    ::testing::Values(
+        // LHS shape | RHS shape   | Result shape (Concat dim is 0)
+        // [X1, Y]   | [X2, Y]     | [X1+X2, Y]
+        std::vector<std::string>({"f32[2, 3]", "f32[4, 3]", "f32[6, 3]", ""}),
+        // [X, Y]    | [?, ?]      | [?, Y]
+        std::vector<std::string>({"f32[2, 3]", "f32[?, ?]", "f32[?, 3]", ""}),
+        // [X1, Y]   | [<=X2, <=Y] | [<=X1+X2, <=Y]
+        std::vector<std::string>({"f32[4, 3]", "f32[<=2, <=3]", "f32[<=6, <=3]",
+                                  ""}),
+        // [?, ?]    | [?, ?]      | [?, ?]
+        std::vector<std::string>({"f32[?, ?]", "f32[?, ?]", "f32[?, ?]", ""}),
+        // [?, ?]    | [<=B1, <=B2]| [?, <=B2]
+        std::vector<std::string>({"f32[?, ?]", "f32[<=2, <=3]", "f32[?, <=3]",
+                                  ""}),
+        // [<=B1, ?] | [<=B2, X]   | [<=B1+B2, X]
+        std::vector<std::string>({"f32[<=2, ?]", "f32[<=4, 3]", "f32[<=6, 3]",
+                                  ""}),
+        // [X, <=B1] | [X, <=B2]   | Error, mismatched
+        // bound sizes
+        std::vector<std::string>(
+            {"f32[2, <=3]", "f32[2, <=4]", "",
+             "Cannot concatenate arrays that differ in dimensions other than "
+             "the one being concatenated. Dimension 1 in both shapes must be "
+             "equal (or compatible): f32[2,<=3] vs f32[2,<=4]."}),
+        // [X, Y1]   | [X, Y2]     | Error, mismatched
+        // dimension sizes
+        std::vector<std::string>(
+            {"f32[2, 3]", "f32[2, 4]", "",
+             "Cannot concatenate arrays that differ in dimensions other than "
+             "the one being concatenated. Dimension 1 in both shapes must be "
+             "equal (or compatible): f32[2,3] vs f32[2,4]."})));
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedClampOpShapeInferenceTest,
+    ::testing::Values(
+        // MIN shape | OPERAND shape | MAX shape  | Result
+        // [X]       | [?]           | [X]   | [?]
+        std::vector<std::string>({"f32[2]", "f32[?]", "f32[2]", "f32[?]", ""}),
+        // [?]       | [X]           | [X]   | [X]
+        std::vector<std::string>({"f32[?]", "f32[2]", "f32[2]", "f32[2]", ""}),
+        // [?]       | [<=B]         | [?]   | [<=B]
+        std::vector<std::string>({"f32[?]", "f32[<=2]", "f32[?]", "f32[<=2]",
+                                  ""}),
+        // [<=B]     | [?]           | [<=B] | [?]
+        std::vector<std::string>({"f32[<=2]", "f32[?]", "f32[<=2]", "f32[?]",
+                                  ""}),
+        // [X]       | [<=B]         | [X]   | error
+        std::vector<std::string>(
+            {"f32[3]", "f32[<=2]", "f32[3]", "",
+             "Clamp with incompatible shapes: f32[3], f32[<=2], f32[3]."}),
+        // [X]       | [?]           | [Y]   | error
+        std::vector<std::string>(
+            {"f32[2]", "f32[?]", "f32[3]", "",
+             "Clamp with incompatible shapes: f32[2], f32[?], f32[3]."}),
+        // []        | [?]           | []    | error
+        std::vector<std::string>(
+            {"f32[]", "f32[?]", "f32[]", "",
+             "Clamp with incompatible shapes: f32[], f32[?], f32[]."})));
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedSelectOpShapeInferenceTest,
+    ::testing::Values(
+        // PRED shape | ON_TRUE shape | ON_FALSE shape  | Result
+        // [X]        | [?]           | [X]             | [X]
+        std::vector<std::string>({"pred[2]", "f32[?]", "f32[2]", "f32[2]", ""}),
+        // [?]        | [X]           | [X]             | [X]
+        std::vector<std::string>({"pred[?]", "f32[2]", "f32[?]", "f32[2]", ""}),
+        // [?]        | [<=B]         | [?]             | [<=B]
+        std::vector<std::string>({"pred[?]", "f32[<=2]", "f32[?]", "f32[<=2]",
+                                  ""}),
+        // [<=B]      | [?]           | [<=B]           | [<=B]
+        std::vector<std::string>({"pred[<=2]", "f32[?]", "f32[<=2]", "f32[<=2]",
+                                  ""}),
+        // [?]        | [?]         | [?]             | [?]
+        std::vector<std::string>({"pred[?]", "f32[?]", "f32[?]", "f32[?]", ""}),
+        // [X]        | [<=B]         | [X]             | error
+        std::vector<std::string>({"pred[3]", "f32[<=2]", "f32[3]", "",
+                                  "Operands to select must be the same shape; "
+                                  "got f32[<=2] and f32[3]."}),
+        // [X]        | [?]           | [Y]             | error
+        std::vector<std::string>(
+            {"pred[2]", "f32[?]", "f32[3]", "f32[3]",
+             "Operands to select and predicate must be the same shape; got "
+             "f32[?] and f32[3] and pred[2]."}),
+        // []         | [?]           | []              | error
+        std::vector<std::string>({"pred[]", "f32[?]", "f32[]", "",
+                                  "Operands to select must be the same shape; "
+                                  "got f32[?] and f32[]."})));
+
+INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
+                         ::testing::ValuesIn<UnaryOpTestCase>(
+                             {{"f32[?]", "f32[?]", HloOpcode::kAbs},
+                              {"f32[?]", "f32[?]", HloOpcode::kCbrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kCeil},
+                              {"u32[?]", "u32[?]", HloOpcode::kClz},
+                              {"f32[?]", "f32[?]", HloOpcode::kCos},
+                              {"f32[?]", "f32[?]", HloOpcode::kExp},
+                              {"f32[?]", "f32[?]", HloOpcode::kExpm1},
+                              {"f32[?]", "f32[?]", HloOpcode::kFloor},
+                              {"f32[?]", "f32[?]", HloOpcode::kImag},
+                              {"f32[?]", "pred[?]", HloOpcode::kIsFinite},
+                              {"f32[?]", "f32[?]", HloOpcode::kLog},
+                              {"f32[?]", "f32[?]", HloOpcode::kLog1p},
+                              {"f32[?]", "f32[?]", HloOpcode::kLogistic},
+                              {"f32[?]", "f32[?]", HloOpcode::kNegate},
+                              {"u32[?]", "u32[?]", HloOpcode::kPopulationCount},
+                              {"f32[?]", "f32[?]", HloOpcode::kReal},
+                              {"f32[?]", "f32[?]", HloOpcode::kRoundNearestAfz},
+                              {"f32[?]", "f32[?]",
+                               HloOpcode::kRoundNearestEven},
+                              {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kSign},
+                              {"f32[?]", "f32[?]", HloOpcode::kSin},
+                              {"f32[?]", "f32[?]", HloOpcode::kSqrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
 
 }  // namespace
 }  // namespace xla

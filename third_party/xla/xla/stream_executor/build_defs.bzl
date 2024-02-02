@@ -12,9 +12,6 @@ def stream_executor_internal():
 def tf_additional_cuda_platform_deps():
     return []
 
-def tf_additional_cudnn_plugin_deps():
-    return []
-
 def tf_additional_cudnn_plugin_copts():
     # TODO(timshen): remove TF_ENABLE_CUDNN_FRONTEND once cudnn-frontend is imported.
     return ["-DNV_CUDNN_DISABLE_EXCEPTION", "-DTF_ENABLE_CUDNN_FRONTEND"]

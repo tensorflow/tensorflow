@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -303,7 +303,8 @@ class HloTestBase : public ManifestCheckingTest {
   // Same as below, except requires passing the modules.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
+      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true,
+      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
 
   // Convenient wrapper for executing and comparing results of two hlo modules
   // with fake input. By default compares unoptimized modules. If the modules
@@ -311,6 +312,14 @@ class HloTestBase : public ManifestCheckingTest {
   ::testing::AssertionResult RunAndCompareTwoModules(
       absl::string_view hlo_string_module_0,
       absl::string_view hlo_string_module_1,
+      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true,
+      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
+
+  // Same as above but requires explicit arguments.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      absl::string_view hlo_string_module_0,
+      absl::string_view hlo_string_module_1,
+      absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Executes an hlo module with fake inputs on multiple replicas.

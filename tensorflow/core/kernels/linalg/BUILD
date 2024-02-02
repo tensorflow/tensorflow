@@ -16,7 +16,6 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -127,6 +126,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cholesky_op",
+    gpu_deps = ["//tensorflow/core/platform:stream_executor"],
     prefix = "cholesky_op",
     deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
@@ -261,6 +261,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "svd_op",
+    gpu_deps = ["//tensorflow/core/platform:stream_executor"],
     prefix = "svd_op",
     deps = LINALG_DEPS,
 )
@@ -289,6 +290,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:fill_functor",
+        "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/profiler/lib:traceme",

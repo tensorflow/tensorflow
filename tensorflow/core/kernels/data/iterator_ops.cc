@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/tf_data_memory_logger.h"
 #include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -284,6 +285,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::swap(iterator_state_, new_state);
   tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
       env_, iterator_state_->iterator());
+  EnsureIteratorMemoryLoggerStarted();
   TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
   return OkStatus();
 }

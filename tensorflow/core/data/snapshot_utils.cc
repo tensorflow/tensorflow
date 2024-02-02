@@ -742,6 +742,7 @@ TFRecordReaderImpl::TFRecordReaderImpl(
     std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
+      bytes_read_(0),
       compression_(compression),
       output_buffer_size_(output_buffer_size) {}
 
@@ -756,12 +757,14 @@ Status TFRecordReaderImpl::Initialize(Env* env) {
   }
 #endif  // IS_SLIM_BUILD
   record_reader_ = std::make_unique<io::RecordReader>(file_.get(), options);
+  bytes_read_ = 0;
   return OkStatus();
 }
 
 StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
   tstring record;
   TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+  bytes_read_ += record.size();
   return Parse(record);
 }
 

@@ -12,6 +12,14 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["op_macros.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # Enables usage of ruy exclusively as the GEMM backend in TFLite kernels.
 # This will cause TFLite to build with ruy only, providing a smaller binary.
 # WARNING: This build flag is experimental and subject to change.
@@ -293,7 +301,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":op_macros",
-        "//tensorflow/lite:arena_planner",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],
@@ -495,6 +503,24 @@ cc_library(
 )
 
 cc_library(
+    name = "stablehlo_elementwise",
+    srcs = ["stablehlo_elementwise.cc"],
+    hdrs = [
+        "stablehlo_elementwise.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":kernel_util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/kernels/internal:types",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "rng_util",
     srcs = [
         "rng_util.cc",
@@ -520,6 +546,7 @@ cc_test(
 
 cc_library(
     name = "tensor_slice_util",
+    srcs = ["tensor_slice_util.cc"],
     hdrs = [
         "tensor_slice_util.h",
     ],
@@ -726,7 +753,6 @@ BUILTIN_KERNEL_SRCS = [
     "range.cc",
     "rank.cc",
     "reduce.cc",
-    "reduce_window.cc",
     "reshape.cc",
     "resize_bilinear.cc",
     "resize_nearest_neighbor.cc",
@@ -738,6 +764,12 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
+    "stablehlo_gather.cc",
+    "stablehlo_add.cc",
+    "stablehlo_multiply.cc",
+    "stablehlo_pad.cc",
+    "stablehlo_reduce_window.cc",
+    "stablehlo_min_max.cc",
     "stablehlo_scatter.cc",
     "sign.cc",
     "skip_gram.cc",
@@ -785,6 +817,7 @@ BUILTIN_KERNEL_DEPS = [
     ":lstm_shared",
     ":op_macros",
     ":padding",
+    ":stablehlo_elementwise",
     ":control_flow_common",
     "@eigen_archive//:eigen3",
     "@flatbuffers",
@@ -816,6 +849,12 @@ BUILTIN_KERNEL_DEPS = [
     ],
 }) + select({
     "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//conditions:default": [
+        "@pthreadpool",
+    ],
+}) + select({
+    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_false": [],
     "//conditions:default": [
         "@XNNPACK",
     ],
@@ -850,6 +889,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:cc_api_stable",
         "@local_tsl//tsl/lib/random:philox_random",
         "@local_tsl//tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
@@ -1301,6 +1341,68 @@ cc_test(
 )
 
 cc_test(
+    name = "stablehlo_pad_test",
+    srcs = ["stablehlo_pad_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":stablehlo_reduce_window_test_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_reduce_window_test_util",
+    hdrs = ["stablehlo_reduce_window_test_util.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_reduce_window_test_util_test",
+    size = "small",
+    srcs = ["stablehlo_reduce_window_test_util_test.cc"],
+    deps = [
+        ":stablehlo_reduce_window_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_reduce_window_test",
+    srcs = ["stablehlo_reduce_window_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":stablehlo_reduce_window_test_util",
+        ":subgraph_test_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "space_to_batch_nd_test",
     size = "small",
     srcs = ["space_to_batch_nd_test.cc"],
@@ -1392,10 +1494,9 @@ cc_library(
     ],
     deps = [
         ":test_util",
-        "//tensorflow/lite:string",
+        "//tensorflow/lite:cc_api_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
-        "@flatbuffers",
     ],
 )
 
@@ -1408,6 +1509,7 @@ cc_test(
         ":cast_test_common",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
@@ -2867,11 +2969,11 @@ cc_library(
     hdrs = ["subgraph_test_util.h"],
     deps = [
         ":kernel_util",
-        ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
@@ -3077,6 +3179,68 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_gather_test",
+    size = "small",
+    srcs = ["stablehlo_gather_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_add_test",
+    size = "small",
+    srcs = ["stablehlo_add_test.cc"],
+    deps = [
+        ":subgraph_test_util",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_multiply_test",
+    size = "small",
+    srcs = ["stablehlo_multiply_test.cc"],
+    deps = [
+        ":subgraph_test_util",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_min_max_test",
+    size = "small",
+    srcs = ["stablehlo_min_max_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

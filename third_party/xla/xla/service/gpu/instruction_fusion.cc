@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
+  if (is_expensive(*producer) &&
       ReusesOperandElements(consumer, operand_index)) {
     return "the producer is expensive, and the consumer reuses inputs";
   }
@@ -86,10 +86,7 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
     return "fusing the producer would break read coalescing";
   }
 
-  if (auto fusible = IsProducerConsumerFusible(*producer, *consumer);
-      !fusible) {
-    return fusible;
-  }
+  RETURN_IF_NOT_FUSIBLE(IsProducerConsumerFusible(*producer, *consumer));
 
   if (CreatesHeavyComputation(*producer, *consumer)) {
     return "the fusion would create a heavy computation";
@@ -100,20 +97,14 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
 
 FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                                 int64_t operand_index) {
-  if (auto fusible = ShouldFuseInexpensiveChecks(consumer, operand_index);
-      !fusible) {
-    return fusible;
-  }
+  RETURN_IF_NOT_FUSIBLE(ShouldFuseInexpensiveChecks(consumer, operand_index));
 
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (auto fits_budget =
-          FusionFitsInBudget(*consumer, *producer, device_info_,
-                             /*is_consumer_producer_fusion=*/true);
-      !fits_budget) {
-    return fits_budget;
-  }
+  RETURN_IF_NOT_FUSIBLE(
+      FusionFitsInBudget(*consumer, *producer, device_info_,
+                         /*is_consumer_producer_fusion=*/true));
 
   if (consumer->opcode() != HloOpcode::kFusion) {
     return {};
@@ -139,7 +130,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  return ChooseFusionKind(*producer, *consumer);
+  return ChooseFusionKind(*consumer);
 }
 
 HloInstruction* GpuInstructionFusion::FuseInstruction(

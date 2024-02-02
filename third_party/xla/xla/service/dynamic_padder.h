@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,27 +38,15 @@ namespace xla {
 // Dynamic_padder removes dynamic shapes from the entry computation, and inserts
 // custom calls (with dynamic shapes), which are lowered by specialized
 // emitters: PadToStatic and SliceToDynamic.
-
-// Each instruction can have one of the three modes in supporting dynamic
-// lowering.
-enum OpDynamismSupport {
-  // There is no support for dynamic lowering -- dynamic padder will make sure
-  // the input to that op has static bound by rewriting the op (e.g, extra space
-  // in reduce_sum will be padded with 0).
-  kNoSupport = 0,
-  // The op can take either dynamic input or static input.
-  kOptional,
-  // The op only has a dynamic lowering, dynamic padder will make sure the input
-  // to this op is in dynamic form.
-  kRequired,
-};
+//
+// Note that it is not currently possible to send the output of PadToStatic
+// across thread boundaries, and such shapes will be sent across the boundary in
+// dynamic form. The DynamicPadder should be run separately for each thread that
+// requires static shapes, and the dynamic shapes will be padded within the
+// thread's computation.
 
 struct DynamicPadderOptions {
-  // Returns true if given instruction supports native dynamic lowering. If
-  // so, dynamic padder will not attempt to pad it.
-  using OpSupportsDynamismHandler =
-      std::function<OpDynamismSupport(HloInstruction*)>;
-
+  // Determines the form of dynamism supported by an HLO op.
   OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr;
 
   // Instruct how to inference output dynamic dimensions of custom calls.

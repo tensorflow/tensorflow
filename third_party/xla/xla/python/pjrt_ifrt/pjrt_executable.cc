@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -56,9 +57,8 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -529,7 +529,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   auto opts = options;
 
   if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
-    return InternalError(
+    return Internal(
         "Host callback not supported without returned future support in "
         "runtime: %s",
         client_->runtime_type());
@@ -609,7 +609,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   if (pjrt_outputs.size() != num_computations) {
     return FailedPrecondition(
         "Unexpected number of computations in outputs: %d vs. %d",
-        pjrt_outputs.front().size(), num_computations);
+        pjrt_outputs.size(), num_computations);
   }
   const int num_outputs = pjrt_outputs.front().size();
   if (num_outputs != output_dtypes_.size()) {
@@ -669,8 +669,16 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
 
 StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
   DCHECK(this);
-  return client_->pjrt_client()->ExecutableFingerprint(
-      *pjrt_loaded_executable_);
+  StatusOr<std::string> fingerprint =
+      pjrt_loaded_executable_->FingerprintExecutable();
+  if (fingerprint.ok()) {
+    return {fingerprint.value()};
+  } else if (fingerprint.status().code() == absl::StatusCode::kUnimplemented) {
+    // Return nullopt in case of unimplemented error.
+    return std::nullopt;
+  } else {
+    return fingerprint.status();
+  }
 }
 
 StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {

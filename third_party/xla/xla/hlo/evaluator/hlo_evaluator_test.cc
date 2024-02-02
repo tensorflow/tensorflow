@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,25 +14,44 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 
+#include <array>
+#include <complex>
+#include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/client/xla_builder.h"
+#include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/permutation_util.h"
-#include "xla/reference_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_element_type_converter.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -41,8 +60,8 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -4340,14 +4359,19 @@ ENTRY main {
   c2 = s32[] constant(-2147483648)  // -2^31
   sub = s32[] subtract(c2, c1)  // -2^31 - 2^30, underflows
 
+  c3 = u32[] constant(4294967295)
+  c4 = u32[] constant(33)
+
   mul = s32[] multiply(c1, c1)
-  ROOT tuple = (s32[], s32[], s32[]) tuple(sum, sub, mul)
+
+  pow = u32[] power(c3, c4)
+  ROOT tuple = (s32[], s32[], s32[], u32[]) tuple(sum, sub, mul, pow)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, Evaluate({}));
   std::vector<Literal> actual = literal.DecomposeTuple();
-  ASSERT_EQ(actual.size(), 3);
+  ASSERT_EQ(actual.size(), 4);
 
   uint32_t pow30 = uint32_t{1} << 30;
   uint32_t pow31 = uint32_t{1} << 31;
@@ -4356,6 +4380,7 @@ ENTRY main {
             static_cast<int32_t>(-(pow31 + pow30)));
   EXPECT_EQ(actual[2].GetFirstElement<int32_t>(),
             static_cast<int32_t>(pow31 * pow31));
+  EXPECT_EQ(actual[3].GetFirstElement<uint32_t>(), uint32_t{4294967295});
 }
 
 TEST_F(HloEvaluatorTest, GetDimensionSize) {
@@ -4369,7 +4394,7 @@ ENTRY main {
   
   data_dynamic = s32[<=4] set-dimension-size(data, size), dimensions={0}
 
-  sum = s32[4] add(data_dynamic, data)
+  sum = s32[<=4] add(data_dynamic, data)
 
   ROOT dynamic_size = s32[] get-dimension-size(sum), dimensions={0}
 }
@@ -4535,7 +4560,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
                                        absl::Span<const Literal*> operands) {
-    return InternalError("Test error");
+    return Internal("Test error");
   });
   EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
             ::tsl::error::INTERNAL);
@@ -4578,6 +4603,30 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   auto arg1_data = args[1].data<uint32_t>();
   std::vector<uint32_t> expected_data = {arg0_data[0] + arg1_data[0]};
   EXPECT_TRUE(absl::c_equal(expected_data, actual_literal.data<uint32_t>()));
+}
+
+TEST_F(HloEvaluatorTest, EvaluateCustomCallInFusion) {
+  const absl::string_view hlo_text = R"(
+fusion1 {
+  p = f32[] parameter(0)
+  ROOT c = f32[] custom-call(p), custom_call_target="__cchandler1"
+}
+
+ENTRY e {
+  p = f32[] parameter(0)
+  ROOT f = f32[] fusion(p), kind=kCustom, calls=fusion1
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  auto input = LiteralUtil::CreateR0<float>(0);
+  HloEvaluator evaluator;
+  evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
+                                       absl::Span<const Literal*> operands) {
+    return LiteralUtil::CreateR0<float>(1 -
+                                        operands[0]->GetFirstElement<float>());
+  });
+  TF_ASSERT_OK_AND_ASSIGN(auto output, evaluator.Evaluate(*m_, {&input}));
+  EXPECT_EQ(output, LiteralUtil::CreateR0<float>(1));
 }
 
 TEST_F(HloEvaluatorTest, IsFiniteF16) {
@@ -4808,6 +4857,23 @@ TEST_F(HloEvaluatorTest, SortC64) {
   ENTRY main {
     c = c64[3] constant({(2, 0), (4, 0), (6, 0)})
     ROOT sort = c64[3]{0} sort(c), dimensions={0}, to_apply=sort_lt_comparator
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    c = c128[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} convert(c)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));

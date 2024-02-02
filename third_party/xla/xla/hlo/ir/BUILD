@@ -55,6 +55,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":ptrvec",
         ":tile_assignment",
         "//xla:array",
         "//xla:comparison_util",
@@ -81,10 +82,12 @@ cc_library(
         "//xla/service:name_uniquer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -128,6 +131,30 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "ptrvec",
+    hdrs = ["ptrvec.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+cc_test(
+    name = "ptrvec_test",
+    srcs = ["ptrvec_test.cc"],
+    deps = [
+        ":ptrvec",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

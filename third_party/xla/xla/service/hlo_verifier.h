@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -87,6 +87,15 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& WithVerifyS4U4Usage(bool verify) {
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
+    allow_unbounded_dynamism = allow;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
@@ -126,6 +135,9 @@ struct HloVerifierOpts {
 
   // Whether bitcast should have the same size, including all paddings.
   bool allow_bitcast_to_have_different_size = false;
+
+  // Whether unbounded dynamic sizes should be allowed for shapes.
+  bool allow_unbounded_dynamism = false;
 
   HloPredicate instruction_can_change_layout;
 
@@ -234,7 +246,8 @@ class ShapeVerifier : public DfsHloVisitor {
   // Helpers that switch on layout_sensitive_.
   bool ShapesSame(const Shape& a, const Shape& b,
                   bool minor_to_major_only = false,
-                  bool ignore_memory_space = false, bool ignore_tiles = false);
+                  bool ignore_memory_space = false, bool ignore_tiles = false,
+                  bool ignore_trailing_padding_alignment_in_elements = false);
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.

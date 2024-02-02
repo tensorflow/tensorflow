@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,62 +39,65 @@ class NVPTXCompiler : public GpuCompiler {
  public:
   NVPTXCompiler();
 
-  Status OptimizeHloConvolutionCanonicalization(
+  absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  Status OptimizeHloPostLayoutAssignment(
+  absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddConvAndGemmAutotuningPasses(
+  absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  Status AddTritonGemmAutotuningPasses(
+  absl::Status AddTritonGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
+
+  absl::Status AddCustomKernelReplacementPasses(
+      HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
+  absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;
-
- private:
-  StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& module_config) override;
-
-  StatusOr<std::vector<uint8_t>> LinkModules(
-      se::StreamExecutor* stream_exec,
-      std::vector<std::vector<uint8_t>> modules,
-      const DebugOptions& debug_options) override;
-
-  absl::Mutex mutex_;
 
   enum class LinkingMethod {
     kNone,
     kNvLink,
     kDriver,
   };
+
+ private:
+  absl::StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& module_config) override;
+
+  absl::StatusOr<std::vector<uint8_t>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8_t>> modules,
+      const DebugOptions& debug_options) override;
+
+  absl::Mutex mutex_;
+
   absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
       ABSL_GUARDED_BY(mutex_);
 
-  StatusOr<LinkingMethod> ChooseLinkingMethod(
-      const std::string& preferred_cuda_dir);
+  absl::StatusOr<LinkingMethod> ChooseLinkingMethod(
+      const DebugOptions& debug_options);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin if compilation succeeded.
-  StatusOr<std::vector<uint8_t>> CompileGpuAsmOrGetCachedResult(
+  absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmOrGetCachedResult(
       const std::string& ptx, se::CudaComputeCapability cc,
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable, const CompileOptions& options);

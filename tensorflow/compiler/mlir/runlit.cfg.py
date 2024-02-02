@@ -71,14 +71,10 @@ tool_names = [
     'flatbuffer_to_string',
     'flatbuffer_translate',
     'hlo_to_kernel',
-    'hlo_to_llvm_ir',
-    'ifrt-opt',
     'json_to_flatbuffer',
     'kernel-gen-opt',
     'lhlo-tfrt-opt',
-    'mlir-bisect',
     'mlir-hlo-opt',
-    'mlir-interpreter-runner',
     'mlir-opt',
     'mlir-tflite-runner',
     'mlir-translate',
@@ -99,13 +95,6 @@ tool_names = [
     'tfg-transforms-opt',
     'tfg-translate',
     'tfjs-opt',
-    'xla-cpu-opt',
-    'xla-gpu-opt',
-    'xla-mlir-gpu-opt',
-    'xla-runtime-opt',
-    'xla-translate',
-    'xla-translate-gpu-opt',
-    'xla-translate-opt',
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

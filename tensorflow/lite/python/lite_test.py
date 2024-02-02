@@ -399,7 +399,14 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                         disable_per_channel=False,
                                         enable_mlir_quantizer=False,
                                         representative_dataset=True):
-    k_conv_name = 'Conv2D1'
+    if enable_mlir_quantizer:
+      if disable_per_channel:
+        k_conv_name = 'output1'
+      else:
+        k_conv_name = 'tfl.pseudo_qconst1'
+    else:
+      k_conv_name = 'Conv2D1'
+
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     with ops.Graph().as_default():
@@ -1183,6 +1190,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       interpreter.allocate_tensors()
 
       # MLIR quantizer has different bias index.
+      bias_name = 'tfl.pseudo_qconst' if enable_mlir_quantizer else 'Conv2D'
       bias_tensor = [
           tensor for tensor in interpreter.get_tensor_details()
           if tensor['name'] == bias_name

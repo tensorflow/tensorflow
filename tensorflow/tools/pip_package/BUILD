@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = ["//visibility:public"])
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -66,7 +66,6 @@ transitive_hdrs(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
-        "//third_party/eigen3",
         "@local_xla//xla/stream_executor",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -238,6 +237,7 @@ filegroup(
         ],
         "//conditions:default": [],
     }) + if_cuda([
+        "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl_dnn:LICENSE",

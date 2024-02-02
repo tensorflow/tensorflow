@@ -1,0 +1,37 @@
+// RUN: hlo-opt %s --platform=CUDA --stage=ptx --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+
+HloModule m
+
+add {
+ a = f16[] parameter(0)
+ b = f16[] parameter(1)
+ ROOT out = f16[] add(a, b)
+}
+
+
+// CHECK-LABEL: .target sm_80
+// CHECK: shfl.sync.down
+ENTRY e {
+ p1 = f16[1048576] parameter(0)
+ i = f16[] constant(0)
+ ROOT out = f16[] reduce(p1, i), dimensions={0}, to_apply=add
+}
+
+// -----
+
+// CHECK-LABEL: .target sm_80
+
+HloModule m
+
+add {
+ a = f32[] parameter(0)
+ b = f32[] parameter(1)
+ ROOT out = f32[] add(a, b)
+}
+
+// CHECK-NOT: cvt.u16.u32
+ENTRY e {
+ p1 = f32[3] parameter(0)
+ i = f32[] constant(0)
+ ROOT out = f32[] reduce(p1, i), dimensions={0}, to_apply=add
+}

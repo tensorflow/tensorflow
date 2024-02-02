@@ -439,29 +439,29 @@ class SignatureToTraceTypeTest(test.TestCase):
 
 class TraceTypeMemoryTest(test.TestCase):
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testGeneric(self):
     trace_type.from_value(1)
     trace_type.from_value(DummyGenericClass())
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testTensor(self):
     tensor = array_ops.zeros([10])
     trace_type.from_value(tensor)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testTuple(self):
     trace_type.from_value((1, 2, 3))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testDict(self):
     trace_type.from_value({1: 1, 2: 2, 3: 3})
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testList(self):
     trace_type.from_value([1, 2, 3])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testAttrs(self):
     trace_type.from_value(TestAttrsClass(1, 2))
 

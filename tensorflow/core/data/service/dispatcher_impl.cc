@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/time.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -72,8 +75,10 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace data {
@@ -260,16 +265,39 @@ Status DataServiceDispatcherImpl::Start() {
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
-
-  for (const auto& path : state_.ListSnapshotPaths()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<SnapshotManager> snapshot_manager,
-        SnapshotManager::Resume(path, snapshot_assignment_manager_, env_));
-    snapshots_.insert({path, std::move(snapshot_manager)});
-  }
-
+  TF_RETURN_IF_ERROR(RestoreSnapshots());
   started_ = true;
   return OkStatus();
+}
+
+void DataServiceDispatcherImpl::Stop() TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<SplitProvider*> split_providers;
+  std::vector<SnapshotManager*> snapshot_managers;
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    for (const auto& [iteration_id, source_providers] : split_providers_) {
+      for (const std::unique_ptr<SplitProvider>& split_provider :
+           source_providers) {
+        split_providers.push_back(split_provider.get());
+      }
+    }
+
+    for (const auto& [path, snapshot_manager] : snapshots_) {
+      snapshot_managers.push_back(snapshot_manager.get());
+    }
+  }
+  // Cancels split providers without holding `mu_` as cancellation may require
+  // the split provider's lock. Waiting for the split provider's lock while
+  // holding the dispatcher's lock may result in a deadlock if the split
+  // provider is blocked waiting for some resources.
+  for (SplitProvider* split_provider : split_providers) {
+    split_provider->Cancel();
+  }
+
+  for (SnapshotManager* snapshot_manager : snapshot_managers) {
+    snapshot_manager->Cancel();
+  }
 }
 
 size_t DataServiceDispatcherImpl::NumActiveIterations() TF_LOCKS_EXCLUDED(mu_) {
@@ -485,53 +513,56 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
                                            GetSplitResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
   int64_t iteration_id = request->iteration_id();
   int64_t repetition = request->repetition();
   int64_t provider_index = request->split_provider_index();
   VLOG(3) << "Received GetSplit request for iteration " << iteration_id
           << ", repetition " << repetition << ", split provider index "
           << provider_index;
-  std::shared_ptr<const Iteration> iteration;
-  TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
-  if (!iteration->distributed_epoch_state.has_value()) {
-    return errors::FailedPrecondition(
-        "Cannot get split for iteration ", iteration_id,
-        ", since it is not a distributed_epoch iteration.");
+  mutex_lock l(get_split_mu_);
+  int64_t current_repetition = 0;
+  SplitProvider* split_provider = nullptr;
+  {
+    mutex_lock l(mu_);
+    std::shared_ptr<const Iteration> iteration;
+    TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
+    if (!iteration->distributed_epoch_state.has_value()) {
+      return errors::FailedPrecondition(
+          "Cannot get split for iteration ", iteration_id,
+          ", since it is not a distributed_epoch iteration.");
+    }
+    current_repetition =
+        iteration->distributed_epoch_state.value().repetitions[provider_index];
+    if (request->repetition() < current_repetition) {
+      response->set_end_of_splits(true);
+      VLOG(3) << "Returning end_of_splits since current repetition "
+              << current_repetition
+              << " is greater than the requested repetition " << repetition;
+      return OkStatus();
+    }
+    split_provider = split_providers_[iteration_id][provider_index].get();
   }
-  int64_t current_repetition =
-      iteration->distributed_epoch_state.value().repetitions[provider_index];
-  if (repetition < current_repetition) {
-    response->set_end_of_splits(true);
-    VLOG(3) << "Returning end_of_splits since current repetition "
-            << current_repetition
-            << " is greater than the requested repetition " << repetition;
-    return OkStatus();
-  }
-  if (repetition > current_repetition) {
+  if (request->repetition() > current_repetition) {
     // This could happen if an iterator is repeated before reaching end of
     // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
     // the previous repetitions as completed and advance to the requested
     // repetition.
-    TF_RETURN_IF_ERROR(split_providers_[iteration_id][provider_index]->Reset());
+    TF_RETURN_IF_ERROR(split_provider->Reset());
   }
-  SplitProvider* split_provider =
-      split_providers_[iteration_id][provider_index].get();
-  DCHECK(split_provider != nullptr);
   Tensor split;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
   TF_RETURN_IF_ERROR(RecordSplitProduced(iteration_id, repetition,
-                                         request->split_provider_index(),
-                                         end_of_splits));
+                                         provider_index, end_of_splits));
   response->set_end_of_splits(end_of_splits);
   if (end_of_splits) {
     // Reset the split provider to prepare for the next iteration.
-    TF_RETURN_IF_ERROR(split_providers_[iteration_id][provider_index]->Reset());
+    TF_RETURN_IF_ERROR(split_provider->Reset());
   } else {
     split.AsProtoTensorContent(response->mutable_split());
   }
-  VLOG(3) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
+  VLOG(3) << "Returning from GetSplit, split=" << split
+          << ", end_of_splits=" << end_of_splits;
   return OkStatus();
 }
 
@@ -1138,6 +1169,14 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
 
 Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
+  if (!config_.fault_tolerant_mode()) {
+    return errors::InvalidArgument(
+        "tf.data distributed snapshot requires running tf.data service in the "
+        "fault tolerant mode. To enable the fault tolerant mode, set "
+        "`DispatcherConfig.fault_tolerant_mode` to true and provide a valid "
+        "`DispatcherConfig.work_dir`.");
+  }
+
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   if (snapshots_.contains(request->path())) {
@@ -1192,9 +1231,38 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
   return it->second->GetSnapshotSplit(*request, *response);
 }
 
+absl::Status DataServiceDispatcherImpl::RestoreSnapshots()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (state_.ListSnapshotPaths().empty()) {
+    return absl::OkStatus();
+  }
+
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
+      env_, tsl::ThreadOptions{}, "restore_snapshot_thread",
+      state_.ListSnapshotPaths().size());
+  absl::Status snapshot_status;
+  mutex snapshot_mu;  // Protects `snapshot_status` and `snapshots_`.
+  for (const std::string& path : state_.ListSnapshotPaths()) {
+    thread_pool->Schedule([this, &path, &snapshot_status,
+                           &snapshot_mu]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      absl::StatusOr<std::unique_ptr<SnapshotManager>> snapshot_manager =
+          SnapshotManager::Resume(path, snapshot_assignment_manager_, env_);
+      mutex_lock snapshot_lock(snapshot_mu);
+      if (!snapshot_manager.status().ok()) {
+        snapshot_status.Update(snapshot_manager.status());
+        return;
+      }
+      snapshots_.insert({path, std::move(snapshot_manager.value())});
+    });
+  }
+  thread_pool.reset();
+  return snapshot_status;
+}
+
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
     const DisableCompressionAtRuntimeRequest* request,
     DisableCompressionAtRuntimeResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   std::shared_ptr<const Dataset> dataset;
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
@@ -1271,7 +1339,8 @@ Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceDispatcherImpl::RecordSplitProduced(
     int64_t iteration_id, int64_t repetition, int64_t split_provider_index,
-    bool finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    bool finished) TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
   Update update;
   ProduceSplitUpdate* produce_split = update.mutable_produce_split();
   produce_split->set_iteration_id(iteration_id);

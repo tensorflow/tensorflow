@@ -17,21 +17,33 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_
 
 #include <memory>
+#include <string>
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 
 namespace mlir::quant::stablehlo {
 
+// Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
+// dcast ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
+    const quant::QuantizationSpecs& quantization_specs,
+    bool enable_per_channel_quantized_weight = true);
+
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     const ::stablehlo::quantization::QuantizationComponentSpec&
-        quantization_component_spec);
+        quantization_component_spec = {});
 
-// Creates a pass that prepares static range quantization of StableHLO graph.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
-    ::stablehlo::quantization::QuantizationOptions quantization_options);
+// Converts a serialized StableHLO module to bfloat16 and output serialized
+// module.
+absl::StatusOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
+    StringRef serialized_stablehlo_module);
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

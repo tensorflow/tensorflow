@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
@@ -106,6 +107,28 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
                                          instr.shape(), instr.dimensions()));
 }
 
+bool TransposesMinorDimension(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kFusion:
+      return absl::c_any_of(instr->fused_instructions(),
+                            TransposesMinorDimension);
+    case HloOpcode::kCopy:
+      return instr->shape().layout().minor_to_major(0) !=
+             instr->operand(0)->shape().layout().minor_to_major(0);
+    case HloOpcode::kTranspose: {
+      // We have an input ([a,b,c]{x,y,z}) that's being transposed. We need to
+      // check if the minor-most dimension (x) is still the minor-most dimension
+      // after the transpose.
+      int64_t minor_input =
+          instr->operand(0)->shape().layout().minor_to_major(0);
+      int64_t minor_output = instr->shape().layout().minor_to_major(0);
+      return minor_input != instr->dimensions().at(minor_output);
+    }
+    default:
+      return false;
+  }
+}
+
 bool IsReduceInputFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          absl::c_any_of(GetFusionRoots(*instr.called_computations()[0]),
@@ -130,15 +153,14 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kBitcast) {
+  if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
   }
-  auto& hero = FindNonTrivialHero(instr);
-  if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
-    return true;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return !instr.IsCustomFusion() && instr.opcode() == HloOpcode::kFusion &&
-         HasAnyTiledTransposeRoot(*instr.called_computations()[0]);
+  auto& hero = FindNonTrivialHero(instr);
+  return GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -170,28 +192,6 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   return fused_expression_root->operands()[0];
 }
 
-// Returns whether the output of a fusion with reduction are consistent with
-// `first_reduce`.
-static bool IsFusedReductionOutputConsistent(
-    const HloInstruction* inst, const HloInstruction* first_reduce) {
-  const auto& hero = FindNonTrivialHero(*inst);
-  if (IsRealReductionHero(*inst, hero)) {
-    // Shapes, layouts and dimensions must be the same for all reduces
-    // inside of this fusion.
-    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
-                                               inst->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
-           ShapeUtil::EqualIgnoringElementType(
-               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
-           first_reduce->dimensions() == inst->dimensions();
-  }
-  return ShapeUtil::CompatibleIgnoringElementType(
-             first_reduce->operand(0)->shape(), inst->shape()) &&
-         LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
-                           inst->shape().layout());
-}
-
 FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
                                          const HloInstruction* hero2) {
   auto hero1_is_unnested_reduce =
@@ -206,7 +206,7 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
-      !IsFusedReductionOutputConsistent(hero2, hero1)) {
+      !AreReductionsMultiOutputFusionCompatible(hero2, hero1)) {
     return "tiled reductions with different shapes";
   } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              // After normalization to rank 3, the transposes should have the
@@ -401,6 +401,33 @@ static bool AllSatisfy(const HloInstruction& instr,
       });
 }
 
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer) {
+  if (IsInputFusibleScatter(producer)) {
+    return "do not fuse into the output of scatter";
+  }
+  if (!IsInputFusibleScatter(consumer)) {
+    return {};
+  }
+
+  const HloInstruction* inplace_operand;
+  if (consumer.opcode() == HloOpcode::kFusion) {
+    const HloInstruction* scatter = consumer.fused_expression_root();
+    CHECK_EQ(scatter->opcode(), HloOpcode::kScatter);
+    CHECK_EQ(scatter->operand(0)->opcode(), HloOpcode::kParameter);
+    inplace_operand = consumer.operand(scatter->operand(0)->parameter_number());
+  } else {
+    inplace_operand = consumer.operand(0);
+  }
+  if (inplace_operand == &producer) {
+    return "do not fuse into the in-place operand of scatter";
+  }
+  if (absl::c_linear_search(producer.operands(), inplace_operand)) {
+    return "Producer uses the in-place operand of a scatter";
+  }
+  return {};
+}
+
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
   const auto& producer_hero = FindNonTrivialHero(producer);
@@ -419,6 +446,17 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
              .xla_gpu_enable_reduction_epilogue_fusion()) {
       return "Reduction epilogue fusion is not enabled.";
     }
+    // TODO(akuegel): Remove workaround when producer_hero is computed
+    // correctly.
+    const HloInstruction& reduce_hero =
+        producer_hero.opcode() == HloOpcode::kFusion
+            ? FindNonTrivialHero(*producer_hero.fused_expression_root())
+            : producer_hero;
+    if (!ReductionIsRaceFree(
+            reduce_hero.GetModule()->config(),
+            GetReductionKindAndContiguousComponents(reduce_hero))) {
+      return "Reduction output fusion only works for race free reductions";
+    }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);
         })) {
@@ -430,24 +468,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     }
   }
 
-  if (IsInputFusibleScatter(consumer)) {
-    const HloInstruction* inplace_operand;
-    if (consumer.opcode() == HloOpcode::kFusion) {
-      const HloInstruction* scatter = consumer.fused_expression_root();
-      CHECK_EQ(scatter->opcode(), HloOpcode::kScatter);
-      CHECK_EQ(scatter->operand(0)->opcode(), HloOpcode::kParameter);
-      inplace_operand =
-          consumer.operand(scatter->operand(0)->parameter_number());
-    } else {
-      inplace_operand = consumer.operand(0);
-    }
-    if (inplace_operand == &producer) {
-      return "do not fuse into the in-place operand of scatter";
-    }
-    if (absl::c_find(producer.operands(), inplace_operand) !=
-        producer.operands().end()) {
-      return "Producer uses the in-place operand of a scatter";
-    }
+  if (auto can_fuse = CanEmitInputFusedScatter(producer, consumer); !can_fuse) {
+    return can_fuse;
   }
 
   if (!IsInputFusible(consumer) &&
@@ -823,8 +845,7 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
           instr.IsElementwise());
 }
 
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
-                                            const HloInstruction& consumer) {
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer) {
   return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
                                   : HloInstruction::FusionKind::kLoop;
 }
@@ -896,15 +917,39 @@ std::vector<const HloInstruction*> GetFusionRoots(
   return out;
 }
 
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero) {
-  if (!IsReductionFromOrToContiguousDimensions(hero)) {
-    return false;
-  }
-  return &root == &hero ||
-         (hero.user_count() == 1 &&
-          ReductionIsRaceFree(hero.GetModule()->config(),
-                              GetReductionKindAndContiguousComponents(hero)));
+bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kFusion &&
+         instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
+         instr.backend_config<GpuBackendConfig>().ok() &&
+         instr.backend_config<GpuBackendConfig>()
+                 ->fusion_backend_config()
+                 .kind() == kTritonSoftmaxFusionKind;
+}
+
+bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+  // An empirically chosen constant: unrolling concat with a large amount of
+  // arguments causes excessive register spilling.
+  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  return HloAnyOf(fusion.GetRoots(), fusion, [&](auto node) {
+    switch (node.opcode()) {
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kSort:
+      case HloOpcode::kDot:
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kTan:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      case HloOpcode::kConcatenate:
+        return node.instruction().operand_count() >
+               kMaxConcatArgumentsForUnrolling;
+      case HloOpcode::kReduce:
+        return node.instruction().shape().tuple_shapes_size() > 1;
+      default:
+        return false;
+    }
+  });
 }
 
 }  // namespace gpu

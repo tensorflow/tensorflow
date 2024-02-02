@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -140,6 +140,74 @@ TEST_F(ConvertOperandFoldingTest, OneOperandFolded) {
       AllOf(op::Dot(op::Parameter(0), AllOf(op::Convert(op::Parameter(1)),
                                             op::Shape("s8[3,2]{0,1}"))),
             op::Shape("s16[2,2]{1,0}")));
+}
+
+TEST_F(ConvertOperandFoldingTest, FoldedWithFormatting) {
+  absl::string_view module_string = R"(
+  HloModule module
+  sum {
+    a = s16[] parameter(0)
+    b = s16[] parameter(1)
+    ROOT r  = add(a,b)
+  }
+
+  ENTRY main {
+    p0 = s8[3,10] parameter(0)
+    c0 = s16[3,10] convert(p0)
+    r0 = s16[3,2,5] reshape(c0)
+    t0 = s16[2,5,3] transpose(r0), dimensions={1,2,0}
+    s0 = s16[2,1,3] slice(t0), slice={[0:2], [2:3], [0:3]}
+    rs0 = s16[2,3] reshape(s0)
+    p1 = s8[3,1,2] parameter(1)
+    c1 = s16[3,1,2] convert(p1)
+    r1 = s16[1,3,2] transpose(c1), dimensions={1,0,2}
+    z = s16[] constant(0)
+    rr1 = s16[3,2] reduce(r1,z), dimensions={0}, to_apply=sum
+    ROOT dot = s16[2,2] dot(rs0, rr1), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool folded,
+                          ConvertOperandFolding().Run(module.get()));
+  EXPECT_TRUE(folded);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Dot(
+          op::Reshape(op::Slice(op::Transpose(op::Reshape(op::Parameter(0))))),
+          op::Reshape(op::Transpose(op::Parameter(1)))));
+}
+
+TEST_F(ConvertOperandFoldingTest, FoldedWithDSAndGather) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = s8[100,3] parameter(0)
+    c0 = s16[100,3] convert(p0)
+    ids = s32[20] parameter(2)
+    g = s16[20,3] gather(c0, ids), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,3}
+    t = s16[3,20] transpose(g), dimensions={1,0}
+
+    p1 = s8[25,3] parameter(1)
+    c1 = s16[25,3] convert(p1)
+    z = s32[] constant(0)
+    s = s32[] parameter(3)
+    ds = s16[20,3] dynamic-slice(c1, s, z), dynamic_slice_sizes={20,3}
+
+    ROOT dot = s16[3,3] dot(t, ds), lhs_contracting_dims={1},
+                                          rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool folded,
+                          ConvertOperandFolding().Run(module.get()));
+  EXPECT_TRUE(folded);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Dot(op::Transpose(op::Gather(op::Parameter(0), op::Parameter(2))),
+              op::DynamicSlice(op::Parameter(1), op::Parameter(3),
+                               op::Constant())));
 }
 
 }  // namespace

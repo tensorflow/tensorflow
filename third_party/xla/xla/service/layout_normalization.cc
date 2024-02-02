@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
@@ -67,6 +68,12 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     const Shape& shape = hlo->shape();
     Shape normalized_shape = Normalize(shape);
     *literal.mutable_shape_do_not_use() = normalized_shape;
+    // Ensure element_size_in_bits of literal is 0, because literals do not
+    // support packed values.
+    literal.mutable_shape_do_not_use()
+        ->mutable_layout()
+        ->set_element_size_in_bits(0);
+
     HloInstruction* bc_to_orig = MakeBitcastHlo(hlo, shape);
     *hlo->mutable_shape() = normalized_shape;
     TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWithDifferentShape(bc_to_orig));
@@ -231,6 +238,24 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  Status HandleIota(HloInstruction* hlo) override {
+    VLOG(3) << "Input iota: " << hlo->ToString();
+    auto s = hlo->shape();
+    auto normalized_shape = Normalize(s);
+    std::vector<int64_t> orig_output_layout_as_permutation =
+        ToTransposeDimensions(s.layout());
+    int64_t iota_dimension = hlo->dimensions()[0];
+    int64_t new_iota_dimension =
+        FindIndex(orig_output_layout_as_permutation, iota_dimension);
+    auto normalized_iota = hlo->AddInstruction(
+        HloInstruction::CreateIota(normalized_shape, new_iota_dimension));
+    SetVisited(*normalized_iota);
+    VLOG(3) << "Generated iota: " << normalized_iota->ToString();
+    auto bc_to_orig = MakeBitcastHlo(normalized_iota, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
   Status HandleBitcastConvert(HloInstruction* hlo) override {
     // If the rank isn't changing this is just an unary op.
@@ -257,7 +282,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto operand_shape = operand->shape();
 
     // Precondition: elementwise unary leaves layout intact.
-    TF_RET_CHECK(s.layout() == operand_shape.layout())
+    TF_RET_CHECK(
+        Layout::Equal().IgnoreElementSize()(s.layout(), operand_shape.layout()))
         << "Unexpected non-layout preserving elementwise unary: "
         << hlo->ToString();
     TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
@@ -631,8 +657,9 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         << "Unexpected HLO input: " << hlo->ToString();
     auto input = hlo->mutable_operand(0);
     auto input_shape = input->shape();
-    TF_RET_CHECK(input_shape.layout() ==
-                 LayoutUtil::GetDefaultLayoutForShape(input_shape));
+    TF_RET_CHECK(Layout::Equal().IgnoreElementSize()(
+        input_shape.layout(),
+        LayoutUtil::GetDefaultLayoutForShape(input_shape)));
     return input;
   }
 

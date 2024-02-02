@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,6 +116,16 @@ ENTRY entry {
   VerifyNoAllReduce(module.get());
 }
 
+TEST_F(StatefulRngSpmdPartitionerTest, VerifyThresholdSetCorrectly) {
+  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  int64_t threshold = 400;
+  debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(threshold);
+  StatefulRngSpmdPartitioner rng_spmd_partitioner(
+      /*num_partitions=*/2, /*num_replicas*/ 1,
+      debug_options.xla_gpu_threshold_for_windowed_einsum_mib());
+  EXPECT_EQ(rng_spmd_partitioner.options().threshold_for_windowed_einsum_mib,
+            threshold);
+}
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

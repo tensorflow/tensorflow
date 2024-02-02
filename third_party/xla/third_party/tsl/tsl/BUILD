@@ -108,7 +108,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/cpu:wasm32"],
+        ["//third_party/bazel_platforms/os:emscripten"],
         [],
     ),
     values = if_oss(

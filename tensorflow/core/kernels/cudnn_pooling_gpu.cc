@@ -149,11 +149,9 @@ void DnnPooling3dOp<Eigen::bfloat16>::Compute(
     const std::array<int64_t, 3>& window, const std::array<int64_t, 3>& stride,
     const std::array<int64_t, 3>& padding, TensorFormat data_format,
     const Tensor& tensor_in, Tensor* output) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
+
   if (cast_to_float) {
     Tensor casted_in;
     Tensor casted_output;
@@ -348,11 +346,8 @@ void DnnPooling3dGradOp<Eigen::bfloat16>::Compute(
     const std::array<int64_t, 3>& output_size, TensorFormat data_format,
     const Tensor& out_backprop, const TensorShape& tensor_in_shape,
     const Tensor* tensor_in, const Tensor* tensor_out, Tensor* input_backprop) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = context->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
   if (cast_to_float) {
     Tensor casted_out_backprop;
     Tensor casted_tensor_in;

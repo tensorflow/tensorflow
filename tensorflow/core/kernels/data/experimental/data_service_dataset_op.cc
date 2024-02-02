@@ -21,13 +21,11 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -61,7 +59,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -441,6 +438,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         }
         if (element_size_cache_ == 0.0) {
           element_size_cache_ = node_->AverageBufferedElementSize();
+          VLOG(3) << "Average DataService element size is "
+                  << element_size_cache_;
           if (element_size_cache_ == 0) {
             int64_t new_outstanding_requests = std::max(
                 max_outstanding_requests, kStartingMaxOutstandingRequests);

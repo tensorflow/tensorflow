@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,12 +32,6 @@ host::HostStream *AsExecutorStream(Stream *stream) {
 DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,
                                                   int64_t memory_space) {
   return DeviceMemoryBase(new char[size], size);
-}
-
-void *XlaInterpreterExecutor::GetSubBuffer(DeviceMemoryBase *parent,
-                                           uint64_t offset_bytes,
-                                           uint64_t /*size_bytes*/) {
-  return parent + offset_bytes;
 }
 
 void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {

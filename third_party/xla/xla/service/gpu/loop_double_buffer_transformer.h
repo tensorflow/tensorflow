@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #ifndef XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
 #define XLA_SERVICE_GPU_LOOP_DOUBLE_BUFFER_TRANSFORMER_H_
-
-#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -34,6 +32,9 @@ namespace gpu {
 // peeled outside of the while loop to make the trip count an even number,
 // then proceed to unroll by 2.
 // It also updates the trip count property of the loop to the correct one (n/2).
+//
+// Note that this pass will flatten the call graph if any loop has been
+// unrolled.
 class LoopDoubleBufferTransformer : public HloModulePass {
  public:
   LoopDoubleBufferTransformer() = default;
@@ -43,7 +44,7 @@ class LoopDoubleBufferTransformer : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

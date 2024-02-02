@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -137,6 +137,28 @@ bool Shape::is_static() const {
   return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
 
+bool Shape::is_unbounded_dynamic() const {
+  if (IsTuple()) {
+    return absl::c_any_of(tuple_shapes_, [](const Shape& subshape) {
+      return subshape.is_unbounded_dynamic();
+    });
+  }
+  return absl::c_any_of(dimensions_,
+                        [](int64_t dim) { return dim == kUnboundedSize; });
+}
+
+bool Shape::is_bounded_dynamic() const {
+  if (IsTuple()) {
+    return absl::c_any_of(tuple_shapes_, [](const Shape& subshape) {
+      return subshape.is_bounded_dynamic();
+    });
+  }
+  for (auto i = 0; i < dimensions_.size(); ++i) {
+    if (is_bounded_dynamic_dimension(i)) return true;
+  }
+  return false;
+}
+
 void Shape::DeleteDimension(int64_t dim_to_delete) {
   CHECK(IsArray());
   CHECK_GE(dim_to_delete, 0);
@@ -149,7 +171,7 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
 }
 
 const Shape& Shape::tuple_shapes(int index) const {
-  return tuple_shapes_.at(index);
+  return tuple_shapes_[index];
 }
 
 Shape* Shape::add_tuple_shapes() {
@@ -210,6 +232,9 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         }
         if (ignore_memory_space_in_layout_) {
           equal.IgnoreMemorySpace();
+        }
+        if (ignore_tail_padding_alignment_in_elements_in_layout_) {
+          equal.IgnoreTailPaddingAlignmentInElements();
         }
         if (!equal(lhs.layout(), rhs.layout())) {
           VLOG(3) << "CompareShapes: lhs layout != rhs layout";

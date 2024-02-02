@@ -326,6 +326,11 @@ REGISTER_OP("FilterDataset")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("DatasetFingerprint")
+    .Input("input_dataset: variant")
+    .Output("fingerprint: uint64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ParallelFilterDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")

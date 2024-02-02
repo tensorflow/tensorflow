@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -182,8 +182,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                      llvm::Value* x);
 
   virtual StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
-  EmitComplexAbsHelper(PrimitiveType prim_type, llvm::Value* operand_value,
-                       bool return_sqrt);
+  EmitComplexAbsHelper(PrimitiveType prim_type, llvm::Value* real,
+                       llvm::Value* imag, bool return_sqrt);
 
   virtual StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                                 llvm::Value* operand_value);
@@ -301,10 +301,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
-  // Computes the complex power function, returns (a + i*b)^(c + i*d).
+  // Computes the complex power function.
   StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
-                                          llvm::Value* a, llvm::Value* b,
-                                          llvm::Value* c, llvm::Value* d);
+                                          llvm::Value* lhs_value,
+                                          llvm::Value* rhs_value);
 
   // Evaluates a polynomial using Horner's method.
   StatusOr<llvm::Value*> EvaluatePolynomial(

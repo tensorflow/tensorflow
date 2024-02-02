@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringSet.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
@@ -66,6 +68,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/random.h"
+#include "tsl/platform/rocm_rocdl_path.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/util/env_var.h"
 
@@ -114,7 +117,10 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
                  << ". Defaulting to telling LLVM that we're compiling for sm_"
                  << sm_version;
   }
-  return absl::StrCat("sm_", sm_version);
+  // If the target is sm_90, hard code it to sm_90a so that all instructions
+  // can be used. We don't need the portability that sm_90 gives.
+  std::string_view extension = sm_version == 90 ? "a" : "";
+  return absl::StrCat("sm_", sm_version, extension);
 }
 
 // Convenience function for producing a name of a temporary compilation product
@@ -135,7 +141,7 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeTransformUtils(*pass_registry);
   llvm::initializeInstCombine(*pass_registry);
   llvm::initializeTarget(*pass_registry);
-  llvm::initializeCodeGenPreparePass(*pass_registry);
+  llvm::initializeCodeGenPrepareLegacyPassPass(*pass_registry);
 }
 
 // Returns the TargetMachine, given a triple.
@@ -217,9 +223,9 @@ bool CouldNeedDeviceBitcode(const llvm::Module& module) {
     // The list of prefixes should be in sync with library functions used in
     // target_util.cc.
     if (!function.isIntrinsic() && function.isDeclaration() &&
-        (function.getName().startswith("__nv_") ||
-         function.getName().startswith("__ocml_") ||
-         function.getName().startswith("__ockl_"))) {
+        (function.getName().starts_with("__nv_") ||
+         function.getName().starts_with("__ocml_") ||
+         function.getName().starts_with("__ockl_"))) {
       return true;
     }
   }
@@ -228,7 +234,7 @@ bool CouldNeedDeviceBitcode(const llvm::Module& module) {
 
 // Links the module with a vector of path to bitcode modules.
 // The caller must guarantee that the paths exist.
-Status LinkWithBitcodeVector(
+absl::Status LinkWithBitcodeVector(
     llvm::Module* module, const std::vector<std::string>& bitcode_path_vector) {
   llvm::Linker linker(*module);
 
@@ -237,7 +243,7 @@ Status LinkWithBitcodeVector(
       LOG(ERROR) << "bitcode module is required by this HLO module but was "
                     "not found at "
                  << bitcode_path;
-      return xla::InternalError("bitcode module not found at %s", bitcode_path);
+      return xla::Internal("bitcode module not found at %s", bitcode_path);
     }
 
     std::unique_ptr<llvm::Module> bitcode_module =
@@ -252,17 +258,17 @@ Status LinkWithBitcodeVector(
                 return !GV.hasName() || (GVS.count(GV.getName()) == 0);
               });
             })) {
-      return xla::InternalError("Error linking bitcode module from %s",
-                                bitcode_path);
+      return xla::Internal("Error linking bitcode module from %s",
+                           bitcode_path);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NVPTXTargetModuleLinker(llvm::Module* module,
-                               se::GpuComputeCapability gpu_version,
-                               const DebugOptions& debug_options,
-                               const std::string& device_bitcode_path) {
+absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
+                                     se::GpuComputeCapability gpu_version,
+                                     const DebugOptions& debug_options,
+                                     const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -280,7 +286,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -349,7 +355,7 @@ auto DumpCallbackForModule(std::string module_identifier,
   };
 }
 
-Status LinkAndOptimizeModule(
+absl::Status LinkAndOptimizeModule(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& device_bitcode_path,
     TargetModuleLinker module_linker, llvm::Triple default_target_triple,
@@ -422,7 +428,7 @@ Status LinkAndOptimizeModule(
 
   mpm.run(*module, mam);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // One-time module initializer.
@@ -532,24 +538,24 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path) {
+absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                      const std::string& libdevice_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
     LOG(WARNING)
         << "libdevice is required by this HLO module but was not found at "
         << libdevice_path;
-    return xla::InternalError("libdevice not found at %s", libdevice_path);
+    return xla::Internal("libdevice not found at %s", libdevice_path);
   }
 
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   return LinkWithBitcodeVector(module, {libdevice_path});
 }
 
-StatusOr<std::string> CompileToPtx(
+absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
@@ -575,8 +581,7 @@ StatusOr<std::string> CompileToPtx(
     auto compute_capability =
         std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (!compute_capability) {
-      return xla::InternalError(
-          "Incompatible compute capability was specified.");
+      return xla::Internal("Incompatible compute capability was specified.");
     }
 
     llvm::Triple default_target_triple("nvptx64-unknown-unknown");
@@ -702,13 +707,13 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
+absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine) {
   auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
   if (tempdir_vector.empty()) {
-    return xla::InternalError(
+    return xla::Internal(
         "Unable to locate a temporary directory for compile-time artifacts.");
   }
   std::string tempdir_name = tempdir_vector.front();
@@ -765,13 +770,11 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     ir_fs->flush();
   }
   // Locate lld.
-  // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
-  // ROCm-Device-Libs PR.
-  std::string lld_path = tsl::io::JoinPath("/opt/rocm", "llvm/bin");
+  std::string lld_path = tsl::io::JoinPath(tsl::RocmRoot(), "llvm/bin");
   auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
-    return xla::InternalError("unable to find ld.lld in PATH: %s",
-                              lld_program.getError().message());
+    return xla::Internal("unable to find ld.lld in PATH: %s",
+                         lld_program.getError().message());
   }
   std::vector<llvm::StringRef> lld_args{
       llvm_ir::AsStringRef("ld.lld"),    llvm_ir::AsStringRef("-flavor"),
@@ -785,8 +788,8 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
                                 std::nullopt, {}, 0, 0, &error_message);
   if (lld_result) {
-    return xla::InternalError("ld.lld execute fail: %s, error code %d",
-                              error_message, lld_result);
+    return xla::Internal("ld.lld execute fail: %s, error code %d",
+                         error_message, lld_result);
   }
 
   // Read HSACO.
@@ -806,26 +809,27 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
-Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
-                            const std::string& rocdl_dir_path) {
+absl::Status LinkROCDLIfNecessary(llvm::Module* module,
+                                  std::string gcn_arch_name,
+                                  const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
                                GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
 }
 
-Status AMDGPUTargetModuleLinker(llvm::Module* module,
-                                se::GpuComputeCapability gpu_version,
-                                const DebugOptions& debug_options,
-                                const std::string& device_bitcode_dir_path) {
+absl::Status AMDGPUTargetModuleLinker(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options,
+    const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
 
   auto compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
   if (!compute_capability) {
-    return xla::InternalError("Incompatible compute capability was specified.");
+    return xla::Internal("Incompatible compute capability was specified.");
   }
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
@@ -839,7 +843,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The following routine maps a feature token extracted from the
@@ -852,10 +856,14 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module,
 // related changes which have not yet been upstreamed (to the LLVM repo)
 // When that upstreaming happens (and TF LLVM pointer moves past the
 // upstream commit), the following mapping will need to change
-std::string MapGCNArchNameTokenToFeatureStr(const std::string& token) {
+std::string MapGCNArchNameTokenToFeatureStr(const std::string& token,
+                                            const std::string& gfx) {
   if (token == "sramecc+") {
     return "+sramecc";
   } else if (token == "sramecc-") {
+    if (gfx == "gfx90a" || gfx == "gfx940" || gfx == "gfx941" ||
+        gfx == "gfx942")
+      return "";
     return "-sramecc";
   } else if (token == "xnack+") {
     return "+xnack";
@@ -880,7 +888,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
     // The rest of the tokens are the feature/targetid strings
     if (it != tokens.begin()) {
       std::string token(*it);
-      std::string mapped_token = MapGCNArchNameTokenToFeatureStr(token);
+      std::string mapped_token = MapGCNArchNameTokenToFeatureStr(token, gfx);
       mapped_tokens.push_back(mapped_token);
     }
   }
@@ -901,7 +909,32 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
                           arch.second);
 }
 
-void AMDGPUBackendInit(const DebugOptions& debug_options) {
+// Returns the directory containing ROCm-Device-Libs files.
+std::string GetROCDLDir(const DebugOptions& debug_options) {
+  std::vector<std::string> potential_rocdl_dirs;
+  const std::string datadir = debug_options.xla_gpu_cuda_data_dir();
+  if (!datadir.empty()) {
+    potential_rocdl_dirs.push_back(datadir);
+  }
+  potential_rocdl_dirs.push_back(tsl::RocdlRoot());
+
+  // Tries all potential ROCDL directories in the order they are inserted.
+  // Returns the first directory that exists in the file system.
+  for (const std::string& potential_rocdl_dir : potential_rocdl_dirs) {
+    if (tsl::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
+      VLOG(2) << "Found ROCm-Device-Libs dir " << potential_rocdl_dir;
+      return potential_rocdl_dir;
+    }
+    VLOG(2) << "Unable to find potential ROCm-Device-Libs dir "
+            << potential_rocdl_dir;
+  }
+
+  // Last resort: maybe in the current folder.
+  return ".";
+}
+
+void AMDGPUBackendInit(const DebugOptions& debug_options,
+                       std::string& rocdl_dir_path) {
   llvm_ir::InitializeLLVMCommandLineOptions(
       debug_options.xla_backend_extra_options());
 
@@ -913,9 +946,9 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
-
 #endif
 
+  rocdl_dir_path = GetROCDLDir(debug_options);
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
 }
@@ -923,12 +956,16 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
 }  // namespace
 
 namespace amdgpu {
-StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const DebugOptions& debug_options,
     const std::string& module_config_cache_key) {
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options);
+  // TODO(rocm) Ideally this would be refreshed if xla_gpu_cuda_data_dir
+  // changes.
+  static std::string rocdl_dir_path;
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
+                  rocdl_dir_path);
 
   std::vector<uint8_t> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -955,8 +992,7 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
     auto compute_capability =
         std::get_if<se::RocmComputeCapability>(&gpu_version);
     if (!compute_capability) {
-      return xla::InternalError(
-          "Incompatible compute capability was specified.");
+      return xla::Internal("Incompatible compute capability was specified.");
     }
 
     std::string gcn_arch_name = compute_capability->gcn_arch_name();

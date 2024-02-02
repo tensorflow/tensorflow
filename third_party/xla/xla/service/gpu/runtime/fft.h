@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "xla/runtime/custom_call_registry.h"
-#include "xla/service/gpu/fft_thunk.h"
+#include "xla/service/gpu/runtime3/fft_thunk.h"
 
 namespace xla {
 namespace gpu {

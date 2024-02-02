@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -442,8 +442,9 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   // First find a single dimension where the input and output of dynamic slice
   // differ.
   int num_dims = 0;
-  for (int64_t dim = 0; dim < instruction->shape().rank(); ++dim) {
-    if (instruction->shape().dimensions(dim) == user->shape().dimensions(dim)) {
+  for (int64_t dim = 0; dim < user->operand(0)->shape().rank(); ++dim) {
+    if (user->operand(0)->shape().dimensions(dim) ==
+        user->shape().dimensions(dim)) {
       continue;
     }
     num_dims++;

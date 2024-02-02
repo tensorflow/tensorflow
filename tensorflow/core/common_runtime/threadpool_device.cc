@@ -44,6 +44,7 @@ info. It does not have any negative impact on performance. */
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/port.h"
 #include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
@@ -264,7 +265,10 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (IsMKLEnabled() ? 200 : 50),
+// Performance is better with MklCPUAllocator. Hence, enabling it for ZenDNN
+// as well.
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator",
+                       ((IsMKLEnabled() || IsZenDnnEnabled()) ? 200 : 50),
                        MklCPUAllocatorFactory);
 
 }  // namespace

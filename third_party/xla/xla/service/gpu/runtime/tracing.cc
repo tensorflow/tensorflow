@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,11 +44,23 @@ void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
 // Tracing custom calls implementation.
 //===----------------------------------------------------------------------===//
 
+namespace {
+thread_local const ModuleAnnotations* current_annotations{};
+}
+
 static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
   SetCurrentTracingScope(annotation.hlo_op);
+  if (current_annotations) {
+    // We know which HloModule we belong to, and may have pre-prepared
+    // annotation structs ready to use
+    const auto iter = current_annotations->kernels.find(annotation.hlo_op);
+    if (iter != current_annotations->kernels.end()) {
+      // Have a pre-prepared annotation, use it
+      return ScopedAnnotationStack::ActivityStart([&] { return iter->second; });
+    }
+  }
   return ScopedAnnotationStack::ActivityStart([&] {
-    // We use the same tracing annotation scheme as the ThunkSequence (see
-    // implementation of `GetThunkInfo` in `ir_emitter_unnested.cc`).
+    // We use the same tracing annotation scheme as the ThunkSequence.
     return absl::StrFormat("Thunk:#hlo_op=%s#", annotation.hlo_op);
   });
 }
@@ -71,6 +83,11 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 void RegisterTracingCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.trace.activity_start", Start);
   registry.Register("xla.trace.activity_end", End);
+}
+
+const ModuleAnnotations* SetCurrentModuleAnnotations(
+    const ModuleAnnotations* annotations) {
+  return std::exchange(current_annotations, annotations);
 }
 
 }  // namespace gpu

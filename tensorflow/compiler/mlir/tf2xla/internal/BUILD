@@ -145,6 +145,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:statusor",
@@ -187,6 +188,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
@@ -239,5 +241,43 @@ tf_cc_test(
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "mlir_bridge_pass_util",
+    srcs = ["mlir_bridge_pass_util.cc"],
+    hdrs = ["mlir_bridge_pass_util.h"],
+    visibility = ["//tensorflow/compiler/tf2xla:__pkg__"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:function_body",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:status",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "mlir_bridge_pass_util_test",
+    srcs = ["mlir_bridge_pass_util_test.cc"],
+    deps = [
+        ":mlir_bridge_pass_util",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:enable_tf2_utils",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )

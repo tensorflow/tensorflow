@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/pjrt_compile_on_demand_op.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/platform/env.h"

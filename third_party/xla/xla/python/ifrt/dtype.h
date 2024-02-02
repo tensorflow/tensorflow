@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,11 +72,11 @@ class DType {
     // dtype will have empty dimensions.
     kToken = 17,
 
-    kF8E4M3FN = 19,
+    kF8E4M3FN = 20,
     kF8E4M3B11FNUZ = 23,
-    kF8E4M3FNUZ = 24,
-    kF8E5M2 = 20,
-    kF8E5M2FNUZ = 25,
+    kF8E4M3FNUZ = 25,
+    kF8E5M2 = 19,
+    kF8E5M2FNUZ = 24,
 
     // Next = 26
 

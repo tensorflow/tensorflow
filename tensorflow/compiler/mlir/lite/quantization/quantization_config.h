@@ -45,6 +45,7 @@ struct CustomOpInfo {
 using ::tflite::optimize::ReducedPrecisionSupport;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
+enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -209,6 +210,10 @@ struct QuantizationSpecs {
   // For dynamic range quantization, among the custom ops in the graph those
   // specified in this map are subject to quantization.
   CustomOpMap custom_map;
+
+  // If other than kQDQNone, the model is a floating point graph with QDQ ops
+  // to be eliminated and fused into quantized kernels.
+  QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;
 };
 
 // Parses the command line flag strings to the CustomOpMap specification.
@@ -234,6 +239,8 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
                             tensorflow::DataType inference_type,
                             QuantizationSpecs* quant_specs);
 
+// Return a human-readable string of the QDQQuantMode enum class
+std::string GetQDQQuantModeString(QDQConversionMode mode);
 }  // namespace quant
 }  // namespace mlir
 

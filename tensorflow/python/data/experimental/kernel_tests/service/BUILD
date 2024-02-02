@@ -225,7 +225,13 @@ tf_py_strict_test(
     name = "distributed_save_test",
     size = "medium",
     srcs = ["distributed_save_test.py"],
-    shard_count = 4,
+    # copybara:uncomment_begin(google-only)
+    # exec_properties = select({
+    # "//tools/cpp:msan_build": {"mem": "20g"},
+    # "//conditions:default": None,
+    # }),
+    # copybara:uncomment_end
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
@@ -244,9 +250,65 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "distributed_save_load_test",
+    size = "medium",
+    srcs = ["distributed_save_load_test.py"],
+    shard_count = 8,
+    tags = [
+        "requires-mem:20g",
+    ],
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
+    name = "distributed_save_load_ft_test",
+    size = "medium",
+    srcs = ["distributed_save_load_ft_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # exec_properties = select({
+    # "//tools/cpp:msan_build": {"mem": "24g"},
+    # "//conditions:default": {"mem": "20g"},
+    # }),
+    # copybara:uncomment_end
+    shard_count = 8,
+    deps = [
+        ":test_base",
+        "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "distributed_save_ft_test",
     size = "medium",
     srcs = ["distributed_save_ft_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # exec_properties = select({
+    # "//tools/cpp:msan_build": {"mem": "20g"},
+    # "//conditions:default": None,
+    # }),
+    # copybara:uncomment_end
     shard_count = 17,
     tags = [
         "no_mac",  # TODO(b/290355883): Fix the flakyness in macos
@@ -257,7 +319,6 @@ tf_py_strict_test(
         "//tensorflow/python/data/experimental/service:_pywrap_snapshot_utils",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:test_mode",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",

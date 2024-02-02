@@ -1,8 +1,8 @@
 # Common computation builders for XLA.
 
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -30,8 +30,7 @@ cc_library(
     deps = [
         ":constants",
         "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
+        "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
@@ -65,7 +64,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":constants",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
@@ -106,7 +104,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -151,7 +149,6 @@ cc_library(
         "//xla:status_macros",
         "//xla/client:padding",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -162,7 +159,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":constants",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
@@ -209,6 +205,10 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
+    backend_tags = {
+        # Times out.
+        "ghostfish_iss": ["noasan"],
+    },
     deps = [
         ":constants",
         ":math",
@@ -248,6 +248,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -259,11 +260,9 @@ xla_test(
         ":matrix",
         ":slicing",
         "//xla:status",
-        "//xla:status_macros",
         "//xla:statusor",
         "//xla:test",
         "//xla:types",
-        "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
@@ -307,9 +306,28 @@ cc_library(
     deps = [
         ":constants",
         "//xla:shape_util",
+        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "prng_test",
+    srcs = ["prng_test.cc"],
+    deps = [
+        ":constants",
+        ":prng",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:test",
+        "//xla:xla_data_proto_cc",
+        "//xla/client:xla_builder",
+        "//xla/tests:client_library_test_base",
+        "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -332,7 +350,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -357,7 +374,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -411,6 +427,9 @@ cc_library(
     deps = [
         ":arithmetic",
         ":constants",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:statusor",
         "//xla:types",
         "//xla:util",
         "//xla/client:xla_builder",
@@ -478,7 +497,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -521,7 +539,6 @@ cc_library(
         "//xla/client:xla_computation",
         "//xla/tests:test_utils",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
@@ -547,7 +564,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -576,7 +592,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -600,7 +615,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -629,7 +643,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -659,18 +672,13 @@ xla_test(
     shard_count = 10,
     tags = ["optonly"],
     deps = [
-        ":constants",
         ":slicing",
         ":tridiagonal",
-        "//xla:array2d",
-        "//xla:error_spec",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:test",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
     ],
@@ -695,7 +703,6 @@ cc_library(
         "//xla:statusor",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -719,7 +726,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -754,6 +760,5 @@ xla_test(
         "//xla/tests:client_library_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )

@@ -2,12 +2,12 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
 load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "rocm_gpu_architectures",
-)
-load(
     "@local_xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "rocm_gpu_architectures",
 )
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 
@@ -217,6 +217,7 @@ _gen_kernel_bin_rule = rule(
     outputs = {"kernel": "%{name}_kernel.o"},
     toolchains = use_cpp_toolchain(),
     implementation = _gen_kernel_bin_impl,
+    provides = [CcInfo],
 )
 
 # Returns the shape string (e.g. "4x4" or "16Bx2") as comma-separated integers.

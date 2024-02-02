@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/service_executable_run_options.h"
+#include "tsl/concurrency/async_value.h"
+#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
-#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace gpu {

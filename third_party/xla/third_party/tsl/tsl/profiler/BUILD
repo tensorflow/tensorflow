@@ -13,7 +13,7 @@ package_group(
         "//tensorflow/python/profiler/...",
         "//tensorflow/python/tpu/profiler/...",
         "//tsl/profiler/...",
-        "//xla/backends/profiler/gpu/...",
+        "//xla/backends/profiler/...",
     ],
 )
 

@@ -387,9 +387,9 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
   return test_log_abs_det
 
 
-@test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
   """op_a.matmul(op_b), in the case where the same type is returned."""
+  @test_util.run_without_tensor_float_32("Use FP32 in matmul")
   def test_operator_matmul_with_same_type(
       self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
@@ -501,7 +501,6 @@ def _test_matmul_base(
     self.assertAC(op_matmul_v, mat_matmul_v)
 
 
-@test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_matmul(
     use_placeholder,
     shapes_info,
@@ -509,6 +508,7 @@ def _test_matmul(
     adjoint,
     adjoint_arg,
     blockwise_arg):
+  @test_util.run_without_tensor_float_32("Use FP32 in matmul")
   def test_matmul(self: "LinearOperatorDerivedClassTest"):
     _test_matmul_base(
         self,
@@ -522,7 +522,6 @@ def _test_matmul(
   return test_matmul
 
 
-@test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_matmul_with_broadcast(
     use_placeholder,
     shapes_info,
@@ -530,6 +529,7 @@ def _test_matmul_with_broadcast(
     adjoint,
     adjoint_arg,
     blockwise_arg):
+  @test_util.run_without_tensor_float_32("Use FP32 in matmul")
   def test_matmul_with_broadcast(self: "LinearOperatorDerivedClassTest"):
     _test_matmul_base(
         self,
@@ -822,8 +822,8 @@ def _test_diag_part(use_placeholder, shapes_info, dtype):
   return test_diag_part
 
 
-@test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_composite_tensor(use_placeholder, shapes_info, dtype):
+  @test_util.run_without_tensor_float_32("Use FP32 in matmul")
   def test_composite_tensor(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
@@ -863,11 +863,15 @@ def _test_composite_tensor(use_placeholder, shapes_info, dtype):
   return test_composite_tensor
 
 
-@test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_saved_model(use_placeholder, shapes_info, dtype):
+  @test_util.run_without_tensor_float_32("Use FP32 in matmul")
   def test_saved_model(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+
+      if test_util.is_xla_enabled() and np.prod(shapes_info.shape) == 0:
+        self.skipTest("Saving XLA model fails for empty model.")
+
       operator, mat = self.operator_and_matrix(
           shapes_info, dtype, use_placeholder=use_placeholder)
       x = self.make_x(operator, adjoint=False)

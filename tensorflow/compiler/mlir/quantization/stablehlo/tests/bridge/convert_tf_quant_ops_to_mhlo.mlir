@@ -40,7 +40,7 @@ func.func @uniform_quantized_add(%input: tensor<3x2xf32>) -> tensor<3x2xf32> {
     quantization_axis = -1 : i64, quantization_min_val = -2147483648 : i64, quantization_max_val = 2147483647 : i64
   } : (tensor<3x2xf32>, tensor<f32>, tensor<i32>) -> tensor<3x2x!tf_type.qint32>
 
-  // CHECK: chlo.broadcast_add %[[LHS2]], %[[RHS]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK: chlo.broadcast_add %[[LHS2]], %[[RHS]] {broadcast_dimensions = array<i64: 1>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>, tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
   %1 = "tf.UniformQuantizedAdd"(
@@ -85,7 +85,7 @@ func.func @uniform_quantized_add_bias_not_const(%input1: tensor<3x2xi32>, %input
   %input1_qint = "tf.Cast"(%input1) {Truncate = false} : (tensor<3x2xi32>) -> tensor<3x2x!tf_type.qint32>
   %input2_qint = "tf.Cast"(%input2) {Truncate = false} : (tensor<2xi32>) -> tensor<2x!tf_type.qint32>
 
-  // CHECK: %[[RES:.*]] = chlo.broadcast_add %[[LHS_2]], %[[RHS_2]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK: %[[RES:.*]] = chlo.broadcast_add %[[LHS_2]], %[[RHS_2]] {broadcast_dimensions = array<i64: 1>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>, tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
   %result = "tf.UniformQuantizedAdd"(

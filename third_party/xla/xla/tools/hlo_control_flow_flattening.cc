@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -393,7 +393,9 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
 Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
+  std::string original_op_name(hlo->name());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
+  zero->SetAndSanitizeName(original_op_name);
   return OkStatus();
 }
 
@@ -456,6 +458,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(
                    instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveId(instruction));
+        changed = true;
       }
     }
   }

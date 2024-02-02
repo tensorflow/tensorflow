@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -33,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> AllGatherOptimizer::Run(
+absl::StatusOr<bool> AllGatherOptimizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -65,6 +66,12 @@ StatusOr<bool> AllGatherOptimizer::Run(
                               left_all_gather->replica_groups())) {
         VLOG(2) << "The right and left all-gather ops are not compatible "
                    "to merge. ";
+        continue;
+      }
+
+      if (!ShapeUtil::Equal(left_all_gather->operand(0)->shape(),
+                            right_all_gather->operand(0)->shape())) {
+        VLOG(2) << "all-gather operands have different shapes";
         continue;
       }
 

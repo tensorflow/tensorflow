@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,15 +21,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/status.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace xla {
 namespace profiler {
 
+using tensorflow::profiler::XLine;
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
 
@@ -163,17 +166,17 @@ Status PluginTracer::CollectData(XSpace* space) {
   args.buffer = nullptr;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->collect_data(&args),
                                          profiler_api_);
-  // Prepare an appropriately sized buffer.
   if (args.buffer_size_in_bytes > 0) {
     std::vector<uint8_t> buffer(args.buffer_size_in_bytes);
-    args.buffer = buffer.data();
-    RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->collect_data(&args),
-                                           profiler_api_);
-    // Deserialize XSpace from the buffer and return it.
-    XSpace tpu_space;
-    tpu_space.ParseFromArray(buffer.data(), buffer.size());
-    for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+    XSpace xspace;
+    xspace.ParseFromArray(args.buffer, args.buffer_size_in_bytes);
+    for (XPlane& tpu_plane : *xspace.mutable_planes()) {
       XPlane* plane = space->add_planes();
+      if (tpu_plane.name() == tsl::profiler::kHostThreadsPlaneName) {
+        for (XLine& xline : *tpu_plane.mutable_lines()) {
+          xline.set_display_name(absl::StrCat("libtpu:", xline.name()));
+        }
+      }
       plane->Swap(&tpu_plane);
     }
   }

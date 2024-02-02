@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
 # ==============================================================================
 """An XLA client in Python."""
 
+from __future__ import annotations
+
 import atexit
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
@@ -24,9 +26,10 @@ import os
 import threading
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
-from . import xla_extension as _xla
 import ml_dtypes
 import numpy as np
+
+from . import xla_extension as _xla
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
@@ -45,10 +48,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 205
+_version = 237
 
 # Version number for MLIR:Python components.
-mlir_api_version = 54
+mlir_api_version = 55
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -60,11 +63,20 @@ logger = logging.getLogger(__name__)
 _NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
-def make_cpu_client() -> ...:
-  register_custom_call_handler(
-      'cpu', _xla.register_custom_call_target
+def make_cpu_client(
+    distributed_client=None,
+    node_id=0,
+    num_nodes=1,
+    collectives=None
+) -> ...:
+  register_custom_call_handler('cpu', _xla.register_custom_call_target)
+  return _xla.get_tfrt_cpu_client(
+      asynchronous=True,
+      distributed_client=distributed_client,
+      node_id=node_id,
+      num_nodes=num_nodes,
+      collectives=collectives,
   )
-  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def make_gpu_client(
@@ -76,13 +88,8 @@ def make_gpu_client(
     mock=False,
 ):
   """Returns a GPU client. BFC allocator is used by default."""
-  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
-  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
-  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
-  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
-    raise ValueError(
-        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
-        '"bfc", or "cuda_async", got "%s"' % allocator)
+  options = generate_pjrt_gpu_plugin_options()
+  allocator = options['allocator']
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -92,15 +99,14 @@ def make_gpu_client(
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if allocator == 'cuda_async':
     config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
-  if memory_fraction:
-    config.memory_fraction = float(memory_fraction)
-  config.preallocate = preallocate not in ('0', 'false', 'False')
-  register_custom_call_handler(
-      'CUDA', _xla.register_custom_call_target
-  )
-  register_custom_call_handler(
-      'ROCM', _xla.register_custom_call_target
-  )
+  if 'memory_fraction' in options:
+    config.memory_fraction = options['memory_fraction']
+  if 'preallocate' in options:
+    config.preallocate = options['preallocate']
+  if 'collective_memory_size' in options:
+    config.collective_memory_size = options['collective_memory_size']
+  register_custom_call_handler('CUDA', _xla.register_custom_call_target)
+  register_custom_call_handler('ROCM', _xla.register_custom_call_target)
 
   return _xla.get_gpu_client(
       asynchronous=True,
@@ -139,7 +145,11 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
-  return _xla.load_pjrt_plugin(plugin_name, library_path)
+  return _xla.load_pjrt_plugin(plugin_name, library_path, c_api=None)
+
+
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
+  return _xla.load_pjrt_plugin(plugin_name, None, c_api)
 
 
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
@@ -188,8 +198,46 @@ def make_tpu_client(library_path: Optional[str] = None):
   return make_tfrt_tpu_c_api_client()
 
 
+def generate_pjrt_gpu_plugin_options(
+    visible_devices: str = 'all',
+) -> _NameValueMapping:
+  """Generates the PjRt GPU plugin options.
+
+  Args:
+    visible_devices: A string of visible cuda devices.
+
+  Returns:
+    A dictionary of plugin options.
+  """
+
+  options = {}
+  if visible_devices != 'all':
+    options['visible_devices'] = [int(x) for x in visible_devices.split(',')]
+    options['platform_name'] = 'cuda'
+  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
+  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION', '')
+  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE', '')
+  collective_memory_size = os.getenv(
+      'XLA_PYTHON_CLIENT_COLLECTIVE_MEM_SIZE_MB', ''
+  )
+  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
+    raise ValueError(
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
+        '"bfc", or "cuda_async", got "%s"' % allocator
+    )
+  options['allocator'] = allocator
+  if memory_fraction:
+    options['memory_fraction'] = float(memory_fraction)
+  if preallocate:
+    options['preallocate'] = preallocate not in ('false', 'False', '0')
+  if collective_memory_size:
+    options['collective_memory_size'] = int(collective_memory_size) * (1 << 20)
+  return options
+
+
 class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
+
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
 
   def __init__(self, op_type='', op_name='', source_file='', source_line=0):
@@ -204,10 +252,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
   full_filename, lineno = inspect.stack()[skip_frames][1:3]
   filename = os.path.basename(full_filename)
   return OpMetadata(
-      op_type=op_type,
-      op_name=op_name,
-      source_file=filename,
-      source_line=lineno)
+      op_type=op_type, op_name=op_name, source_file=filename, source_line=lineno
+  )
 
 
 PrimitiveType = _xla.PrimitiveType
@@ -221,10 +267,12 @@ float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
+    PrimitiveType.S4: np.dtype('int4'),
     PrimitiveType.S8: np.dtype('int8'),
     PrimitiveType.S16: np.dtype('int16'),
     PrimitiveType.S32: np.dtype('int32'),
     PrimitiveType.S64: np.dtype('int64'),
+    PrimitiveType.U4: np.dtype('uint4'),
     PrimitiveType.U8: np.dtype('uint8'),
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
@@ -339,14 +387,18 @@ class ShapeIndex:
 """
 
 
-def shape_from_pyval(pyval):
+def shape_from_pyval(pyval, layout: Sequence[int] | None = None):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
   def convert(pyval):
     if isinstance(pyval, tuple):
+      if layout is not None:
+        raise NotImplementedError(
+            'shape_from_pyval does not support layouts for tuple shapes'
+        )
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      return Shape.array_shape(pyval.dtype, np.shape(pyval))
+      return Shape.array_shape(pyval.dtype, np.shape(pyval), layout)
 
   return convert(pyval)
 
@@ -441,8 +493,9 @@ class PaddingType(enum.Enum):
   SAME = 2
 
 
-def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
-                                      window_strides):
+def window_padding_type_to_pad_values(
+    padding_type, lhs_dims, rhs_dims, window_strides
+):
   """Maps PaddingType or string to pad values (list of pairs of ints)."""
   if not isinstance(padding_type, (str, PaddingType)):
     msg = 'padding_type must be str or PaddingType, got {}.'
@@ -464,7 +517,8 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
     pad_sizes = [
         max((out_size - 1) * stride + filter_size - in_size, 0)
         for out_size, stride, filter_size, in_size in zip(
-            out_shape, window_strides, rhs_dims, lhs_dims)
+            out_shape, window_strides, rhs_dims, lhs_dims
+        )
     ]
     return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
   else:
@@ -568,6 +622,7 @@ hlo_sharding_util = _xla.hlo_sharding_util
 
 class PaddingConfigDimension:
   """Python representation of a xla.PaddingConfigDimension protobuf."""
+
   __slots__ = ('edge_padding_low', 'edge_padding_high', 'interior_padding')
 
   edge_padding_low: int
@@ -582,6 +637,7 @@ class PaddingConfigDimension:
 
 class PaddingConfig:
   """Python representation of a xla.PaddingConfig protobuf."""
+
   __slots__ = ('dimensions',)
 
   def __init__(self):
@@ -615,8 +671,13 @@ def make_padding_config(
 
 class DotDimensionNumbers:
   """Python representation of a xla.DotDimensionNumbers protobuf."""
-  __slots__ = ('lhs_contracting_dimensions', 'rhs_contracting_dimensions',
-               'lhs_batch_dimensions', 'rhs_batch_dimensions')
+
+  __slots__ = (
+      'lhs_contracting_dimensions',
+      'rhs_contracting_dimensions',
+      'lhs_batch_dimensions',
+      'rhs_batch_dimensions',
+  )
 
   def __init__(self):
     self.lhs_contracting_dimensions = []
@@ -626,9 +687,10 @@ class DotDimensionNumbers:
 
 
 def make_dot_dimension_numbers(
-    dimension_numbers: Union[DotDimensionNumbers,
-                             Tuple[Tuple[List[int], List[int]],
-                                   Tuple[List[int], List[int]]]]
+    dimension_numbers: Union[
+        DotDimensionNumbers,
+        Tuple[Tuple[List[int], List[int]], Tuple[List[int], List[int]]],
+    ]
 ) -> DotDimensionNumbers:
   """Builds a DotDimensionNumbers object from a specification.
 
@@ -655,11 +717,18 @@ def make_dot_dimension_numbers(
 
 class ConvolutionDimensionNumbers:
   """Python representation of a xla.ConvolutionDimensionNumbers protobuf."""
-  __slots__ = ('input_batch_dimension', 'input_feature_dimension',
-               'input_spatial_dimensions', 'kernel_input_feature_dimension',
-               'kernel_output_feature_dimension', 'kernel_spatial_dimensions',
-               'output_batch_dimension', 'output_feature_dimension',
-               'output_spatial_dimensions')
+
+  __slots__ = (
+      'input_batch_dimension',
+      'input_feature_dimension',
+      'input_spatial_dimensions',
+      'kernel_input_feature_dimension',
+      'kernel_output_feature_dimension',
+      'kernel_spatial_dimensions',
+      'output_batch_dimension',
+      'output_feature_dimension',
+      'output_spatial_dimensions',
+  )
 
   def __init__(self):
     self.input_batch_dimension = 0
@@ -674,30 +743,32 @@ class ConvolutionDimensionNumbers:
 
 
 def make_convolution_dimension_numbers(
-    dimension_numbers: Union[None, ConvolutionDimensionNumbers, Tuple[str, str,
-                                                                      str]],
-    num_spatial_dimensions: int) -> ConvolutionDimensionNumbers:
+    dimension_numbers: Union[
+        None, ConvolutionDimensionNumbers, Tuple[str, str, str]
+    ],
+    num_spatial_dimensions: int,
+) -> ConvolutionDimensionNumbers:
   """Builds a ConvolutionDimensionNumbers object from a specification.
 
   Args:
     dimension_numbers: optional, either a ConvolutionDimensionNumbers object or
-      a tuple (lhs_spec, rhs_spec, out_spec). Each element is a string of
-      length N+2 identifying by position: (1) batch dimensions in lhs, rhs, and
-        the output with the character 'N', (2) feature dimensions in lhs and the
-        output with the character 'C', (3) input and output feature dimensions
-        in rhs with the characters 'I' and 'O' respectively, and (4) spatial
-        dimension correspondences between lhs, rhs, and the output using any
-        distinct characters. For example, to indicate dimension numbers
-        consistent with the Conv operation with two spatial dimensions, one
-        could use ('NCHW', 'OIHW', 'NCHW'). As another example, to indicate
-        dimension numbers consistent with the TensorFlow Conv2D operation, one
-        could use ('NHWC', 'HWIO', 'NHWC'). When using the latter form of
-        convolution dimension specification, window strides are associated with
-        spatial dimension character labels according to the order in which the
-        labels appear in the rhs_spec string, so that window_strides[0] is
-        matched with the dimension corresponding to the first character
-        appearing in rhs_spec that is not 'I' or 'O'. By default, use the same
-        dimension numbering as Conv and ConvWithGeneralPadding.
+      a tuple (lhs_spec, rhs_spec, out_spec). Each element is a string of length
+      N+2 identifying by position: (1) batch dimensions in lhs, rhs, and the
+      output with the character 'N', (2) feature dimensions in lhs and the
+      output with the character 'C', (3) input and output feature dimensions in
+      rhs with the characters 'I' and 'O' respectively, and (4) spatial
+      dimension correspondences between lhs, rhs, and the output using any
+      distinct characters. For example, to indicate dimension numbers consistent
+      with the Conv operation with two spatial dimensions, one could use
+      ('NCHW', 'OIHW', 'NCHW'). As another example, to indicate dimension
+      numbers consistent with the TensorFlow Conv2D operation, one could use
+      ('NHWC', 'HWIO', 'NHWC'). When using the latter form of convolution
+      dimension specification, window strides are associated with spatial
+      dimension character labels according to the order in which the labels
+      appear in the rhs_spec string, so that window_strides[0] is matched with
+      the dimension corresponding to the first character appearing in rhs_spec
+      that is not 'I' or 'O'. By default, use the same dimension numbering as
+      Conv and ConvWithGeneralPadding.
     num_spatial_dimensions: the number of spatial dimensions.
 
   Returns:
@@ -727,18 +798,26 @@ def make_convolution_dimension_numbers(
     dimension_numbers.kernel_input_feature_dimension = rhs_spec.index('I')
 
     dimension_numbers.kernel_spatial_dimensions.extend(
-        i for i, c in enumerate(rhs_spec) if c not in {'I', 'O'})
+        i for i, c in enumerate(rhs_spec) if c not in {'I', 'O'}
+    )
     dimension_numbers.input_spatial_dimensions.extend(
-        sorted((i for i, c in enumerate(lhs_spec) if c not in {'N', 'C'}),
-               key=lambda i: rhs_spec.index(lhs_spec[i])))
+        sorted(
+            (i for i, c in enumerate(lhs_spec) if c not in {'N', 'C'}),
+            key=lambda i: rhs_spec.index(lhs_spec[i]),
+        )
+    )
     dimension_numbers.output_spatial_dimensions.extend(
-        sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
-               key=lambda i: rhs_spec.index(out_spec[i])))
+        sorted(
+            (i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
+            key=lambda i: rhs_spec.index(out_spec[i]),
+        )
+    )
   return dimension_numbers
 
 
 class PrecisionConfig:
   """Python representation of a xla.PrecisionConfig protobuf."""
+
   __slots__ = ('operand_precision',)
 
   Precision = _xla.PrecisionConfig_Precision
@@ -749,8 +828,13 @@ class PrecisionConfig:
 
 class GatherDimensionNumbers:
   """Python representation of a xla.GatherDimensionNumbers protobuf."""
-  __slots__ = ('offset_dims', 'collapsed_slice_dims', 'start_index_map',
-               'index_vector_dim')
+
+  __slots__ = (
+      'offset_dims',
+      'collapsed_slice_dims',
+      'start_index_map',
+      'index_vector_dim',
+  )
 
   def __init__(self):
     self.offset_dims = []
@@ -761,8 +845,13 @@ class GatherDimensionNumbers:
 
 class ScatterDimensionNumbers:
   """Python representation of a xla.ScatterDimensionNumbers protobuf."""
-  __slots__ = ('update_window_dims', 'inserted_window_dims',
-               'scatter_dims_to_operand_dims', 'index_vector_dim')
+
+  __slots__ = (
+      'update_window_dims',
+      'inserted_window_dims',
+      'scatter_dims_to_operand_dims',
+      'index_vector_dim',
+  )
 
   def __init__(self):
     self.update_window_dims = []
@@ -773,6 +862,7 @@ class ScatterDimensionNumbers:
 
 class ReplicaGroup:
   """Python representation of a xla.ReplicaGroup protobuf."""
+
   __slots__ = ('replica_ids',)
 
   def __init__(self):
@@ -827,3 +917,4 @@ array_result_handler = _xla.array_result_handler
 copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
 batched_device_put = _xla.batched_device_put
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
+Layout = _xla.Layout

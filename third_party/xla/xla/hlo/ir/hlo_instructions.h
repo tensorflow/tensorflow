@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -226,41 +226,23 @@ class HloFftInstruction : public HloInstruction {
 
 class HloAsyncInstruction : public HloInstruction {
  public:
-  HloAsyncInstruction(
-      HloOpcode opcode, const Shape& shape,
-      absl::Span<HloInstruction* const> operands,
-      HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_execution_thread = kMainExecutionThread);
-  HloAsyncInstruction(
-      HloOpcode opcode, const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_execution_thread = kMainExecutionThread);
+  // Constructs async-{update,done}.
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      HloInstruction* operand);
 
-  ~HloAsyncInstruction() override;
-  // When an async instruction is being destructed, remove it from the vector of
-  // pointers of its called computation, to avoid referencing freed memory.
-  void ClearAsyncComputationInstruction();
-
+  HloComputation* async_wrapped_computation() const;
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
-
-  // Async group id is a unique id given to a group of async operations that
-  // consist of one async start, one async done, and zero or more async update
-  // operations. The async group participates in a single async operation. The
-  // async operation canonicalizer pass assigns async group ids.
-  std::optional<int64_t> async_group_id() const { return async_group_id_; }
 
   // Async thread name is a unique thread name for one or more async groups.
   // Typically one HLO module contains a main thread as well as one or more
   // parallel threads.
-  absl::string_view async_execution_thread() const {
-    return async_execution_thread_;
+  virtual absl::string_view async_execution_thread() const;
+  virtual void set_async_execution_thread(
+      absl::string_view async_execution_thread) {}
+  HloInstructionProto ToProto() const override {
+    return HloInstruction::ToProto();
   }
-  void set_async_group_id(std::optional<int64_t> async_group_id);
-  void set_async_execution_thread(absl::string_view async_execution_thread);
-  HloInstructionProto ToProto() const override;
 
   static bool ClassOf(const HloInstruction* hlo) {
     switch (hlo->opcode()) {
@@ -273,9 +255,27 @@ class HloAsyncInstruction : public HloInstruction {
     }
   }
 
+  // Returns async-start instruction of the async chain.
+  HloAsyncInstruction* async_chain_start() const;
+  // Returns async-done instruction of the async chain.
+  HloAsyncInstruction* async_chain_done() const;
+  // Returns the chain of async op referencing this computation,
+  // where *begin(GetAsyncChain()) is the async-start op and
+  // *end(GetAsyncChain()) is the async-done op.
+  std::vector<HloAsyncInstruction*> GetAsyncChain() const;
+
+ protected:
+  // Helper to constructs async-{start,update,done}.
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      absl::Span<HloInstruction* const> operands,
+                      HloOpcode async_wrapped_opcode);
+
  private:
+  // async-{update,done} inherit all their attributes from async-start,
+  // so they shouldn't print any.
   void PrintExtraAttributesImpl(AttributePrinter& printer,
-                                const HloPrintOptions& options) const override;
+                                const HloPrintOptions& options) const override {
+  }
   bool IdenticalSlowPath(
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
@@ -283,7 +283,37 @@ class HloAsyncInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  std::optional<int64_t> async_group_id_;
+  HloAsyncInstruction* async_chain_next_ = nullptr;
+};
+
+// Creates async-start.
+class HloAsyncStartInstruction : public HloAsyncInstruction {
+ public:
+  HloAsyncStartInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      HloComputation* async_computation,
+      absl::string_view async_execution_thread = kMainExecutionThread);
+
+  ~HloAsyncStartInstruction() override;
+  // When an async instruction is being destructed, remove it from the vector of
+  // pointers of its called computation, to avoid referencing freed memory.
+  void ClearAsyncComputationInstruction();
+
+  absl::string_view async_execution_thread() const override {
+    return async_execution_thread_;
+  };
+  void set_async_execution_thread(
+      absl::string_view async_execution_thread) override;
+  HloInstructionProto ToProto() const override;
+
+ private:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
   std::string async_execution_thread_ = kMainExecutionThread;
 };
 
@@ -460,7 +490,7 @@ class HloChannelInstruction : public HloInstruction {
 class HloTopKInstruction : public HloInstruction {
  public:
   HloTopKInstruction(const Shape& shape, HloInstruction* input, int64_t k,
-                     HloComputation* compare);
+                     bool largest);
 
   HloInstructionProto ToProto() const override;
 
@@ -470,6 +500,9 @@ class HloTopKInstruction : public HloInstruction {
 
   // Returns how many K-s does it need.
   int64_t k() const { return k_; }
+
+  // Returns whether the largest or smallest K values should be computed.
+  bool largest() const { return largest_; }
 
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -484,6 +517,7 @@ class HloTopKInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64_t k_;
+  bool largest_;
 };
 
 class HloSendRecvInstruction : public HloChannelInstruction {
@@ -1306,6 +1340,11 @@ class HloFusionInstruction : public HloCallableInstruction {
   // its fusion computation, to avoid referencing freed memory.
   void ClearFusionComputationInstruction();
 
+  // Clones the given instruction_to_append and inserts the clone into this
+  // callable instruction.
+  HloInstruction* CloneAndAppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+
   std::string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -1359,12 +1398,10 @@ class HloFusionInstruction : public HloCallableInstruction {
 
   // Returns the list of fused instructions inside this fusion instruction.  The
   // returned type is a range of HloInstruction*s.
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  tsl::gtl::iterator_range<HloInstructionUnwrappingConstIterator>
   fused_instructions() const;
 
-  tsl::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  tsl::gtl::iterator_range<HloInstructionUnwrappingIterator>
   fused_instructions();
 
   // Gets the number of instructions inside this fusion instruction.

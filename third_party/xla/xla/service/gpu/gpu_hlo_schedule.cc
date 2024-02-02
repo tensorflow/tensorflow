@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -22,36 +24,50 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service//gpu/analytical_latency_estimator.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_schedule_postprocessing.h"
+#include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-
-bool IsSyncCollective(const HloInstruction& instr) {
-  auto backend_config = instr.backend_config<CollectiveBackendConfig>().value();
-  return backend_config.is_sync();
-}
 
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
@@ -64,7 +80,7 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsSyncCollective(instr);
+      return !IsSyncCollective(&instr);
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -120,21 +136,24 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
       earliest_scheduled.push_back(instr);
       scheduled.insert(instr);
     };
+
     for (HloInstruction* instr : input.instructions()) {
-      if (is_scheduled(instr)) {
-        continue;
-      }
+      if (is_scheduled(instr)) continue;
 
       add_to_schedule(instr);
 
       // Schedule any successor that should be scheduled as early as possible if
       // all of its producers and control_predecessors have been scheduled.
       for (HloInstruction* user : instr->users()) {
+        if (is_scheduled(user)) continue;
+
         if (ShouldScheduleSuccessor(*user, is_scheduled)) {
           add_to_schedule(user);
         }
       }
       for (HloInstruction* successor : instr->control_successors()) {
+        if (is_scheduled(successor)) continue;
+
         if (ShouldScheduleSuccessor(*successor, is_scheduled)) {
           add_to_schedule(successor);
         }
@@ -154,20 +173,22 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
     };
     for (auto it = earliest_scheduled.rbegin(); it != earliest_scheduled.rend();
          it++) {
-      if (is_scheduled(*it)) {
-        continue;
-      }
+      if (is_scheduled(*it)) continue;
 
       add_to_schedule(*it);
 
       // Schedule any predecessor that should be scheduled as late as possible
       // if all of its users and control_successors have been scheduled.
       for (HloInstruction* operand : (*it)->operands()) {
+        if (is_scheduled(operand)) continue;
+
         if (ShouldSchedulePredecessor(*operand, is_scheduled)) {
           add_to_schedule(operand);
         }
       }
       for (HloInstruction* predecessor : (*it)->control_predecessors()) {
+        if (is_scheduled(predecessor)) continue;
+
         if (ShouldSchedulePredecessor(*predecessor, is_scheduled)) {
           add_to_schedule(predecessor);
         }
@@ -178,6 +199,12 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
   HloInstructionSequence result;
   absl::c_for_each(latest_scheduled,
                    [&](HloInstruction* i) { result.push_back(i); });
+
+  // Schedule post-processing can't introduce new instructions.
+  CHECK(input.instructions().size() == result.size())
+      << "schedule as early or late post-processing changed schedule size from "
+      << input.instructions().size() << " to " << result.size();
+
   return result;
 }
 
@@ -186,29 +213,39 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
 HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     const HloInstructionSequence& input) {
   HloInstructionSequence result;
-  auto is_synchronous_op = [](const HloInstruction* instr) {
-    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode(),
+
+  // Returns true if `inst` is a synchronous version of async collective start
+  // operation (marked with `is_sync` attribute).
+  auto is_sync_start = [](const HloInstruction* instr) {
+    return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
-           IsSyncCollective(*instr);
+           IsSyncCollective(instr);
   };
+
   for (HloInstruction* instr : input.instructions()) {
-    if (is_synchronous_op(instr)) {
-      continue;
-    }
-    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode(),
-                                           /*include_send_recv=*/true)) {
-      // Place the start op just before the done op if its synchronous.
+    // Skip synchronous start instruction as it will be scheduled later when
+    // we'll process corresponding done instruction.
+    if (is_sync_start(instr)) continue;
+
+    // Find a start instruction corresponding to done and schedule it right
+    // before a done if it's a synchronous version.
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr, true)) {
       HloInstruction* start = instr->mutable_operand(0);
-      if (is_synchronous_op(start)) {
-        result.push_back(start);
-      }
+      if (is_sync_start(start)) result.push_back(start);
     }
+
     result.push_back(instr);
   }
+
+  // Schedule post-processing can't introduce new instructions.
+  CHECK(input.instructions().size() == result.size())
+      << "sync collectives post-processing changed schedule size from "
+      << input.instructions().size() << " to " << result.size();
+
   return result;
 }
 
-StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     const HloModule* module, int64_t pointer_size) {
   return ScheduleModule(
       module,
@@ -272,16 +309,16 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       : AsyncTracker(config, func) {}
 
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode(),
+    return hlo_query::IsAsyncCollectiveDoneOp(&hlo,
                                               /*include_send_recv=*/true) &&
-           !IsSyncCollective(*hlo.operand(0));
+           !IsSyncCollective(hlo.operand(0));
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode(),
+    return hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                                /*include_send_recv=*/true) &&
-           !IsSyncCollective(hlo);
+           !IsSyncCollective(&hlo);
   }
 };
 
@@ -524,16 +561,27 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
                                          const std::string& text_path,
                                          const std::string& binary_path)
       -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
-    Status s = tsl::ReadTextProto(env, text_path, &profile);
-    if (s.ok()) {
-      LOG(INFO) << "Using PGLE profile from " << text_path;
-      return GetProfileForFingerprint(profile, fingerprint);
+    if (env->FileExists(text_path).ok()) {
+      absl::Status s = tsl::ReadTextProto(env, text_path, &profile);
+      if (s.ok()) {
+        LOG(INFO) << "Using PGLE profile from " << text_path;
+        return GetProfileForFingerprint(profile, fingerprint);
+      } else {
+        LOG(ERROR) << "Unable to read PGLE text proto from " << text_path
+                   << ": " << s.message();
+      }
+      profile.Clear();
     }
-    profile.Clear();
-    s = tsl::ReadBinaryProto(env, binary_path, &profile);
-    if (s.ok()) {
-      LOG(INFO) << "Using PGLE profile from " << binary_path;
-      return GetProfileForFingerprint(profile, fingerprint);
+    if (env->FileExists(binary_path).ok()) {
+      absl::Status s = tsl::ReadBinaryProto(env, binary_path, &profile);
+      if (s.ok()) {
+        LOG(INFO) << "Using PGLE profile from " << binary_path;
+        return GetProfileForFingerprint(profile, fingerprint);
+      } else {
+        LOG(ERROR) << "Unable to read PGLE binary proto from " << binary_path
+                   << ": " << s.message();
+      }
+      profile.Clear();
     }
     return std::nullopt;
   };
@@ -548,14 +596,22 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
   }
 
   // The pgle_profile_file_or_dir is a file. Attempt to read the profile as text
-  // proto or binary proto.
-  return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
-                                     pgle_profile_file_or_dir_path);
+  // proto or binary proto. Attempt to infer the file type based on the
+  // extension.
+  auto extension = tsl::io::Extension(pgle_profile_file_or_dir_path);
+  if (extension == "pbtxt") {
+    return read_text_or_binary_profile(pgle_profile_file_or_dir_path, "");
+  } else if (extension == "pb") {
+    return read_text_or_binary_profile("", pgle_profile_file_or_dir_path);
+  } else {
+    return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
+                                       pgle_profile_file_or_dir_path);
+  }
 }
 
 // Return true if the profile is applicable to the module. That is true if every
 // instruction in the profile is present in the module.
-Status IsProfileApplicable(
+absl::Status IsProfileApplicable(
     const HloModule* module,
     const tensorflow::profiler::ProfiledInstructionsProto& profile) {
   absl::flat_hash_set<absl::string_view> instruction_names;
@@ -582,7 +638,7 @@ Status IsProfileApplicable(
           "cost name %s not in module %s", latency.target(), module->name()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace
@@ -597,9 +653,19 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   return size + metadata_size;
 }
 
-Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         int64_t memory_limit,
-                         const se::DeviceDescription& gpu_device_info) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size);
+
+StatusOr<ScheduleMetadata> ScheduleGpuModule(
+    HloModule* module, int64_t pointer_size,
+    const se::DeviceDescription& gpu_device_info) {
+  int64_t memory_limit =
+      GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size);
+  if (module->has_schedule()) {
+    return ScheduleMetadata{memory_limit};
+  }
+
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
   TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
@@ -626,7 +692,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
           .xla_gpu_enable_latency_hiding_scheduler();
 
   if (!enable_latency_hiding_scheduler) {
-    return OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
@@ -644,7 +710,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    Status s = IsProfileApplicable(module, profile.value());
+    absl::Status s = IsProfileApplicable(module, profile.value());
     if (!s.ok()) {
       LOG(INFO) << "PGLE profile may not applicable to the module, but will "
                    "still be used : "
@@ -682,7 +748,12 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
       std::move(scheduler_core), shape_size_in_bytes);
 
   TF_RETURN_IF_ERROR(pipeline.Run(module).status());
-  return OkStatus();
+
+  HloPassPipeline postprocessing_pipeline("gpu-schedule-postprocessing");
+  postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
+  TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
+
+  return ScheduleMetadata{memory_limit};
 }
 
 HloInstructionSequence PostProcessSchedule(
@@ -693,9 +764,9 @@ HloInstructionSequence PostProcessSchedule(
 
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
-int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const se::DeviceDescription& gpu_device_info,
-                                int pointer_size) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig (this
   // value should take into account the fact that we need to leave some memory
   // free for allocations that happen outside of XLA's allocator) or
@@ -734,7 +805,10 @@ int64_t GetSchedulerMemoryLimit(const HloModule* module,
         total_io_size -= GetSizeOfShape(subshape, pointer_size);
       });
 
-  return (base_limit - total_io_size) * 95 / 100;
+  int64_t limit =
+      (base_limit - total_io_size) *
+      module->config().debug_options().xla_gpu_memory_limit_slop_factor() / 100;
+  return limit;
 }
 
 }  // namespace gpu

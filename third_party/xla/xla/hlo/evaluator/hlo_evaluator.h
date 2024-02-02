@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,7 +89,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // instance of the subclass instead.
   virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
       int64_t max_loop_iterations) {
-    return std::make_unique<HloEvaluator>(max_loop_iterations);
+    auto result = std::make_unique<HloEvaluator>(max_loop_iterations);
+    result->set_custom_call_handler(custom_call_handler_);
+    return result;
   }
 
   // Enables subclasses to be notified when a new computation is being

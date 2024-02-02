@@ -14,21 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -63,7 +64,7 @@ TEST_P(AtomicallyWriteStringToFileTest, WriteString) {
 
   std::string data;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  TF_ASSERT_OK(ReadFileToString(tsl::Env::Default(), test_file, &data));
+  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), test_file, &data));
   EXPECT_EQ(data, file_contents);
 }
 
@@ -78,7 +79,7 @@ TEST(FileUtilsTest, AtomicallyWriteBinaryProto) {
 
   DatasetDef in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  TF_ASSERT_OK(ReadBinaryProto(tsl::Env::Default(), test_file, &in));
+  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), test_file, &in));
   EXPECT_THAT(in, testing::EqualsProto(out));
 }
 
@@ -90,7 +91,7 @@ TEST(FileUtilsTest, AtomicallyWriteTextProto) {
 
   DatasetDef in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  TF_ASSERT_OK(ReadTextProto(tsl::Env::Default(), test_file, &in));
+  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), test_file, &in));
   EXPECT_THAT(in, testing::EqualsProto(out));
 }
 

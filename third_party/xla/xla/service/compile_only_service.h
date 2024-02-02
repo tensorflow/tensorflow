@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,10 +56,6 @@ class CompileOnlyService : public Service {
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
-  }
-  Status WaitForExecution(const WaitForExecutionRequest* arg,
-                          WaitForExecutionResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support execution.");
   }
   Status TransferToServer(const TransferToServerRequest* arg,
                           TransferToServerResponse* result) override {

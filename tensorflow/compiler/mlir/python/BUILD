@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -5,6 +6,17 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
+)
+
+bool_flag(
+    name = "disable_mlir",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "disable_mlir_config",
+    flag_values = {":disable_mlir": "True"},
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

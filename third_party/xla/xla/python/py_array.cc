@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/py_array.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -26,23 +27,34 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "xla/layout_util.h"
 #include "xla/pjrt/lru_cache.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/python/py_buffer.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/transfer_guard_lib.h"
+#include "xla/python/types.h"
 #include "xla/python/util.h"
+#include "xla/shape.h"
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_driver.h"
+#endif
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -628,11 +640,188 @@ StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
       IfrtHelpers::pjrt_buffer(arr.ifrt_array()));
 }
 
-StatusOr<py::dict> PyArray::CudaArrayInterface() {
-  TF_ASSIGN_OR_RETURN(auto arr, AssertUnsharded("UnsafeBufferPointer"));
+py::dict PyArray::CudaArrayInterface() {
+  auto arr_or_error = AssertUnsharded("UnsafeBufferPointer");
+  if (!arr_or_error.ok()) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only supported for unsharded arrays.");
+  }
+  auto arr = *arr_or_error;
 
-  return IfrtHelpers::CudaArrayInterface(arr.ifrt_array(),
-                                         arr.GetStorage().dynamic_shape);
+  ifrt::Array* ifrt_array = arr.ifrt_array();
+  std::optional<Shape>& scratch = arr.GetStorage().dynamic_shape;
+  auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
+  if (pjrt_buffer->client()->platform_id() != CudaId()) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
+  }
+  if (pjrt_buffer->IsTuple()) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only defined for array buffers.");
+  }
+
+  switch (pjrt_buffer->element_type()) {
+    case PrimitiveType::PRED:
+    case PrimitiveType::S8:
+    case PrimitiveType::S16:
+    case PrimitiveType::S32:
+    case PrimitiveType::S64:
+    case PrimitiveType::U8:
+    case PrimitiveType::U16:
+    case PrimitiveType::U32:
+    case PrimitiveType::U64:
+    case PrimitiveType::F16:
+    case PrimitiveType::F32:
+    case PrimitiveType::F64:
+    case PrimitiveType::C64:
+    case PrimitiveType::C128:
+      break;
+
+    default:
+      throw py::attribute_error(absl::StrFormat(
+          "__cuda_array_interface__ is not supported for %s buffers.",
+          PrimitiveType_Name(pjrt_buffer->element_type())));
+  }
+
+  py::str typestr =
+      ValueOrThrow(TypeDescriptorForPrimitiveType(pjrt_buffer->element_type()));
+
+  if (!LayoutUtil::IsMonotonicWithDim0Major(pjrt_buffer->layout())) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only currently supported for "
+        "buffers in row-major order.");
+  }
+
+  py::dict result;
+  const auto* dynamic_shape =
+      ValueOrThrow(IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
+  result["shape"] = SpanToTuple(dynamic_shape->dimensions());
+  result["typestr"] = std::move(typestr);
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold =
+      ValueOrThrow(pjrt_buffer->AcquireExternalReference());
+  const void* root_ptr =
+      external_reference_hold->OpaqueDeviceMemoryDataPointer();
+  py::tuple data(2);
+  data[0] = py::int_(absl::bit_cast<std::uintptr_t>(root_ptr));
+  data[1] = py::bool_(true);  // read-only
+  result["data"] = std::move(data);
+  result["version"] = py::int_(2);
+  return result;
+}
+
+StatusOr<pybind11::object> CudaArrayInterfaceToBuffer(
+    const pybind11::dict& cai, std::shared_ptr<PyClient> client) {
+#ifndef GOOGLE_CUDA
+  throw XlaRuntimeError("This operation requires CUDA support.");
+#else
+  if (!cai.contains("data")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `data`");
+  }
+  if (!cai.contains("shape")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `shape`");
+  }
+  if (!cai.contains("typestr")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `typestr`");
+  }
+  if (!cai.contains("version")) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface does not define `version`");
+  }
+  auto version = py::cast<int>(cai["version"]);
+  if (version < 2 || version > 3) {
+    LOG(WARNING) << "CUDA Array Interface version " << version
+                 << " support is undefined";
+  }
+  auto data = py::cast<pybind11::tuple>(cai["data"]);
+  auto data_value = pybind11::cast<std::intptr_t>(data[0]);
+  void* data_ptr = reinterpret_cast<void*>(data_value);
+  auto dimensions = pybind11::cast<std::vector<int64_t>>(cai["shape"]);
+  if (data_value == 0 && absl::c_find(dimensions, 0) == dimensions.end()) {
+    return absl::InvalidArgumentError(
+        "CUDA Array Interface `data`(=NULL) and `shape`(no zero-valued "
+        "dimensions) are inconsistent");
+  }
+  auto ndim = dimensions.size();
+  TF_ASSIGN_OR_RETURN(
+      PrimitiveType element_type,
+      DtypeToPrimitiveType(py::dtype::from_args(cai["typestr"])));
+
+  // cannot determine device_id/stream when device pointer is NULL.
+  int device_id =
+      (data_value == 0
+           ? 0
+           : stream_executor::gpu::CreatedContexts::GetDeviceOrdinal(data_ptr));
+  TF_ASSIGN_OR_RETURN(auto device,
+                      client->DeviceFromLocalHardwareId(device_id));
+  bool is_default_stream =
+      data_value == 0 || version == 2 ||
+      (version == 3 && (!cai.contains("stream") || cai["stream"].is_none()));
+  TF_ASSIGN_OR_RETURN(
+      std::intptr_t stream,
+      ([is_default_stream, cai, device]() -> StatusOr<std::intptr_t> {
+        if (is_default_stream) {
+          return device->GetStreamForExternalReadyEvents();
+        } else {
+          auto stream_ = py::cast<std::intptr_t>(cai["stream"]);
+          if (stream_ == 0) {
+            return absl::InvalidArgumentError(
+                "CUDA Array Interface does not allow zero stream value");
+          }
+          return stream_;
+        }
+      }()));
+
+  std::vector<int64_t> minor_to_major(ndim);
+  if (cai.contains("strides") && !cai["strides"].is_none() && data_value != 0) {
+    std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+    auto strides = pybind11::cast<std::vector<int64_t>>(cai["strides"]);
+    if (strides.size() != ndim) {
+      return absl::InvalidArgumentError(
+          "CUDA Array Interface `shape` and `strides` dimensionalities are "
+          "inconsistent");
+    }
+    absl::c_sort(minor_to_major, [&](int a, int b) {
+      // If two dimensions have the same stride, prefer the major-to-minor
+      // interpretation of the ordering, since that's what JAX wants.
+      return (strides[a] == strides[b] ? b < a : strides[a] < strides[b]);
+    });
+    int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+    for (int64_t d : minor_to_major) {
+      if (dimensions[d] > 1 && strides[d] != stride) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Only arrays with trivial (compact) striding are supported; "
+            "i.e., arrays whose striding represents a transposition of the "
+            "underlying buffer but not broadcasting. Dimensions were: [%s], "
+            "strides were [%s].",
+            absl::StrJoin(dimensions, ","), absl::StrJoin(strides, ",")));
+      }
+      stride *= dimensions[d];
+    }
+  } else {
+    std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
+  }
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
+  std::function<void()> on_delete_callback = []() {};
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_buffer,
+      device->client()->CreateViewOfDeviceBuffer(
+          static_cast<char*>(data_ptr), shape, device.get(), on_delete_callback,
+          stream <= 2 ? std::nullopt : std::make_optional(stream)));
+  auto* ifrt_client =
+      llvm::dyn_cast_or_null<ifrt::PjRtCompatibleClient>(client->ifrt_client());
+  if (ifrt_client == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  TF_ASSIGN_OR_RETURN(auto ifrt_array,
+                      ifrt_client->CreatePjRtArray(std::move(pjrt_buffer)));
+  return PyArray::MakeFromSingleDeviceArray(std::move(client), Traceback::Get(),
+                                            std::move(ifrt_array), false, true);
+#endif  // GOOGLE_CUDA
 }
 
 Status PyArray::Delete() {
@@ -712,6 +901,9 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
     GlobalPyRefManager()->CollectGarbage();
     py::gil_scoped_release gil_release;
     std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
+    // The sharding conversions are tried in the order of narrowness (e.g.,
+    // ShardingParamSharding is an IFRT-level sharding, whereas HloSharding is
+    // a IFRT-XLA level sharding).
     if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
       ifrt_sharding =
           ifrt::SingleDeviceSharding::Create(devices[0], dst_memory_kind);
@@ -733,11 +925,25 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
       ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
           std::move(devices), dst_memory_kind, in_sharding->shape(),
           in_sharding->shard_shape());
+    } else if (const auto* in_sharding =
+                   llvm::dyn_cast<ifrt::ShardingParamSharding>(
+                       &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      TF_ASSIGN_OR_RETURN(ifrt_sharding,
+                          ifrt::ShardingParamSharding::Create(
+                              in_sharding->sharding_param(), std::move(devices),
+                              dst_memory_kind));
+    } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::HloSharding>(
+                   &ifrt_array_ptr->sharding());
+               in_sharding != nullptr) {
+      ifrt_sharding = ifrt::HloSharding::Create(
+          std::move(devices), dst_memory_kind, in_sharding->xla_hlo_sharding());
     } else {
       return InvalidArgument(
           "resharding only supported for ifrt::SingleDeviceSharding, "
-          "ifrt::OpaqueSharding, ifrt::ConcreteSharding, and "
-          "ifrt::ConcreteEvenSharding");
+          "ifrt::OpaqueSharding, ifrt::ConcreteSharding, "
+          "ifrt::ConcreteEvenSharding, ifrt::ShardingParamSharding, and "
+          "ifrt::HloSharding.");
     }
     TF_ASSIGN_OR_RETURN(out_array, ifrt_array_ptr->Reshard(
                                        std::move(ifrt_sharding),
@@ -1089,10 +1295,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         return xla::ValueOrThrow(self.UnsafeBufferPointer());
       },
       py::is_method(type));
-  type.attr("__cuda_array_interface__") =
-      jax::property_readonly([](PyArray self) {
-        return xla::ValueOrThrow(self.CudaArrayInterface());
-      });
+  type.attr("__cuda_array_interface__") = jax::property_readonly(
+      [](PyArray self) { return self.CudaArrayInterface(); });
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       py::is_method(type));

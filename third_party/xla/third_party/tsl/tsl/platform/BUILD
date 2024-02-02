@@ -23,14 +23,13 @@ load(
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
     "tf_stream_executor_deps",
-    "tf_testing_deps",
     "tf_windows_aware_platform_deps",
     "tsl_cc_test",
     "tsl_protobuf_deps",
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
@@ -59,8 +58,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":errors",
+        ":macros",
         ":status",
         ":stringpiece",
+        ":types",
     ],
 )
 
@@ -190,8 +191,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
-    ] + tf_platform_deps("dynamic_annotations"),
+        "@com_google_absl//absl/base:dynamic_annotations",
+    ],
 )
 
 cc_library(
@@ -236,6 +237,7 @@ cc_library(
         ":logging",
         ":mutex",
         ":scanner",
+        ":str_util",
         ":strcat",
         ":stringpiece",
         ":types",
@@ -467,7 +469,6 @@ filegroup(
         "file_system_helper.h",
         "fingerprint.h",
         "init_main.h",
-        "logger.h",
         "mem.h",
         "net.h",
         "notification.h",
@@ -888,9 +889,13 @@ cc_library(
 cc_library(
     name = "resource_loader",
     testonly = 1,
+    srcs = ["resource_loader.cc"],
     textual_hdrs = ["resource_loader.h"],
     visibility = ["//visibility:public"],
-    deps = tf_testing_deps("resource_loader"),
+    deps = [
+        ":path",
+        ":test",
+    ],
 )
 
 cc_library(
@@ -1088,39 +1093,12 @@ cc_library(
 )
 
 cc_library(
-    name = "float8",
-    hdrs = ["float8.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    # TODO - b/299180335: Add deprecation, update usages.
-    # deprecation = "Please use ml_dtypes.",
-    deps = [
-        ":ml_dtypes",
-    ],
-)
-
-cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_stream_executor_deps("dso_loader"),
-)
-
-cc_library(
-    name = "logger",
-    srcs = ["logger.cc"],
-    hdrs = ["logger.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "env",
-        ":logging",
-        ":protobuf",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/synchronization",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1148,7 +1126,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 
@@ -1265,6 +1243,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        ":platform",
         ":stringpiece",
         ":types",
     ] + tf_fingerprint_deps(),
@@ -1350,7 +1329,10 @@ tsl_cc_test(
     srcs = ["path_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":env",
+        ":env_impl",
         ":path",
+        ":stringpiece",
         ":test",
         ":test_main",
     ],
@@ -1462,8 +1444,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
-    ] + tf_platform_deps("notification"),
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
 )
 
 cc_library(
@@ -1853,8 +1836,10 @@ cc_library(
     deps = [
         ":env",
         ":errors",
+        ":logging",
         ":random",
         ":status",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -1903,5 +1888,6 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "//tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/time",
     ],
 )

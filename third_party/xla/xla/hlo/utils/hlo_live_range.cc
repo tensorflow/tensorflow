@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,17 +16,28 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 /*static*/
@@ -154,6 +165,12 @@ HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
   LogicalTime end_time = -1;
   for (const HloUse& use : value.GetUses()) {
     const HloInstruction* used = use.instruction;
+
+    // In module scoped mode when all call operations are flattened ignore uses
+    // by call operation itself, and rely on the last usage time inferred from
+    // the operations in the called computation.
+    if (module_scoped_analysis_ && used->opcode() == HloOpcode::kCall) continue;
+
     // As an optimization, we deem a while's init value's live range ends as
     // soon as the loop body starts. This optimization is only applicable in
     // module scoped mode.
@@ -201,12 +218,11 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
       CHECK(async_context->IsAsyncComputation());
-      auto async_done_it =
-          absl::c_find_if(async_context->AsyncInstructions(),
-                          HloPredicateIsOp<HloOpcode::kAsyncDone>);
-      CHECK(async_done_it != async_context->AsyncInstructions().end());
+      auto async_done = async_context->AsyncStart()->async_chain_done();
+      auto async_done_it = instruction_schedule_.find(async_done);
+      CHECK(async_done_it != instruction_schedule_.end());
       definition_end_time =
-          std::max(definition_end_time, instruction_schedule_[*async_done_it]);
+          std::max(definition_end_time, async_done_it->second);
       VLOG(2) << "Setting the definition end time for op in async context: "
               << definition_end_time;
     }

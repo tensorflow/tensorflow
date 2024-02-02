@@ -15,23 +15,28 @@
 """Classes and functions used to construct graphs."""
 # pylint: disable=g-bad-name
 import collections
+from collections.abc import Callable, Iterator, Sequence
+import contextlib
 import copy
 import enum
 import re
 import sys
 import threading
 import types
-from typing import Any, AnyStr, Callable, List, NoReturn, Optional, Pattern, Sequence, Tuple, Union
+from typing import cast, TypeVar, Any, AnyStr, NoReturn, Optional, Pattern, Union, ContextManager
 
 from absl import app
 import numpy as np
+from numpy import typing as npt
 
+from google.protobuf import message
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import op_def_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
 # pywrap_tensorflow must be imported first to avoid protobuf issues.
@@ -80,6 +85,15 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
 
+_T = TypeVar("_T")
+GraphType = TypeVar("GraphType", bound="Graph")
+OpStatsType = TypeVar("OpStatsType", bound="OpStats")
+OperationType = TypeVar("OperationType", bound="Operation")
+EagerTensorType = TypeVar("EagerTensorType", bound="_EagerTensorBase")
+
+
+# TODO(b/307794935): Remove after bug is fixed.
+is_oss = True  # Updated by copybara
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
@@ -100,11 +114,12 @@ _tf_function_api_gauge = monitoring.BoolGauge(
     "Whether tf.function() is used.")
 
 # pylint: disable=protected-access
-_DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
+_DTYPES_INTERN_TABLE: dict[types_pb2.DataType, dtypes.DType] = (
+    dtypes._INTERN_TABLE)
 # pylint: enable=protected-access
 
 
-def tensor_id(tensor):
+def tensor_id(tensor) -> Any:
   """Returns a unique identifier for this Tensor."""
   return tensor._id  # pylint: disable=protected-access
 
@@ -156,7 +171,7 @@ class _UserDeviceSpec(object):
     return compat.as_str(_device_string(self.function(node_def)))
 
 
-class NullContextmanager(object):
+class NullContextmanager(contextlib.AbstractContextManager[None]):
 
   def __init__(self, *args, **kwargs) -> None:
     pass
@@ -184,9 +199,7 @@ def _as_graph_element(obj):
   return None
 
 
-# Deprecated - do not use.
-# This API to avoid breaking estimator and tensorflow-mesh which depend on this
-# internal API. The stub should be safe to use after TF 2.3 is released.
+# Deprecated - legacy purposes only.
 def is_dense_tensor_like(t) -> bool:
   return isinstance(t, core_tf_types.Tensor)
 
@@ -239,14 +252,14 @@ def value_text(tensor, is_repr=False) -> AnyStr:
 class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
   """A symbolic tensor from a graph or tf.function."""
 
-  def __new__(cls, op, value_index, dtype, unique_id=None):
+  def __new__(cls, op, value_index, dtype, unique_id=None) -> "SymbolicTensor":
     if unique_id is None:
       unique_id = uid()
     return pywrap_tf_session.PyTensor.__new__(
         SymbolicTensor, op, value_index, dtypes.as_dtype(dtype), unique_id
     )
 
-  def __copy__(self):
+  def __copy__(self) -> "SymbolicTensor":
     cls = self.__class__
     result = cls.__new__(cls, self.op, self.value_index, self.dtype, self._id)
     result.__dict__.update(self.__dict__)
@@ -255,7 +268,7 @@ class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
 
 def _create_graph_constant(
     value, dtype, shape, name, verify_shape, allow_broadcast
-) -> "Operation":
+) -> tensor_lib.Tensor:
   """Create a graph constant and invoke constant callbacks."""
   g = get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
@@ -293,15 +306,15 @@ class _EagerTensorBase(
   def __float__(self) -> float:
     return float(self._numpy())
 
-  def __index__(self):
-    return self._numpy().__index__()
+  def __index__(self) -> int:
+    return cast(np.ndarray, self._numpy()).__index__()
 
   def __bool__(self) -> bool:
     return bool(self._numpy())
 
   __nonzero__ = __bool__
 
-  def __format__(self, format_spec):
+  def __format__(self, format_spec) -> str:
     if self._prefer_custom_summarizer():
       return self._summarize_value().__format__(format_spec)
     elif self.dtype.is_numpy_compatible:
@@ -313,11 +326,11 @@ class _EagerTensorBase(
   def __reduce__(self):
     return convert_to_tensor, (self._numpy(),)
 
-  def __copy__(self):
+  def __copy__(self: EagerTensorType) -> EagerTensorType:
     # Eager Tensors are immutable so it's safe to return themselves as a copy.
     return self
 
-  def __deepcopy__(self, memo):
+  def __deepcopy__(self: EagerTensorType, memo) -> EagerTensorType:
     # Eager Tensors are immutable so it's safe to return themselves as a copy.
     del memo
     return self
@@ -330,7 +343,7 @@ class _EagerTensorBase(
     return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
         self.shape, self.dtype.name, value_text(self, is_repr=True))
 
-  def __len__(self):
+  def __len__(self) -> int:
     """Returns the length of the first dimension in the Tensor."""
     if not self.shape.ndims:
       raise TypeError("Scalar tensor has no `len()`")
@@ -340,10 +353,10 @@ class _EagerTensorBase(
     except core._NotOkStatusException as e:
       raise core._status_to_exception(e) from None
 
-  def __array__(self, dtype=None):
+  def __array__(self, dtype=None) -> np.ndarray:
     a = self._numpy()
     if not dtype:
-      return a
+      return cast(np.ndarray, a)
 
     return np.array(a, dtype=dtype)
 
@@ -352,22 +365,22 @@ class _EagerTensorBase(
     raise TypeError("Tensor is unhashable. "
                     "Instead, use tensor.ref() as the key.")
 
-  def _numpy_internal(self) -> NoReturn:
+  def _numpy_internal(self) -> npt.ArrayLike:
     raise NotImplementedError()
 
-  def _numpy(self):
+  def _numpy(self) -> npt.ArrayLike:
     try:
       return self._numpy_internal()
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
   @property
-  def dtype(self):
+  def dtype(self) -> dtypes.DType:
     # Note: using the intern table directly here as this is
     # performance-sensitive in some models.
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
-  def numpy(self):
+  def numpy(self) -> npt.ArrayLike:
     """Copy of the contents of this Tensor into a NumPy array or scalar.
 
     Unlike NumPy arrays, Tensors are immutable, so this method has to copy
@@ -375,7 +388,7 @@ class _EagerTensorBase(
     view of the contents without doing a copy:
 
     >>> t = tf.constant([42])
-    >>> np.array(memoryview(t))
+    >>> np.asarray(memoryview(t))
     array([42], dtype=int32)
 
     Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor
@@ -456,7 +469,9 @@ class _EagerTensorBase(
   def _override_operator(name, func) -> None:
     setattr(_EagerTensorBase, name, func)
 
-  def _copy_nograd(self, ctx=None, device_name=None):
+  def _copy_nograd(
+      self: EagerTensorType, ctx=None, device_name=None,
+  ) -> EagerTensorType:
     """Copies tensor to dest device, but doesn't record the operation."""
     # Creates a new tensor on the dest device.
     if ctx is None:
@@ -471,7 +486,9 @@ class _EagerTensorBase(
       raise core._status_to_exception(e) from None
     return new_tensor
 
-  def _copy(self, ctx=None, device_name=None):
+  def _copy(
+      self: EagerTensorType, ctx=None, device_name=None,
+  ) -> EagerTensorType:
     """Copies tensor to dest device."""
     new_tensor = self._copy_nograd(ctx, device_name)
     # Record the copy on tape and define backprop copy as well.
@@ -505,18 +522,18 @@ class _EagerTensorBase(
     """Alias of Tensor.shape."""
     return self.shape
 
-  def _shape_as_list(self) -> List[Tuple[int, ...]]:
+  def _shape_as_list(self) -> list[int]:
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
   @deprecation.deprecated(
       None, "Use tf.identity with explicit device placement instead.")
-  def cpu(self):
+  def cpu(self: EagerTensorType) -> EagerTensorType:
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
 
   @deprecation.deprecated(None, "Use tf.identity instead.")
-  def gpu(self, gpu_index=0):
+  def gpu(self: EagerTensorType, gpu_index=0) -> EagerTensorType:
     """A copy of this Tensor with contents backed by memory on the GPU.
 
     Args:
@@ -536,22 +553,22 @@ class _EagerTensorBase(
 
   # Methods not supported / implemented for Eager Tensors.
   @property
-  def op(self):
+  def op(self) -> NoReturn:
     raise AttributeError(
         "Tensor.op is undefined when eager execution is enabled.")
 
   @property
-  def graph(self):
+  def graph(self) -> NoReturn:
     raise AttributeError(
         "Tensor.graph is undefined when eager execution is enabled.")
 
   @property
-  def name(self):
+  def name(self) -> NoReturn:
     raise AttributeError(
         "Tensor.name is undefined when eager execution is enabled.")
 
   @property
-  def value_index(self):
+  def value_index(self) -> NoReturn:
     raise AttributeError(
         "Tensor.value_index is undefined when eager execution is enabled.")
 
@@ -590,7 +607,7 @@ class _EagerTensorBase(
       return graph.capture(self, name=name)
     return super().__tf_tensor__(dtype, name)
 
-  def _capture_as_const(self, name):
+  def _capture_as_const(self, name) -> Optional[tensor_lib.Tensor]:
     """Capture the EagerTensor to a graph constant tensor."""
     with control_dependencies(None):
       constant_value = tensor_util.constant_value(self)
@@ -618,7 +635,7 @@ def _add_error_prefix(msg: str, *, name: Optional[str] = None) -> str:
   return msg if name is None else f"{name}: {msg}"
 
 
-def pack_eager_tensors(tensors, ctx=None):
+def pack_eager_tensors(tensors, ctx=None) -> EagerTensor:
   """Pack multiple `EagerTensor`s of the same dtype and shape.
 
   Args:
@@ -709,7 +726,7 @@ def internal_convert_n_to_tensor(
     as_ref=False,
     preferred_dtype=None,
     # TODO(b/268347915): Remove argument.
-    ctx=None) -> List[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument
+    ctx=None) -> list[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -751,7 +768,7 @@ def internal_convert_n_to_tensor(
 
 def convert_n_to_tensor(
     values, dtype=None, name=None, preferred_dtype=None
-) ->  List[Union[EagerTensor, SymbolicTensor]]:
+) ->  list[Union[EagerTensor, SymbolicTensor]]:
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -853,7 +870,7 @@ def internal_convert_n_to_tensor_or_composite(
     dtype=None,
     name=None,
     as_ref=False
-) -> List[Union[
+) -> list[Union[
     EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
 
@@ -893,7 +910,7 @@ def internal_convert_n_to_tensor_or_composite(
 
 def convert_n_to_tensor_or_composite(
     values, dtype=None, name=None
-) -> List[Union[
+) -> list[Union[
     EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Output` or `CompositeTensor` objects.
 
@@ -920,7 +937,7 @@ def convert_n_to_tensor_or_composite(
       values=values, dtype=dtype, name=name, as_ref=False)
 
 
-def _device_string(dev_spec):
+def _device_string(dev_spec) -> str:
   if pydev.is_device_spec(dev_spec):
     return dev_spec.to_string()
   else:
@@ -963,7 +980,7 @@ def _create_c_op(graph,
                  inputs,
                  control_inputs,
                  op_def=None,
-                 extract_traceback=True):
+                 extract_traceback=True) -> pywrap_tf_session.TF_Operation:
   """Creates a TF_Operation.
 
   Args:
@@ -1050,7 +1067,7 @@ class Operation(pywrap_tf_session.PyOperation):
 
   @classmethod
   def from_node_def(
-      cls,
+      cls: type[OperationType],
       node_def,
       g,
       inputs=None,
@@ -1059,7 +1076,7 @@ class Operation(pywrap_tf_session.PyOperation):
       input_types=None,
       original_op=None,
       op_def=None,
-  ):
+  ) -> OperationType:
     r"""Creates an `Operation`.
 
     NOTE: This constructor validates the name of the `Operation` (passed
@@ -1169,7 +1186,7 @@ class Operation(pywrap_tf_session.PyOperation):
     return self
 
   @classmethod
-  def _from_c_op(cls, c_op, g):
+  def _from_c_op(cls: type[OperationType], c_op, g) -> OperationType:
     """Create an Operation from a TF_Operation.
 
     For internal use only: This is useful for creating Operation for ops
@@ -1187,7 +1204,7 @@ class Operation(pywrap_tf_session.PyOperation):
     self._init(g)
     return self
 
-  def _init(self, graph: "Graph"):
+  def _init(self, graph: "Graph") -> None:
     """Initializes Operation from a TF_Operation."""
     self.graph = graph
     self._original_op = None
@@ -1213,7 +1230,7 @@ class Operation(pywrap_tf_session.PyOperation):
     self._init_outputs()
     self._id_value = self.graph._add_op(self)  # pylint: disable=protected-access
 
-  def _control_flow_post_processing(self, input_tensors=None):
+  def _control_flow_post_processing(self, input_tensors=None) -> None:
     """Add this op to its control flow context.
 
     This may add new ops and change this op's inputs. self.inputs must be
@@ -1231,7 +1248,7 @@ class Operation(pywrap_tf_session.PyOperation):
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
 
-  def colocation_groups(self):
+  def colocation_groups(self) -> list[bytes]:
     """Returns the list of colocation groups of the op."""
     default_colocation_group = [compat.as_bytes("loc:@%s" % self.name)]
     try:
@@ -1250,7 +1267,7 @@ class Operation(pywrap_tf_session.PyOperation):
     # return the default colocation group.
     return attr_groups if attr_groups else default_colocation_group
 
-  def values(self):
+  def values(self) -> tuple[Any, ...]:
     """DEPRECATED: Use outputs."""
     return tuple(self.outputs)
 
@@ -1262,7 +1279,7 @@ class Operation(pywrap_tf_session.PyOperation):
     """
     return self._control_flow_context
 
-  def _set_control_flow_context(self, ctx):
+  def _set_control_flow_context(self, ctx) -> None:
     """Sets the current control flow context of this op.
 
     Args:
@@ -1271,12 +1288,12 @@ class Operation(pywrap_tf_session.PyOperation):
     self._control_flow_context = ctx
 
   @property
-  def _id(self):
+  def _id(self) -> int:
     """The unique integer id of this operation."""
     return self._id_value
 
   @property
-  def device(self):
+  def device(self) -> str:
     """The name of the device to which this op has been assigned, if any.
 
     Returns:
@@ -1287,7 +1304,7 @@ class Operation(pywrap_tf_session.PyOperation):
     return pywrap_tf_session.TF_OperationDevice(self._c_op)
 
   @property
-  def _device_assignments(self):
+  def _device_assignments(self) -> list[traceable_stack.TraceableObject]:
     """Code locations for device context managers active at op creation.
 
     This property will return a list of traceable_stack.TraceableObject
@@ -1318,7 +1335,7 @@ class Operation(pywrap_tf_session.PyOperation):
     return self._device_code_locations or []
 
   @property
-  def _colocation_dict(self):
+  def _colocation_dict(self) -> dict[str, traceable_stack.TraceableObject]:
     """Code locations for colocation context managers active at op creation.
 
     This property will return a dictionary for which the keys are nodes with
@@ -1353,7 +1370,7 @@ class Operation(pywrap_tf_session.PyOperation):
     return locations_dict.copy()
 
   @property
-  def _output_types(self):
+  def _output_types(self) -> list[int]:
     """List this operation's output types.
 
     Returns:
@@ -1371,7 +1388,7 @@ class Operation(pywrap_tf_session.PyOperation):
 
     return output_types
 
-  def _set_device(self, device):  # pylint: disable=redefined-outer-name
+  def _set_device(self, device) -> None:  # pylint: disable=redefined-outer-name
     """Set the device of this operation.
 
     Args:
@@ -1379,7 +1396,7 @@ class Operation(pywrap_tf_session.PyOperation):
     """
     self._set_device_from_string(compat.as_str(_device_string(device)))
 
-  def _update_input(self, index, tensor):
+  def _update_input(self, index, tensor) -> None:
     """Update the input to this operation at the given index.
 
     NOTE: This is for TF internal use only. Please don't use it.
@@ -1406,7 +1423,7 @@ class Operation(pywrap_tf_session.PyOperation):
           tensor._as_tf_output(),  # pylint: disable=protected-access
           self._tf_input(index))
 
-  def _add_while_inputs(self, tensors):
+  def _add_while_inputs(self, tensors) -> None:
     """See AddWhileInputHack in python_api.h.
 
     NOTE: This is for TF internal use only. Please don't use it.
@@ -1432,13 +1449,13 @@ class Operation(pywrap_tf_session.PyOperation):
             tensor._as_tf_output(),  # pylint: disable=protected-access
             self._c_op)
 
-  def __str__(self):
+  def __str__(self) -> str:
     return str(self.node_def)
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return "<tf.Operation '%s' type=%s>" % (self.name, self.type)
 
-  def __tf_tensor__(self, dtype=None, name=None):
+  def __tf_tensor__(self, dtype=None, name=None) -> NoReturn:
     """Raises a helpful error."""
     raise TypeError("can't convert Operation '{}' to Tensor".format(self.name))
 
@@ -1454,7 +1471,7 @@ class Operation(pywrap_tf_session.PyOperation):
     return self._inputs_val
 
   @property
-  def _input_types(self):
+  def _input_types(self) -> list[dtypes.DType]:
     num_inputs = pywrap_tf_session.TF_OperationNumInputs(self._c_op)
     input_types = [
         dtypes.as_dtype(
@@ -1471,14 +1488,14 @@ class Operation(pywrap_tf_session.PyOperation):
     return pywrap_tf_session.TF_OperationGetStackTrace(self._c_op)
 
   @property
-  def node_def(self):
+  def node_def(self) -> node_def_pb2.NodeDef:
     return node_def_pb2.NodeDef.FromString(self._node_def)
 
   @property
-  def op_def(self):
+  def op_def(self) -> op_def_pb2.OpDef:
     return op_def_pb2.OpDef.FromString(self._op_def)
 
-  def _set_attr(self, attr_name, attr_value):
+  def _set_attr(self, attr_name, attr_value) -> None:
     """Private method used to set an attribute in the node_def."""
     buf = pywrap_tf_session.TF_NewBufferFromString(
         compat.as_bytes(attr_value.SerializeToString()))
@@ -1487,41 +1504,41 @@ class Operation(pywrap_tf_session.PyOperation):
     finally:
       pywrap_tf_session.TF_DeleteBuffer(buf)
 
-  def _set_attr_with_buf(self, attr_name, attr_buf):
+  def _set_attr_with_buf(self, attr_name, attr_buf) -> None:
     """Set an attr in the node_def with a pre-allocated buffer."""
     with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       # pylint: disable=protected-access
       pywrap_tf_session.SetAttr(c_graph, self._c_op, attr_name, attr_buf)
       # pylint: enable=protected-access
 
-  def _set_func_attr(self, attr_name, func_name):
+  def _set_func_attr(self, attr_name, func_name) -> None:
     """Private method used to set a function attribute in the node_def."""
     func = attr_value_pb2.NameAttrList(name=func_name)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
 
-  def _set_func_list_attr(self, attr_name, func_names):
+  def _set_func_list_attr(self, attr_name, func_names) -> None:
     """Private method used to set a list(function) attribute in the node_def."""
     funcs = [attr_value_pb2.NameAttrList(name=func_name)
              for func_name in func_names]
     funcs_list = attr_value_pb2.AttrValue.ListValue(func=funcs)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=funcs_list))
 
-  def _set_type_list_attr(self, attr_name, types):
+  def _set_type_list_attr(self, attr_name, data_types) -> None:
     """Private method used to set a list(type) attribute in the node_def."""
-    if not types:
+    if not data_types:
       return
-    if isinstance(types[0], dtypes.DType):
-      types = [dt.as_datatype_enum for dt in types]
-    types_list = attr_value_pb2.AttrValue.ListValue(type=types)
+    if isinstance(data_types[0], dtypes.DType):
+      data_types = [dt.as_datatype_enum for dt in data_types]
+    types_list = attr_value_pb2.AttrValue.ListValue(type=data_types)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
 
-  def _set_shape_list_attr(self, attr_name, shapes):
+  def _set_shape_list_attr(self, attr_name, shapes) -> None:
     """Private method used to set a list(shape) attribute in the node_def."""
     shapes = [s.as_proto() for s in shapes]
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
 
-  def _clear_attr(self, attr_name):
+  def _clear_attr(self, attr_name) -> None:
     """Private method used to clear an attribute in the node_def."""
     with self.graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
       # pylint: disable=protected-access
@@ -1567,7 +1584,7 @@ class Operation(pywrap_tf_session.PyOperation):
     assert oneof_value in fields, "Unsupported field type in " + str(x)
     return getattr(x, oneof_value)
 
-  def _get_attr_type(self, name):
+  def _get_attr_type(self, name) -> dtypes.DType:
     """Returns the `DType` value of the attr of this op with the given `name`."""
     try:
       dtype_enum = pywrap_tf_session.TF_OperationGetAttrType(self._c_op, name)
@@ -1576,7 +1593,7 @@ class Operation(pywrap_tf_session.PyOperation):
       # Convert to ValueError for backwards compatibility.
       raise ValueError(e.message)
 
-  def _get_attr_bool(self, name):
+  def _get_attr_bool(self, name) -> bool:
     """Returns the `bool` value of the attr of this op with the given `name`."""
     try:
       return pywrap_tf_session.TF_OperationGetAttrBool(self._c_op, name)
@@ -1584,7 +1601,7 @@ class Operation(pywrap_tf_session.PyOperation):
       # Convert to ValueError for backwards compatibility.
       raise ValueError(e.message)
 
-  def _get_attr_int(self, name):
+  def _get_attr_int(self, name) -> int:
     """Returns the `int` value of the attr of this op with the given `name`."""
     try:
       return pywrap_tf_session.TF_OperationGetAttrInt(self._c_op, name)
@@ -1592,7 +1609,7 @@ class Operation(pywrap_tf_session.PyOperation):
       # Convert to ValueError for backwards compatibility.
       raise ValueError(e.message)
 
-  def experimental_set_type(self, type_proto):
+  def experimental_set_type(self, type_proto) -> None:
     """Sets the corresponding node's `experimental_type` field.
 
     See the description of `NodeDef.experimental_type` for more info.
@@ -1611,7 +1628,7 @@ class Operation(pywrap_tf_session.PyOperation):
       with c_api_util.tf_buffer(type_proto.SerializeToString()) as serialized:
         pywrap_tf_session.SetFullType(c_graph, self._c_op, serialized)  # pylint:disable=protected-access
 
-  def run(self, feed_dict=None, session=None):
+  def run(self, feed_dict=None, session=None) -> None:
     """Runs this operation in a `Session`.
 
     Calling this method will execute all preceding operations that
@@ -1677,7 +1694,7 @@ class RegisterGradient(object):
       raise TypeError("op_type must be a string")
     self._op_type = op_type
 
-  def __call__(self, f):
+  def __call__(self, f: _T) -> _T:
     """Registers the function `f` as gradient function for `op_type`."""
     gradient_registry.register(f, self._op_type)
     return f
@@ -1685,7 +1702,7 @@ class RegisterGradient(object):
 
 @deprecation.deprecated_endpoints("NotDifferentiable", "NoGradient")
 @tf_export("no_gradient", v1=["no_gradient", "NotDifferentiable", "NoGradient"])
-def no_gradient(op_type: str):
+def no_gradient(op_type: str) -> None:
   """Specifies that ops of type `op_type` is not differentiable.
 
   This function should *not* be used for operations that have a
@@ -1782,7 +1799,7 @@ class OpStats(object):
   def value(self, value):
     self._value = value
 
-  def __iadd__(self, other):
+  def __iadd__(self: OpStatsType, other: OpStatsType) -> OpStatsType:
     if other.statistic_type != self.statistic_type:
       raise ValueError("Can't add an OpStat of type %s to one of %s." %
                        (self.statistic_type, other.statistic_type))
@@ -1855,7 +1872,7 @@ class RegisterStatistics(object):
       raise TypeError("statistic_type must not contain a comma.")
     self._statistic_type = statistic_type
 
-  def __call__(self, f):
+  def __call__(self, f: _T) -> _T:
     """Registers "f" as the statistics function for "op_type"."""
     _stats_registry.register(f, self._op_type + "," + self._statistic_type)
     return f
@@ -1903,7 +1920,7 @@ _SESSION_RUN_LOCK_GROUP: int = 1
 
 
 @tf_contextlib.contextmanager
-def resource_creator_scope(resource_type, resource_creator):
+def resource_creator_scope(resource_type, resource_creator) -> Iterator[None]:
   with get_default_graph()._resource_creator_scope(resource_type,  # pylint: disable=protected-access
                                                    resource_creator):
     yield
@@ -1954,7 +1971,7 @@ class Graph(pywrap_tf_session.PyGraph):
   may define additional collections by specifying a new name.
   """
 
-  def __init__(self):
+  def __init__(self) -> None:
     """Creates a new, empty Graph."""
     super().__init__()
     # Protects core state that can be returned via public accessors.
@@ -2033,13 +2050,10 @@ class Graph(pywrap_tf_session.PyGraph):
     # actual outside graph).
     self._graph_key = "graph-key-%d/" % (uid(),)
     # A string with the last reduction method passed to
-    # losses.compute_weighted_loss(), or None. This is required only for
-    # backward compatibility with Estimator and optimizer V1 use cases.
+    # losses.compute_weighted_loss(), or None.
+    # Backward compatibility with optimizer V1 use cases.
     self._last_loss_reduction = None
-    # Flag that is used to indicate whether loss has been scaled by optimizer.
-    # If this flag has been set, then estimator uses it to scale losss back
-    # before reporting. This is required only for backward compatibility with
-    # Estimator and optimizer V1 use cases.
+    # Required only for backward compatibility with optimizer V1 use cases.
     self._is_loss_scaled_by_optimizer = False
     self._container = ""
 
@@ -2067,19 +2081,19 @@ class Graph(pywrap_tf_session.PyGraph):
   def _c_graph(self):
     return self
 
-  def __enter__(self):
+  def __enter__(self: GraphType) -> GraphType:
     return self
 
-  def __exit__(self, *args):
+  def __exit__(self, *args) -> None:
     return
 
-  def get(self):
+  def get(self: GraphType) -> GraphType:
     return self
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
-  def _variable_creator_scope(self, creator, priority=100):
+  def _variable_creator_scope(self, creator, priority=100) -> Iterator[None]:
     """Scope which defines a variable creation function.
 
     Args:
@@ -2115,7 +2129,7 @@ class Graph(pywrap_tf_session.PyGraph):
   # TODO(b/192405401): unify resource_creator_scope with variable_creator_scope.
   # pylint: disable=protected-access
   @tf_contextlib.contextmanager
-  def _resource_creator_scope(self, resource_type, creator):
+  def _resource_creator_scope(self, resource_type, creator) -> Iterator[None]:
     """Scope which defines a resource creation function used by some resource.
 
     The resource should be a subclass of CapturableResource with a class method
@@ -2176,20 +2190,23 @@ class Graph(pywrap_tf_session.PyGraph):
       self._thread_local._resource_creator_stack = old
 
   @property
-  def _resource_creator_stack(self):
+  def _resource_creator_stack(self) -> dict[str, list[Callable[..., Any]]]:
     if not hasattr(self._thread_local, "_resource_creator_stack"):
       self._thread_local._resource_creator_stack = collections.defaultdict(list)
     return self._thread_local._resource_creator_stack
 
   @_resource_creator_stack.setter
-  def _resource_creator_stack(self, resource_creator_stack):
+  def _resource_creator_stack(
+      self,
+      resource_creator_stack: dict[str, list[Callable[..., Any]]],
+  ) -> None:
     self._thread_local._resource_creator_stack = resource_creator_stack
   # pylint: enable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @property
-  def _variable_creator_stack(self):
+  def _variable_creator_stack(self) -> list[tuple[int, Callable[..., Any]]]:
     if not hasattr(self._thread_local, "_variable_creator_stack"):
       self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
 
@@ -2213,10 +2230,13 @@ class Graph(pywrap_tf_session.PyGraph):
     return self._thread_local._variable_creator_stack  # pylint: disable=protected-access
 
   @_variable_creator_stack.setter
-  def _variable_creator_stack(self, variable_creator_stack):
+  def _variable_creator_stack(
+      self,
+      variable_creator_stack: list[tuple[int, Callable[..., Any]]],
+  ) -> None:
     self._thread_local._variable_creator_stack = variable_creator_stack  # pylint: disable=protected-access
 
-  def _check_not_finalized(self):
+  def _check_not_finalized(self) -> None:
     """Check if the graph is finalized.
 
     Raises:
@@ -2226,7 +2246,7 @@ class Graph(pywrap_tf_session.PyGraph):
       raise RuntimeError("Graph is finalized and cannot be modified.")
 
   @property
-  def graph_def_versions(self):
+  def graph_def_versions(self) -> versions_pb2.VersionDef:
     # pylint: disable=line-too-long
     """The GraphDef version information of this graph.
 
@@ -2239,20 +2259,20 @@ class Graph(pywrap_tf_session.PyGraph):
     return versions_pb2.VersionDef.FromString(self._version_def)
 
   @property
-  def seed(self):
+  def seed(self) -> Optional[int]:
     """The graph-level random seed of this graph."""
     return self._seed
 
   @seed.setter
-  def seed(self, seed):
+  def seed(self, seed: int) -> None:
     self._seed = seed
 
   @property
-  def finalized(self):
+  def finalized(self) -> bool:
     """True if this graph has been finalized."""
     return self._finalized
 
-  def finalize(self):
+  def finalize(self) -> None:
     """Finalizes this graph, making it read-only.
 
     After calling `g.finalize()`, no new operations can be added to
@@ -2262,7 +2282,7 @@ class Graph(pywrap_tf_session.PyGraph):
     """
     self._finalized = True
 
-  def _unsafe_unfinalize(self):
+  def _unsafe_unfinalize(self) -> None:
     """Opposite of `finalize`.
 
     Internal interface.
@@ -2282,7 +2302,7 @@ class Graph(pywrap_tf_session.PyGraph):
     """
     return self._control_flow_context
 
-  def _set_control_flow_context(self, ctx):
+  def _set_control_flow_context(self, ctx) -> None:
     """Sets the current control flow context.
 
     Args:
@@ -2290,7 +2310,7 @@ class Graph(pywrap_tf_session.PyGraph):
     """
     self._control_flow_context = ctx
 
-  def _copy_functions_to_graph_def(self, graph_def, starting_bytesize):
+  def _copy_functions_to_graph_def(self, graph_def, starting_bytesize) -> None:
     """If this graph contains functions, copy them to `graph_def`."""
     bytesize = starting_bytesize
     for f in self._functions.values():
@@ -2305,7 +2325,8 @@ class Graph(pywrap_tf_session.PyGraph):
         graph_def.library.gradient.extend([grad_def])
 
   def _as_graph_def(
-      self, from_version=None, add_shapes=False, use_pybind11_proto=False):
+      self, from_version=None, add_shapes=False, use_pybind11_proto=False,
+  ) -> tuple[graph_pb2.GraphDef, int]:
     # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
@@ -2406,7 +2427,9 @@ class Graph(pywrap_tf_session.PyGraph):
 
     return graph, self.version
 
-  def as_graph_def(self, from_version=None, add_shapes=False):
+  def as_graph_def(
+      self, from_version=None, add_shapes=False, use_pybind11_proto=False
+  ) -> graph_pb2.GraphDef:
     # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
@@ -2422,6 +2445,9 @@ class Graph(pywrap_tf_session.PyGraph):
         property had the given value.
       add_shapes: If true, adds an "_output_shapes" list attr to each node with
         the inferred shapes of each of its outputs.
+      use_pybind11_proto: If true, If true, uses the c++ pybind11_proto api to
+        get the GraphDef proto directly from c++, instead of through a TF
+        buffer. See https://github.com/pybind/pybind11_protobuf for reference.
 
     Returns:
       A
@@ -2432,10 +2458,14 @@ class Graph(pywrap_tf_session.PyGraph):
       ValueError: If the `graph_def` would be too large.
     """
     # pylint: enable=line-too-long
-    result, _ = self._as_graph_def(from_version, add_shapes)
+    if is_oss:
+      use_pybind11_proto = False
+    result, _ = self._as_graph_def(
+        from_version, add_shapes, use_pybind11_proto=use_pybind11_proto
+    )
     return result
 
-  def _is_function(self, name):
+  def _is_function(self, name) -> bool:
     """Tests whether 'name' is registered in this graph's function library.
 
     Args:
@@ -2457,7 +2487,7 @@ class Graph(pywrap_tf_session.PyGraph):
     """
     return self._functions.get(compat.as_str(name), None)
 
-  def _add_function_recursive(self, function, overwrite=False):
+  def _add_function_recursive(self, function, overwrite=False) -> None:
     """Adds function to the graph including other functions in its graph."""
 
     if self._is_function(function.name):
@@ -2476,7 +2506,7 @@ class Graph(pywrap_tf_session.PyGraph):
         else:
           self._add_function(f)
 
-  def _add_function(self, function):
+  def _add_function(self, function) -> None:
     """Adds a function to the graph.
 
     After the function has been added, you can call to the function by
@@ -2516,7 +2546,7 @@ class Graph(pywrap_tf_session.PyGraph):
     if self._graph_def_versions.min_consumer < 12:
       self._graph_def_versions.min_consumer = 12
 
-  def _remove_function(self, name):
+  def _remove_function(self, name) -> None:
     self._check_not_finalized()
     if not self._is_function(name):
       raise ValueError(f"Function {name!r} is not found in {self!r}.")
@@ -2526,7 +2556,7 @@ class Graph(pywrap_tf_session.PyGraph):
       del self._functions[compat.as_str(name)]
 
   @property
-  def building_function(self):
+  def building_function(self) -> bool:
     """Returns True iff this graph represents a function."""
     return self._building_function
 
@@ -2545,7 +2575,7 @@ class Graph(pywrap_tf_session.PyGraph):
       attrs=None,
       op_def=None,
       compute_shapes=True,
-      compute_device=True):
+      compute_device=True) -> "Operation":
     """Creates an `Operation` in this graph.
 
     This is a low-level interface for creating an `Operation`. Most
@@ -2662,7 +2692,9 @@ class Graph(pywrap_tf_session.PyGraph):
       self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
-  def _create_op_from_tf_operation(self, c_op, compute_device=True):
+  def _create_op_from_tf_operation(
+      self, c_op, compute_device=True,
+  ) -> "Operation":
     """Creates an `Operation` in this graph from the supplied TF_Operation.
 
     This method is like create_op() except the new Operation is constructed
@@ -2694,7 +2726,7 @@ class Graph(pywrap_tf_session.PyGraph):
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
-  def _create_op_helper(self, op, compute_device=True):
+  def _create_op_helper(self, op, compute_device=True) -> None:
     """Common logic for creating an op in this graph."""
     # Apply any additional attributes requested. Do not overwrite any existing
     # attributes.
@@ -2781,7 +2813,7 @@ class Graph(pywrap_tf_session.PyGraph):
           op._set_attr("container", attr_value_pb2.AttrValue(  # pylint: disable=protected-access
               s=compat.as_bytes(self._container)))
 
-  def _add_new_tf_operations(self, compute_devices=True):
+  def _add_new_tf_operations(self, compute_devices=True) -> list["Operation"]:
     """Creates `Operations` in this graph for any new TF_Operations.
 
     This is useful for when TF_Operations are indirectly created by the C API
@@ -2814,7 +2846,9 @@ class Graph(pywrap_tf_session.PyGraph):
 
     return new_ops
 
-  def as_graph_element(self, obj, allow_tensor=True, allow_operation=True):
+  def as_graph_element(
+      self, obj, allow_tensor=True, allow_operation=True,
+  ) -> Union[tensor_lib.Tensor, "Operation"]:
     """Returns the object referred to by `obj`, as an `Operation` or `Tensor`.
 
     This function validates that `obj` represents an element of this
@@ -2850,7 +2884,9 @@ class Graph(pywrap_tf_session.PyGraph):
     with self._lock:
       return self._as_graph_element_locked(obj, allow_tensor, allow_operation)
 
-  def _as_graph_element_locked(self, obj, allow_tensor, allow_operation):
+  def _as_graph_element_locked(
+      self, obj, allow_tensor, allow_operation,
+  ) -> Union[tensor_lib.Tensor, "Operation"]:
     """See `Graph.as_graph_element()` for details."""
     # The vast majority of this function is figuring
     # out what an API user might be doing wrong, so
@@ -2947,7 +2983,7 @@ class Graph(pywrap_tf_session.PyGraph):
       raise TypeError("Can not convert a %s into a %s." %
                       (type(obj).__name__, types_str))
 
-  def get_operation_by_name(self, name):
+  def get_operation_by_name(self, name) -> "Operation":
     """Returns the `Operation` with the given `name`.
 
     This method may be called concurrently from multiple threads.
@@ -2966,13 +3002,17 @@ class Graph(pywrap_tf_session.PyGraph):
     if not isinstance(name, str):
       raise TypeError("Operation names are strings (or similar), not %s." %
                       type(name).__name__)
-    return self.as_graph_element(name, allow_tensor=False, allow_operation=True)
+    op = cast(
+        Operation,
+        self.as_graph_element(name, allow_tensor=False, allow_operation=True)
+    )
+    return op
 
-  def _get_operation_by_tf_operation(self, tf_oper):
+  def _get_operation_by_tf_operation(self, tf_oper) -> "Operation":
     op_name = pywrap_tf_session.TF_OperationName(tf_oper)
     return self._get_operation_by_name(op_name)
 
-  def get_tensor_by_name(self, name):
+  def get_tensor_by_name(self, name) -> tensor_lib.Tensor:
     """Returns the `Tensor` with the given `name`.
 
     This method may be called concurrently from multiple threads.
@@ -2991,9 +3031,13 @@ class Graph(pywrap_tf_session.PyGraph):
     if not isinstance(name, str):
       raise TypeError("Tensor names are strings (or similar), not %s." %
                       type(name).__name__)
-    return self.as_graph_element(name, allow_tensor=True, allow_operation=False)
+    tensor = cast(
+        tensor_lib.Tensor,
+        self.as_graph_element(name, allow_tensor=True, allow_operation=False)
+    )
+    return tensor
 
-  def _get_tensor_by_tf_output(self, tf_output):
+  def _get_tensor_by_tf_output(self, tf_output) -> tensor_lib.Tensor:
     """Returns the `Tensor` representing `tf_output`.
 
     Note that there is only one such `Tensor`, i.e. multiple calls to this
@@ -3009,7 +3053,7 @@ class Graph(pywrap_tf_session.PyGraph):
     op = self._get_operation_by_tf_operation(tf_output.oper)
     return op.outputs[tf_output.index]
 
-  def op_def_for_type(self, type):  # pylint: disable=redefined-builtin
+  def op_def_for_type(self, type) -> op_def_pb2.OpDef:  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
     # NOTE: No locking is required because the lookup and insertion operations
     # on Python dictionaries are atomic.
@@ -3021,7 +3065,7 @@ class Graph(pywrap_tf_session.PyGraph):
       )
       return self._op_def_cache[type]
 
-  def as_default(self):
+  def as_default(self) -> ContextManager["Graph"]:
     """Returns a context manager that makes this `Graph` the default graph.
 
     This method should be used if you want to create multiple graphs
@@ -3064,11 +3108,11 @@ class Graph(pywrap_tf_session.PyGraph):
     return _default_graph_stack.get_controller(self)
 
   @property
-  def collections(self):
+  def collections(self) -> list[str]:
     """Returns the names of the collections known to this graph."""
     return list(self._collections)
 
-  def add_to_collection(self, name, value):
+  def add_to_collection(self, name, value) -> None:
     """Stores `value` in the collection with the given `name`.
 
     Note that collections are not sets, so it is possible to add a value to
@@ -3086,7 +3130,7 @@ class Graph(pywrap_tf_session.PyGraph):
       else:
         self._collections[name].append(value)
 
-  def add_to_collections(self, names, value):
+  def add_to_collections(self, names, value) -> None:
     """Stores `value` in the collections given by `names`.
 
     Note that collections are not sets, so it is possible to add a value to
@@ -3107,7 +3151,7 @@ class Graph(pywrap_tf_session.PyGraph):
     for name in names:
       self.add_to_collection(name, value)
 
-  def get_collection_ref(self, name):
+  def get_collection_ref(self, name) -> list[Any]:
     """Returns a list of values in the collection with the given `name`.
 
     If the collection exists, this returns the list itself, which can
@@ -3132,7 +3176,7 @@ class Graph(pywrap_tf_session.PyGraph):
         self._collections[name] = coll_list
       return coll_list
 
-  def get_collection(self, name, scope=None):
+  def get_collection(self, name, scope=None) -> list[Any]:
     """Returns a list of values in the collection with the given `name`.
 
     This is different from `get_collection_ref()` which always returns the
@@ -3172,12 +3216,12 @@ class Graph(pywrap_tf_session.PyGraph):
             pass
         return c
 
-  def get_all_collection_keys(self):
+  def get_all_collection_keys(self) -> list[str]:
     """Returns a list of collections used in this graph."""
     with self._lock:
       return [x for x in self._collections if isinstance(x, str)]
 
-  def clear_collection(self, name):
+  def clear_collection(self, name) -> None:
     """Clears all values in a collection.
 
     Args:
@@ -3190,7 +3234,7 @@ class Graph(pywrap_tf_session.PyGraph):
         del self._collections[name]
 
   @tf_contextlib.contextmanager
-  def _original_op(self, op):
+  def _original_op(self, op) -> Iterator[None]:
     """Python 'with' handler to help annotate ops with their originator.
 
     An op may have an 'original_op' property that indicates the op on which
@@ -3215,19 +3259,19 @@ class Graph(pywrap_tf_session.PyGraph):
       self._default_original_op = old_original_op
 
   @property
-  def _name_stack(self):
+  def _name_stack(self) -> str:
     # This may be called from a thread where name_stack doesn't yet exist.
     if not hasattr(self._thread_local, "_name_stack"):
       self._thread_local._name_stack = ""
     return self._thread_local._name_stack
 
   @_name_stack.setter
-  def _name_stack(self, name_stack):
+  def _name_stack(self, name_stack: str) -> None:
     self._thread_local._name_stack = name_stack
 
   # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
-  def name_scope(self, name):
+  def name_scope(self, name) -> Iterator[str]:
     """Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
@@ -3348,7 +3392,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
-  def unique_name(self, name, mark_as_used=True):
+  def unique_name(self, name, mark_as_used=True) -> str:
     """Return a unique operation name for `name`.
 
     Note: You rarely need to call `unique_name()` directly.  Most of
@@ -3400,7 +3444,7 @@ class Graph(pywrap_tf_session.PyGraph):
       name = "%s_%d" % (name, i - 1)
     return name
 
-  def get_name_scope(self):
+  def get_name_scope(self) -> str:
     """Returns the current name scope.
 
     For example:
@@ -3419,7 +3463,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
   @tf_contextlib.contextmanager
   def _colocate_with_for_gradient(self, op, gradient_uid,
-                                  ignore_existing=False):
+                                  ignore_existing=False) -> Iterator[None]:
     with self.colocate_with(op, ignore_existing):
       if gradient_uid is not None:
         ctx = _get_enclosing_context(self)
@@ -3435,7 +3479,7 @@ class Graph(pywrap_tf_session.PyGraph):
         yield
 
   @tf_contextlib.contextmanager
-  def colocate_with(self, op, ignore_existing=False):
+  def colocate_with(self, op, ignore_existing=False) -> Iterator[None]:
     """Returns a context manager that specifies an op to colocate with.
 
     Note: this function is not for public use, only for internal libraries.
@@ -3513,7 +3557,9 @@ class Graph(pywrap_tf_session.PyGraph):
       if ignore_existing:
         self._colocation_stack = current_stack
 
-  def _add_device_to_stack(self, device_name_or_function, offset=0):
+  def _add_device_to_stack(
+      self, device_name_or_function, offset=0,
+  ) -> _UserDeviceSpec:
     """Add device to stack manually, separate from a context manager."""
     total_offset = 1 + offset
     spec = _UserDeviceSpec(device_name_or_function)
@@ -3521,7 +3567,7 @@ class Graph(pywrap_tf_session.PyGraph):
     return spec
 
   @tf_contextlib.contextmanager
-  def device(self, device_name_or_function):
+  def device(self, device_name_or_function) -> Iterator[None]:
     # pylint: disable=line-too-long
     """Returns a context manager that specifies the default device to use.
 
@@ -3591,7 +3637,7 @@ class Graph(pywrap_tf_session.PyGraph):
         raise RuntimeError("Exiting device scope without proper scope nesting.")
       self._device_function_stack.pop_obj()
 
-  def _apply_device_functions(self, op):
+  def _apply_device_functions(self, op) -> None:
     """Applies the current device function stack to the given operation."""
     # Apply any device functions in LIFO order, so that the most recently
     # pushed function has the first chance to apply a device to the op.
@@ -3618,7 +3664,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
-  def container(self, container_name):
+  def container(self, container_name) -> Iterator[str]:
     """Returns a context manager that specifies the resource container to use.
 
     Stateful operations, such as variables and queues, can maintain their
@@ -3674,7 +3720,7 @@ class Graph(pywrap_tf_session.PyGraph):
   class _ControlDependenciesController(object):
     """Context manager for `control_dependencies()`."""
 
-    def __init__(self, graph, control_inputs):
+    def __init__(self, graph, control_inputs) -> None:
       """Create a new `_ControlDependenciesController`.
 
       A `_ControlDependenciesController` is the context manager for
@@ -3709,7 +3755,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
     # pylint: disable=protected-access
 
-    def __enter__(self):
+    def __enter__(self) -> None:
       if self._new_stack:
         # Clear the control_dependencies graph.
         self._old_stack = self._graph._control_dependencies_stack
@@ -3719,7 +3765,7 @@ class Graph(pywrap_tf_session.PyGraph):
         self._graph._set_control_flow_context(None)
       self._graph._push_control_dependencies_controller(self)
 
-    def __exit__(self, unused_type, unused_value, unused_traceback):
+    def __exit__(self, unused_type, unused_value, unused_traceback) -> None:
       self._graph._pop_control_dependencies_controller(self)
       if self._new_stack:
         self._graph._control_dependencies_stack = self._old_stack
@@ -3731,31 +3777,31 @@ class Graph(pywrap_tf_session.PyGraph):
     def control_inputs(self):
       return self._control_inputs_val
 
-    def add_op(self, op):
+    def add_op(self, op) -> None:
       if isinstance(op, tensor_lib.Tensor):
         op = op.ref()
       self._seen_nodes.add(op)
 
-    def op_in_group(self, op):
+    def op_in_group(self, op) -> bool:
       if isinstance(op, tensor_lib.Tensor):
         op = op.ref()
       return op in self._seen_nodes
 
-  def _push_control_dependencies_controller(self, controller):
+  def _push_control_dependencies_controller(self, controller) -> None:
     self._control_dependencies_stack.append(controller)
 
-  def _pop_control_dependencies_controller(self, controller):
+  def _pop_control_dependencies_controller(self, controller) -> None:
     assert self._control_dependencies_stack[-1] is controller
     self._control_dependencies_stack.pop()
 
-  def _current_control_dependencies(self):
+  def _current_control_dependencies(self) -> set[Operation]:
     ret = set()
     for controller in self._control_dependencies_stack:
       for op in controller.control_inputs:
         ret.add(op)
     return ret
 
-  def _control_dependencies_for_inputs(self, input_ops):
+  def _control_dependencies_for_inputs(self, input_ops) -> list[Operation]:
     """For an op that takes `input_ops` as inputs, compute control inputs.
 
     The returned control dependencies should yield an execution that
@@ -3789,7 +3835,7 @@ class Graph(pywrap_tf_session.PyGraph):
         ret.extend(c for c in controller.control_inputs if c not in input_ops)
     return ret
 
-  def _record_op_seen_by_control_dependencies(self, op):
+  def _record_op_seen_by_control_dependencies(self, op) -> None:
     """Record that the given op depends on all registered control dependencies.
 
     Args:
@@ -3798,7 +3844,9 @@ class Graph(pywrap_tf_session.PyGraph):
     for controller in self._control_dependencies_stack:
       controller.add_op(op)
 
-  def control_dependencies(self, control_inputs):
+  def control_dependencies(
+      self, control_inputs,
+  ) -> _ControlDependenciesController:
     """Returns a context manager that specifies control dependencies.
 
     Use with the `with` keyword to specify that all operations constructed
@@ -3921,7 +3969,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
-  def _attr_scope(self, attr_map):
+  def _attr_scope(self, attr_map) -> Iterator[None]:
     """EXPERIMENTAL: A context manager for setting attributes on operators.
 
     This context manager can be used to add additional
@@ -3987,7 +4035,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
-  def _kernel_label_map(self, op_to_kernel_label_map):
+  def _kernel_label_map(self, op_to_kernel_label_map) -> Iterator[None]:
     """EXPERIMENTAL: A context manager for setting kernel labels.
 
     This context manager can be used to select particular
@@ -4049,7 +4097,9 @@ class Graph(pywrap_tf_session.PyGraph):
   # pylint: enable=g-doc-return-or-yield
 
   @tf_contextlib.contextmanager
-  def _override_gradient_function(self, gradient_function_map):
+  def _override_gradient_function(
+      self, gradient_function_map,
+  ) -> Iterator[None]:
     """Specify gradient function for the given op type."""
 
     # This is an internal API and we don't need nested context for this.
@@ -4063,7 +4113,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
-  def gradient_override_map(self, op_type_map):
+  def gradient_override_map(self, op_type_map) -> Iterator[None]:
     """EXPERIMENTAL: A context manager for overriding gradient functions.
 
     This context manager can be used to override the gradient function
@@ -4125,26 +4175,26 @@ class Graph(pywrap_tf_session.PyGraph):
 
   # pylint: enable=g-doc-return-or-yield
 
-  def prevent_feeding(self, tensor):
+  def prevent_feeding(self, tensor) -> None:
     """Marks the given `tensor` as unfeedable in this graph."""
     self._unfeedable_tensors.add(tensor)
 
-  def is_feedable(self, tensor):
+  def is_feedable(self, tensor) -> bool:
     """Returns `True` if and only if `tensor` is feedable."""
     return tensor not in self._unfeedable_tensors
 
-  def prevent_fetching(self, op):
+  def prevent_fetching(self, op) -> None:
     """Marks the given `op` as unfetchable in this graph."""
     self._unfetchable_ops.add(op)
 
-  def is_fetchable(self, tensor_or_op):
+  def is_fetchable(self, tensor_or_op) -> bool:
     """Returns `True` if and only if `tensor_or_op` is fetchable."""
     if isinstance(tensor_or_op, tensor_lib.Tensor):
       return tensor_or_op.op not in self._unfetchable_ops
     else:
       return tensor_or_op not in self._unfetchable_ops
 
-  def switch_to_thread_local(self):
+  def switch_to_thread_local(self) -> None:
     """Make device, colocation and dependencies stacks thread-local.
 
     Device, colocation and dependencies stacks are not thread-local be default.
@@ -4162,7 +4212,7 @@ class Graph(pywrap_tf_session.PyGraph):
       self._stack_state_is_thread_local = True
 
   @property
-  def _device_function_stack(self):
+  def _device_function_stack(self) -> traceable_stack.TraceableStack:
     if self._stack_state_is_thread_local:
       # This may be called from a thread where device_function_stack doesn't yet
       # exist.
@@ -4182,7 +4232,9 @@ class Graph(pywrap_tf_session.PyGraph):
     device_functions_outer_to_inner = list(reversed(device_functions))
     return device_functions_outer_to_inner
 
-  def _snapshot_device_function_stack_metadata(self):
+  def _snapshot_device_function_stack_metadata(
+      self,
+  ) -> list[traceable_stack.TraceableObject]:
     """Return device function stack as a list of TraceableObjects.
 
     Returns:
@@ -4199,7 +4251,9 @@ class Graph(pywrap_tf_session.PyGraph):
     return snapshot
 
   @_device_function_stack.setter
-  def _device_function_stack(self, device_function_stack):
+  def _device_function_stack(
+      self, device_function_stack: traceable_stack.TraceableStack,
+  ) -> None:
     if self._stack_state_is_thread_local:
       # pylint: disable=protected-access
       self._thread_local._device_function_stack = device_function_stack
@@ -4208,7 +4262,7 @@ class Graph(pywrap_tf_session.PyGraph):
       self._graph_device_function_stack = device_function_stack
 
   @property
-  def _colocation_stack(self):
+  def _colocation_stack(self) -> traceable_stack.TraceableStack:
     """Return thread-local copy of colocation stack."""
     if self._stack_state_is_thread_local:
       # This may be called from a thread where colocation_stack doesn't yet
@@ -4222,7 +4276,9 @@ class Graph(pywrap_tf_session.PyGraph):
     else:
       return self._graph_colocation_stack
 
-  def _snapshot_colocation_stack_metadata(self):
+  def _snapshot_colocation_stack_metadata(
+      self,
+  ) -> dict[str, traceable_stack.TraceableObject]:
     """Return colocation stack metadata as a dictionary."""
     return {
         traceable_obj.obj.name: traceable_obj.copy_metadata()
@@ -4230,7 +4286,9 @@ class Graph(pywrap_tf_session.PyGraph):
     }
 
   @_colocation_stack.setter
-  def _colocation_stack(self, colocation_stack):
+  def _colocation_stack(
+      self, colocation_stack: traceable_stack.TraceableStack,
+  ) -> None:
     if self._stack_state_is_thread_local:
       # pylint: disable=protected-access
       self._thread_local._colocation_stack = colocation_stack
@@ -4239,7 +4297,7 @@ class Graph(pywrap_tf_session.PyGraph):
       self._graph_colocation_stack = colocation_stack
 
   @property
-  def _control_dependencies_stack(self):
+  def _control_dependencies_stack(self) -> list[_ControlDependenciesController]:
     if self._stack_state_is_thread_local:
       # This may be called from a thread where control_dependencies_stack
       # doesn't yet exist.
@@ -4251,21 +4309,26 @@ class Graph(pywrap_tf_session.PyGraph):
       return self._graph_control_dependencies_stack
 
   @_control_dependencies_stack.setter
-  def _control_dependencies_stack(self, control_dependencies):
+  def _control_dependencies_stack(
+      self,
+      control_deps_controllers: list[_ControlDependenciesController],
+  ) -> None:
     if self._stack_state_is_thread_local:
-      self._thread_local._control_dependencies_stack = control_dependencies
+      self._thread_local._control_dependencies_stack = control_deps_controllers
     else:
-      self._graph_control_dependencies_stack = control_dependencies
+      self._graph_control_dependencies_stack = control_deps_controllers
 
   @property
-  def _distribution_strategy_stack(self):
+  def _distribution_strategy_stack(self) -> list[Any]:
     """A stack to maintain distribution strategy context for each thread."""
     if not hasattr(self._thread_local, "_distribution_strategy_stack"):
       self._thread_local._distribution_strategy_stack = []  # pylint: disable=protected-access
     return self._thread_local._distribution_strategy_stack  # pylint: disable=protected-access
 
   @_distribution_strategy_stack.setter
-  def _distribution_strategy_stack(self, _distribution_strategy_stack):
+  def _distribution_strategy_stack(
+      self, _distribution_strategy_stack: list[Any],
+  ) -> None:
     self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
         _distribution_strategy_stack)
 
@@ -4280,14 +4343,14 @@ class Graph(pywrap_tf_session.PyGraph):
   def _global_distribute_strategy_scope(self, distribute_strategy_scope):
     self._thread_local.distribute_strategy_scope = (distribute_strategy_scope)
 
-  def _mutation_lock(self):
+  def _mutation_lock(self) -> lock_util.GroupLock._Context:
     """Returns a lock to guard code that creates & mutates ops.
 
     See the comment for self._group_lock for more info.
     """
     return self._group_lock.group(_MUTATION_LOCK_GROUP)
 
-  def _session_run_lock(self):
+  def _session_run_lock(self) -> lock_util.GroupLock._Context:
     """Returns a lock to guard code for Session.run.
 
     See the comment for self._group_lock for more info.
@@ -4300,7 +4363,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
 
 @tf_export(v1=["device"])
-def device(device_name_or_function):
+def device(device_name_or_function) -> ContextManager[None]:
   """Wrapper for `Graph.device()` using the default graph.
 
   See `tf.Graph.device` for more details.
@@ -4336,7 +4399,7 @@ def device(device_name_or_function):
 
 
 @tf_export("device", v1=[])
-def device_v2(device_name):
+def device_v2(device_name) -> ContextManager[None]:
   """Specifies the device for ops created/executed in this context.
 
   This function specifies the device to be used for ops created/executed in a
@@ -4375,7 +4438,7 @@ def device_v2(device_name):
 
 
 @tf_export(v1=["container"])
-def container(container_name):
+def container(container_name) -> ContextManager[str]:
   """Wrapper for `Graph.container()` using the default graph.
 
   Args:
@@ -4388,7 +4451,29 @@ def container(container_name):
   return get_default_graph().container(container_name)
 
 
-def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
+def _colocate_with_for_gradient(
+    op, gradient_uid, ignore_existing=False,
+) -> ContextManager[None]:
+  """Returns a context manager for colocating op gradients with an op.
+
+  Internal API. In eager mode, returns a context manager that sets the default
+  device for new ops to the same device as the given op. Does the same if a
+  function is currently being built (i.e. the current mode is graph, but the
+  overall mode is eager).
+
+  In all other cases, returns a `Graph.colocate_with()` context manager,
+  optionally accounting for gradients (if a gradient UID is specified).
+
+  Args:
+    op: Operation or Tensor with which to colocate.
+    gradient_uid: Optional gradient UID to enable colocation of gradients during
+      compilation.
+    ignore_existing: See `Graph.colocate_with()`.
+
+  Returns:
+    A context manager used to colocate ops and gradients with the specified
+    operation.
+  """
   if context.executing_eagerly():
     if op is not None:
       if not hasattr(op, "device"):
@@ -4411,19 +4496,21 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
 # Internal interface to colocate_with. colocate_with has been deprecated from
 # public API. There are still a few internal uses of colocate_with. Add internal
 # only API for those uses to avoid deprecation warning.
-def colocate_with(op, ignore_existing=False):
+def colocate_with(op, ignore_existing=False) -> ContextManager[None]:
   return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
 
 
 @deprecation.deprecated(
     date=None, instructions="Colocations handled automatically by placer.")
 @tf_export(v1=["colocate_with"])
-def _colocate_with(op, ignore_existing=False):
+def _colocate_with(op, ignore_existing=False) -> ContextManager[None]:
   return colocate_with(op, ignore_existing)
 
 
 @tf_export("control_dependencies")
-def control_dependencies(control_inputs):
+def control_dependencies(
+    control_inputs,
+) -> Graph._ControlDependenciesController:
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
   See `tf.Graph.control_dependencies` for more details.
@@ -4534,14 +4621,14 @@ def _run_using_default_session(
   session.run(operation, feed_dict)
 
 
-class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-access
+class _DefaultGraphStack(stack.DefaultStack[Graph]):  # pylint: disable=protected-access
   """A thread-local stack of objects for providing an implicit default graph."""
 
   def __init__(self) -> None:
     super(_DefaultGraphStack, self).__init__()
     self._global_default_graph = None
 
-  def get_default(self):
+  def get_default(self) -> Graph:
     """Override that returns a global default if the stack is empty."""
     if self.stack:
       return self.stack[-1]
@@ -4551,7 +4638,7 @@ class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-acces
       self._global_default_graph = Graph()
       return self._global_default_graph
 
-  def _GetGlobalDefaultGraph(self):
+  def _GetGlobalDefaultGraph(self) -> Graph:
     if self._global_default_graph is None:
       # TODO(mrry): Perhaps log that the default graph is being used, or set
       #   provide some other feedback to prevent confusion when a mixture of
@@ -4565,7 +4652,7 @@ class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-acces
     self._global_default_graph = None
 
   @tf_contextlib.contextmanager
-  def get_controller(self, default):
+  def get_controller(self, default) -> Iterator[Graph]:
     context.context().context_switches.push(default.building_function,
                                             default.as_default,
                                             default._device_function_stack)
@@ -4585,7 +4672,8 @@ _default_graph_stack: _DefaultGraphStack = _DefaultGraphStack()
 # Shared helper used in init_scope and executing_eagerly_outside_functions
 # to obtain the outermost context that is not building a function, and the
 # innermost non empty device stack.
-def _get_outer_context_and_inner_device_stack():
+def _get_outer_context_and_inner_device_stack(
+) -> tuple[Callable[[], ContextManager[Graph]], traceable_stack.TraceableStack]:
   """Get the outermost context not building a function."""
   default_graph = get_default_graph()
   outer_context = None
@@ -4625,7 +4713,7 @@ def _get_outer_context_and_inner_device_stack():
 # pylint: disable=g-doc-return-or-yield,line-too-long
 @tf_export("init_scope")
 @tf_contextlib.contextmanager
-def init_scope():
+def init_scope() -> Iterator[None]:
   """A context manager that lifts ops out of control-flow scopes and function-building graphs.
 
   There is often a need to lift variable initialization ops out of control-flow
@@ -4729,7 +4817,7 @@ def init_scope():
 
 
 @tf_export(v1=["executing_eagerly_outside_functions"])
-def executing_eagerly_outside_functions():
+def executing_eagerly_outside_functions() -> bool:
   """Returns True if executing eagerly, even if inside a graph function.
 
   This function will check the outermost context for the program and see if
@@ -4762,7 +4850,7 @@ def executing_eagerly_outside_functions():
 
 
 @tf_export("inside_function", v1=[])
-def inside_function():
+def inside_function() -> bool:
   """Indicates whether the caller code is executing inside a `tf.function`.
 
   Returns:
@@ -4784,7 +4872,7 @@ def inside_function():
 
 @tf_export(v1=["enable_eager_execution"])
 def enable_eager_execution(config=None, device_policy=None,
-                           execution_mode=None):
+                           execution_mode=None) -> None:
   """Enables eager execution for the lifetime of this program.
 
   Eager execution provides an imperative interface to TensorFlow. With eager
@@ -4861,7 +4949,7 @@ def enable_eager_execution(config=None, device_policy=None,
 
 
 @tf_export(v1=["disable_eager_execution"])
-def disable_eager_execution():
+def disable_eager_execution() -> None:
   """Disables eager execution.
 
   This function can only be called before any Graphs, Ops, or Tensors have been
@@ -4978,7 +5066,7 @@ def eager_run(main=None, argv=None) -> NoReturn:
 
 
 @tf_export(v1=["reset_default_graph"])
-def reset_default_graph():
+def reset_default_graph() -> None:
   """Clears the default graph stack and resets the global default graph.
 
   NOTE: The default graph is a property of the current thread. This
@@ -5042,7 +5130,7 @@ def has_default_graph() -> bool:
 
 # Exported due to b/171079555
 @tf_export("__internal__.get_name_scope", v1=[])
-def get_name_scope():
+def get_name_scope() -> str:
   """Returns the current name scope in the default_graph.
 
   For example:
@@ -5080,7 +5168,7 @@ def _assert_same_graph(original_item, item) -> None:
         (item, original_item, graph, original_graph))
 
 
-def _get_graph_from_inputs(op_input_list, graph=None):
+def _get_graph_from_inputs(op_input_list, graph=None) -> Graph:
   """Returns the appropriate graph to use for the given inputs.
 
   This library method provides a consistent algorithm for choosing the graph
@@ -5305,7 +5393,7 @@ def dismantle_graph(graph) -> None:
 
 
 @tf_export(v1=["add_to_collection"])
-def add_to_collection(name, value):
+def add_to_collection(name, value) -> None:
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
   See `tf.Graph.add_to_collection`
@@ -5325,7 +5413,7 @@ def add_to_collection(name, value):
 
 
 @tf_export(v1=["add_to_collections"])
-def add_to_collections(names, value):
+def add_to_collections(names, value) -> None:
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 
   See `tf.Graph.add_to_collections`
@@ -5345,7 +5433,7 @@ def add_to_collections(names, value):
 
 
 @tf_export(v1=["get_collection_ref"])
-def get_collection_ref(key):
+def get_collection_ref(key) -> list[Any]:
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
   See `tf.Graph.get_collection_ref`
@@ -5369,7 +5457,7 @@ def get_collection_ref(key):
 
 
 @tf_export(v1=["get_collection"])
-def get_collection(key, scope=None):
+def get_collection(key, scope=None) -> list[Any]:
   """Wrapper for `Graph.get_collection()` using the default graph.
 
   See `tf.Graph.get_collection`
@@ -5397,12 +5485,14 @@ def get_collection(key, scope=None):
   return get_default_graph().get_collection(key, scope)
 
 
-def get_all_collection_keys():
+def get_all_collection_keys() -> list[str]:
   """Returns a list of collections used in the default graph."""
   return get_default_graph().get_all_collection_keys()
 
 
-def name_scope(name, default_name=None, values=None, skip_on_eager=True):
+def name_scope(
+    name, default_name=None, values=None, skip_on_eager=True,
+) -> ContextManager[Optional[str]]:
   """Internal-only entry point for `name_scope*`.
 
   Internal ops do not use the public API and instead rely on
@@ -5447,7 +5537,7 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   return name_scope_v2(name or "")
 
 
-class internal_name_scope_v1(object):  # pylint: disable=invalid-name
+class internal_name_scope_v1(contextlib.AbstractContextManager[str]):  # pylint: disable=invalid-name
   """Graph-only version of `name_scope_v1`."""
 
   @property
@@ -5473,7 +5563,7 @@ class internal_name_scope_v1(object):  # pylint: disable=invalid-name
     self._default_name = default_name
     self._values = values
 
-  def __enter__(self):
+  def __enter__(self) -> str:
     """Start the scope block.
 
     Returns:
@@ -5523,7 +5613,7 @@ class internal_name_scope_v1(object):  # pylint: disable=invalid-name
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
 @tf_export(v1=["name_scope"])
-class name_scope_v1(object):  # pylint: disable=invalid-name
+class name_scope_v1(contextlib.AbstractContextManager[Optional[str]]):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
@@ -5551,7 +5641,7 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
   def name(self):
     return self._name
 
-  def __init__(self, name, default_name=None, values=None):
+  def __init__(self, name, default_name=None, values=None) -> None:
     """Initialize the context manager.
 
     Args:
@@ -5566,15 +5656,15 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
         name, default_name, values, skip_on_eager=False)
     self._name = default_name if name is None else name
 
-  def __enter__(self):
+  def __enter__(self) -> Optional[str]:
     return self._name_scope.__enter__()
 
-  def __exit__(self, *exc_info):
+  def __exit__(self, *exc_info) -> Optional[bool]:
     return self._name_scope.__exit__(*exc_info)
 
 
 @tf_export("get_current_name_scope", v1=[])
-def get_current_name_scope():
+def get_current_name_scope() -> str:
   """Returns current full name scope specified by `tf.name_scope(...)`s.
 
   For example,
@@ -5609,7 +5699,7 @@ def get_current_name_scope():
 
 
 @tf_export("name_scope", v1=[])
-class name_scope_v2(object):
+class name_scope_v2(contextlib.AbstractContextManager[str]):
   """A context manager for use when defining a Python op.
 
   This context manager pushes a name scope, which will make the name of all
@@ -5637,7 +5727,7 @@ class name_scope_v2(object):
 
   __slots__ = ["_name", "_exit_fns"]
 
-  def __init__(self, name):
+  def __init__(self, name) -> None:
     """Initialize the context manager.
 
     Args:
@@ -5655,7 +5745,7 @@ class name_scope_v2(object):
   def name(self):
     return self._name
 
-  def __enter__(self):
+  def __enter__(self) -> str:
     """Start the scope block.
 
     Returns:
@@ -5689,14 +5779,16 @@ class name_scope_v2(object):
       self._exit_fns.append(scope.__exit__)
     return scope_name
 
-  def __exit__(self, type_arg, value_arg, traceback_arg):
+  def __exit__(
+      self, type_arg: None, value_arg: None, traceback_arg: None,
+  ) -> bool:
     self._exit_fns.pop()(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
 
-  def __getstate__(self):
+  def __getstate__(self) -> tuple[str, list[Callable[..., Any]]]:
     return self._name, self._exit_fns
 
-  def __setstate__(self, state):
+  def __setstate__(self, state) -> None:
     self._name = state[0]
     self._exit_fns = state[1]
 
@@ -5760,7 +5852,7 @@ def prepend_name_scope(name: str, import_scope) -> str:
 # pylint: disable=not-context-manager
 @tf_export(v1=["op_scope"])
 @tf_contextlib.contextmanager
-def op_scope(values, name, default_name=None):
+def op_scope(values, name, default_name=None) -> Iterator[Optional[str]]:
   """DEPRECATED. Same as name_scope above, just different argument order."""
   logging.warn("tf.op_scope(values, name, default_name) is deprecated,"
                " use tf.name_scope(name, default_name, values)")
@@ -5799,7 +5891,9 @@ def register_proto_function(collection_name,
                                     collection_name)
 
 
-def get_collection_proto_type(collection_name):
+def get_collection_proto_type(
+    collection_name,
+) -> Optional[type[message.Message]]:
   """Returns the proto_type for collection_name."""
   try:
     return _proto_function_registry.lookup(collection_name)[0]
@@ -5807,7 +5901,9 @@ def get_collection_proto_type(collection_name):
     return None
 
 
-def get_to_proto_function(collection_name):
+def get_to_proto_function(
+    collection_name,
+) -> Optional[Callable[[Any], message.Message]]:
   """Returns the to_proto function for collection_name."""
   try:
     return _proto_function_registry.lookup(collection_name)[1]
@@ -5815,7 +5911,9 @@ def get_to_proto_function(collection_name):
     return None
 
 
-def get_from_proto_function(collection_name):
+def get_from_proto_function(
+    collection_name,
+) -> Optional[Callable[[message.Message], Any]]:
   """Returns the from_proto function for collection_name."""
   try:
     return _proto_function_registry.lookup(collection_name)[2]
@@ -5823,7 +5921,9 @@ def get_from_proto_function(collection_name):
     return None
 
 
-def _op_to_colocate_with(v, graph):
+def _op_to_colocate_with(
+    v, graph,
+) -> tuple[Optional[Operation], Optional[Callable[[], None]]]:
   """Operation object corresponding to v to use for colocation constraints."""
   if v is None:
     return None, None
@@ -5860,7 +5960,7 @@ def _op_to_colocate_with(v, graph):
 # Helper functions for op wrapper modules generated by `python_op_gen`.
 
 
-def to_raw_op(f):
+def to_raw_op(f: types.FunctionType) -> Callable[..., Any]:
   """Make a given op wrapper function `f` raw.
 
   Raw op wrappers can only be called with keyword arguments.
@@ -5916,7 +6016,9 @@ def add_exit_callback_to_default_func_graph(fn) -> None:
   default_graph._add_scope_exit_callback(fn)  # pylint: disable=protected-access
 
 
-def _reconstruct_sequence_inputs(op_def, inputs, attrs):
+def _reconstruct_sequence_inputs(
+    op_def, inputs, attrs,
+) -> list[Union[tensor_lib.Tensor, list[tensor_lib.Tensor]]]:
   """Regroups a flat list of input tensors into scalar and sequence inputs.
 
   Args:
@@ -5967,20 +6069,20 @@ class PromoMode(enum.Enum):
 _dtype_conversion_mode: PromoMode = PromoMode.OFF
 
 
-def get_dtype_conversion_mode():
+def get_dtype_conversion_mode() -> PromoMode:
   return _dtype_conversion_mode
 
 
 # TODO(b/289395872): Make sure all WeakTensor construction is guarded with this
 # check.
-def is_auto_dtype_conversion_enabled():
+def is_auto_dtype_conversion_enabled() -> bool:
   return (
       _dtype_conversion_mode == PromoMode.ALL
       or _dtype_conversion_mode == PromoMode.SAFE
   )
 
 
-def is_numpy_style_type_promotion():
+def is_numpy_style_type_promotion() -> bool:
   return _dtype_conversion_mode == PromoMode.LEGACY
 
 
@@ -5996,7 +6098,7 @@ def set_dtype_conversion_mode(dtype_conversion_mode) -> None:
   _dtype_conversion_mode = _get_promo_mode_enum(dtype_conversion_mode)
 
 
-def _get_promo_mode_enum(dtype_conversion_mode):
+def _get_promo_mode_enum(dtype_conversion_mode) -> PromoMode:
   """Returns the corresponding PromoMode enum value from string."""
   if dtype_conversion_mode == "off":
     return PromoMode.OFF
@@ -6074,7 +6176,7 @@ def _copy_handle_data_to_arg_def(tensor, arg_def) -> None:
 
 
 @tf_export("is_symbolic_tensor", v1=["is_symbolic_tensor"])
-def is_symbolic_tensor(tensor):
+def is_symbolic_tensor(tensor) -> bool:
   """Test if `tensor` is a symbolic Tensor.
 
   Args:

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,10 +45,10 @@ ENTRY main {
 )";
 
   auto expected_ir = is_built_with_rocm_ ? R"(
-CHECK: @fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
+CHECK: @{{[a-z_]*}}fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
 )"
                                          : R"(
-CHECK: define void @fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
+CHECK: define void @{{[a-z_]*}}fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
 )";
   CompileAndVerifyIr(hlo_string, expected_ir);
 }

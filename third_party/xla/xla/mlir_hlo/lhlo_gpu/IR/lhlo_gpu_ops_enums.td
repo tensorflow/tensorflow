@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -110,6 +110,17 @@ def CublasLtMatmulEpilogue: I32EnumAttr<"CublasLtMatmulEpilogue",
 
 def CublasLtMatmulEpilogueAttr : EnumAttr<LmhloGpuDialect, CublasLtMatmulEpilogue, "epilogue">;
 
+def NormAlgorithmConfigAttr : AttrDef<
+  LmhloGpuDialect, "NormAlgorithmConfig"> {
+  let mnemonic = "norm_algorithm_config";
+  let parameters = (ins
+  "int64_t":$algorithm,
+  "int64_t":$workspace_size
+ );
+  let assemblyFormat = "`<` struct(params) `>`";
+ let summary = "GPU Norm Algorithm configuration";
+}
+
 def FusedMHAAlgorithmConfigAttr : AttrDef<
   LmhloGpuDialect, "FusedMHAAlgorithmConfig"> {
   let mnemonic = "fHMA_algorithm_config";
@@ -142,6 +153,10 @@ def FusedMhaBackwardDagScaleBiasSoftmaxDropout : I32EnumAttrCase<"BackwardScaleB
 def FusedMhaBackwardDagScaleBiasSoftmax : I32EnumAttrCase<"BackwardScaleBiasSoftmax", 1>;
 def FusedMhaBackwardDagScaleBiasMaskSoftmax : I32EnumAttrCase<"BackwardScaleBiasMaskSoftmax", 2>;
 def FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleBiasMaskSoftmaxDropout", 3>;
+def FusedMhaBackwardDagSoftmax : I32EnumAttrCase<"BackwardSoftmax", 4>;
+def FusedMhaBackwardDagSoftmaxDropout : I32EnumAttrCase<"BackwardSoftmaxDropout", 5>;
+def FusedMhaBackwardDagScaleMaskSoftmax : I32EnumAttrCase<"BackwardScaleMaskSoftmax", 6>;
+def FusedMhaBackwardDagScaleMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleMaskSoftmaxDropout", 7>;
 
 def FusedMhaDagSignature: I32EnumAttr<"FusedMhaDagSignature",
     "DAG configuration for Fused Multi-Headed Attention",
@@ -164,7 +179,11 @@ def FusedMhaBackwardDagSignature: I32EnumAttr<"FusedMhaBackwardDagSignature",
     FusedMhaBackwardDagScaleBiasSoftmaxDropout,
     FusedMhaBackwardDagScaleBiasSoftmax,
     FusedMhaBackwardDagScaleBiasMaskSoftmax,
-    FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout]> {
+    FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout,
+    FusedMhaBackwardDagSoftmax,
+    FusedMhaBackwardDagSoftmaxDropout,
+    FusedMhaBackwardDagScaleMaskSoftmax,
+    FusedMhaBackwardDagScaleMaskSoftmaxDropout]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }

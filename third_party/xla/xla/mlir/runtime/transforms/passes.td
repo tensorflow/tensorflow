@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -145,6 +145,17 @@ def ConvertCustomCalls : Pass<"xla-rt-convert-custom-calls", "ModuleOp"> {
   }];
 
   let constructor = "xla::runtime::CreateConvertCustomCallsPass()";
+  let dependentDialects = ["xla::runtime::RuntimeDialect"];
+}
+
+def MoveAllocasToEntryBlock : Pass<"xla-rt-move-allocas-to-entry-block", "ModuleOp"> {
+  let summary = "Move all `memref.alloca` to entry block for all functions";
+
+  let description = [{
+    For all functions, move `memref.alloca` to entry block for coroutine stack safety.
+  }];
+
+  let constructor = "xla::runtime::CreateMoveAllocasToEntryBlockPass()";
   let dependentDialects = ["xla::runtime::RuntimeDialect"];
 }
 

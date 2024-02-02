@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/memset.h"
 
+#include "absl/base/casts.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
 #include "xla/service/gpu/runtime/support.h"
@@ -95,9 +96,9 @@ static absl::StatusOr<uint32_t> ToBitPattern(CustomCall::VariantArg constant) {
   else if (auto i64 = constant.get<int64_t>(); succeeded(i64))
     return truncate(*i64);
   else if (auto bf16 = constant.get<bfloat16>(); succeeded(bf16))
-    return extend(static_cast<uint16_t>(*bf16));
+    return extend(absl::bit_cast<uint16_t>(*bf16));
   else if (auto f16 = constant.get<half>(); succeeded(f16))
-    return extend(static_cast<uint16_t>(*f16));
+    return extend(absl::bit_cast<uint16_t>(*f16));
   else if (auto f32 = constant.get<float>(); succeeded(f32))
     return truncate(*f32);
   else if (auto f64 = constant.get<double>(); succeeded(f64))

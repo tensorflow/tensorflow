@@ -21,11 +21,11 @@ import types as _types
 
 
 # Since TensorFlow Python code now resides in tensorflow_core but TensorFlow
-# ecosystem code (e.g. estimator, but also even tensorflow) imports tensorflow
-# we need to do forwarding between the two. To do so, we use a lazy loader to
-# load and forward the top level modules. We cannot use the LazyLoader defined
-# by tensorflow at tensorflow/python/util/lazy_loader.py as to use that we would
-# already need to import tensorflow. Hence, we define it inline.
+# ecosystem code imports tensorflow, we need to do forwarding between the two.
+# To do so, we use a lazy loader to load and forward the top level modules. We
+# cannot use the LazyLoader defined by tensorflow at
+# tensorflow/python/util/lazy_loader.py as to use that we would already need to
+# import tensorflow. Hence, we define it inline.
 class _LazyLoader(_types.ModuleType):
   """Lazily import a module so that we can forward it."""
 
@@ -78,16 +78,6 @@ _top_level_modules = [
     "tensorflow.summary",  # tensorboard
     "tensorflow.examples",
 ]
-# Estimator needs to be handled separatedly so we can still allow both
-# import tensorflow_estimator and import tensorflow.estimator work
-# Only in the second case do we actually need to do forwarding, the first case
-# already defines most of the hierarchy and eagerly forwarding would result in
-# an import loop.
-if "tensorflow_estimator" not in _sys.modules:
-  _root_estimator = False
-  _top_level_modules.append("tensorflow.estimator")
-else:
-  _root_estimator = True
 
 # Lazy load all of the _top_level_modules, we don't need their names anymore
 for _m in _top_level_modules:

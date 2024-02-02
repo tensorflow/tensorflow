@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -360,7 +360,7 @@ XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
 
     ENTRY test {
       parameter = f32[3]{0} parameter(0)
-      ROOT tuple = (f32[3]{0}, f32[3]{0}) tuple(parameter)
+      ROOT tuple = (f32[3]{0}, f32[2]{0}) tuple(parameter, parameter)
     }
   )";
 

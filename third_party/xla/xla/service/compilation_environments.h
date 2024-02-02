@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,8 +46,9 @@ namespace xla {
 // CompilationEnvironments is not thread-safe.
 class CompilationEnvironments {
  public:
-  using ProcessNewEnvFn = std::function<std::unique_ptr<tsl::protobuf::Message>(
-      std::unique_ptr<tsl::protobuf::Message>)>;
+  using ProcessNewEnvFn =
+      std::function<StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
+          std::unique_ptr<tsl::protobuf::Message>)>;
 
   CompilationEnvironments() = default;
   CompilationEnvironments(const CompilationEnvironments& rhs) { *this = rhs; }
@@ -96,6 +97,8 @@ class CompilationEnvironments {
   T& GetMutableEnv();
   template <typename T>
   const T& GetEnv();
+  template <typename T>
+  bool HasEnv();
 
   // Removes all added environments.
   void Clear() { environments_.clear(); }
@@ -138,12 +141,19 @@ T& CompilationEnvironments::GetMutableEnv() {
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
+
   return tensorflow::down_cast<T&>(*it->second);
 }
 
 template <typename T>
 const T& CompilationEnvironments::GetEnv() {
   return GetMutableEnv<T>();
+}
+
+template <typename T>
+bool CompilationEnvironments::HasEnv() {
+  auto descriptor = T::descriptor();
+  return environments_.find(descriptor) != environments_.end();
 }
 
 }  // namespace xla

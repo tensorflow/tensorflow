@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,10 +35,9 @@ namespace {
 
 class GpuAllGatherOptimizerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
-                                               int64_t num_replicas,
-                                               int64_t num_partitions,
-                                               bool expect_change) {
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module, int64_t num_replicas,
+      int64_t num_partitions, bool expect_change) {
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
@@ -51,7 +50,7 @@ class GpuAllGatherOptimizerTest : public HloTestBase {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   template <HloOpcode oc>
@@ -206,6 +205,25 @@ add.2 = bf16[8,128,1024]{2,1,0} add(all-gather, add.1)
                                                /*expect_change=*/false));
   EXPECT_EQ(CollectiveCount<HloOpcode::kAllGather>(module), 1);
   EXPECT_EQ(CollectiveCount<HloOpcode::kReduceScatter>(module), 1);
+}
+
+TEST_F(GpuAllGatherOptimizerTest, DifferentOperandShapes) {
+  absl::string_view hlo_string = R"(
+HloModule TestModule
+
+ENTRY main {
+param.1 = bf16[8,64,128]{2,1,0} parameter(0)
+param.2 = bf16[8,128,64]{2,1,0} parameter(1)
+all-gather.1 = bf16[8,128,128]{2,1,0} all-gather(param.1), channel_id=5, replica_groups={{0,1},{2,3},{4,5},{6,7}}, dimensions={1}, use_global_device_ids=true
+all-gather.2 = bf16[8,128,128]{2,1,0} all-gather(param.2), channel_id=5, replica_groups={{0,1},{2,3},{4,5},{6,7}}, dimensions={2}, use_global_device_ids=true
+add.1 = bf16[8,128,128]{2,1,0} add(all-gather.1, all-gather.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/8,
+                                               /*num_partitions=*/1,
+                                               /*expect_change=*/false));
 }
 
 }  // namespace

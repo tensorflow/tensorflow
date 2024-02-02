@@ -942,7 +942,7 @@ func.func @missing_metadata() {
 
 // CHECK-LABEL: func @const_with_attrs
 func.func @const_with_attrs(%arg0: tensor<*xi32>, %arg1: tensor<?xi64>) -> (tensor<?xi32>, tensor<?xi64>) {
-  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %{{[a-z0-9_]*}} = "tf.Const"() <{value = dense<-1> : tensor<1xi32>}> : () -> tensor<1xi32>
   // CHECK-NEXT: %{{[a-z0-9_]*}} = "tf.Reshape"(%arg0
   // CHECK-NEXT: %{{.*}} = "tf_device.cluster"() ({
   %minus_one = "tf.Const"() {_replication_info = "cluster",

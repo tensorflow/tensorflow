@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,23 +15,17 @@ the License.
 #ifndef XLA_HLO_UTILS_HLO_LIVE_RANGE_H_
 #define XLA_HLO_UTILS_HLO_LIVE_RANGE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 

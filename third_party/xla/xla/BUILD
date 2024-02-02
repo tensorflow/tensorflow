@@ -23,6 +23,7 @@ package_group(
         "//third_party/mira/...",
         "//third_party/mlcompass/...",
         "//third_party/mlir_edge/model_curriculum/...",
+        "//third_party/py/enzyme_ad/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
         "//third_party/py/tpu_graphs/...",
@@ -47,7 +48,9 @@ package_group(
 )
 
 exports_files(
-    ["run_lit.sh"],
+    [
+        "lit.cfg.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -145,8 +148,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -158,6 +161,38 @@ xla_cc_test(
         ":test",
         ":types",
         ":xla_data_proto_cc",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "compiler_macros",
+    hdrs = ["compiler_macros.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "ef57",
+    srcs = ["ef57.cc"],
+    hdrs = ["ef57.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compiler_macros",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "ef57_test",
+    srcs = ["ef57_test.cc"],
+    deps = [
+        ":ef57",
+        ":test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:log_streamer",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -216,7 +251,9 @@ xla_cc_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.cc"],
-    visibility = [":friends"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         ":test",
         ":types",
@@ -271,7 +308,9 @@ cc_library(
     hdrs = ["status.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@local_tsl//tsl/platform:status",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -326,8 +365,8 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
     ],
@@ -340,8 +379,8 @@ xla_cc_test(
         ":test",
         ":types",
         ":util",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -431,15 +470,16 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -575,9 +615,9 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -605,9 +645,9 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
@@ -636,8 +676,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -668,8 +708,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1075,6 +1115,7 @@ cc_library(
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
             "@local_tsl//tsl/platform:logging",
+            "@local_tsl//tsl/platform:protobuf",
             "@local_tsl//tsl/util:command_line_flags",
         ],
 )
@@ -1187,15 +1228,6 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "litfiles",
-    srcs = [
-        "runlit.cfg.py",
-        "runlit.site.cfg.py",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 # -----------------------------------------------------------------------------
 
 # copybara:uncomment_begin(google-only)
@@ -1210,7 +1242,7 @@ filegroup(
 #     name = "xla_py_pb2",
 #     testonly = 0,
 #     api_version = 2,
-#     compatible_with = ["//buildenv/target:gce"],
+#     compatible_with = ["//buildenv/target:non_prod"],
 #     visibility = [":friends"],
 #     deps = [":xla_proto"],
 # )

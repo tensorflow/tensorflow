@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@ Status DecomposeStochasticConvert(HloComputation* comp,
   }
 
   // TODO(b/232442915): Add support for converting to floats.
-  return InternalError("Unsupported stochastic convert: from %s to %s",
+  return Internal("Unsupported stochastic convert: from %s to %s",
                        PrimitiveType_Name(from_type),
                        PrimitiveType_Name(to_type));
 }

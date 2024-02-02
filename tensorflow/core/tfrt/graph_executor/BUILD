@@ -1,7 +1,7 @@
 # Placeholder: load py_proto_library
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_object", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,6 +16,7 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/serving/servables/tfrt/...",
         # copybara:uncomment "//smartass/brain/inference/...",
+        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
         # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
@@ -38,6 +39,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -74,6 +76,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/mlir/tfrt:transforms/update_op_cost_in_tfrt_mlir",
@@ -98,8 +101,10 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/mlrt/bytecode:executable",
+        "//tensorflow/core/tfrt/mlrt/bytecode:function",
         "//tensorflow/core/tfrt/mlrt/interpreter:context",
         "//tensorflow/core/tfrt/mlrt/interpreter:execute",
+        "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/mlrt/kernel:context",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:step_id",
@@ -110,6 +115,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -120,6 +126,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -181,6 +188,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
     ],
 )
@@ -204,6 +212,10 @@ tf_proto_library(
     name = "test_config_proto",
     testonly = True,
     srcs = ["test_config.proto"],
+    visibility = if_google(
+        [":friends"],
+        ["//visibility:public"],
+    ),
 )
 
 tf_cc_test(

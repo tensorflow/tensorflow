@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -438,6 +438,8 @@ class Array {
 
     OwnedBuffer<int64_t> sizes(starts.size());
     for (int64_t i = 0; i < starts.size(); ++i) {
+      CHECK_GE(starts[i], 0);
+      CHECK_LE(limits[i], dim(i));
       sizes[i] = limits[i] - starts[i];
     }
     Array<T> result(sizes.span());

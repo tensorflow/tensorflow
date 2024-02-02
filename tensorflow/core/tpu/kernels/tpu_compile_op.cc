@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"

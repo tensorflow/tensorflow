@@ -1,3 +1,7 @@
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -30,6 +34,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_tsl//tsl/profiler/utils:xplane_schema",
     ],
     alwayslink = True,
 )
@@ -46,4 +51,43 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "plugin_tracer_impl",
+    srcs = ["plugin_tracer_impl.cc"],
+    hdrs = ["plugin_tracer_impl.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":profiler_c_api_hdrs",
+        ":profiler_error",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/profiler/lib:profiler_collection",
+        "@local_tsl//tsl/profiler/lib:profiler_factory",
+        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "plugin_tracer_impl_test",
+    srcs = ["plugin_tracer_impl_test.cc"],
+    deps = [
+        ":plugin_tracer",
+        ":plugin_tracer_impl",
+        ":profiler_c_api_hdrs",
+        ":profiler_error",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/profiler/lib:profiler_factory",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_tsl//tsl/profiler/utils:xplane_builder",
+        "@local_tsl//tsl/profiler/utils:xplane_visitor",
+    ],
 )

@@ -602,6 +602,10 @@ class Options(options_lib.OptionsBase):
       ),
       default_factory=lambda: True if test_mode.TEST_MODE else None,
   )
+  dataset_name = options_lib.create_option(
+      name="dataset_name",
+      ty=str,
+      docstring="A name for the dataset, to help in debugging.")
 
   threading = options_lib.create_option(
       name="threading",
@@ -658,6 +662,8 @@ class Options(options_lib.OptionsBase):
       pb.symbolic_checkpoint = self.experimental_symbolic_checkpoint
     if self.experimental_warm_start is not None:
       pb.warm_start = self.experimental_warm_start
+    if self.dataset_name is not None:
+      pb.dataset_name = self.dataset_name
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -677,6 +683,8 @@ class Options(options_lib.OptionsBase):
       self.experimental_symbolic_checkpoint = pb.symbolic_checkpoint
     if pb.WhichOneof("optional_warm_start") is not None:
       self.experimental_warm_start = pb.warm_start
+    if pb.WhichOneof("optional_dataset_name") is not None:
+      self.dataset_name = pb.dataset_name
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

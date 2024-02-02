@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,18 +24,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using tsl::testing::IsOkAndHolds;
 
 int64_t CountInstructions(const HloComputation& computation, HloOpcode opcode) {
   int64_t count = 0;
@@ -107,11 +108,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   LoopDoubleBufferTransformer double_buffer;
-  HloDCE dce;
   TupleSimplifier tuple_simp;
-  ASSERT_IS_OK(double_buffer.Run(module.get()).status());
-  ASSERT_IS_OK(tuple_simp.Run(module.get()).status());
-  ASSERT_IS_OK(dce.Run(module.get()).status());
+  bool changed;
+  TF_ASSERT_OK_AND_ASSIGN(changed, double_buffer.Run(module.get()));
+  EXPECT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(changed, tuple_simp.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   HloInstruction* while_instruction;
   for (auto instr : module->entry_computation()->instructions()) {
@@ -178,11 +180,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   LoopDoubleBufferTransformer double_buffer;
-  HloDCE dce;
   TupleSimplifier tuple_simp;
-  ASSERT_IS_OK(double_buffer.Run(module.get()).status());
-  ASSERT_IS_OK(tuple_simp.Run(module.get()).status());
-  ASSERT_IS_OK(dce.Run(module.get()).status());
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
 
   // We expect that for the while loop, no further copy needs to be added to the
   // module.
@@ -245,11 +245,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   LoopDoubleBufferTransformer double_buffer;
-  HloDCE dce;
   TupleSimplifier tuple_simp;
-  ASSERT_IS_OK(double_buffer.Run(module.get()).status());
-  ASSERT_IS_OK(tuple_simp.Run(module.get()).status());
-  ASSERT_IS_OK(dce.Run(module.get()).status());
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
 
   HloInstruction* while_instruction;
   for (auto instr : module->entry_computation()->instructions()) {
@@ -319,11 +317,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
   LoopDoubleBufferTransformer double_buffer;
-  HloDCE dce;
   TupleSimplifier tuple_simp;
-  ASSERT_IS_OK(double_buffer.Run(module.get()).status());
-  ASSERT_IS_OK(tuple_simp.Run(module.get()).status());
-  ASSERT_IS_OK(dce.Run(module.get()).status());
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(tuple_simp.Run(module.get()), IsOkAndHolds(true));
 
   HloInstruction* while_instruction;
   for (auto instr : module->entry_computation()->instructions()) {
@@ -346,16 +342,134 @@ ENTRY main {
   absl::flat_hash_set<int64_t> channel_ids;
   for (HloInstruction* ar : while_instruction->while_body()->instructions()) {
     if (ar->opcode() == HloOpcode::kAllReduceStart) {
-      // We expect that after unrolling, allreduces should not have any control
+      // We expect that after unrolling, all-reduces should not have any control
       // deps.
       EXPECT_EQ(ar->control_predecessors().size(), 0);
       channel_ids.insert(*(ar->channel_id()));
     }
   }
-  // we expect that all 2 allreduces will have different channel ids.
+  // we expect that all 2 all-reduces will have different channel ids.
   EXPECT_EQ(channel_ids.size(), 2);
 }
 
+// The following 2 tests also address the regression described here:
+// https://github.com/openxla/xla/issues/6353
+TEST_F(GpuLoopDoubleBufferTransformerTest, NestedWhileLoopRemainsFlattened) {
+  const char* const kModuleString = R"(
+HloModule loop_unrolling_nested_while_loop_remains_flattened
+
+condition_nested {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body_nested {
+ input_tuple = (s32[]) parameter(0)
+ cond = s32[] get-tuple-element(input_tuple), index=0
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output = (s32[]) tuple(cond_plus_1)
+}
+
+condition {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body {
+  input_tuple = (s32[]) parameter(0)
+  ROOT output = (s32[]) while(input_tuple), condition=condition_nested, body=body_nested
+}
+
+ENTRY main {
+ param_0 = (s32[]) parameter(0)
+ ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"10"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  LoopDoubleBufferTransformer double_buffer;
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+
+  absl::flat_hash_set<const HloComputation*> while_loops_callees;
+
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->opcode() == HloOpcode::kWhile) {
+        EXPECT_TRUE(
+            while_loops_callees.insert(instr->while_condition()).second);
+        EXPECT_TRUE(while_loops_callees.insert(instr->while_body()).second);
+      }
+    }
+  }
+
+  // We expect that the nested while loop has been duplicated, along with its
+  // associated computations.
+  EXPECT_EQ(while_loops_callees.size(), 6);
+}
+
+TEST_F(GpuLoopDoubleBufferTransformerTest,
+       NestedWhileLoopRemainsFlattenedOddTripCount) {
+  const char* const kModuleString = R"(
+HloModule loop_unrolling_nested_while_loop_remains_flattened
+
+condition_nested {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body_nested {
+ input_tuple = (s32[]) parameter(0)
+ cond = s32[] get-tuple-element(input_tuple), index=0
+ one = s32[] constant(1)
+ cond_plus_1 = s32[] add(cond, one)
+ ROOT output = (s32[]) tuple(cond_plus_1)
+}
+
+condition {
+  input_tuple = (s32[]) parameter(0)
+  cond = s32[] get-tuple-element(input_tuple), index=0
+  trip_count = s32[] constant(10)
+  ROOT done = pred[] compare(cond, trip_count), direction=LT
+}
+
+body {
+  input_tuple = (s32[]) parameter(0)
+  ROOT output = (s32[]) while(input_tuple), condition=condition_nested, body=body_nested
+}
+
+ENTRY main {
+ param_0 = (s32[]) parameter(0)
+ ROOT while = (s32[]) while(param_0), condition=condition, body=body, backend_config={"known_trip_count":{"n":"11"}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  LoopDoubleBufferTransformer double_buffer;
+  EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
+
+  absl::flat_hash_set<const HloComputation*> while_loops_callees;
+
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      if (instr->opcode() == HloOpcode::kWhile) {
+        EXPECT_TRUE(
+            while_loops_callees.insert(instr->while_condition()).second);
+        EXPECT_TRUE(while_loops_callees.insert(instr->while_body()).second);
+      }
+    }
+  }
+
+  // We expect that the nested while loop has been duplicated, along with its
+  // associated computations.
+  EXPECT_EQ(while_loops_callees.size(), 8);
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

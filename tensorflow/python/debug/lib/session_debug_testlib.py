@@ -1546,8 +1546,9 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
         executor_step_indices = sorted(
             executor_step_indices, key=lambda x: x[0])
         for i in range(len(executor_step_indices) - 1):
-          self.assertEquals(executor_step_indices[i][1] + 1,
-                            executor_step_indices[i + 1][1])
+          self.assertEqual(
+              executor_step_indices[i][1] + 1, executor_step_indices[i + 1][1]
+          )
 
         # Assert that session_run_index increase monotonically.
         session_run_indices = zip(timestamps, session_run_indices)

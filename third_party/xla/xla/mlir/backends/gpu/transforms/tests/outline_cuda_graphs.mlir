@@ -146,13 +146,17 @@ func.func @func(%arg0: memref<?xf32>) {
 func.func private @external()
 
 // CHECK: rt.export @[[CAPTURE]]
-// CHECK: func.func @[[CAPTURE]](%arg0: memref<?xf32>)
+// CHECK: func.func @[[CAPTURE]](
+// CHECK:   %arg0: memref<?xf32>
+// CHECK: )
 // CHECK-NEXT: arith.constant 1
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 
 // CHECK: rt.export @[[CAPTURE_0]]
-// CHECK: func.func @[[CAPTURE_0]](%arg0: memref<?xf32>)
+// CHECK: func.func @[[CAPTURE_0]](
+// CHECK:   %arg0: memref<?xf32>
+// CHECK: )
 // CHECK-NEXT: arith.constant 2
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
@@ -665,8 +669,9 @@ func.func @func(%arg0: memref<?xf32> {lmhlo.constant_name = "cst0"},
 }
 
 // CHECK: func @local_xla.gpu.graph.capture(
-// CHECK-SAME:  %[[ARG0]]: memref<?xf32> {lmhlo.constant_name = "cst0"},
-// CHECK-SAME:  %[[ARG1]]: memref<?xf32> {lmhlo.constant_name = "cst1"})
+// CHECK-SAME:  %[[ARG0]]: memref<?xf32> {lmhlo.constant_name = "cst0",
+// CHECK-SAME:  %[[ARG1]]: memref<?xf32> {lmhlo.constant_name = "cst1",
+// CHECK-SAME: )
 // CHECK-NEXT:  %[[C1:.*]] = arith.constant 1
 // CHECK-NEXT:  gpu.launch_func @gpu_module::@fn0
 // CHECK-SAME:    blocks in (%[[C1]], %[[C1]], %[[C1]])

@@ -2,7 +2,7 @@ load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl:tsl.bzl", "set_external_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 

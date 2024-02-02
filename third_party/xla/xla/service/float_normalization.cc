@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -206,16 +206,36 @@ Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
                 HloInstruction::CreateConvert(original_subshape, leaf));
           }));
 
+  std::vector<HloInstruction*> conversions_to_simplify;
   for (auto* user : materialized_users) {
     // If the user is a low-precision -> high-precision convert, we can replace
     // it with `hlo`, which has its input changed to high-precision.
+    // But we should not replace it immediately, it can lead to type mismatch in
+    // the below specific case:
+    //         Op
+    //   bf16 /  \.
+    //    Convert \ bf16
+    //  fp32 |    /
+    //       Tuple [fp32, bf16]
+    // If we run the float normalization pass and replace `Convert` at first,
+    // the result will be:
+    //         Op
+    //    fp32 |
+    //      Convert
+    //   bf16 / \ bf16
+    //       Tuple [fp32, bf16]
+    // So we should keep the 'Convert' and replace it after all of the other
+    // users has been replaced.
     if (user->opcode() == HloOpcode::kConvert &&
         user->shape().element_type() == to && to == HighPrecisionType() &&
         from == LowPrecisionType()) {
-      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
+      conversions_to_simplify.emplace_back(user);
     } else {
       TF_RETURN_IF_ERROR(hlo->ReplaceUseWithDifferentShape(user, new_hlo));
     }
+  }
+  for (auto* convert : conversions_to_simplify) {
+    TF_RETURN_IF_ERROR(convert->ReplaceAllUsesWith(hlo));
   }
   if (is_root) {
     computation->set_root_instruction(new_hlo, /*accept_different_shape=*/true);
@@ -335,6 +355,9 @@ Status FloatNormalizationVisitor::HandleMultipleOutputs(HloInstruction* hlo) {
 
   std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
+    if (comp->IsCollectiveCalledComputation()) {
+      continue;
+    }
     bool comp_has_low_precision = false;
     if (comp->root_instruction()->shape().element_type() ==
         HighPrecisionType()) {
@@ -411,6 +434,9 @@ Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
 
   std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
+    if (comp->IsCollectiveCalledComputation()) {
+      continue;
+    }
     bool comp_has_low_precision = false;
     high_prec_count += CountSubshapesWithMatchingType(
         comp->root_instruction()->shape(), HighPrecisionType());
@@ -549,6 +575,11 @@ StatusOr<bool> FloatNormalization::Run(
                         ", before:\n" + module->ToString());
   FloatNormalizationVisitor visitor(float_support_, this);
   for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
+    if (comp->IsCollectiveCalledComputation()) {
+      XLA_VLOG_LINES(2, "Skip processing collective called computation: " +
+                            comp->ToString());
+      continue;
+    }
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
   XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +

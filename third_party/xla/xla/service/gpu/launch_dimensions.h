@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 namespace gpu {
@@ -29,44 +30,40 @@ namespace gpu {
 // number of threads per block.
 class LaunchDimensions {
  public:
-  struct Dim3D {
-    int64_t x, y, z;
-
-    bool operator==(const Dim3D& other) const {
-      return x == other.x && y == other.y && z == other.z;
-    }
-
-    bool operator!=(const Dim3D& other) const { return !(*this == other); }
-  };
-
   // The default constructor creates a launch dimension that indicate
   // single-threaded execution.
   LaunchDimensions()
-      : block_counts_({1, 1, 1}), thread_counts_per_block_({1, 1, 1}) {}
+      : block_counts_(se::BlockDim()),
+        thread_counts_per_block_(se::ThreadDim()) {}
 
-  LaunchDimensions(int64_t block_x_count, int64_t thread_x_count_per_block)
-      : block_counts_({block_x_count, 1, 1}),
-        thread_counts_per_block_({thread_x_count_per_block, 1, 1}) {}
+  LaunchDimensions(uint64_t block_x_count, uint64_t thread_x_count_per_block)
+      : block_counts_(block_x_count, 1, 1),
+        thread_counts_per_block_(thread_x_count_per_block, 1, 1) {}
 
-  LaunchDimensions(const Dim3D& block_counts,
-                   const Dim3D& thread_counts_per_block)
+  LaunchDimensions(const se::BlockDim& block_counts,
+                   const se::ThreadDim& thread_counts_per_block)
       : block_counts_(block_counts),
         thread_counts_per_block_(thread_counts_per_block) {}
 
-  Dim3D block_counts() const { return block_counts_; }
+  se::BlockDim block_counts() const { return block_counts_; }
 
-  Dim3D thread_counts_per_block() const { return thread_counts_per_block_; }
+  se::ThreadDim thread_counts_per_block() const {
+    return thread_counts_per_block_;
+  }
+
+  // Returns the total number of blocks.
+  uint64_t num_blocks() const {
+    return block_counts_.x * block_counts_.y * block_counts_.z;
+  }
 
   // Returns the total number of threads in a block.
-  int64_t total_nb_threads() const {
+  uint64_t num_threads_per_block() const {
     return thread_counts_per_block_.x * thread_counts_per_block_.y *
            thread_counts_per_block_.z;
   }
 
-  int64_t launch_bound() const {
-    return block_counts_.x * thread_counts_per_block_.x * block_counts_.y *
-           thread_counts_per_block_.y * block_counts_.z *
-           thread_counts_per_block_.z;
+  uint64_t launch_bound() const {
+    return num_blocks() * num_threads_per_block();
   }
 
   std::string ToString() const {
@@ -87,8 +84,8 @@ class LaunchDimensions {
   }
 
  private:
-  Dim3D block_counts_;
-  Dim3D thread_counts_per_block_;
+  se::BlockDim block_counts_;
+  se::ThreadDim thread_counts_per_block_;
 };
 
 std::ostream& operator<<(std::ostream& out,
@@ -105,7 +102,7 @@ struct LaunchDimensionsConfig {
   // a block of unroll_factor elements. Otherwise each thread will
   // handle only unroll_factor.
   bool few_waves = false;
-  // If `row_optimized` is true, then the block size will equal to
+  // If `row_vectorized` is true, then the block size will equal to
   // `hlo.shape().dimensions().back()/unroll_factor`.
   // Currently few_waves and row_vectorized do not work together.
   bool row_vectorized = false;
@@ -124,7 +121,7 @@ int64_t ThreadsPerBlockRowVectorized(
     LaunchDimensionsConfig dim_config);
 
 // Calculates the launch dimensions used to invoke `hlo`.
-StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config = {});
 

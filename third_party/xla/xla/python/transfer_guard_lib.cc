@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "xla/python/status_casters.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/status.h"
 #include "xla/util.h"
 

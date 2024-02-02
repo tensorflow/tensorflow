@@ -1,8 +1,8 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_binary")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//xla:xla.bzl", "xla_cc_binary")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -27,6 +27,7 @@ cc_library(
         "//xla/mlir_hlo:lhlo_gpu",
         "//xla/service:backend",
         "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
         "//xla/service:hlo_parser",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
@@ -43,6 +44,7 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

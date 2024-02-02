@@ -14,15 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_barrier_proxy.h"
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -46,15 +50,14 @@ using tsl::CoordinationServiceAgent;
 class MockCoordinationServiceAgent : public CoordinationServiceAgent {
  public:
   MOCK_METHOD(Status, WaitAtBarrier,
-              (const std::string& barrier_id, absl::Duration timeout,
+              (std::string_view barrier_id, absl::Duration timeout,
                const std::vector<CoordinatedTask>& tasks),
               (override));
-  MOCK_METHOD(Status, CancelBarrier, (const std::string& barrier_id),
-              (override));
+  MOCK_METHOD(Status, CancelBarrier, (std::string_view barrier_id), (override));
 
   // All the following member functions are not needed for testing.
   MOCK_METHOD(Status, Initialize,
-              (Env * env, const std::string& job_name, int task_id,
+              (Env * env, std::string_view job_name, int task_id,
                const CoordinationServiceConfig& configs,
                std::unique_ptr<CoordinationClient> leader_client,
                StatusCallback error_fn),
@@ -78,46 +81,38 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(Status, ReportError, (const Status& error), (override));
   MOCK_METHOD(Status, Shutdown, (), (override));
   MOCK_METHOD(Status, Reset, (), (override));
-  MOCK_METHOD(StatusOr<std::string>, GetKeyValue, (const std::string& key),
+  MOCK_METHOD(StatusOr<std::string>, GetKeyValue, (std::string_view key),
               (override));
   MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
-              (const char* key, int64_t key_size), (override));
-  MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
-              (const std::string& key, absl::Duration timeout), (override));
+              (std::string_view key, absl::Duration timeout), (override));
   MOCK_METHOD(std::shared_ptr<CallOptions>, GetKeyValueAsync,
-              (const std::string& key, StatusOrValueCallback done), (override));
-  MOCK_METHOD(StatusOr<std::string>, TryGetKeyValue, (const std::string& key),
+              (std::string_view key, StatusOrValueCallback done), (override));
+  MOCK_METHOD(StatusOr<std::string>, TryGetKeyValue, (std::string_view key),
               (override));
   MOCK_METHOD(StatusOr<std::vector<KeyValueEntry>>, GetKeyValueDir,
-              (const std::string& key), (override));
+              (std::string_view key), (override));
   MOCK_METHOD(void, GetKeyValueDirAsync,
-              (const std::string& key, StatusOrValueDirCallback done),
+              (std::string_view key, StatusOrValueDirCallback done),
               (override));
   MOCK_METHOD(Status, InsertKeyValue,
-              (const std::string& key, const std::string& value), (override));
-  MOCK_METHOD(Status, InsertKeyValue,
-              (const char* key, int64_t key_size, const char* value,
-               int64_t value_size),
-              (override));
-  MOCK_METHOD(Status, DeleteKeyValue, (const std::string& key), (override));
-  MOCK_METHOD(Status, DeleteKeyValue, (const char* key, int64_t key_size),
-              (override));
+              (std::string_view key, std::string_view value), (override));
+  MOCK_METHOD(Status, DeleteKeyValue, (std::string_view key), (override));
   MOCK_METHOD(Status, UpdateKeyValue,
-              (const std::string& key, const std::string& value), (override));
+              (std::string_view key, std::string_view value), (override));
   MOCK_METHOD(Status, StartWatchKey,
-              (const std::string& key, ChangedKeyValuesCallback on_change),
+              (std::string_view key, ChangedKeyValuesCallback on_change),
               (override));
-  MOCK_METHOD(Status, StopWatchKey, (const std::string& key), (override));
+  MOCK_METHOD(Status, StopWatchKey, (std::string_view key), (override));
   MOCK_METHOD(void, WaitAtBarrierAsync,
-              (const std::string& barrier_id, absl::Duration timeout,
+              (std::string_view barrier_id, absl::Duration timeout,
                const std::vector<CoordinatedTask>& tasks, StatusCallback done),
               (override));
   MOCK_METHOD(void, CancelBarrierAsync,
-              (const std::string& barrier_id, StatusCallback done), (override));
+              (std::string_view barrier_id, StatusCallback done), (override));
   MOCK_METHOD(StatusOr<Env*>, GetEnv, (), (override));
   MOCK_METHOD(void, SetError, (const Status& error), (override));
   MOCK_METHOD(Status, ActivateWatch,
-              (const std::string& key,
+              (std::string_view key,
                (const std::map<std::string, std::string>&)),
               (override));
 };

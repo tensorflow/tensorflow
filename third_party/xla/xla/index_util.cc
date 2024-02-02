@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,19 @@ limitations under the License.
 #include "xla/index_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 
-/* static */ std::vector<int64_t> IndexUtil::LinearIndexToMultidimensionalIndex(
+/* static */ DimensionVector IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64_t linear_index) {
   DCHECK_GE(linear_index, 0);
   DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
@@ -37,7 +40,7 @@ namespace xla {
   // I{L(1)} = (linear_index / D{L(0)}) % D{L(1)}
   // I{L(2)} = (linear_index / (D{L(0)} * D{L(1)})) % D{L(2)}
   // ...
-  std::vector<int64_t> multi_index(shape.dimensions_size());
+  DimensionVector multi_index(shape.dimensions_size());
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
   int64_t divisor = 1;

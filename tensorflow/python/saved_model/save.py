@@ -25,6 +25,7 @@ from absl import logging
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
@@ -843,6 +844,57 @@ def _trace_gradient_functions(graph: ops.Graph, saveable_view: _SaveableView):
       saveable_view.gradient_defs.append(grad_def)
 
 
+def _strip_debug_nodes(meta_graph_def: meta_graph_pb2.MetaGraphDef) -> None:
+  """An experimental function to remove debug nodes from the final graph.
+
+  This function removes all assert nodes from the meta_graph. It strips the
+  assert operators in both the nodes and in all of the function defs, replacing
+  them with `NoOp`s. In addition to this, it replaces all of the inputs that
+  are not already control inputs to control inputs. For more information about
+  control inputs please see go/how-tensors-flow#control-dependencies.
+
+  Args:
+   meta_graph_def: The meta_graph that will be exported.
+  """
+
+  def is_control_input(name: str) -> str:
+    """Returns whether or not the input is a control input."""
+    return name and name[0] == "^"
+
+  def as_control_dep(name: str) -> str:
+    """Returns the input as a control dependency."""
+    return "^" + name.split(":")[0]
+
+  def maybe_do_strip(node: node_def_pb2.NodeDef) -> None:
+    """Strips the graph by making it a NoOp if it is an Assert node.
+
+    This function also rewrites all of the inputs to the nodes that were
+    transformed by making them into control dependencies.
+
+    Args:
+      node: The node to potentally strip.
+    """
+    if node.op == "Assert":
+      node.op = "NoOp"
+      new_inputs = []
+      for inp in node.input:
+        if not is_control_input(inp):
+          new_inputs.append(as_control_dep(inp))
+        else:
+          new_inputs.append(inp)
+      node.ClearField("input")
+      node.input.extend(new_inputs)
+
+  # First, we strip the assert nodes from the graph.
+  for node in meta_graph_def.graph_def.node:
+    maybe_do_strip(node)
+
+  # Then, we strip the assert nodes from all of the function defs.
+  for func in meta_graph_def.graph_def.library.function:
+    for node in func.node_def:
+      maybe_do_strip(node)
+
+
 def _fill_meta_graph_def(
     meta_graph_def: meta_graph_pb2.MetaGraphDef,
     saveable_view: _SaveableView,
@@ -850,6 +902,7 @@ def _fill_meta_graph_def(
     namespace_whitelist: List[str],
     save_custom_gradients: bool,
     create_saver: bool,
+    enable_debug_stripper: bool,
     defaults=None,
 ) -> Tuple[_AssetInfo, ops.Graph]:
   """Generates a MetaGraph which calls `signature_functions`.
@@ -862,6 +915,7 @@ def _fill_meta_graph_def(
     namespace_whitelist: List of strings containing whitelisted op namespaces.
     save_custom_gradients: Whether to save custom gradients.
     create_saver: Whether to add SavedModel's native save and restore ops.
+    enable_debug_stripper: Whether to strip the debug nodes from the graph.
     defaults: A dictionary mapping signature_key to dictionary of
       user_specified_name to Tensor representing default values.
 
@@ -952,8 +1006,6 @@ def _fill_meta_graph_def(
       versions.__git_version__)
   # We currently always strip default attributes.
   meta_graph_def.meta_info_def.stripped_default_attrs = True
-  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   meta_graph_def.asset_file_def.extend(asset_info.asset_defs)
   for signature_key, signature in signatures.items():
     meta_graph_def.signature_def[signature_key].CopyFrom(signature)
@@ -961,6 +1013,10 @@ def _fill_meta_graph_def(
   # store tensor_content in litle endian format
   if sys.byteorder == "big":
     utils_impl.swap_function_tensor_content(meta_graph_def, "big", "little")
+  if enable_debug_stripper:
+    _strip_debug_nodes(meta_graph_def)
+  meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
+      meta_graph.stripped_op_list_for_graph(meta_graph_def.graph_def))
   return asset_info, exported_graph
 
 
@@ -1377,7 +1433,8 @@ def save_and_return_nodes(
   if not experimental_skip_checkpoint:
     path_helpers.get_or_create_variables_dir(export_dir)
     ckpt_options = checkpoint_options.CheckpointOptions(
-        experimental_io_device=options.experimental_io_device)
+        experimental_io_device=options.experimental_io_device,
+        experimental_sharding_callback=options.experimental_sharding_callback)
     object_saver.save(
         path_helpers.get_variables_path(export_dir), options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
@@ -1410,7 +1467,7 @@ def save_and_return_nodes(
         compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
     file_io.atomic_write_string_to_file(
         path, saved_model.SerializeToString(deterministic=True))
-    fingerprinting_utils.write_fingerprint(export_dir)
+  fingerprinting_utils.write_fingerprint(export_dir)
 
   # Save debug info, if requested.
   if options.save_debug_info:
@@ -1513,6 +1570,7 @@ def _build_meta_graph_impl(
       namespace_whitelist=options.namespace_whitelist,
       save_custom_gradients=options.experimental_custom_gradients,
       create_saver=not options.experimental_skip_saver,
+      enable_debug_stripper=options.experimental_debug_stripper,
       defaults=defaults,
   )
   if options.function_aliases:

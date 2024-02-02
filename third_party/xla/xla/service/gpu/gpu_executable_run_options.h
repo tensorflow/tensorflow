@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,54 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
-#include <functional>
 #include <map>
 #include <optional>
-#include <string>
-#include <utility>
-#include <vector>
 
+#include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/service_executable_run_options.h"
-#include "xla/statusor.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 
 namespace xla {
 namespace gpu {
-
-// Key for naming up a particular NCCL clique.  This is just a set of unique
-// device IDs (i.e. GPU IDs) and a stream_id. The device IDs must be global
-// within a cluster. The stream_id is used to create different NCCL clique and
-// communicators for collectives executed on different streams within an
-// executable.
-class NcclCliqueKey {
- public:
-  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                         int64_t stream_id = 0)
-      : devices_(std::move(devices)), stream_id_(stream_id) {}
-
-  template <typename H>
-  friend H AbslHashValue(H h, const NcclCliqueKey& k) {
-    return H::combine(std::move(h), k.devices_, k.stream_id_);
-  }
-  friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
-    return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_;
-  }
-
-  const std::vector<GlobalDeviceId>& devices() const { return devices_; }
-
-  std::string ToString() const {
-    return absl::StrCat("stream[", stream_id_, "]",
-                        GlobalDeviceIdsToString(devices_));
-  }
-
- private:
-  const std::vector<GlobalDeviceId> devices_;
-  const int64_t stream_id_;
-};
-
-using NcclUniqueIdCallback =
-    std::function<StatusOr<std::string>(const NcclCliqueKey&)>;
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
@@ -81,9 +42,9 @@ class GpuExecutableRunOptions {
 
   // Callback that returns a ncclUniqueId encoded as a string for a group of
   // communicating GPU devices. Used only on NVidia GPUs.
-  GpuExecutableRunOptions& set_nccl_unique_id_callback(
-      NcclUniqueIdCallback nccl_unique_id_callback);
-  const NcclUniqueIdCallback& nccl_unique_id_callback() const;
+  GpuExecutableRunOptions& set_nccl_clique_id_callback(
+      NcclCliqueIdCallback nccl_clique_id_callback);
+  const NcclCliqueIdCallback& nccl_clique_id_callback() const;
 
   // Whether the run requires an exclusive lock on the GPU.
   bool requires_exclusive_lock_on_gpu() const {
@@ -100,31 +61,29 @@ class GpuExecutableRunOptions {
     return enable_mock_nccl_collectives_;
   }
 
-  // Enable mocking nccl collective operations on the GPU
+  // Enables mocking nccl collective operations on the GPU.
   GpuExecutableRunOptions& set_enable_mock_nccl_collectives() {
     enable_mock_nccl_collectives_ = true;
+    return *this;
+  }
+
+  enum class MockNcclTopoModel { kGCPA3, kNvidia };
+  // Gets the nccl network topology used in mocking calls.
+  MockNcclTopoModel mock_nccl_topo_model() const {
+    return mock_nccl_topo_model_;
+  }
+  GpuExecutableRunOptions& set_mock_nccl_topo_model(
+      MockNcclTopoModel mock_nccl_topo_model) {
+    mock_nccl_topo_model_ = mock_nccl_topo_model;
     return *this;
   }
 
  private:
   bool requires_exclusive_lock_on_gpu_ = false;
   bool enable_mock_nccl_collectives_ = false;
+  MockNcclTopoModel mock_nccl_topo_model_ = MockNcclTopoModel::kGCPA3;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
-  NcclUniqueIdCallback nccl_unique_id_callback_;
-};
-
-// NCCL-related execution parameters.
-struct NcclExecuteParams {
-  NcclExecuteParams(const ServiceExecutableRunOptions& run_options,
-                    se::StreamExecutor* stream_executor);
-
-  se::StreamExecutor* stream_executor;
-  RunId run_id;
-  const DeviceAssignment* device_assn;                         // never null
-  const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null
-  const NcclUniqueIdCallback* nccl_unique_id_callback;         // may be null
-
-  StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
+  NcclCliqueIdCallback nccl_clique_id_callback_;
 };
 
 }  // namespace gpu

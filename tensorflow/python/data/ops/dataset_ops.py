@@ -28,6 +28,7 @@ from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_autograph
 from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
@@ -1155,6 +1156,24 @@ class DatasetV2(
     return counter_op._counter(start, step, dtype, name=name)
     # pylint: enable=g-import-not-at-top,protected-access
 
+  def fingerprint(self):
+    """Computes the fingerprint of this `Dataset`.
+
+    If two datasets have the same fingerprint, it is guaranteeed that they
+    would produce identical elements as long as the content of the upstream
+    input files does not change and they produce data deterministically.
+
+    However, two datasets producing identical values does not always mean they
+    would have the same fingerprint due to different graph constructs.
+
+    In other words, if two datasets have different fingerprints, they could
+    still produce identical values.
+
+    Returns:
+      A scalar `tf.Tensor` of type `tf.uint64`.
+    """
+    return gen_dataset_ops.dataset_fingerprint(self._variant_tensor)
+
   def rebatch(self, batch_size, drop_remainder=False, name=None) -> "DatasetV2":
     """Creates a `Dataset` that rebatches the elements from this dataset.
 
@@ -1443,7 +1462,7 @@ class DatasetV2(
 
     #### Fully shuffling all the data
 
-    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality()`. This
     is equivalent to setting the `buffer_size` equal to the number of elements
     in the dataset, resulting in uniform shuffle.
 
@@ -2866,44 +2885,6 @@ name=None))
                   )
     ```
 
-    #### Estimator
-
-    In the case of estimators, you need to generally define a `serving_input_fn`
-    which would require the features to be processed by the model while
-    inferencing.
-
-    ```python
-    def serving_input_fn():
-
-      raw_feature_spec = ... # Spec for the raw_features
-      input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
-          raw_feature_spec, default_batch_size=None)
-      )
-      serving_input_receiver = input_fn()
-      raw_features = serving_input_receiver.features
-
-      def preprocessing_fn(raw_feature):
-        # ... the raw_feature is preprocessed as per the use-case
-        return feature
-
-      dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
-                .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
-                .batch(BATCH_SIZE))
-
-      processed_features = dataset.get_single_element()
-
-      # Please note that the value of `BATCH_SIZE` should be equal to
-      # the size of the leading dimension of `raw_features`. This ensures
-      # that `dataset` has only element, which is a pre-requisite for
-      # using `dataset.get_single_element()`.
-
-      return tf.estimator.export.ServingInputReceiver(
-          processed_features, serving_input_receiver.receiver_tensors)
-
-    estimator = ... # A pre-built or custom estimator
-    estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
-    ```
-
     Args:
       name: (Optional.) A name for the tf.data operation.
 
@@ -4212,6 +4193,17 @@ else:
   Dataset = DatasetV1
 
 
+def _tf2_callback():
+  global Dataset
+  if tf2.enabled():
+    Dataset = DatasetV2
+  else:
+    Dataset = DatasetV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)
+
+
 class DatasetV1Adapter(DatasetV1):
   """Wraps a V2 `Dataset` object in the `tf.compat.v1.data.Dataset` API."""
 
@@ -4254,10 +4246,8 @@ def _ensure_same_dataset_graph(dataset):
       raise ValueError(
           f"The graph {current_graph} of the iterator is different from the "
           f"graph {ds_graph} the dataset: {ds._variant_tensor} was created in. "
-          f"If you are using the Estimator API, make sure that no part of the "
-          f"dataset returned by the `input_fn` function is defined outside the "
-          f"`input_fn` function. Otherwise, make sure that the dataset is "
-          f"created in the same graph as the iterator.")
+          f"Make sure that the dataset is created in the same graph as the "
+          f"iterator.")
     for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
@@ -4713,6 +4703,9 @@ class NumpyIterator(tracking_base.Trackable):
   def __init__(self, dataset):
     self._iterator = iter(dataset)
     self._dataset = dataset
+
+  def __repr__(self):
+    return f"NumpyIterator(iterator={self._iterator})"
 
   def __iter__(self):
     return self

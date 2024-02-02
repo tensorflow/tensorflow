@@ -1,4 +1,4 @@
-// Copyright 2023 The TensorFlow Authors
+// Copyright 2023 The OpenXLA Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_conv2d.h"
 #include "xla/service/cpu/runtime_conv3d.h"
-#include "xla/service/cpu/runtime_fft.h"
 
 namespace xla {
 namespace cpu {

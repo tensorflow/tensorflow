@@ -158,7 +158,7 @@ func.func @attr_fft_type_fft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcomple
   %0 = "stablehlo.fft"(%arg0) {
     // CHECK: fft_type = #mhlo<fft_type FFT>
     fft_type = #stablehlo<fft_type FFT>,
-    fft_length = dense<16> : tensor<1xi64>
+    fft_length = array<i64: 16>
   } : (tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>>
   func.return %0 : tensor<16xcomplex<f32>>
 }
@@ -168,27 +168,27 @@ func.func @attr_fft_type_ifft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcompl
   %0 = "stablehlo.fft"(%arg0) {
     // CHECK: fft_type = #mhlo<fft_type IFFT>
     fft_type = #stablehlo<fft_type IFFT>,
-    fft_length = dense<16> : tensor<1xi64>
+    fft_length = array<i64: 16>
   } : (tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>>
   func.return %0 : tensor<16xcomplex<f32>>
 }
 
 // CHECK-LABEL: "attr_fft_type_rfft"
 func.func @attr_fft_type_rfft(%arg0: tensor<16xf32>) -> tensor<9xcomplex<f32>> {
-  %0 = "mhlo.fft"(%arg0) {
+  %0 = "stablehlo.fft"(%arg0) {
     // CHECK: fft_type = #mhlo<fft_type RFFT>
-    fft_type = #mhlo<fft_type RFFT>,
-    fft_length = dense<16> : tensor<1xi64>
+    fft_type = #stablehlo<fft_type RFFT>,
+    fft_length = array<i64: 16>
   } : (tensor<16xf32>) -> tensor<9xcomplex<f32>>
   func.return %0 : tensor<9xcomplex<f32>>
 }
 
 // CHECK-LABEL: "attr_fft_type_irfft"
 func.func @attr_fft_type_irfft(%arg0: tensor<9xcomplex<f32>>) -> tensor<16xf32> {
-  %0 = "mhlo.fft"(%arg0) {
+  %0 = "stablehlo.fft"(%arg0) {
     // CHECK: fft_type = #mhlo<fft_type IRFFT>
-    fft_type = #mhlo<fft_type IRFFT>,
-    fft_length = dense<16> : tensor<1xi64>
+    fft_type = #stablehlo<fft_type IRFFT>,
+    fft_length = array<i64: 16>
   } : (tensor<9xcomplex<f32>>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
@@ -479,7 +479,7 @@ func.func @op_broadcast_in_dim(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
   // CHECK-SAME:   broadcast_dimensions = dense<1> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16x16xf32>
   %0 = "stablehlo.broadcast_in_dim"(%arg0) {
-    broadcast_dimensions = dense<1> : tensor<1xi64>
+    broadcast_dimensions = array<i64: 1>
   } : (tensor<16xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
@@ -490,7 +490,7 @@ func.func @op_broadcast(%arg0: tensor<16xf32>) -> tensor<16x16xf32> {
   // CHECK-SAME:   broadcast_sizes = dense<16> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16x16xf32>
   %0 = "stablehlo.broadcast"(%arg0) {
-    broadcast_sizes = dense<16> : tensor<1xi64>
+    broadcast_sizes = array<i64: 16>
   } : (tensor<16xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
@@ -543,6 +543,19 @@ func.func @op_count_leading_zeros(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: "mhlo.count_leading_zeros"(%arg0) : (tensor<i32>) -> tensor<i32>
   %0 = "stablehlo.count_leading_zeros"(%arg0) : (tensor<i32>) -> tensor<i32>
   func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: "op_collective_broadcast"
+func.func @op_collective_broadcast(%arg0: tensor<1x2xi64>) -> tensor<1x2xi64> {
+  //               CHECK: "mhlo.collective_broadcast"(%arg0) {
+  //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  //          CHECK-SAME: } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  %0 = "stablehlo.collective_broadcast"(%arg0) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<1x2xi64>) -> tensor<1x2xi64>
+  func.return %0 : tensor<1x2xi64>
 }
 
 // CHECK-LABEL: "op_collective_permute"
@@ -628,11 +641,11 @@ func.func @op_convolution(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
   // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   %0 = "stablehlo.convolution"(%arg0, %arg1) {
-    window_strides = dense<1> : tensor<2xi64>,
+    window_strides = array<i64: 1, 1>,
     padding = dense<1> : tensor<2x2xi64>,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_reversal = dense<false> : tensor<2xi1>,
+    lhs_dilation = array<i64: 1, 1>,
+    rhs_dilation = array<i64: 1, 1>,
+    window_reversal = array<i1: false, false>,
     dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
@@ -715,7 +728,8 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
   // CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
   %0 = "stablehlo.custom_call"(%arg0) {
     call_target_name = "mhlo.custom_call",
-    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
+    mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"},
+    mhlo.version = 1 : i64
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
@@ -729,7 +743,7 @@ func.func @op_custom_call_mhlo_backend_config(%arg0: tensor<16x256xbf16>) -> ten
   // CHECK-SAME: } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
   %4 = stablehlo.custom_call @foo(%arg0) {
     "mhlo.backend_config" = {aggregate_to_topk = true}
-    } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
   return %4 : tensor<16x4xbf16>
 }
 
@@ -782,9 +796,9 @@ func.func @op_dynamic_broadcast_in_dim(%arg0: tensor<?xf32>, %arg1: tensor<2xind
   // CHECK-SAME:   known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %arg1) {
-    broadcast_dimensions = dense<1> : tensor<1xi64>,
-    known_expanding_dimensions = dense<[]> : tensor<0xi64>,
-    known_nonexpanding_dimensions = dense<0> : tensor<1xi64>
+    broadcast_dimensions = array<i64: 1>,
+    known_expanding_dimensions = array<i64>,
+    known_nonexpanding_dimensions = array<i64: 0>
   } : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
@@ -803,11 +817,11 @@ func.func @op_dynamic_conv(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x1
   // CHECK-SAME:   window_strides = dense<1> : tensor<2xi64>
   // CHECK-SAME: } : (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>, tensor<4xi32>) -> tensor<1x?x?x16xf32>
   %0 = "stablehlo.dynamic_conv"(%arg0, %arg1, %arg2) {
-    window_strides = dense<1> : tensor<2xi64>,
+    window_strides = array<i64: 1, 1>,
     padding = dense<1> : tensor<2x2xi64>,
-    lhs_dilation = dense<1> : tensor<2xi64>,
-    rhs_dilation = dense<1> : tensor<2xi64>,
-    window_reversal = dense<false> : tensor<2xi1>,
+    lhs_dilation = array<i64: 1, 1>,
+    rhs_dilation = array<i64: 1, 1>,
+    window_reversal = array<i1: false, false>,
     dimension_numbers = #stablehlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>,
     feature_group_count = 1 : i64,
     batch_group_count = 1 : i64,
@@ -870,7 +884,7 @@ func.func @op_dynamic_slice(%arg0: tensor<16xf32>, %arg1: tensor<i64>) -> tensor
   // CHECK-SAME:   slice_sizes = dense<4> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<16xf32>, tensor<i64>) -> tensor<4xf32>
   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1) {
-    slice_sizes = dense<4> : tensor<1xi64>
+    slice_sizes = array<i64: 4>
   } : (tensor<16xf32>, tensor<i64>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>
 }
@@ -915,7 +929,7 @@ func.func @op_fft(%arg0: tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>> {
   // CHECK-SAME: } : (tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>>
   %0 = "stablehlo.fft"(%arg0) {
     fft_type = #stablehlo<fft_type FFT>,
-    fft_length = dense<16> : tensor<1xi64>
+    fft_length = array<i64: 16>
   } : (tensor<16xcomplex<f32>>) -> tensor<16xcomplex<f32>>
   func.return %0 : tensor<16xcomplex<f32>>
 }
@@ -946,7 +960,7 @@ func.func @op_gather(%arg0 : tensor<2x4x9xf32>, %arg1 : tensor<1x5x2xi32>) -> te
       start_index_map = [0, 1],
       index_vector_dim = 2
     >,
-    slice_sizes = dense<1> : tensor<3xi64>,
+    slice_sizes = array<i64: 1, 1, 1>,
     indices_are_sorted = false
   } : (tensor<2x4x9xf32>, tensor<1x5x2xi32>) -> tensor<1x5x1xf32>
   func.return %0 : tensor<1x5x1xf32>
@@ -1062,7 +1076,7 @@ func.func @op_map(%arg0: tensor<16xf32>) -> tensor<16xf32> {
       %1 = "stablehlo.abs"(%arg1) : (tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    dimensions = dense<0> : tensor<1xi64>
+    dimensions = array<i64: 0>
   } : (tensor<16xf32>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
@@ -1135,9 +1149,9 @@ func.func @op_pad(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<16xf32> {
   // CHECK-SAME:   interior_padding = dense<0> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<8xf32>, tensor<f32>) -> tensor<16xf32>
   %0 = "stablehlo.pad"(%arg0, %arg1) {
-    edge_padding_high = dense<4> : tensor<1xi64>,
-    edge_padding_low = dense<4> : tensor<1xi64>,
-    interior_padding = dense<0> : tensor<1xi64>
+    edge_padding_high = array<i64: 4>,
+    edge_padding_low = array<i64: 4>,
+    interior_padding = array<i64: 0>
   } : (tensor<8xf32>, tensor<f32>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
@@ -1197,7 +1211,7 @@ func.func @op_reduce(%arg0: tensor<16xf32>, %arg1: tensor<f32>) -> tensor<f32> {
       %1 = "stablehlo.add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    dimensions = dense<0> : tensor<1xi64>
+    dimensions = array<i64: 0>
   } : (tensor<16xf32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -1256,10 +1270,10 @@ func.func @op_reduce_window(%arg0: tensor<2x17x31x7xf32>, %arg1: tensor<f32>) ->
       %1 = "stablehlo.maximum"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
-    window_strides = dense<[1, 4, 4, 1]> : tensor<4xi64>,
-    base_dilations = dense<[1, 1, 1, 1]> : tensor<4xi64>,
-    window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+    window_dimensions = array<i64: 1, 2, 2, 1>,
+    window_strides = array<i64: 1, 4, 4, 1>,
+    base_dilations = array<i64: 1, 1, 1, 1>,
+    window_dilations = array<i64: 1, 2, 2, 1>,
     padding = dense<[[0, 0], [2, 0], [0, 2], [0, 0]]> : tensor<4x2xi64>
   } : (tensor<2x17x31x7xf32>, tensor<f32>) -> tensor<2x5x8x7xf32>
   func.return %0 : tensor<2x5x8x7xf32>
@@ -1303,7 +1317,7 @@ func.func @op_reverse(%arg0: tensor<16xf32>) -> tensor<16xf32> {
   // CHECK-SAME:   dimensions = dense<0> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<16xf32>
   %0 = "stablehlo.reverse"(%arg0) {
-    dimensions = dense<0> : tensor<1xi64>
+    dimensions = array<i64: 0>
   } : (tensor<16xf32>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
@@ -1408,8 +1422,8 @@ func.func @op_select_and_scatter(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<1
       %1 = "stablehlo.add"(%arg3, %arg4) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
-    window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
-    window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+    window_dimensions = array<i64: 1, 2, 2, 1>,
+    window_strides = array<i64: 1, 2, 2, 1>,
     padding = dense<0> : tensor<4x2xi64>
   } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) -> tensor<10x24x24x64xf32>
   func.return %0 : tensor<10x24x24x64xf32>
@@ -1489,9 +1503,9 @@ func.func @op_slice(%arg0: tensor<16xf32>) -> tensor<4xf32> {
   // CHECK-SAME:   strides = dense<1> : tensor<1xi64>
   // CHECK-SAME: } : (tensor<16xf32>) -> tensor<4xf32>
   %0 = "stablehlo.slice"(%arg0) {
-    start_indices = dense<0> : tensor<1xi64>,
-    limit_indices = dense<4> : tensor<1xi64>,
-    strides = dense<1> : tensor<1xi64>
+    start_indices = array<i64: 0>,
+    limit_indices = array<i64: 4>,
+    strides = array<i64: 1>
   } : (tensor<16xf32>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>
 }
@@ -1580,7 +1594,7 @@ func.func @op_transpose(%arg0: tensor<16x8xf32>) ->  tensor<8x16xf32> {
   // CHECK-SAME:   permutation = dense<[1, 0]> : tensor<2xi64>
   // CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<8x16xf32>
   %0 = "stablehlo.transpose"(%arg0) {
-    permutation = dense<[1, 0]> : tensor<2xi64>
+    permutation = array<i64: 1, 0>
   } : (tensor<16x8xf32>) -> tensor<8x16xf32>
   func.return %0 : tensor<8x16xf32>
 }
@@ -1837,12 +1851,19 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+#SV = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
+
+// CHECK: #[[$SV:.*]] = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
-  // CHECK: "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16xf32>
-  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #SV>) -> tensor<16xf32> {
+  // CHECK: "mhlo.abs"(%arg0) : (tensor<16xf32, #[[$SV]]>) -> tensor<16xf32>
+  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #SV>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
+
+// -----
 
 func.func @type_token_callee(%arg0: !stablehlo.token) -> !stablehlo.token {
   // CHECK: function_type = (!mhlo.token) -> !mhlo.token, sym_name = "type_token_callee"
@@ -1933,4 +1954,18 @@ func.func @op_custom_call_botched_mhlo_backend_config_version(%arg0: tensor<f32>
     mhlo.backend_config = 3
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_topk_mhlo_v1"
+func.func @op_topk_mhlo_v1(%arg0: tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>) {
+  // CHECK: "mhlo.topk"(%arg0) {k = 8 : i64, largest = true} : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  %0:2 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.topk",
+    mhlo.attributes = {k = 8 : i64, largest = true},
+    mhlo.version = 1 : i64
+  } : (tensor<5x10xf32>) -> (tensor<5x8xf32>, tensor<5x8xi32>)
+  func.return %0#0, %0#1 : tensor<5x8xf32>, tensor<5x8xi32>
 }

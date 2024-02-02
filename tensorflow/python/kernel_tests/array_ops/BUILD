@@ -216,10 +216,10 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
@@ -469,9 +469,11 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "manip_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["manip_ops_test.py"],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows_gpu",
+    ],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",

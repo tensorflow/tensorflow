@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -642,7 +642,9 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
                   0)));
 }
 
-TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
+TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternMatch) {
+  // All filter dimensions are larger than the corresponding output dimensions.
+  // This must be a backward filter convolution.
   const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
@@ -659,6 +661,28 @@ TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
               GmockMatch(m::GetTupleElement(
                   m::CustomCall({kCudnnConvBackwardFilterCallTarget},
                                 m::Parameter(0), m::Parameter(1)),
+                  0)));
+}
+
+TEST_F(GpuConvRewriterTest, TestBackwardFilterPatternNoMatch) {
+  // At least one filter dimension is smaller than the corresponding output
+  // dimension. This must be a forward convolution.
+  const std::string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = f32[8,128,2,32] parameter(0)
+      filter = f32[3,3,128,128] parameter(1)
+
+      ROOT conv = f32[8,128,2,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::GetTupleElement(
+                  m::CustomCall({kCudnnConvForwardCallTarget}, m::Parameter(0),
+                                m::Parameter(1)),
                   0)));
 }
 

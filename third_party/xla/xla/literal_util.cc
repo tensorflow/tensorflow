@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bitmap.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -121,28 +121,13 @@ struct OneProvider {
 };
 
 template <typename T>
-struct Is16BitFloat {
-  static constexpr bool value =
-      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value;
-};
-
-template <typename T>
 struct IsReal {
-  static constexpr bool value =
-      std::is_integral<T>::value || std::is_floating_point<T>::value ||
-      std::is_same<bfloat16, T>::value || std::is_same<half, T>::value ||
-      std::is_same<tsl::float8_e5m2, T>::value ||
-      std::is_same<tsl::float8_e5m2fnuz, T>::value ||
-      std::is_same<tsl::float8_e4m3fn, T>::value ||
-      std::is_same<tsl::float8_e4m3b11, T>::value ||
-      std::is_same<tsl::float8_e4m3fnuz, T>::value;
+  static constexpr bool value = std::numeric_limits<T>::is_specialized;
 };
 
 template <typename T>
 struct IsValidScalarType {
-  static constexpr bool value = IsReal<T>::value ||
-                                std::is_same<complex64, T>::value ||
-                                std::is_same<complex128, T>::value;
+  static constexpr bool value = IsReal<T>::value || is_complex_v<T>;
 };
 
 template <typename NativeT>
@@ -382,9 +367,9 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 
   // Copy data into new literal, element-by-element.
   for (int64_t i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
-    std::vector<int64_t> from_multi_index =
+    auto from_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    std::vector<int64_t> to_multi_index =
+    auto to_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
     primitive_util::PrimitiveTypeSwitch<void>(
         [&](auto primitive_type_constant) -> void {

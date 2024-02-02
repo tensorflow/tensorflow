@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_IN_PLACE_DYNAMIC_UPDATE_SLICE_H_
 #define XLA_SERVICE_GPU_FUSIONS_IN_PLACE_DYNAMIC_UPDATE_SLICE_H_
 
+#include <optional>
 #include <vector>
 
+#include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -49,25 +58,37 @@ namespace gpu {
 // modifies the output in place without touching the un-updated elements. The
 // update slice is assumed to be the exact same for all the
 // dynamic-update-slice ops.
-class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
+class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
  public:
-  explicit InPlaceDynamicUpdateSliceEmitter(const HloFusionAnalysis& analysis)
-      : dus_ops_(
+  explicit InPlaceDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis),
+        dus_ops_(
             GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
-  StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const override;
+  LaunchDimensions launch_dimensions() const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const override {
+    // The mapping cannot be statically computed in general, since the offsets
+    // are unknown.
+    return std::nullopt;
+  }
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
 
  protected:
-  Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    ElementalIrEmitter& elemental_emitter,
-                    mlir::lmhlo::FusionOp fusion_op,
-                    const HloFusionInstruction& fusion,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder,
-                    int kernel_index) const override;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
+  const HloFusionAnalysis& analysis_;
   std::vector<const HloInstruction*> dus_ops_;
 };
 

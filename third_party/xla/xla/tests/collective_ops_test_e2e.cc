@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -100,7 +100,10 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
   }
 
   bool IsAsync(const HloInstruction* inst) {
-    return !inst->backend_config<gpu::CollectiveBackendConfig>()->is_sync();
+    return !inst->backend_config<gpu::GpuBackendConfig>()
+                .value()
+                .collective_backend_config()
+                .is_sync();
   }
 
   const int64_t num_devices_;

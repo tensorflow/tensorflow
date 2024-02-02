@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ limitations under the License.
 #include "tsl/platform/human_readable_json.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/triangular_solve_thunk.h"
+#include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {

@@ -107,6 +107,9 @@ class SavedModel {
     // TODO(b/216379787): Remove this option once b/279197040 is unblocked.
     bool lazy_loading_use_graph_executor = false;
 
+    // True if and only if SavedModel is being loaded to generate AOT results.
+    bool aot_generation = false;
+
     GraphExecutionOptions graph_execution_options;
   };
 
@@ -181,6 +184,11 @@ class SavedModel {
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
  protected:
+  const FallbackState& fallback_state() const {
+    return graph_executor_->fallback_state();
+  }
+  FallbackState& fallback_state() { return graph_executor_->fallback_state(); }
+
   const Options options_;
   std::unique_ptr<GraphExecutor> graph_executor_;
 };
@@ -216,7 +224,6 @@ class SavedModelImpl final : public SavedModel {
       tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
       std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
-      std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
       std::unique_ptr<tfd::FallbackResourceArray> resource_array,
       std::unique_ptr<GraphExecutor> graph_executor);
@@ -311,7 +318,6 @@ class SavedModelImpl final : public SavedModel {
 
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
-  std::unique_ptr<FallbackState> fallback_state_;
   std::unique_ptr<OpKernelRunnerTable> runner_table_;
   std::unique_ptr<tfd::FallbackResourceArray> resource_array_;
   tensorflow::mutex loading_result_cache_mu_;

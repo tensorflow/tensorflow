@@ -1,4 +1,4 @@
-/*Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/*Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -32,8 +34,8 @@ namespace gpu {
 // Thread-safe.
 class KernelArgument {
  public:
-  static StatusOr<KernelArgument> Create(
-      absl::Span<const BufferAllocation> allocations, mlir::Value value,
+  static absl::StatusOr<KernelArgument> Create(
+      absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
       bool is_written);
 
   mlir::Value value() const { return value_; }
@@ -66,13 +68,22 @@ class KernelArgument {
 
 class KernelArguments {
  public:
-  static StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation> allocations,
+  static absl::StatusOr<KernelArguments> Create(
+      absl::Span<const BufferAllocation* const> allocations,
       mlir::lmhlo::FusionOp fusion);
 
-  static StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation> allocations,
+  static absl::StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const HloFusionInstruction* fusion);
+
+  static absl::StatusOr<KernelArguments> Create(
+      absl::Span<const BufferAllocation* const> allocations,
       mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands);
+
+  static absl::StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const HloInstruction* non_fusion_hlo,
+      absl::Span<const HloInstruction* const> needed_operands);
 
   const std::vector<KernelArgument>& args() const { return args_; }
 

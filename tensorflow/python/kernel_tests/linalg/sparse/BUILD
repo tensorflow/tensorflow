@@ -85,7 +85,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["csr_sparse_matrix_grad_test.py"],
     main = "csr_sparse_matrix_grad_test.py",
-    shard_count = 50,
+    shard_count = 3,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -126,7 +126,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["csr_sparse_matrix_sparse_mat_mul_grad_test.py"],
     main = "csr_sparse_matrix_sparse_mat_mul_grad_test.py",
-    shard_count = 50,
+    shard_count = 10,
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",

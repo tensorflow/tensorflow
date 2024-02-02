@@ -1,6 +1,6 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//tsl:tsl.bzl", "if_oss", "set_external_visibility", "tsl_gpu_library")
+load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -145,7 +145,6 @@ tsl_gpu_library(
         "//tsl/framework:cancellation",
         "//tsl/lib/monitoring:gauge",
         "//tsl/platform:env",
-        "//tsl/platform:errors",
         "//tsl/platform:mutex",
         "//tsl/platform:random",
         "//tsl/platform:status",
@@ -154,6 +153,7 @@ tsl_gpu_library(
         "//tsl/protobuf:coordination_config_proto_cc",
         "//tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -175,11 +175,15 @@ tsl_cc_test(
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
         "//tsl/platform:status",
+        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/protobuf:coordination_config_proto_cc_impl",
         "//tsl/protobuf:coordination_service_proto_cc_impl",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )

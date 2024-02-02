@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,9 +24,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/status.h"
@@ -43,6 +45,51 @@ Status ParseDeviceAssignmentCompileOptions(
         GetDefaultDeviceAssignmentFunction,
     int* num_replicas, int* num_partitions,
     std::shared_ptr<DeviceAssignment>* device_assignment);
+
+// Returns the LayoutMode for each argument of the main function in the
+// module. Checks for the "mhlo.layout_mode" attr, and if not present, assumes
+// LayoutMode::Mode::kDefault.
+StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(mlir::ModuleOp module);
+// Returns the LayoutMode for each output of the main function in the
+// module. Checks for the "mhlo.layout_mode" attr, and if not present, assumes
+// LayoutMode::Mode::kDefault.
+StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(mlir::ModuleOp module);
+
+// Populates the frontend attributes "arg_layout_mode" and "out_layout_mode" in
+// xla_computation based on `module`. This function must be called before the
+// LayoutMode getters below work correctly on `computation`.
+Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
+                                     XlaComputation& xla_computation);
+// Returns the LayoutMode for each argument of the computations. Checks for the
+// "arg_layout_mode" frontend attribute, and if not present, assumes
+// LayoutMode::Mode::kDefault.
+StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
+    const XlaComputation& computation);
+// Returns the LayoutMode for each argument of the computations. Checks for the
+// "out_layout_mode" frontend attribute, and if not present, assumes
+// LayoutMode::Mode::kDefault.
+StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
+    const XlaComputation& computation);
+
+// Returns (arg shapes, output shape) with properly-set Layouts that can
+// be passed to XLA to reflect arg_layout_modes and out_layout_modes.
+StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
+    const XlaComputation& computation, std::vector<LayoutMode> arg_layout_modes,
+    std::vector<LayoutMode> out_layout_modes,
+    std::function<StatusOr<Shape>(Shape)>
+        choose_compact_layout_for_shape_function);
+
+// Generates useful data structures for communciating desired layouts to XLA:
+// * Returns a vector of argument xla::Shapes with properly-set Layouts
+// * Returns vector of pointers to those Shapes to create HloModuleConfig
+// * Modifies `build_options` to have the correct result_layout set or unset
+StatusOr<std::pair<std::vector<Shape>, std::vector<const Shape*>>>
+LayoutModesToXla(const XlaComputation& computation,
+                 std::vector<LayoutMode> arg_layout_modes,
+                 std::vector<LayoutMode> out_layout_modes,
+                 std::function<StatusOr<Shape>(Shape)>
+                     choose_compact_layout_for_shape_function,
+                 ExecutableBuildOptions& build_options);
 
 // Returns pointers to the argument layouts given an XlaComputation and
 // ExecutableBuildOptions.

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 
@@ -60,7 +61,7 @@ class CUDABlas : public blas::BlasSupport {
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 
-  BlasLt &blas_lt() { return blas_lt_; }
+  BlasLt *GetBlasLt() override { return &blas_lt_; }
 
  private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -83,9 +84,9 @@ class CUDABlas : public blas::BlasSupport {
   //                     (true) or device (false).
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  tsl::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
-                                 bool pointer_mode_host, cublasMath_t math_type,
-                                 Args... args);
+  absl::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+                                  bool pointer_mode_host,
+                                  cublasMath_t math_type, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.
@@ -100,7 +101,7 @@ class CUDABlas : public blas::BlasSupport {
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
   template <typename T, typename Scalar, typename FuncT>
-  tsl::Status DoBlasGemmBatchedInternal(
+  absl::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream *stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64 n, uint64 k, Scalar alpha,
       const DeviceMemorySlice<T> &a_array, int lda,
@@ -119,7 +120,7 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
-  BlasLt blas_lt_;
+  cuda::BlasLt blas_lt_;
 
   CUDABlas(const CUDABlas &) = delete;
   void operator=(const CUDABlas &) = delete;

@@ -1,0 +1,64 @@
+op 	 {
+  name: "XlaSparseCoreAdagradMomentum"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "epsilon"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momentum"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momentum"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+  }
+  attr {
+    name: "beta_2"
+    type: "float"
+  }
+  attr {
+    name: "exponent"
+    type: "float"
+  }
+  is_stateful: true
+}

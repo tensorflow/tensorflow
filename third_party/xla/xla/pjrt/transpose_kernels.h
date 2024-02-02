@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,20 +22,9 @@ limitations under the License.
 #include <cstring>
 #include <utility>
 
-#if (defined(__GNUC__) || defined(__clang__)) && defined(__SSE2__)
-#define XLA_HAS_SSE2
-#elif defined(_MSC_VER) && !defined(_M_ARM64EC) && defined(_M_X64)
-#define XLA_HAS_SSE2
-#elif defined(_MSC_VER) && !defined(_M_ARM64EC) && \
-    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-#define XLA_HAS_SSE2
-#elif defined(__AVX__)
-#define XLA_HAS_SSE2
-#endif
+#include "xla/compiler_macros.h"
 
-#if defined(__ARM_NEON) && !defined(__ARM_BIG_ENDIAN)
-#define XLA_HAS_ARM_NEON
-#endif
+namespace xla {
 
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep
@@ -43,54 +32,11 @@ limitations under the License.
 
 #ifdef XLA_HAS_ARM_NEON
 #include <arm_neon.h>
-#endif
+#endif  // XLA_HAS_ARM_NEON
 
 #if defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
 #define XLA_HAS_VEC128
-#endif
-
-namespace xla {
-
-// Generic transpose kernel.
-//
-// All of the kernels that follow in this file are optimized versions of this
-// generic kernel, specialized to particular block sizes and data types.
-//
-// The transpose kernel requires its input to be contiguous in one of the two
-// dimensions being transposed, and the output to be contiguous in the other
-// dimension.
-//
-// lda, ldb are strides in bytes.
-template <typename T, int bs>
-struct TransposeMicroKernel {
-  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
-                    int64_t ldb) {
-    for (int i = 0; i < bs; ++i) {
-      for (int j = 0; j < bs; ++j) {
-        *reinterpret_cast<T*>(b + i * ldb + j * sizeof(T)) =
-            *reinterpret_cast<T const*>(a + j * lda + i * sizeof(T));
-      }
-    }
-  }
-};
-
-#pragma push_macro("XLA_UNROLL")
-#if defined(__clang__)
-#define XLA_UNROLL _Pragma("unroll")
-#elif defined(__GNUC__)
-#define XLA_UNROLL _Pragma("GCC unroll 128")
-#else
-#define XLA_UNROLL
-#endif
-
-#pragma push_macro("XLA_FLATTEN")
-#if defined(__GNUC__) || defined(__clang__)
-#define XLA_FLATTEN __attribute__((flatten))
-#elif defined(_MSC_VER)
-#define XLA_FLATTEN [[msvc::flatten]]
-#else
-#define XLA_FLATTEN
-#endif
+#endif  // defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
 
 // The transpose microkernels use a general approach of zipping elements from
 // different rows together. We start zipping together elements of size 1, size 2
@@ -348,8 +294,11 @@ inline __m128i LoadElementIntoVec128</*bytes=*/sizeof(__m128i)>(const void* p) {
 
 template <size_t bytes, int lane>
 inline void StoreElementFromVec128(void* p, __m128i v) {
-  static_assert(bytes * (lane + 1) <= sizeof(Vec128));
-  constexpr bool halfway = bytes * lane == sizeof(Vec128) / 2;
+  constexpr size_t element_start = bytes * lane;
+  constexpr size_t element_end = element_start + bytes;
+  static_assert(element_start >= 0);
+  static_assert(element_end <= sizeof(Vec128));
+  constexpr bool halfway = element_start == sizeof(Vec128) / 2;
   if constexpr (bytes == sizeof(uint16_t)) {
     // Note: We would ideally use `_mm_storeu_si16` here but older compilers do
     // not support it. However, we can replicate it using a sequence such that
@@ -628,6 +577,7 @@ struct AvxSquareTransposeMicroKernelImpl {
     constexpr size_t element_size = sizeof(T);
     static_assert(element_size <= sizeof(__m128i));
     static_assert(sizeof(__m128i) % element_size == 0);
+    static_assert(bs % 2 == 0);
     static_assert(element_size * bs == sizeof(__m256i));
     std::array<__m256i, bs> last_transpose;
     XLA_UNROLL
@@ -664,6 +614,7 @@ struct AvxRectangularTransposeMicroKernelImpl {
     constexpr size_t element_size = sizeof(T);
     static_assert(element_size <= sizeof(__m128i));
     static_assert(sizeof(__m128i) % element_size == 0);
+    static_assert(bs % 2 == 0);
     static_assert(element_size * bs * 2 == sizeof(__m256i));
     std::array<__m256i, bs / 2> last_transpose;
     XLA_UNROLL
@@ -706,181 +657,39 @@ struct AvxRectangularTransposeMicroKernelImpl {
 };
 #endif
 
-#ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint8_t, /*bs=*/2> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    using T = uint8_t;
-    constexpr int bs = 2;
-    Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
-  }
-};
-#endif
-
-#ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    using T = uint8_t;
-    constexpr int bs = 4;
-    Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
-  }
-};
-#endif
-
-#ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint8_t, /*bs=*/8> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    using T = uint8_t;
-    constexpr int bs = 8;
-    Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
-  }
-};
-#endif
-
+// The transpose kernel requires its input to be contiguous in one of the two
+// dimensions being transposed, and the output to be contiguous in the other
+// dimension.
+//
+// lda, ldb are strides in bytes.
+template <typename T, int bs>
+struct TransposeMicroKernel {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
+    if constexpr (bs % 2 == 0) {
 #ifdef __AVX__
-template <>
-struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    AvxRectangularTransposeMicroKernelImpl<uint8_t, 16>::Apply(a, lda, b, ldb);
-  }
-};
-#elif defined(XLA_HAS_VEC128)
-template <>
-struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    Vec128RectangularTransposeMicroKernelImpl<uint8_t, /*bs=*/16>::Apply(
-        a, lda, b, ldb);
-  }
-};
+      if constexpr (sizeof(T) * bs == sizeof(__m256i)) {
+        return AvxSquareTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
+      } else if constexpr (sizeof(T) * bs == sizeof(__m128i)) {
+        return AvxRectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b,
+                                                                    ldb);
+      }
 #endif
-
 #ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint16_t, /*bs=*/2> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    using T = uint16_t;
-    constexpr int bs = 2;
-    Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
-  }
-};
+      if constexpr (sizeof(T) * bs <= sizeof(Vec128)) {
+        return Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda,
+                                                                       b, ldb);
+      }
 #endif
-
-#ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint16_t, /*bs=*/4> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    using T = uint16_t;
-    constexpr int bs = 4;
-    Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
+    }
+    for (int i = 0; i < bs; ++i) {
+      for (int j = 0; j < bs; ++j) {
+        *reinterpret_cast<T*>(b + i * ldb + j * sizeof(T)) =
+            *reinterpret_cast<T const*>(a + j * lda + i * sizeof(T));
+      }
+    }
   }
 };
-#endif
-
-#if defined(__AVX__)
-template <>
-struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    AvxRectangularTransposeMicroKernelImpl<uint16_t, 8>::Apply(a, lda, b, ldb);
-  }
-};
-#elif defined(XLA_HAS_VEC128)
-template <>
-struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    Vec128RectangularTransposeMicroKernelImpl<uint16_t, /*bs=*/8>::Apply(
-        a, lda, b, ldb);
-  }
-};
-#endif
-
-#ifdef __AVX__
-template <>
-struct TransposeMicroKernel<uint16_t, /*bs=*/16> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    AvxSquareTransposeMicroKernelImpl<uint16_t, /*bs=*/16>::Apply(a, lda, b,
-                                                                  ldb);
-  }
-};
-#endif
-
-#ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint32_t, /*bs=*/2> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    using T = uint32_t;
-    constexpr int bs = 2;
-    Vec128RectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
-  }
-};
-#endif
-
-#ifdef __AVX__
-template <>
-struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    AvxRectangularTransposeMicroKernelImpl<uint32_t, 4>::Apply(a, lda, b, ldb);
-  }
-};
-#elif defined(XLA_HAS_VEC128)
-template <>
-struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    Vec128RectangularTransposeMicroKernelImpl<uint32_t, /*bs=*/4>::Apply(
-        a, lda, b, ldb);
-  }
-};
-#endif
-
-#ifdef __AVX__
-template <>
-struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    AvxSquareTransposeMicroKernelImpl<uint32_t, /*bs=*/8>::Apply(a, lda, b,
-                                                                 ldb);
-  }
-};
-#endif
-
-#ifdef XLA_HAS_VEC128
-template <>
-struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    Vec128RectangularTransposeMicroKernelImpl<uint64_t, /*bs=*/2>::Apply(
-        a, lda, b, ldb);
-  }
-};
-#endif
-
-#ifdef __AVX__
-template <>
-struct TransposeMicroKernel<uint64_t, /*bs=*/4> {
-  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
-                                char* __restrict b, int64_t ldb) {
-    AvxSquareTransposeMicroKernelImpl<uint64_t, /*bs=*/4>::Apply(a, lda, b,
-                                                                 ldb);
-  }
-};
-#endif  // __AVX__
-
-#pragma pop_macro("XLA_FLATTEN")
-#pragma pop_macro("XLA_UNROLL")
 
 }  // namespace xla
 

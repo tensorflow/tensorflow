@@ -37,9 +37,9 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -182,7 +182,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   return ConstantFoldOpIfPossible(reshape_op).front();
 }
 
-// Checks if a value can be symetrically quantized.
+// Checks if a value can be symmetrically quantized.
 bool CanBeSymmetricallyQuantized(Value weight) {
   auto dq_op = weight.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) return true;
@@ -215,7 +215,7 @@ SmallVector<T> MultiplyTwoArrays(ArrayRef<T> a, ArrayRef<T> b) {
 }
 
 // Multiplies the value followed by a FakeQuant op and adjusts the quantization
-// params. This funtion only supports symetrically quantized values.
+// params. This function only supports symmetrically quantized values.
 Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
                              Value multiplier) {
   auto dq_op = value.getDefiningOp<quantfork::DequantizeCastOp>();

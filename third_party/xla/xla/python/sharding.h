@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,11 +30,11 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
-#include "xla/python/status_casters.h"
 #include "xla/xla_data.pb.h"
 
 namespace jax {
@@ -170,26 +170,30 @@ class PmapSharding : public XLACompatibleSharding {
 class GSPMDSharding : public XLACompatibleSharding {
  public:
   GSPMDSharding(pybind11::list devices, xla::OpSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none())
+                pybind11::object memory_kind = pybind11::none(),
+                pybind11::object device_list = pybind11::none())
       : GSPMDSharding(
             pybind11::tuple(devices),
             xla::ValueOrThrow(xla::HloSharding::FromProto(op_sharding)),
-            std::move(memory_kind)) {}
+            std::move(memory_kind), std::move(device_list)) {}
 
   GSPMDSharding(pybind11::tuple devices, xla::OpSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none())
+                pybind11::object memory_kind = pybind11::none(),
+                pybind11::object device_list = pybind11::none())
       : GSPMDSharding(
             std::move(devices),
             xla::ValueOrThrow(xla::HloSharding::FromProto(op_sharding)),
-            std::move(memory_kind)) {}
+            std::move(memory_kind), std::move(device_list)) {}
 
   GSPMDSharding(pybind11::list devices, xla::HloSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none())
+                pybind11::object memory_kind = pybind11::none(),
+                pybind11::object device_list = pybind11::none())
       : GSPMDSharding(pybind11::tuple(devices), std::move(op_sharding),
-                      std::move(memory_kind)) {}
+                      std::move(memory_kind), std::move(device_list)) {}
 
   GSPMDSharding(pybind11::tuple devices, xla::HloSharding op_sharding,
-                pybind11::object memory_kind = pybind11::none());
+                pybind11::object memory_kind = pybind11::none(),
+                pybind11::object device_list = pybind11::none());
 
   const pybind11::tuple& devices() const { return devices_; }
   const pybind11::object& memory_kind() const { return memory_kind_; }

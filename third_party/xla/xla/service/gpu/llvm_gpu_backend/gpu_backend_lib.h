@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ std::string CantFindCudaMessage(absl::string_view msg,
 std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir);
 
 // Link libdevice if functions using it are detected in the module.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path);
+absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                      const std::string& libdevice_path);
 
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
@@ -50,7 +50,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 // The Compile.* interfaces each create their own llvm::LLVMContext objects for
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
-StatusOr<std::string> CompileToPtx(
+absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
@@ -60,9 +60,9 @@ namespace amdgpu {
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
-StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
 

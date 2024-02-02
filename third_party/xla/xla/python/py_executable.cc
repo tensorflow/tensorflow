@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -353,21 +354,35 @@ StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PyLoadedExecutable::HloModules() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetHloModules();
 }
 
 StatusOr<std::vector<std::vector<absl::string_view>>>
 PyLoadedExecutable::GetOutputMemoryKinds() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputMemoryKinds();
+}
+
+StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts() const {
+  py::gil_scoped_release gil_release;
+  return ifrt_loaded_executable_->GetParameterLayouts();
+}
+
+StatusOr<std::vector<Layout>> PyLoadedExecutable::GetOutputLayouts() const {
+  py::gil_scoped_release gil_release;
+  return ifrt_loaded_executable_->GetOutputLayouts();
 }
 
 std::optional<std::vector<OpSharding>>
 PyLoadedExecutable::GetParameterShardings() const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetParameterShardings();
 }
 
 std::optional<std::vector<OpSharding>> PyLoadedExecutable::GetOutputShardings()
     const {
+  py::gil_scoped_release gil_release;
   return ifrt_loaded_executable_->GetOutputShardings();
 }
 

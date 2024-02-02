@@ -260,6 +260,7 @@ cc_library(
         ":program_cache",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -428,18 +429,9 @@ cc_library(
     srcs = ["opencl_wrapper.cc"],
     hdrs = ["opencl_wrapper.h"],
     linkopts = select({
-        "//tensorflow:android": [
-            "-ldl",  # opencl_wrapper calls dlopen()
-            "-lm",
-        ],
-        # copybara:uncomment_begin(google-only)
-        # "//tools/cc_target_os:linux-google": [
-        # "-ldl",
-        # "-rdynamic",
-        # ],
-        # copybara:uncomment_end
-        "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
-    }),
+        "//tensorflow:android": ["-lm"],
+        "//conditions:default": [],
+    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
     deps = [
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
