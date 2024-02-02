@@ -165,6 +165,7 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitCubDeviceRadixSort(mlir::Operation* op);
+  absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
   absl::Status EmitCholeskyThunk(mlir::Operation* op);
   absl::Status EmitCholeskyThunk(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

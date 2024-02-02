@@ -1785,6 +1785,47 @@ IrEmitterUnnested::GetAllocationSliceForHlo(const HloInstruction* instr,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(
+    const HloCustomCallInstruction* instr) {
+  if (instr->operand_count() != 1 && instr->operand_count() != 2) {
+    return Internal("Invalid number of operands for radix sort");
+  }
+
+  absl::InlinedVector<BufferAllocation::Slice, 2> operands;
+  for (int i = 0; i < instr->operand_count(); ++i) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice operand,
+                        GetAllocationSliceForHlo(instr->operand(i), {}));
+    operands.push_back(operand);
+  }
+
+  absl::InlinedVector<BufferAllocation::Slice, 2> results;
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+                      GetAllocationSliceForHlo(instr, {0}));
+  results.push_back(result);
+
+  BufferAllocation::Slice scratch;
+  if (instr->operand_count() == 1) {
+    TF_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {1}));
+  } else {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
+                        GetAllocationSliceForHlo(instr, {1}));
+    results.push_back(result);
+    TF_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {2}));
+  }
+
+  TF_ASSIGN_OR_RETURN(xla::SortOptions options,
+                      instr->backend_config<xla::SortOptions>());
+  auto thunk = std::make_unique<CubSortThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      instr->operand(0)->shape().element_type(),
+      instr->operand_count() == 2
+          ? std::optional(instr->operand(1)->shape().element_type())
+          : std::nullopt,
+      operands, results, scratch, options.descending());
+  AddThunkToThunkSequence(std::move(thunk));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(mlir::Operation* op) {
   auto radix_sort_op = mlir::cast<mlir::lmhlo_gpu::RadixSortOp>(op);
   if (radix_sort_op.getInputs().size() != 1 &&
@@ -1792,10 +1833,14 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(mlir::Operation* op) {
     return Internal("Invalid number of operands for radix sort");
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> operands,
+  TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> inputs,
                       GetAllocationSlices(radix_sort_op.getInputs()));
-  TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> results,
+  absl::InlinedVector<BufferAllocation::Slice, 2> operands(inputs.begin(),
+                                                           inputs.end());
+  TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> outputs,
                       GetAllocationSlices(radix_sort_op.getOutput()));
+  absl::InlinedVector<BufferAllocation::Slice, 2> results(outputs.begin(),
+                                                          outputs.end());
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch,
                       GetAllocationSlice(radix_sort_op.getScratch()));
 
@@ -4234,6 +4279,10 @@ absl::Status IrEmitterUnnested::EmitOp(
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::RadixSortOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      auto* instr = Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitCubDeviceRadixSort(instr);
+    }
     return EmitCubDeviceRadixSort(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
@@ -4582,6 +4631,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       if (IsTriangularSolve(*instr)) {
         return EmitTriangularSolveCustomCall(instr);
+      }
+      if (IsCubDeviceRadixSort(*instr)) {
+        return EmitCubDeviceRadixSort(custom_call);
       }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       return EmitCustomCallThunk(custom_call);

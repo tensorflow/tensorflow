@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/device_memory.h"
@@ -49,8 +50,8 @@ class CubSortThunk : public Thunk {
  public:
   CubSortThunk(ThunkInfo thunk_info, PrimitiveType type,
                std::optional<PrimitiveType> value_type,
-               std::vector<BufferAllocation::Slice> operands,
-               std::vector<BufferAllocation::Slice> results,
+               absl::InlinedVector<BufferAllocation::Slice, 2> operands,
+               absl::InlinedVector<BufferAllocation::Slice, 2> results,
                BufferAllocation::Slice scratch, bool descending);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
@@ -64,8 +65,8 @@ class CubSortThunk : public Thunk {
 
  private:
   std::unique_ptr<CubSortRunnerInterface> runner_;
-  std::vector<BufferAllocation::Slice> operands_;
-  std::vector<BufferAllocation::Slice> results_;
+  absl::InlinedVector<BufferAllocation::Slice, 2> operands_;
+  absl::InlinedVector<BufferAllocation::Slice, 2> results_;
   BufferAllocation::Slice scratch_;
   bool descending_;
 };
