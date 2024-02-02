@@ -53,7 +53,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr ByteSize kTFRecordReaderOutputBufferSize = ByteSize::MB(512);
+constexpr ByteSize kTFRecordReaderOutputBufferSize = ByteSize::GB(1);
 constexpr int64_t kUnknownNumElements = -1;
 
 constexpr const char kFileShardDelimiter[] = "_CHUNK_SHARDS_";

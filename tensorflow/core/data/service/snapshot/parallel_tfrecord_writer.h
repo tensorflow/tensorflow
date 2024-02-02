@@ -58,7 +58,7 @@ class ParallelTFRecordWriter {
  public:
   explicit ParallelTFRecordWriter(const std::string& file_prefix,
                                   const std::string& compression, tsl::Env* env,
-                                  ByteSize max_file_size = ByteSize::GB(2),
+                                  ByteSize max_file_size = ByteSize::GB(6),
                                   int64_t num_write_threads = 2,
                                   int64_t buffer_size_per_thread = 1);
   virtual ~ParallelTFRecordWriter();
