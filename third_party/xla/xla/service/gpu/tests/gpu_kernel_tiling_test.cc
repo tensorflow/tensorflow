@@ -342,7 +342,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.001}));
 }
 
 TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
@@ -375,7 +375,7 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
                      /*match_optimized_ir=*/true);
 
   // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.001}));
 }
 
 TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {

@@ -299,7 +299,17 @@ class ReductionFusion::ReductionEmitter {
         ir_emitter_context_(ir_emitter_context),
         fusion_(fusion),
         index_ty_(GetIndexType(fusion, reduction_codegen_info.GetTiling(),
-                               elemental_emitter_.builder())) {}
+                               elemental_emitter_.builder())) {
+    for (auto hero : analysis.fusion_heroes()) {
+      if (hero->opcode() == HloOpcode::kReduce) {
+        for (int i = 0; i < hero->operand_count() / 2; ++i) {
+          CHECK(LayoutUtil::IsMonotonicWithDim0Major(
+              hero->operand(i)->shape().layout()))
+              << "reduction-layout-normalizer must run before code generation";
+        }
+      }
+    }
+  }
 
   absl::StatusOr<FusionEmissionResult> EmitInitializers(
       mlir::lmhlo::FusionOp fusion_op);
