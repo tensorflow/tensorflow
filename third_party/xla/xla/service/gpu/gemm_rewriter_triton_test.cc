@@ -1080,6 +1080,23 @@ e {
                             m::Parameter(), m::Parameter()))));
 }
 
+TEST_F(GemmRewriterTritonTest, CopiesDotMetadataToFusionOp) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[2,18] parameter(0)
+  p1 = f16[256,2] parameter(1)
+  ROOT d = f16[18,256] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}, metadata={op_name="foo"}
+})")
+                    .value();
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_EQ(
+      module->entry_computation()->root_instruction()->metadata().op_name(),
+      "foo");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

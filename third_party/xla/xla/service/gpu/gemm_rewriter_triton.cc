@@ -700,6 +700,9 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
         dot->parent()->AddInstruction(HloInstruction::CreateFusion(
             computation->root_instruction()->shape(),
             HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
+    // Copy the metadata of the `dot` to the newly created `fusion` op. This
+    // is convenient for handling metadata in split-k rewriting subsequently.
+    dot_fusion->set_metadata(dot->metadata());
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion, fusion_name);
 
     TF_ASSIGN_OR_RETURN(auto gpu_config,

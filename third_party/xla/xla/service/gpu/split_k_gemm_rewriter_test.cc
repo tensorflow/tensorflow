@@ -92,15 +92,17 @@ ENTRY e {
   p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
   p1 = bf16[16,128]{1,0} parameter(1)
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm",
+    metadata={op_name="foo"}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
+  EXPECT_EQ(root->metadata().op_name(), "foo");
 }
 
 TEST_F(SplitKTest, MakeSplitKWithOutputFusion) {
