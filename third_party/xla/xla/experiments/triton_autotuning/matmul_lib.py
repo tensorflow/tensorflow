@@ -301,7 +301,7 @@ def benchmark_matmul_tiling(
       _reduce_kernel[(triton.cdiv(dims.M * dims.N, 1024),)](
           scratchpad,
           c,
-          row_size=int(dims.M),
+          row_size=int(dims.M)*int(dims.N),
           col_size=tiling.SPLIT_K,
           num_stages=1,
           num_warps=1024 // 32,
