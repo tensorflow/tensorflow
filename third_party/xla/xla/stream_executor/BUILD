@@ -73,7 +73,6 @@ filegroup(
         "scratch_allocator.h",
         "stream.h",
         "stream_executor.h",
-        "temporary_device_memory.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -541,14 +540,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "temporary_device_memory",
-    srcs = ["temporary_device_memory.cc"],
-    hdrs = ["temporary_device_memory.h"],
-    visibility = ["//visibility:public"],
-    deps = [":stream_executor_headers"],
-)
-
 #===--------------------------------------------------------------------------------------------===#
 
 transitive_hdrs(
@@ -576,7 +567,6 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
-        ":temporary_device_memory",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",

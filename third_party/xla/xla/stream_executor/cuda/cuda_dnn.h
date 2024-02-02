@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
 namespace gpu {

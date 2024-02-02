@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
@@ -158,12 +157,6 @@ class Stream {
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   void ReturnSubStream(Stream *sub_stream) TF_LOCKS_EXCLUDED(mu_);
-
-  // Allocate temporary memories. The stream will deallocate them when blocked
-  // or destroyed.
-  template <typename T>
-  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
-  AllocateTemporaryArray(uint64_t element_count);
 
   // Entrains onto the stream of operations: a kernel launch with the given
   // (variadic) parameters for the invocation. These arguments can be things
@@ -1319,13 +1312,6 @@ class Stream {
                     "without DNN support";
   }
 
-  // Allocates an array without type parameterization, so that the
-  // implementation can live in the source file. Without this base allocation
-  // method, we incur a circular dependency between the StreamExecutor
-  // definition and this class' definition.
-  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
-      uint64_t element_count, uint64 element_size);
-
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
 
@@ -1423,17 +1409,6 @@ inline absl::Status Stream::ThenLaunch(
   TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
                                      cluster_dims, kernel, *kernel_args));
   return absl::OkStatus();
-}
-
-template <typename T>
-inline absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
-Stream::AllocateTemporaryArray(uint64_t element_count) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TemporaryDeviceMemoryBase> temporary_memory,
-      AllocateArrayBase(element_count, sizeof(T)));
-
-  return std::unique_ptr<TemporaryDeviceMemory<T>>(
-      reinterpret_cast<TemporaryDeviceMemory<T> *>(temporary_memory.release()));
 }
 
 template <>
