@@ -990,3 +990,29 @@ func.func @testNameCollision(%arg0: tensor<i32>) {
   }) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
   return
 }
+
+// -----
+
+func.func private @my_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<i1> {
+  %0 = builtin.unrealized_conversion_cast to tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func private @my_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
+  return %arg0, %arg1 : tensor<i32>, tensor<f32>
+}
+// CHECK-LABEL: testConditionWithPassthroughArgs
+func.func @testConditionWithPassthroughArgs(%arg1: tensor<i32>, %arg2: tensor<f32>) {
+  // CHECK: "tf.While"
+  // CHECK-SAME: body = @my_body
+  // CHECK-SAME: cond = @my_cond
+  %3:2 = "tf.WhileRegion"(%arg1, %arg2) <{is_stateless = false}> ({
+  ^bb0(%barg1: tensor<i32>, %barg2: tensor<f32>):
+    %8 = func.call @my_cond(%barg1, %barg2) : (tensor<i32>, tensor<f32>) -> tensor<i1>
+    "tf.Yield"(%8, %barg1, %barg2) : (tensor<i1>, tensor<i32>, tensor<f32>) -> ()
+  }, {
+  ^bb0(%barg1: tensor<i32>, %barg2: tensor<f32>):
+    %r1, %r2 = func.call @my_body(%barg1, %barg2) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+    "tf.Yield"(%r1, %r2) : (tensor<i32>, tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+  return
+}
