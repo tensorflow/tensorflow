@@ -80,10 +80,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 
 absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
     const BufferAssignment& buffer_assignment, const HloFusionAdaptor& fusion,
-    const HloInstruction& fusion_instr, const HloInstruction& start) {
+    const HloInstruction& fusion_instr, const HloInstruction& start,
+    const ShapeIndex& index) {
   if (const auto* param = DynCast<HloParameterInstruction>(&start)) {
-    return GetAllocationSlice(
-        buffer_assignment, fusion_instr.operand(param->parameter_number()), {});
+    return GetAllocationSlice(buffer_assignment,
+                              fusion_instr.operand(param->parameter_number()),
+                              index);
   }
 
   auto slice_adaptor =
@@ -106,7 +108,8 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice orig_slice,
       GetAllocationSlice(buffer_assignment,
-                         fusion_instr.operand(param->parameter_number()), {}));
+                         fusion_instr.operand(param->parameter_number()),
+                         index));
 
   // Given this slice
   // f16[1,4,8]{2,1,0} slice(f16[2,8,8]{2,1,0}),
@@ -122,6 +125,54 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   }
 
   return BufferAllocation::Slice(orig_slice.allocation(), offset, size);
+}
+
+absl::StatusOr<FusionEmissionResult> EmitGemm(
+    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
+    const HloFusionInstruction& fusion,
+    const HloCustomCallInstruction& custom_call) {
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context.buffer_assignment();
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice lhs_slice,
+      GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
+                                       *custom_call.operand(0), /*index=*/{}));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice rhs_slice,
+      GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
+                                       *custom_call.operand(1), /*index=*/{}));
+
+  BufferAllocation::Slice output;
+  std::optional<BufferAllocation::Slice> workspace;
+
+  // Result of a legacy cuBLAS custom call can be a tuple if we explicitly
+  // allocate workspace buffer in HLO. If result is an array, it means that
+  // workspace is not available, and cuBLAS will allocate its own workspace.
+  if (custom_call.shape().IsArray()) {
+    TF_ASSIGN_OR_RETURN(output,
+                        GetAllocationSlice(buffer_assignment, &fusion, {}));
+  } else {
+    TF_ASSIGN_OR_RETURN(output,
+                        GetAllocationSlice(buffer_assignment, &fusion, {0}));
+    TF_ASSIGN_OR_RETURN(workspace,
+                        GetAllocationSlice(buffer_assignment, &fusion, {1}));
+  }
+
+  bool deterministic_ops =
+      ir_emitter_context.debug_options().xla_gpu_deterministic_ops();
+
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig config,
+      GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
+  auto thunk = std::make_unique<GemmThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(&custom_call), std::move(config),
+      lhs_slice, rhs_slice, output, workspace, deterministic_ops);
+
+  FusionEmissionResult result;
+  result.thunks.push_back(std::move(thunk));
+  return result;
 }
 
 }  // namespace
@@ -179,9 +230,6 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
 absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
-  const BufferAssignment& buffer_assignment =
-      ir_emitter_context.buffer_assignment();
-
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   auto maybe_custom_call_adaptor = HloFindIf(
       adaptor.GetRoots(), adaptor,
@@ -192,46 +240,7 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
   if (IsLegacyCublasMatmul(custom_call)) {
-    TF_ASSIGN_OR_RETURN(
-        BufferAllocation::Slice lhs_slice,
-        GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
-                                         *custom_call.operand(0)));
-
-    TF_ASSIGN_OR_RETURN(
-        BufferAllocation::Slice rhs_slice,
-        GetSliceWithUpdatedOffsetAndSize(buffer_assignment, adaptor, fusion,
-                                         *custom_call.operand(1)));
-
-    BufferAllocation::Slice output;
-    std::optional<BufferAllocation::Slice> workspace;
-
-    // Result of a legacy cuBLAS custom call can be a tuple if we explicitly
-    // allocate workspace buffer in HLO. If result is an array, it means that
-    // workspace is not available, and cuBLAS will allocate its own workspace.
-    if (custom_call.shape().IsArray()) {
-      TF_ASSIGN_OR_RETURN(output,
-                          GetAllocationSlice(buffer_assignment, &fusion, {}));
-    } else {
-      TF_ASSIGN_OR_RETURN(output,
-                          GetAllocationSlice(buffer_assignment, &fusion, {0}));
-      TF_ASSIGN_OR_RETURN(workspace,
-                          GetAllocationSlice(buffer_assignment, &fusion, {1}));
-    }
-
-    bool deterministic_ops =
-        ir_emitter_context.debug_options().xla_gpu_deterministic_ops();
-
-    TF_ASSIGN_OR_RETURN(
-        GemmConfig config,
-        GemmConfig::For(static_cast<const HloInstruction*>(&custom_call)));
-    auto thunk = std::make_unique<GemmThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(&custom_call),
-        std::move(config), lhs_slice, rhs_slice, output, workspace,
-        deterministic_ops);
-
-    FusionEmissionResult result;
-    result.thunks.push_back(std::move(thunk));
-    return result;
+    return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call);
   }
 
   return absl::UnimplementedError(
