@@ -3421,6 +3421,7 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
+        ":address_computation_fusion_rewriter",
         ":alias_passthrough_params",
         ":all_reduce_blueconnect",
         ":autotuner_util",

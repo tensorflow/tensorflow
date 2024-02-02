@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gather_simplifier.h"
+#include "xla/service/gpu/address_computation_fusion_rewriter.h"
 #include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
@@ -2206,6 +2207,12 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
       VLOG(1) << "HloRematerialization saved "
               << sizes.before_bytes - sizes.after_bytes << " bytes";
     }
+  }
+
+  {
+    HloPassPipeline pipeline("address-computation");
+    pipeline.AddPass<AddressComputationFusionRewriter>();
+    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
   {
