@@ -126,12 +126,14 @@ GpuCommandBuffer::~GpuCommandBuffer() {
     VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
             << "(remaining alive executable graphs: " << NotifyExecDestroyed()
             << ")";
-    auto st = GpuDriver::DestroyGraphExec(exec_);
-    CHECK(st.ok()) << "Failed to destroy GPU graph exec: " << st.message();
+    if (auto status = GpuDriver::DestroyGraphExec(exec_); !status.ok()) {
+      LOG(ERROR) << "Failed to destroy GPU graph exec: " << status.message();
+    }
   }
   if (graph_ != nullptr && is_owned_graph_) {
-    auto st = GpuDriver::DestroyGraph(graph_);
-    CHECK(st.ok()) << "Failed to destroy GPU graph: " << st.message();
+    if (auto status = GpuDriver::DestroyGraph(graph_); !status.ok()) {
+      LOG(ERROR) << "Failed to destroy GPU graph: " << status.message();
+    }
   }
 }
 
