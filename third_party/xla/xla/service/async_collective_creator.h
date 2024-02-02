@@ -55,6 +55,7 @@ class AsyncCollectiveCreator : public HloModulePass {
   StatusOr<bool> ReplaceCollectives(
       HloComputation *computation,
       std::vector<HloInstruction *> &supported_collectives);
+  const CollectiveCreatorConfig *config() const { return &config_; }
 
  private:
   CollectiveCreatorConfig config_;
