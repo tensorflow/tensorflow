@@ -335,20 +335,6 @@ class Stream {
     return absl::UnimplementedError("DNN library is not found.");
   }
 
-  Stream &ThenNormalizeWithDimensions(
-      const dnn::NormalizeDescriptor &normalize_descriptor,
-      const dnn::BatchDescriptor &dimensions,
-      const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data);
-
-  Stream &ThenNormalizeBackwardWithDimensions(
-      const dnn::NormalizeDescriptor &normalize_descriptor,
-      const dnn::BatchDescriptor &dimensions,
-      const DeviceMemory<float> &raw_data,
-      const DeviceMemory<float> &normalized_data,
-      const DeviceMemory<float> &normalized_variable_gradient,
-      DeviceMemory<float> *raw_variable_gradient,
-      ScratchAllocator *workspace_allocator = nullptr);
-
   Stream &ThenDepthConcatenate(
       absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float> *const> input_data,

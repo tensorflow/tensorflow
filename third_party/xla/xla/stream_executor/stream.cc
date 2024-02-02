@@ -336,44 +336,6 @@ Stream &Stream::ThenRecordEvent(Event *event) {
   return *this;
 }
 
-Stream &Stream::ThenNormalizeWithDimensions(
-    const dnn::NormalizeDescriptor &normalize_descriptor,
-    const dnn::BatchDescriptor &dimensions,
-    const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(input_data),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoNormalizeWithDimensions(
-        this, normalize_descriptor, dimensions, input_data, output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenNormalizeBackwardWithDimensions(
-    const dnn::NormalizeDescriptor &normalize_descriptor,
-    const dnn::BatchDescriptor &dimensions, const DeviceMemory<float> &raw_data,
-    const DeviceMemory<float> &normalized_data,
-    const DeviceMemory<float> &normalized_variable_gradient,
-    DeviceMemory<float> *raw_variable_gradient,
-    ScratchAllocator *workspace_allocator) {
-  VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(raw_data),
-            PARAM(normalized_data), PARAM(normalized_variable_gradient),
-            PARAM(raw_variable_gradient), PARAM(workspace_allocator));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoNormalizeBackwardWithDimensions(
-        this, normalize_descriptor, dimensions, raw_data, normalized_data,
-        normalized_variable_gradient, raw_variable_gradient,
-        workspace_allocator));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenDepthConcatenate(
     absl::Span<const dnn::BatchDescriptor> input_dimensions,
     absl::Span<const DeviceMemory<float> *const> input_data,
