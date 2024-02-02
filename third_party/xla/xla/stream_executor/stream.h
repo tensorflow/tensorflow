@@ -356,20 +356,6 @@ class Stream {
   Stream &ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
                        int incx, DeviceMemory<float> *y, int incy);
 
-  // See BlasSupport::DoBlasScal.
-  Stream &ThenBlasScal(uint64_t elem_count, float alpha, DeviceMemory<float> *x,
-                       int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, double alpha,
-                       DeviceMemory<double> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, float alpha,
-                       DeviceMemory<std::complex<float>> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, double alpha,
-                       DeviceMemory<std::complex<double>> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, std::complex<float> alpha,
-                       DeviceMemory<std::complex<float>> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, std::complex<double> alpha,
-                       DeviceMemory<std::complex<double>> *x, int incx);
-
   // See BlasSupport::DoBlasGemv.
   Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n, float alpha,
                        const DeviceMemory<float> &a, int lda,
@@ -694,24 +680,6 @@ class Stream {
                               const DeviceMemory<std::complex<double> *> &as,
                               int lda, DeviceMemory<std::complex<double> *> *bs,
                               int ldb, int batch_count);
-
-  // See FftSupport::DoFft.
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<float>> &input,
-                  DeviceMemory<std::complex<float>> *output);
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<double>> &input,
-                  DeviceMemory<std::complex<double>> *output);
-  Stream &ThenFft(fft::Plan *plan, const DeviceMemory<float> &input,
-                  DeviceMemory<std::complex<float>> *output);
-  Stream &ThenFft(fft::Plan *plan, const DeviceMemory<double> &input,
-                  DeviceMemory<std::complex<double>> *output);
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<float>> &input,
-                  DeviceMemory<float> *output);
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<double>> &input,
-                  DeviceMemory<double> *output);
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory

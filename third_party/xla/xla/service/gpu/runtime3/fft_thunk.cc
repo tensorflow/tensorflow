@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -66,6 +67,22 @@ std::string FftTypeToString(se::fft::Type type) {
   }
 }
 
+absl::StatusOr<stream_executor::blas::BlasSupport*> GetBlas(
+    se::Stream* stream) {
+  auto blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("Unable to get Blas support");
+  }
+  return blas;
+}
+
+absl::StatusOr<stream_executor::fft::FftSupport*> GetFft(se::Stream* stream) {
+  auto fft = stream->parent()->AsFft();
+  if (fft == nullptr) {
+    return absl::InternalError("Unable to get fft support");
+  }
+  return fft;
+}
 }  // namespace
 
 FftThunk::FftThunk(ThunkInfo thunk_info, FftType fft_type,
@@ -113,6 +130,7 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
   // protect each plan with a mutex.
   absl::MutexLock lock(&fft_plan_ptr->mu);
   std::unique_ptr<se::fft::Plan>& fft_plan = fft_plan_ptr->plan;
+  TF_ASSIGN_OR_RETURN(auto fft, GetFft(stream));
   if (fft_plan == nullptr) {
     const int64_t fft_rank = fft_len.size();
     CHECK_LE(fft_rank, 3);
@@ -138,7 +156,7 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
     }
 
     constexpr bool kInPlaceFft = false;
-    fft_plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+    fft_plan = fft->CreateBatchedPlanWithScratchAllocator(
         stream, fft_rank, fft_length, input_embed, input_stride, input_distance,
         output_embed, output_stride, output_distance, fft_type, kInPlaceFft,
         batch_size, &scratch_allocator);
@@ -146,8 +164,8 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
         << "Failed to create cuFFT batched plan with scratch allocator";
     fft_plan_ptr->scale_factor = 1.0f / output_distance;
   } else {
-    stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
-        stream, fft_plan.get(), &scratch_allocator);
+    fft->UpdatePlanWithScratchAllocator(stream, fft_plan.get(),
+                                        &scratch_allocator);
   }
 
   float scale_factor = fft_plan_ptr->scale_factor;
@@ -157,81 +175,72 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
     case se::fft::Type::kC2CForward: {
       se::DeviceMemory<complex64> input_data(input);
       se::DeviceMemory<complex64> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kZ2ZForward: {
       se::DeviceMemory<complex128> input_data(input);
       se::DeviceMemory<complex128> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kC2CInverse: {
       se::DeviceMemory<complex64> input_data(input);
       se::DeviceMemory<complex64> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
-        launch_ok = stream
-                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
-                                       complex64(scale_factor), &output_data, 1)
-                        .ok();
+        TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
+        launch_ok =
+            blas->DoBlasScal(stream, ShapeUtil::ElementsIn(output_shape),
+                             complex64(scale_factor), &output_data, 1);
       }
       break;
     }
     case se::fft::Type::kZ2ZInverse: {
       se::DeviceMemory<complex128> input_data(input);
       se::DeviceMemory<complex128> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
+        TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
         launch_ok =
-            stream
-                ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
-                               complex128(scale_factor), &output_data, 1)
-                .ok();
+            blas->DoBlasScal(stream, ShapeUtil::ElementsIn(output_shape),
+                             complex128(scale_factor), &output_data, 1);
       }
       break;
     }
     case se::fft::Type::kR2C: {
       se::DeviceMemory<float> input_data(input);
       se::DeviceMemory<complex64> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kD2Z: {
       se::DeviceMemory<double> input_data(input);
       se::DeviceMemory<complex128> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kC2R: {
       se::DeviceMemory<complex64> input_data(input);
       se::DeviceMemory<float> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
-        launch_ok = stream
-                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
-                                       scale_factor, &output_data, 1)
-                        .ok();
+        TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
+        launch_ok =
+            blas->DoBlasScal(stream, ShapeUtil::ElementsIn(output_shape),
+                             scale_factor, &output_data, 1);
       }
       break;
     }
     case se::fft::Type::kZ2D: {
       se::DeviceMemory<complex128> input_data(input);
       se::DeviceMemory<double> output_data(output);
-      launch_ok =
-          stream->ThenFft(fft_plan.get(), input_data, &output_data).ok();
+      launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
-        launch_ok = stream
-                        ->ThenBlasScal(ShapeUtil::ElementsIn(output_shape),
-                                       scale_factor, &output_data, 1)
-                        .ok();
+        TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
+        launch_ok =
+            blas->DoBlasScal(stream, ShapeUtil::ElementsIn(output_shape),
+                             scale_factor, &output_data, 1);
       }
       break;
     }
