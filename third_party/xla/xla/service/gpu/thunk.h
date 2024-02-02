@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_H_
 #define XLA_SERVICE_GPU_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -175,6 +175,11 @@ class Thunk {
 
     absl::StatusOr<NcclComm::Lock> GetComm(const NcclCliqueKey& clique_key,
                                            int32_t rank) const;
+
+    // Returns the number of communicators in a collective clique. Returns error
+    // if we do not have an acquired clique for a given key.
+    absl::StatusOr<size_t> num_communicators(
+        const NcclCliqueKey& clique_key) const;
 
     bool empty() const { return cliques_map_.empty(); }
 

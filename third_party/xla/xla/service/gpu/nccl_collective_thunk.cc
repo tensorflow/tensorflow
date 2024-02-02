@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
@@ -216,9 +218,8 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
       nccl_api_(nccl_api),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
-absl::StatusOr<NcclComm::Lock> GetNcclComm(
+static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
     const Thunk::CollectiveExecuteParams& params,
-    const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t stream_id) {
   GlobalDeviceId global_device_id = params.global_device_id;
@@ -235,9 +236,19 @@ absl::StatusOr<NcclComm::Lock> GetNcclComm(
         "environment configuration.");
   }
 
-  NcclCliqueKey clique_key(std::move(participants), stream_id);
-  std::optional<int64_t> rank = clique_key.rank(global_device_id);
+  return NcclCliqueKey(std::move(participants), stream_id);
+}
 
+absl::StatusOr<NcclComm::Lock> GetNcclComm(
+    const Thunk::CollectiveExecuteParams& params,
+    const Thunk::CollectiveCliques& collective_cliques,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t stream_id) {
+  TF_ASSIGN_OR_RETURN(
+      NcclCliqueKey clique_key,
+      GetNcclCliqueKey(params, replica_groups, group_mode, stream_id));
+
+  std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
   return collective_cliques.GetComm(std::move(clique_key), *rank);
 }
 
@@ -433,6 +444,24 @@ absl::Status NcclCollectiveThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
+namespace {
+// Wrap NcclCliqueKey into a unique struct to guarantee we do not accidentally
+// try to run multiple unrelated rendezvous for a same key.
+struct FirstCallRendezvousKey {
+  NcclCliqueKey clique_key;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const FirstCallRendezvousKey& key) {
+    return H::combine(std::move(h), key.clique_key);
+  }
+};
+
+bool operator==(const FirstCallRendezvousKey& a,
+                const FirstCallRendezvousKey& b) {
+  return a.clique_key == b.clique_key;
+}
+}  // namespace
+
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
@@ -463,18 +492,38 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, *comm));
   }
 
-  // Block host on the first call to ensure that all devices have allocated the
-  // required buffers for their communicators before allowing any device to
-  // continue enqueuing operations. Otherwise, the allocations can cause
-  // deadlock in the CUDA driver (b/215649390).
-  //
-  // TODO(ezhulenev): This can be removed with shared cliques acquisition.
-  if (first_call_to_execute_) {
-    se::Stream* stream = IsAsync()
-                             ? params.async_comms_streams[async_stream_idx]
-                             : params.stream;
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-    first_call_to_execute_ = false;
+  // After a first execution of this instance of collective operation do a
+  // rendezvous with other participants to make sure that all of them allocated
+  // required state (internal to NCCL) and ready to continue. Going too far
+  // ahead on one rank leads to deadlocks in NCCL.
+  if (!first_call_rendezvous_flag_.IsCompleted()) {
+    TF_ASSIGN_OR_RETURN(
+        NcclCliqueKey clique_key,
+        GetNcclCliqueKey(*params.collective_params, config().replica_groups,
+                         config().group_mode, stream_id));
+
+    TF_ASSIGN_OR_RETURN(
+        size_t num_local_participants,
+        params.collective_cliques->num_communicators(clique_key));
+
+    auto global_device_id = params.collective_params->global_device_id;
+    VLOG(1) << "Do a rendezvous after a first call to "
+            << Thunk::KindToString(kind())
+            << "; run_id=" << params.collective_params->run_id.ToInt()
+            << "; op_id=" << config().op_id
+            << "; num_local_participants=" << num_local_participants
+            << "; rank=" << clique_key.rank(global_device_id).value_or(-1)
+            << "; clique_key=" << clique_key.ToString();
+
+    auto rendezvous_key = FirstCallRendezvousKey{std::move(clique_key)};
+    auto rendezvous_name = absl::StrFormat(
+        "first call to collective operation %d; run_id=%d", config().op_id,
+        params.collective_params->run_id.ToInt());
+
+    RendezvousSingle(first_call_rendezvous_flag_, rendezvous_name,
+                     rendezvous_key, num_local_participants,
+                     /*warn_stuck_timeout=*/absl::Seconds(10),
+                     /*terminate_timeout=*/absl::Seconds(30));
   }
 
   return absl::OkStatus();

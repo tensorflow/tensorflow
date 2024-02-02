@@ -36,13 +36,13 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
@@ -175,10 +175,18 @@ class NcclCollectiveThunk : public Thunk {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
-  bool first_call_to_execute_ = true;
-
   NcclApi* nccl_api_;
   std::shared_ptr<AsyncEvents> async_events_;
+
+  // After a first call to this particular instance of a NCCL collective thunk
+  // we do a round of rendezvous to make sure that all participants successfully
+  // allocated on-device state required for executing collective operation. This
+  // is required to avoid deadlocks when one device goes too far ahead and
+  // causes a deadlock in CUDA driver (root cause is mysterious).
+  //
+  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
+  // sure that all NCCL resources are allocated just once.
+  RendezvousSingleFlag first_call_rendezvous_flag_;
 };
 
 //===----------------------------------------------------------------------===//

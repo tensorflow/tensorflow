@@ -893,6 +893,7 @@ cc_library(
         "//xla/service:computation_placer",
         "//xla/service:global_device_id",
         "//xla/service:hlo_parser",
+        "//xla/service:rendezvous",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_activation_header",
@@ -915,6 +916,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
@@ -1239,6 +1241,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":gpu_constants",
+        ":gpu_executable_run_options",
         ":ir_emission_utils",
         ":nccl_clique",
         ":nccl_clique_key",
