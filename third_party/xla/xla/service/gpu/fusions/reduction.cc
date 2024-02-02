@@ -15,7 +15,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/reduction.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -34,9 +33,9 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
@@ -118,6 +118,12 @@ int GetNumOutputs(const Shape& shape) {
     return shape.tuple_shapes_size();
   }
   return 1;
+}
+
+const Shape& OutputShape(const Shape& output_shape, int output_index) {
+  CHECK(output_index == 0 || output_shape.IsTuple());
+  return output_shape.IsTuple() ? output_shape.tuple_shapes(output_index)
+                                : output_shape;
 }
 
 llvm::Type* GetIndexType(const HloFusionInstruction& fusion,
@@ -445,9 +451,7 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
   for (const HloReduceInstruction* reduce_hlo : reduce_instr_index_group) {
     for (int op_result_idx = 0;
          op_result_idx < GetNumOutputs(reduce_hlo->shape()); op_result_idx++) {
-      Shape result_shape = reduce_hlo->shape().IsTuple()
-                               ? reduce_hlo->shape().tuple_shapes(op_result_idx)
-                               : reduce_hlo->shape();
+      Shape result_shape = OutputShape(reduce_hlo->shape(), op_result_idx);
 
       llvm::Type* element_type = llvm_ir::PrimitiveTypeToIrType(
           result_shape.element_type(), builder->GetInsertBlock()->getModule());
@@ -752,62 +756,36 @@ ReductionFusion::ReductionGroupEmitter::GetOutputIndexForReduction(
     const HloReduceInstruction* reduction, const HloInstruction* root,
     int output_idx) const {
   auto* builder = reduction_emitter_.builder_;
-  const auto& reduction_info = reduction_emitter_.reduction_codegen_info_;
-  const Tiling& tiling = reduction_info.GetTiling();
-  const TilingThreadIdInfo& thread_id_info = tiling_kernel_info.thread_id_info;
+  auto* index_ty = reduction_emitter_.index_ty_;
 
-  llvm_ir::IrArray::Index index = [&] {
-    auto offsets = thread_id_info.thread_ids;
-    if (!reduction_info.IsRowReduction()) {
-      std::swap(offsets[kColMinorKeptDimension], offsets[kColReducedDimension]);
-    }
-    return tiling_kernel_info.tile_origin.AddOffset(offsets, builder);
-  }();
-
-  const Shape& operand_shape = reduction->inputs()[output_idx]->shape();
-  Shape reduction_kept_element_shape =
-      ShapeUtil::DeleteDimensions(reduction->dimensions(), operand_shape);
-
-  // Given the llvm_ir::IrArray index of a reduction input, returns the linear
-  // address of the reduction output as if the reduction were going to keep
-  // the input shape with the dimensions being reduced moved.
-  llvm::Value* untransposed_output_linear_address = [&] {
+  // 1d or 2d output index (for row/column reduction).
+  auto projected_index = [&]() -> llvm_ir::IrArray::Index {
+    const auto& reduction_info = reduction_emitter_.reduction_codegen_info_;
+    const auto& offset = tiling_kernel_info.tile_origin;
+    const auto& shape = reduction_info.GetTiling().GetXlaShape();
+    const auto& thread_ids = tiling_kernel_info.thread_id_info.thread_ids;
     if (reduction_info.IsRowReduction()) {
-      return index[kRowKeptDimension];
+      constexpr int kDim = kRowKeptDimension;
+      return {{builder->CreateAdd(offset[kDim], thread_ids[kDim])},
+              {shape.dimensions(kDim)},
+              index_ty};
     }
-    // For column reduction, we get the transposed address.
-    absl::Span<const int64_t> dims_in_elem = tiling.GetShape();
-    llvm::Value* x_dim_size =
-        index.GetConstantWithIndexType(dims_in_elem[kColMinorKeptDimension]);
-    llvm::Value* x_block_offset =
-        builder->CreateMul(index[kColMajorKeptDimension], x_dim_size);
-    return builder->CreateAdd(x_block_offset, index[kColMinorKeptDimension]);
+    auto* major_idx = offset[kColMajorKeptDimension];
+    auto* minor_idx = builder->CreateAdd(offset[kColMinorKeptDimension],
+                                         thread_ids[kColReducedDimension]);
+    return {{major_idx, minor_idx},
+            ShapeUtil::DeleteDimension(kColReducedDimension, shape),
+            index_ty};
   }();
 
-  // A reduction is allowed to transpose its output.  For example, suppose
-  // we are reducing the second dimension of f32[10,20,30]{3,2,1}.  We are
-  // allowed to produce as output either f32[10,30]{1,0} (no transpose) or
-  // f32[10,30]{0,1} (transposing the two output dims).
-  //
-  // At this point in the function we have a "partial sum" of input elements
-  // (stored in partial_result_addresses), and we need to accumulate it into
-  // the correct output element.
-  llvm_ir::IrArray::Index element_index(
-      /*linear=*/untransposed_output_linear_address,
-      reduction_kept_element_shape, builder);
-  const Shape& output_shape = !reduction->shape().IsTuple()
-                                  ? reduction->shape()
-                                  : reduction->shape().tuple_shapes(output_idx);
-  llvm_ir::IrArray::Index output_index(element_index.multidim(), output_shape,
-                                       element_index.GetType());
-  // We need to check for root == reduction separately, because for variadic
-  // reduce the root shape would be a tuple, while 'output_shape' is the
-  // subshape.
-  return (root == reduction ||
-          ShapeUtil::EqualIgnoringElementType(output_shape, root->shape()))
-             ? output_index
-             : output_index.SourceIndexOfBitcast(output_shape, root->shape(),
-                                                 builder);
+  auto physical_shape = ShapeUtil::DeleteDimensions(
+      reduction->dimensions(), reduction->operand(output_idx)->shape());
+  auto physical_index =
+      projected_index.SourceIndexOfBitcast(physical_shape, builder);
+  return llvm_ir::IrArray::Index(physical_index.multidim(),
+                                 OutputShape(reduction->shape(), output_idx),
+                                 index_ty)
+      .SourceIndexOfBitcast(OutputShape(root->shape(), output_idx), builder);
 }
 
 void ReductionFusion::ReductionGroupEmitter::WriteReductionOutput(

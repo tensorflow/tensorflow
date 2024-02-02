@@ -167,21 +167,21 @@ ENTRY kernel_entry {
 // CHECK:         store float %[[VAL_99]], ptr %[[VAL_13]], align 4
 // CHECK:         br label %[[VAL_38]]
 // CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_33]]
-// CHECK:         %[[VAL_100:.*]] = add i32 %tile_origin.0, 0
-// CHECK:         %[[VAL_101:.*]] = add i32 %tile_origin.1, %thread.id.2
-// CHECK:         %[[VAL_102:.*]] = add i32 %tile_origin.2, %thread.id.1
-// CHECK:         %[[VAL_103:.*]] = mul i32 %[[VAL_100]], 73728
-// CHECK:         %[[VAL_104:.*]] = add i32 %[[VAL_103]], %[[VAL_102]]
-// CHECK:         %[[VAL_105:.*]] = udiv i32 %[[VAL_104]], 1
-// CHECK:         %[[VAL_106:.*]] = urem i32 %[[VAL_105]], 12
-// CHECK:         %[[VAL_107:.*]] = udiv i32 %[[VAL_104]], 12
-// CHECK:         %[[VAL_108:.*]] = urem i32 %[[VAL_107]], 3
-// CHECK:         %[[VAL_109:.*]] = udiv i32 %[[VAL_104]], 36
-// CHECK:         %[[VAL_110:.*]] = urem i32 %[[VAL_109]], 4
-// CHECK:         %[[VAL_111:.*]] = udiv i32 %[[VAL_104]], 144
-// CHECK:         %[[VAL_112:.*]] = urem i32 %[[VAL_111]], 32
-// CHECK:         %[[VAL_113:.*]] = udiv i32 %[[VAL_104]], 4608
-// CHECK:         %[[VAL_114:.*]] = getelementptr inbounds [12 x [16 x [4 x [3 x [32 x float]]]]], ptr %[[VAL_115:.*]], i32 0, i32 %[[VAL_106]], i32 %[[VAL_113]], i32 %[[VAL_110]], i32 %[[VAL_108]], i32 %[[VAL_112]]
+// CHECK:         %[[VAL_100:.*]] = add i32 %tile_origin.2, %thread.id.1
+// CHECK:         %[[VAL_101:.*]] = mul nuw nsw i32 %[[VAL_100]], 1
+// CHECK:         %[[VAL_102:.*]] = add nuw nsw i32 0, %[[VAL_101]]
+// CHECK:         %[[VAL_103:.*]] = urem i32 %[[VAL_102]], 12
+// CHECK:         %[[VAL_104:.*]] = udiv i32 %[[VAL_102]], 12
+// CHECK:         %[[VAL_105:.*]] = urem i32 %[[VAL_104]], 3
+// CHECK:         %[[VAL_106:.*]] = udiv i32 %[[VAL_104]], 3
+// CHECK:         %[[VAL_107:.*]] = urem i32 %[[VAL_106]], 4
+// CHECK:         %[[VAL_108:.*]] = udiv i32 %[[VAL_106]], 4
+// CHECK:         %[[VAL_109:.*]] = urem i32 %[[VAL_108]], 32
+// CHECK:         %[[VAL_110:.*]] = udiv i32 %[[VAL_108]], 32
+// CHECK:         %[[VAL_111:.*]] = udiv i32 %[[VAL_110]], 16
+// CHECK:         %[[VAL_112:.*]] = mul nuw nsw i32 %tile_origin.0, 1
+// CHECK:         %[[VAL_113:.*]] = add nuw nsw i32 0, %[[VAL_112]]
+// CHECK:         %[[VAL_114:.*]] = getelementptr inbounds [12 x [16 x [4 x [3 x [32 x float]]]]], ptr %[[VAL_115:.*]], i32 0, i32 %[[VAL_103]], i32 %[[VAL_110]], i32 %[[VAL_107]], i32 %[[VAL_105]], i32 %[[VAL_109]]
 // CHECK:         %[[VAL_116:.*]] = load float, ptr %[[VAL_51]], align 4
 // CHECK:         store float %[[VAL_116]], ptr %[[VAL_114]], align 4
 // CHECK:         br label %[[VAL_19]]

@@ -310,18 +310,12 @@ ENTRY main {
 // CHECK:       reduction_write_output-after:                     ; preds = %[[VAL_181]], %[[VAL_164]]
 // CHECK:         br label %[[VAL_118]]
 // CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_164]]
-// CHECK:         %[[VAL_182:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_183:.*]] = add i32 %tile_origin.1, %thread.id.1
-// CHECK:         %[[VAL_184:.*]] = add i32 %tile_origin.2, %thread.id.2
-// CHECK:         %[[VAL_185:.*]] = udiv i32 %[[VAL_183]], 1
-// CHECK:         %[[VAL_186:.*]] = getelementptr inbounds [200 x float], ptr %[[VAL_187:.*]], i32 0, i32 %[[VAL_185]]
+// CHECK:         %[[VAL_186:.*]] = getelementptr inbounds [200 x float], ptr %[[VAL_187:.*]], i32 0, i32 %[[VAL_183]]
 // CHECK:         %[[VAL_188:.*]] = load float, ptr %[[VAL_175]], align 4
 // CHECK:         store float %[[VAL_188]], ptr %[[VAL_186]], align 4
-// CHECK:         %[[VAL_189:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_190:.*]] = add i32 %tile_origin.1, %thread.id.1
-// CHECK:         %[[VAL_191:.*]] = add i32 %tile_origin.2, %thread.id.2
-// CHECK:         %[[VAL_192:.*]] = udiv i32 %[[VAL_190]], 1
-// CHECK:         %[[VAL_193:.*]] = getelementptr inbounds [200 x float], ptr %[[VAL_194:.*]], i32 0, i32 %[[VAL_192]]
+// CHECK:         %[[VAL_193:.*]] = getelementptr inbounds [200 x float], ptr %[[VAL_194:.*]], i32 0, i32 %[[VAL_190]]
 // CHECK:         %[[VAL_195:.*]] = load float, ptr %[[VAL_179]], align 4
 // CHECK:         store float %[[VAL_195]], ptr %[[VAL_193]], align 4
 // CHECK:         br label %[[VAL_165]]
@@ -356,3 +350,4 @@ ENTRY main {
 // CHECK:         %[[VAL_223:.*]] = load float, ptr %[[VAL_222]], align 4
 // CHECK:         store float %[[VAL_223]], ptr %[[VAL_220]], align 4
 // CHECK:         ret void
+

@@ -398,10 +398,7 @@ ENTRY reduce.1 {
 // CHECK:       reduction_write_output-after:                     ; preds = %[[VAL_291]], %[[VAL_201]]
 // CHECK:         br label %[[VAL_131]]
 // CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_201]]
-// CHECK:         %[[VAL_292:.*]] = add i32 %tile_origin.0, 0
 // CHECK:         %[[VAL_293:.*]] = add i32 %tile_origin.1, 0
-// CHECK:         %[[VAL_294:.*]] = add i32 %tile_origin.2, %thread.id.2
-// CHECK:         %[[VAL_295:.*]] = add i32 %tile_origin.3, 0
 // CHECK:         %[[VAL_296:.*]] = load %[[VAL_1]], ptr %[[VAL_209]], align 1
 // CHECK:         store %[[VAL_1]] %[[VAL_296]], ptr %[[VAL_297:.*]], align 1
 // CHECK:         br label %[[VAL_202]]

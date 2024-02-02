@@ -205,13 +205,8 @@ ENTRY e {
 // CHECK:         store double %[[VAL_132]], ptr %[[VAL_13]], align 8
 // CHECK:         br label %[[VAL_38]]
 // CHECK:       reduction_write_output-true:                      ; preds = %[[VAL_33]]
-// CHECK:         %[[VAL_133:.*]] = add i32 %tile_origin.0, 0
-// CHECK:         %[[VAL_134:.*]] = add i32 %tile_origin.1, %thread.id.2
 // CHECK:         %[[VAL_135:.*]] = add i32 %tile_origin.2, %thread.id.1
-// CHECK:         %[[VAL_136:.*]] = mul i32 %[[VAL_133]], 1024
-// CHECK:         %[[VAL_137:.*]] = add i32 %[[VAL_136]], %[[VAL_135]]
-// CHECK:         %[[VAL_138:.*]] = udiv i32 %[[VAL_137]], 1
-// CHECK:         %[[VAL_139:.*]] = getelementptr inbounds [1024 x double], ptr %[[VAL_140:.*]], i32 0, i32 %[[VAL_138]]
+// CHECK:         %[[VAL_139:.*]] = getelementptr inbounds [1024 x double], ptr %[[VAL_140:.*]], i32 0, i32 %[[VAL_135]]
 // CHECK:         %[[VAL_141:.*]] = load double, ptr %[[VAL_51]], align 8
 // CHECK:         store double %[[VAL_141]], ptr %[[VAL_139]], align 8
 // CHECK:         br label %[[VAL_19]]

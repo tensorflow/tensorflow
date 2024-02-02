@@ -104,12 +104,6 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
                                  index.GetType()};
 }
 
-mlir::AffineMap PermuteAffineMapResults(mlir::AffineMap map,
-                                        absl::Span<const int64_t> permutation) {
-  return map.getSubMap(
-      std::vector<unsigned>(permutation.begin(), permutation.end()));
-}
-
 }  // namespace
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
