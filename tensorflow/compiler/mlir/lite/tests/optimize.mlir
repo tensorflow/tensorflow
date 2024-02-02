@@ -18,6 +18,16 @@ func.func @fusedConv2dRelu(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x
   // CHECK: return %0
 }
 
+// CHECK-LABEL: fusedConv3dRelu
+func.func @fusedConv3dRelu(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>, %arg2: tensor<16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  %1 = "tfl.relu"(%0) : (tensor<256x32x32x32x16xf32>) -> tensor<256x32x32x32x16xf32>
+  func.return %1 : tensor<256x32x32x32x16xf32>
+
+  // CHECK: %0 = "tfl.conv_3d"(%arg0, %arg1, %arg2) {dilation_d_factor = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "SAME", stride_d = 1 : i32, stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>, tensor<16xf32>) -> tensor<256x32x32x32x16xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: fusedDepthwiseConv2dRelu6
 func.func @fusedDepthwiseConv2dRelu6(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
   %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %arg2) {depth_multiplier = 4 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>

@@ -86,6 +86,13 @@ multiclass FuseActFnIntoConvOpPat<Op ActFnOp, ConstantStrAttr ActFnAttr> {
     (TFL_Conv2DOp $input, $filter, $bias, $h_factor, $w_factor, ActFnAttr,
         $padding, $stride_h, $stride_w),
     [(HasOneUse $conv_out)]>;
+  def FuseActivationFuncWithConv3D#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_Conv3DOp:$conv_out $input, $filter, $bias, $d_factor,
+                $h_factor, $w_factor, TFL_AF_None, $padding, $stride_d,
+                $stride_h, $stride_w)),
+    (TFL_Conv3DOp $input, $filter, $bias, $d_factor, $h_factor, $w_factor,
+        ActFnAttr, $padding, $stride_d, $stride_h, $stride_w),
+    [(HasOneUse $conv_out)]>;
   def FuseActivationFuncWithDepthwiseConv#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_DepthwiseConv2DOp:$conv_out $input, $filter, $bias, $h_factor,
                 $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w,
