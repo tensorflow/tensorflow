@@ -355,3 +355,6 @@ def : Pat<(CHLO_ConstantOp $v),
 
 def : Pat<(CHLO_TanOp $v),
           (MHLO_TanOp $v)>;
+
+def : Pat<(CHLO_ErfOp $v),
+          (MHLO_ErfOp $v)>;

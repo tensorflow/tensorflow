@@ -68,6 +68,7 @@ absl::StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kDot:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:

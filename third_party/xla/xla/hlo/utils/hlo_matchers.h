@@ -285,6 +285,7 @@ HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
+HLO_MATCHER(Erf);
 HLO_MATCHER(Exp);
 HLO_MATCHER(Fft);
 HLO_MATCHER(Floor);

@@ -46,9 +46,6 @@ XlaOp Reciprocal(XlaOp operand);
 // Computes an approximation of the error function complement (1 - erf(x)).
 XlaOp Erfc(XlaOp x);
 
-// Computes an approximation of the error function.
-XlaOp Erf(XlaOp x);
-
 // Computes an approximation of the inverse of the error function.
 XlaOp ErfInv(XlaOp x);
 

@@ -739,7 +739,7 @@ func.func @matrix_diag_part_align_7d(%arg0: tensor<3x5x7x9x11x13x17xf32>) -> ten
 
 // CHECK-LABEL: func @erf
 func.func @erf(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  // CHECK: chlo.erf %arg0 : tensor<2x3xf32>
+  // CHECK: mhlo.erf %arg0 : tensor<2x3xf32>
   %0 = "tf.Erf"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   func.return %0 : tensor<2x3xf32>
 }

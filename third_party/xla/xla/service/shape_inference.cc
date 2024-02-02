@@ -349,6 +349,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   switch (opcode) {
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kErf:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
       if (!ShapeUtil::ElementIsFloating(shape)) {

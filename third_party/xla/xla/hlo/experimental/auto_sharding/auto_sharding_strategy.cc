@@ -434,6 +434,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:

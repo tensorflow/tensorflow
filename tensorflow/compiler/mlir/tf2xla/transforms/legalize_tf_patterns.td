@@ -580,7 +580,7 @@ foreach Mapping = [
                    [TF_DigammaOp, CHLO_DigammaOp],
                    [TF_ExpOp, MHLO_ExpOp],
                    [TF_Expm1Op, MHLO_Expm1Op],
-                   [TF_ErfOp, CHLO_ErfOp],
+                   [TF_ErfOp, MHLO_ErfOp],
                    [TF_ErfcOp, CHLO_ErfcOp],
                    [TF_FloorOp, MHLO_FloorOp],
                    [TF_ImagOp, MHLO_ImagOp],

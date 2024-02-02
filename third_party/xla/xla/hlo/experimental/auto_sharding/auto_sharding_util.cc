@@ -356,6 +356,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -615,6 +616,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:

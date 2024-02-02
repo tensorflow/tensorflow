@@ -330,6 +330,22 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
                 value->getType(), "tanh");
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  if (prim_type == F64) {
+    return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
+                              {prim_type}, prim_type);
+  }
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
+  if (type == b()->getFloatTy()) {
+    llvm::Value* x = FPCast(value, type);
+    auto* result = llvm_ir::EmitErfF32(b(), x);
+    return FPCast(result, value->getType());
+  }
+  return Unimplemented("erf");
+}
+
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
     PrimitiveType prim_type, llvm::Value* value) {
   return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
