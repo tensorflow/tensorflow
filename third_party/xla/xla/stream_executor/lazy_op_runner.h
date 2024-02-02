@@ -25,12 +25,24 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace dnn {
+
+namespace internal {
+// Returns the DnnSupport object for the given stream.
+inline absl::StatusOr<DnnSupport*> GetDnnFromStream(Stream* stream) {
+  auto dnn = stream->parent()->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InternalError("No DNN support for stream");
+  }
+  return dnn;
+}
+}  // namespace internal
 
 // A lazily-initialized OpRunner from an AlgorithmDesc.
 //
@@ -154,8 +166,9 @@ struct ConvOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->ConvolveRunnerFromDesc(
-        desc, config.kind, config.input_type, config.output_type,
+    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    return dnn->ConvolveRunnerFromDesc(
+        stream, desc, config.kind, config.input_type, config.output_type,
         config.input_descriptor, config.filter_descriptor,
         config.output_descriptor, config.convolution_descriptor);
   }
@@ -179,8 +192,9 @@ struct GraphConvOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->GraphConvolveRunnerFromDesc(
-        desc, config.kind, config.input_type, config.output_type,
+    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    return dnn->GraphConvolveRunnerFromDesc(
+        stream, desc, config.kind, config.input_type, config.output_type,
         config.input_descriptor, config.filter_descriptor,
         config.output_descriptor, config.convolution_descriptor,
         config.serialized_graph);
@@ -206,8 +220,9 @@ struct FusedConvOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->FusedConvolveRunnerFromDesc(
-        desc, config.kind, config.input_type, config.bias_type,
+    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    return dnn->FusedConvolveRunnerFromDesc(
+        stream, desc, config.kind, config.input_type, config.bias_type,
         config.output_type, config.conv_scale, config.side_input_scale,
         config.leakyrelu_alpha, config.input_descriptor,
         config.filter_descriptor, config.bias_descriptor,
@@ -233,10 +248,12 @@ struct NormOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->NormRunnerFromDesc(
-        desc, config.epsilon, config.input_descriptor, config.scale_descriptor,
-        config.bias_descriptor, config.output_descriptor,
-        config.expectation_descriptor, config.norm_factor_descriptor);
+    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    return dnn->NormRunnerFromDesc(
+        stream, desc, config.epsilon, config.input_descriptor,
+        config.scale_descriptor, config.bias_descriptor,
+        config.output_descriptor, config.expectation_descriptor,
+        config.norm_factor_descriptor);
   }
 };
 
@@ -278,8 +295,9 @@ struct FusedMHAOp {
   static absl::StatusOr<std::unique_ptr<const OpRunner<FusedMHASignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->FusedMHARunnerFromDesc(
-        desc, config.kind, config.bmm1_lhs_descriptor,
+    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    return dnn->FusedMHARunnerFromDesc(
+        stream, desc, config.kind, config.bmm1_lhs_descriptor,
         config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
         config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
         config.activation_descriptor, config.mask_descriptor,
@@ -317,8 +335,9 @@ struct FusedMHABackwardOp {
       std::unique_ptr<const OpRunner<FusedMHABackwardSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return stream->FusedMHABackwardRunnerFromDesc(
-        desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
+    TF_ASSIGN_OR_RETURN(auto dnn, internal::GetDnnFromStream(stream));
+    return dnn->FusedMHABackwardRunnerFromDesc(
+        stream, desc, config.kind, config.bmm1_grad_gemm1_rhs_descriptor,
         config.bmm1_grad_gemm2_rhs_descriptor,
         config.bmm2_grad_gemm1_lhs_descriptor,
         config.bmm2_grad_gemm2_rhs_descriptor, config.d_output_descriptor,
