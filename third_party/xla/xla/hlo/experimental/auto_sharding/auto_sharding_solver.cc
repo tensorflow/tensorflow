@@ -374,7 +374,7 @@ AutoShardingSolverResult CallORToolsSolver(
   // Add constraints.
   // 0. Do not choose solutions with infinity costs, as it will make the
   // objective value so large that other solution choices do not matter anymore.
-  // Also eliminate strategies that are known to be equivalent to others.
+  // Also eliminate strategies that are known to be dominated by others.
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (s[node_idx].empty() || request.s_follow(node_idx) >= 0) continue;
     bool all_infinity = true;
