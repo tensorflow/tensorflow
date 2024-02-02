@@ -157,7 +157,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
 
-  // Convert upsupported bf16 convolutions to f32.
+  // Convert unsupported bf16 convolutions to f32.
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
@@ -640,42 +640,45 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       !options.is_autotuning_compilation);
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
-  auto [iter, inserted] = [&] {
+  // Pointers into compilation_cache_ where the ptx and (optional) cuBIN are
+  // stored.
+  CompilationCacheValue* cache_value = nullptr;
+  bool inserted = [&] {
     absl::MutexLock lock(&mutex_);
-    return compilation_cache_.emplace(
+    auto [iter, inserted] = compilation_cache_.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
         std::forward_as_tuple());
+    // Do not move this assignment outside of the critical section. There is
+    // a TOCTOU if `compilation_cache_` is rehashed before the iterator is used.
+    cache_value = &iter->second;
+    return inserted;
   }();
-
-  // Pointers into compilation_cache_ where the ptx and (optional) cuBIN are
-  // stored.
-  CompilationCacheValue& cache_value = iter->second;
 
   // Compile the ptx if it wasn't in the cache before we called this function.
   // Other threads asking for the same compilation key will block on
   // cache_value->mutex_ until compilation is done.
-  absl::MutexLock lock(&cache_value.mutex);
+  absl::MutexLock lock(&cache_value->mutex);
   if (inserted) {
-    CHECK(!cache_value.compilation_done);
-    absl::Cleanup mark_compilation_as_done = [&cache_value] {
+    CHECK(!cache_value->compilation_done);
+    absl::Cleanup mark_compilation_as_done = [cache_value] {
       // Note that we will set this to true also in the error case, so that we
       // don't retry this compilation.
-      cache_value.compilation_done = true;
-      cache_value.compilation_done_cv.SignalAll();
+      cache_value->compilation_done = true;
+      cache_value->compilation_done_cv.SignalAll();
     };
 
-    TF_ASSIGN_OR_RETURN(cache_value.cubin_data,
+    TF_ASSIGN_OR_RETURN(cache_value->cubin_data,
                         AssembleOptionsAndCompile(ptx, cc, hlo_module_config,
                                                   options, relocatable));
-    return cache_value.cubin_data;
+    return cache_value->cubin_data;
   }
 
-  while (!cache_value.compilation_done) {
-    cache_value.compilation_done_cv.Wait(&cache_value.mutex);
+  while (!cache_value->compilation_done) {
+    cache_value->compilation_done_cv.Wait(&cache_value->mutex);
   }
 
-  return cache_value.cubin_data;
+  return cache_value->cubin_data;
 }
 
 static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
