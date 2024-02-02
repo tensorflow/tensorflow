@@ -229,7 +229,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
-          'enable_per_channel_quantization': (False,),
+          'enable_per_channel_quantized_weight': (
+              False,
+              True,
+          ),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -239,7 +242,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       activation_fn: Optional[ops.Operation],
       has_batch_norm: bool,
       input_shape_dynamic: bool,
-      enable_per_channel_quantization: bool,
+      enable_per_channel_quantized_weight: bool,
       dilations: Sequence[int] = None,
   ):
     input_shape = (None, 3, 4, 3) if input_shape_dynamic else (1, 3, 4, 3)
@@ -285,7 +288,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                 qc.RepresentativeDatasetConfig(
                     tf_record=qc.TfRecordFile(path=dataset_path)
                 )
-            ]
+            ],
+            enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )

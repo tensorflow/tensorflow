@@ -278,7 +278,8 @@ class StableHloQuantizationPattern : public RewritePattern {
 // Gemm Style Op: glossary/gemm.
 // Populates conversion patterns to unfuse batch normalization operations.
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns);
+                                    RewritePatternSet& patterns,
+                                    bool enable_per_channel_quantized_weight);
 
 // Populates pattern for quantization of ops with regions such as
 // stablehlo.reduce_window op.

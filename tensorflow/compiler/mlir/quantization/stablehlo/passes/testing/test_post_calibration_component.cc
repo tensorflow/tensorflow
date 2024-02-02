@@ -40,6 +40,7 @@ namespace mlir::quant::stablehlo::testing {
 namespace {
 
 using ::stablehlo::quantization::PipelineConfig;
+using ::stablehlo::quantization::StaticRangePtqPreset;
 
 class TestPostCalibrationComponentPass
     : public impl::TestPostCalibrationComponentPassBase<
@@ -60,11 +61,12 @@ void TestPostCalibrationComponentPass::runOnOperation() {
 
   OpPassManager pm(ModuleOp::getOperationName());
 
+  StaticRangePtqPreset static_range_ptq_preset;
   PipelineConfig pipeline_config;
   pipeline_config.set_unpack_quantized_types(unpack_quantized_types_);
 
   PostCalibrationComponent component(&ctx);
-  component.AddPasses(pm, pipeline_config);
+  component.AddPasses(pm, static_range_ptq_preset, pipeline_config);
 
   // Adds a XlaCallModuleOp deserialization pass for easier testing by
   // inspecting the contents of serialized StableHLO function.

@@ -32,6 +32,7 @@ namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationConfig;
+using ::stablehlo::quantization::StaticRangePtqPreset;
 using ::tensorflow::quantization::RunPasses;
 
 PostCalibrationComponent::PostCalibrationComponent(
@@ -43,17 +44,22 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config, this](PassManager& pm) {
-        AddPasses(pm, config.pipeline_config());
+        AddPasses(pm, config.static_range_ptq_preset(),
+                  config.pipeline_config());
       },
       *ctx_, module_op));
   return module_op;
 }
 
 void PostCalibrationComponent::AddPasses(
-    OpPassManager& pm, const PipelineConfig& pipeline_config) const {
+    OpPassManager& pm, const StaticRangePtqPreset& static_range_ptq_preset,
+    const PipelineConfig& pipeline_config) const {
+  QuantizeCompositeFunctionsPassOptions options;
+  options.enable_per_channel_quantized_weight_ =
+      static_range_ptq_preset.enable_per_channel_quantized_weight();
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
-  pm.addPass(createQuantizeCompositeFunctionsPass());
+  pm.addPass(createQuantizeCompositeFunctionsPass(options));
   if (pipeline_config.unpack_quantized_types()) {
     AddStablehloQuantToIntPasses(pm);
   }

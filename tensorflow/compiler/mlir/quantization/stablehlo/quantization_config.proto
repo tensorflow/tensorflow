@@ -42,7 +42,7 @@ message StaticRangePtqPreset {
   // this field once available.
   // If set true, enable channel-wise quantization for all supported ops.
   // This value is true by default.
-  bool enable_per_channel_quantization = 2;
+  bool enable_per_channel_quantized_weight = 2;
 }
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required

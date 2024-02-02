@@ -74,6 +74,7 @@ cc_library(
         ":lift_quantizable_spots_as_functions_fusion_inc_gen",
         ":lift_quantizable_spots_as_functions_simple_inc_gen",
         ":optimize_graph_inc_gen",
+        ":quantization_config_proto_cc",
         ":quantization_options_proto_cc",
         ":quantization_patterns",
         ":stablehlo_passes_inc_gen",

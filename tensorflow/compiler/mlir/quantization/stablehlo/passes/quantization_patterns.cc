@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
@@ -254,24 +255,25 @@ template <typename GemmStyleOp>
 void CreateAndReturnQuantizedBiasPattern(
     Operation* op, PatternRewriter& rewriter, func::FuncOp entry_func_op,
     const Type func_result_type, const Type accumulation_quantized_element_type,
-    GemmStyleOp gemm_style_op, double result_scale) {
+    GemmStyleOp gemm_style_op) {
   Value bias_op = op->getOperand(1);
   Value add_op_result = op->getResult(0);
 
   // Broadcast bias value if unmatched with output shape.
   auto bcast_op = TryCast<BroadcastInDimOp>(bias_op.getDefiningOp(),
                                             /*name=*/"broadcast_in_dims_op");
+
   if (failed(bcast_op)) {
     bcast_op = TryCast<DynamicBroadcastInDimOp>(
         bias_op.getDefiningOp(),
         /*name=*/"dynamic_broadcast_in_dims_op");
   }
+  // Update the bias type for both static and dynamic broadcasts.
   if (succeeded(bcast_op)) {
     Value bcast_op_result = (*bcast_op)->getResult(0);
     auto bcast_op_result_type =
         bcast_op_result.getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> bcast_shape = bcast_op_result_type.getShape();
-
     const TensorType new_bcast_op_result_type = bcast_op_result_type.cloneWith(
         bcast_shape, accumulation_quantized_element_type);
     bcast_op_result.setType(new_bcast_op_result_type);
@@ -337,37 +339,65 @@ LogicalResult MatchGemmStyleOp(func::FuncOp entry_func_op) {
 
 // Gemm Style Op: glossary/gemm.
 template <typename GemmStyleOp>
-void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
-  // Update the output type of the gemm_style op.
-  GemmStyleOp gemm_style_op = *entry_func_op.getOps<GemmStyleOp>().begin();
+void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
+                        bool enable_per_channel_quantized_weight) {
+  const GemmStyleOp gemm_style_op =
+      *entry_func_op.getOps<GemmStyleOp>().begin();
 
   const Type input_type = entry_func_op.getArgumentTypes()[0];
   const Type filter_type = entry_func_op.getArgumentTypes()[1];
   const Type func_result_type = entry_func_op.getResultTypes()[0];
 
-  const double input_scale =
-      getElementTypeOrSelf(input_type).cast<UniformQuantizedType>().getScale();
-  const double filter_scale =
-      getElementTypeOrSelf(filter_type).cast<UniformQuantizedType>().getScale();
-  const double result_scale = input_scale * filter_scale;
-
-  // Define the intermediate output type, which is an i32 quantized type.
-  // This is intermediate because the final output type of the entry_func_op
-  // should be an i8 quantized type.
-  const UniformQuantizedType accumulation_quantized_element_type =
-      CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
-                                       *rewriter.getContext(), result_scale,
-                                       /*zero_point=*/0);
-
   Value gemm_style_op_result = gemm_style_op->getResult(0);
-  auto gemm_style_op_result_type =
+  const auto gemm_style_op_result_type =
       gemm_style_op_result.getType().cast<RankedTensorType>();
   const ArrayRef<int64_t> gemm_style_shape =
       gemm_style_op_result_type.getShape();
 
-  const TensorType new_gemm_style_op_result_type =
-      gemm_style_op_result_type.cloneWith(gemm_style_shape,
-                                          accumulation_quantized_element_type);
+  Type accumulation_quantized_element_type;
+  TensorType new_gemm_style_op_result_type;
+
+  const double input_scale =
+      getElementTypeOrSelf(input_type).cast<UniformQuantizedType>().getScale();
+
+  if (enable_per_channel_quantized_weight) {
+    ArrayRef<double> filter_scales = getElementTypeOrSelf(filter_type)
+                                         .cast<UniformQuantizedPerAxisType>()
+                                         .getScales();
+    std::vector<double> result_scales;
+    result_scales.reserve(filter_scales.size());
+
+    for (double filter_scale : filter_scales) {
+      result_scales.push_back(input_scale * filter_scale);
+    }
+
+    const ArrayRef<int64_t> zero_points =
+        getElementTypeOrSelf(filter_type)
+            .cast<UniformQuantizedPerAxisType>()
+            .getZeroPoints();
+
+    // [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+    accumulation_quantized_element_type =
+        CreateI32F32UniformQuantizedPerAxisType(
+            gemm_style_op->getLoc(), *rewriter.getContext(), result_scales,
+            zero_points, /*quantization_dimension=*/3);
+
+    new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
+        gemm_style_shape, accumulation_quantized_element_type);
+  } else {
+    const double filter_scale = getElementTypeOrSelf(filter_type)
+                                    .cast<UniformQuantizedType>()
+                                    .getScale();
+    double result_scale = input_scale * filter_scale;
+
+    accumulation_quantized_element_type = CreateI32F32UniformQuantizedType(
+        gemm_style_op->getLoc(), *rewriter.getContext(), result_scale,
+        /*zero_point=*/0);
+
+    new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
+        gemm_style_shape, accumulation_quantized_element_type);
+  }
+
   gemm_style_op_result.setType(new_gemm_style_op_result_type);
 
   rewriter.setInsertionPointAfter(gemm_style_op);
@@ -381,18 +411,19 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
     // bias fusion
     CreateAndReturnQuantizedBiasPattern(
         next_op, rewriter, entry_func_op, func_result_type,
-        accumulation_quantized_element_type, gemm_style_op, result_scale);
+        accumulation_quantized_element_type, gemm_style_op);
   } else if (auto add_op = cast_or_null<AddOp>(
                  GetBroadcastedUserOp<AddOp>(gemm_style_op))) {
-    // dynamic bias fusion
+    // broadcasted bias fusion
     rewriter.setInsertionPointAfter(add_op);
     CreateAndReturnQuantizedBiasPattern(
         add_op, rewriter, entry_func_op, func_result_type,
-        accumulation_quantized_element_type, gemm_style_op, result_scale);
+        accumulation_quantized_element_type, gemm_style_op);
   } else {
     // Non fusible op
-    // If an op is used multiple times and is not a dynamic shape case, do not
-    // apply quantization of fused patterns to prevent removal of dependee ops.
+    // If an op is used multiple times and is not a broadcasted shape case,
+    // do not apply quantization of fused patterns to prevent removal of
+    // dependee ops.
     CreateAndReturnUniformQuantizeOp(rewriter, *gemm_style_op, entry_func_op,
                                      func_result_type);
   }
@@ -401,7 +432,8 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 // Quantizes the entry function's body containing a `DotGeneralOp`.
 class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeDotGeneralOpPattern() = default;
+  explicit QuantizeDotGeneralOpPattern(
+      bool enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
@@ -409,14 +441,19 @@ class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<DotGeneralOp>(entry_func_op, rewriter);
+    RewriteGemmStyleOp<DotGeneralOp>(
+        entry_func_op, rewriter,
+        /*enable_per_channel_quantized_weight=*/false);
   }
 };
 
 // Quantizes the entry function's body containing a `ConvolutionOp`.
 class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeConvolutionOpPattern() = default;
+  explicit QuantizeConvolutionOpPattern(
+      bool enable_per_channel_quantized_weight)
+      : enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<ConvolutionOp>(entry_func_op);
@@ -424,8 +461,12 @@ class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<ConvolutionOp>(entry_func_op, rewriter);
+    RewriteGemmStyleOp<ConvolutionOp>(entry_func_op, rewriter,
+                                      enable_per_channel_quantized_weight_);
   }
+
+ private:
+  bool enable_per_channel_quantized_weight_;
 };
 
 // Converts `entry_func_op` to be quantized according to the respective
@@ -484,8 +525,11 @@ template <typename FuncBodyRewritePatternT,
               EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
 class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
-  explicit XlaCallModuleOpToCallOp(MLIRContext& ctx)
-      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx) {}
+  explicit XlaCallModuleOpToCallOp(MLIRContext& ctx,
+                                   bool enable_per_channel_quantized_weight)
+      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx),
+        enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
@@ -499,15 +543,19 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       op->emitError("Failed to find a valid entry function.");
       return failure();
     }
-    return FuncBodyRewritePatternT().match(entry_func_op);
+    return FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
+        .match(entry_func_op);
   }
 
   void rewrite(TF::XlaCallModuleOp xla_call_module_op,
                PatternRewriter& rewriter) const override {
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
         *rewriter.getContext(), rewriter, xla_call_module_op,
-        FuncBodyRewritePatternT());
+        FuncBodyRewritePatternT(enable_per_channel_quantized_weight_));
   }
+
+ private:
+  bool enable_per_channel_quantized_weight_;
 };
 
 // Quantizes op with regions such as stablehlo.reduce_window op.
@@ -701,7 +749,8 @@ bool IsQuantizedCompositeFunction(func::CallOp call_op) {
       if (type.getElementType().isa<FloatType>()) {
         return false;
       }
-      if (type.getElementType().isa<UniformQuantizedType>()) {
+      if (type.getElementType()
+              .isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
         has_quantized_types = true;
       }
     }
@@ -711,7 +760,8 @@ bool IsQuantizedCompositeFunction(func::CallOp call_op) {
       if (type.getElementType().isa<FloatType>()) {
         return false;
       }
-      if (type.getElementType().isa<UniformQuantizedType>()) {
+      if (type.getElementType()
+              .isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
         has_quantized_types = true;
       }
     }
@@ -780,9 +830,17 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
 
 // TODO: b/307620428 - Increase fused op coverage for static range quantization.
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns) {
-  patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>,
-               XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(ctx);
+                                    RewritePatternSet& patterns,
+                                    bool enable_per_channel_quantized_weight) {
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(
+      ctx, enable_per_channel_quantized_weight);
+  // By default, we set `enable_per_channel_quantized_weight` to true for
+  // passes to ensure per-channel quantization for all supported ops.
+  // For ops that do not yet support per-channel quantization, explicitly
+  // mark as false like below. We will soon add support for per-channel
+  // quantization of the following ops.
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
 }
 
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,

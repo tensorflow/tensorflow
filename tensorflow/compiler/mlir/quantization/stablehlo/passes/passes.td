@@ -21,25 +21,6 @@ def QuantizeWeightPass : Pass<"stablehlo-quantize-weight", "mlir::func::FuncOp">
   let constructor = "mlir::quant::stablehlo::CreateQuantizeWeightPass()";
 }
 
-def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
-  let summary = "Prepare StableHLO dialect for static range quantization.";
-  let options = [
-    Option<"enable_per_channel_quantization_",
-        "enable-per-channel-quantization",
-        "bool", /*default=*/"true",
-        "Whether enable per-channel quantized weights.">,
-    Option<"bit_width_", "bit-width", "int", /*default=*/"8",
-        "Bitwidth of quantized integer">
-    ];
-  let constructor = "mlir::quant::stablehlo::CreatePrepareQuantizePass()";
-  let dependentDialects = [
-      "mlir::stablehlo::StablehloDialect",
-      "mlir::quant::QuantizationDialect",
-      "mlir::quantfork::QuantizationForkDialect",
-      "mlir::arith::ArithDialect",
-  ];
-}
-
 def UnfuseMhloBatchNormPass : Pass<"stablehlo-unfuse-mhlo-batch-norm", "mlir::func::FuncOp"> {
   let summary = "Unfuses batch normalization into arithmetic ops.";
 }
@@ -67,30 +48,17 @@ def ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass : Pass<"stablehlo-
   }];
 }
 
-def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
-  let summary = "Applies static-range quantization on ops.";
-  let dependentDialects = [
-    "mlir::stablehlo::StablehloDialect",
-    "mlir::quant::QuantizationDialect",
-    "mlir::quantfork::QuantizationForkDialect",
-  ];
-}
-
 def RestoreFunctionNamePass : Pass<"stablehlo-restore-function-name", "ModuleOp"> {
   let summary = "Restores function name from XlaCallModule op.";
-}
-
-def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
-  let summary = "Apply clean-up after quantization.";
-  let dependentDialects = [
-    "mlir::stablehlo::StablehloDialect",
-    "mlir::quantfork::QuantizationForkDialect",
-  ];
 }
 
 def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-functions", "ModuleOp"> {
   let summary = "Quantize composite functions with QDQ input / outputs.";
   let options = [
+    Option<"enable_per_channel_quantized_weight_",
+        "enable-per-channel-quantized-weight",
+        "bool", /*default=*/"true",
+        "Whether to enable per-channel quantized weights.">,
     Option<"mlir_dump_file_name_", "mlir-dump-file-name",
         "std::optional<std::string>", /*default=*/"std::nullopt",
         "MLIR dump file name.">
@@ -101,6 +69,41 @@ def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-function
     "mlir::quant::QuantizationDialect",
     "mlir::quantfork::QuantizationForkDialect",
     "TF::TensorFlowDialect",
+  ];
+}
+
+def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp"> {
+  let summary = "Prepare StableHLO dialect for static range quantization by converting quantfork.stats into quantfork.qcast and dcast ops.";
+  let options = [
+    Option<"enable_per_channel_quantized_weight_",
+        "enable-per-channel-quantized-weight",
+        "bool", /*default=*/"true",
+        "Whether to enable per-channel quantized weights.">,
+    Option<"bit_width_", "bit-width", "int", /*default=*/"8",
+        "Bitwidth of quantized integer">
+    ];
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+      "mlir::arith::ArithDialect",
+  ];
+}
+
+def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
+  let summary = "Applies static-range quantization on ops by converting quantfork.qcast, quantfork.dcast, and float op into uniform quantized ops .";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
+
+def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
+  let summary = "Apply clean-up after quantization.";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quantfork::QuantizationForkDialect",
   ];
 }
 
