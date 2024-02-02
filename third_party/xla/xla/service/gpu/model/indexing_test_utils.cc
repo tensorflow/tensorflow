@@ -63,24 +63,22 @@ HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
 
   if (!use_physical_layout) return indexing;
 
-  std::optional<IndexingMap> output_permutation =
-      GetIndexingMapFromPhysicalLayoutToLogical(GetOutputShape(root, output_id),
-                                                mlir_context);
+  IndexingMap output_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
+      GetOutputShape(root, output_id), mlir_context);
 
   for (const auto& [operand_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
-    std::optional<IndexingMap> operand_permutation =
-        GetIndexingMapFromLogicalToPhysicalLayout(
-            root->operand(operand_id)->shape(), mlir_context);
+    IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
+        root->operand(operand_id)->shape(), mlir_context);
 
-    absl::flat_hash_set<std::optional<IndexingMap>> operand_indexing_maps;
-    for (const std::optional<IndexingMap>& indexing_map : indexing_maps) {
+    absl::flat_hash_set<IndexingMap> operand_indexing_maps;
+    for (const IndexingMap& indexing_map : indexing_maps) {
       auto normalized_indexing_map = indexing_map;
-      if (output_permutation.has_value()) {
+      if (!output_permutation.GetAffineMap().isIdentity()) {
         normalized_indexing_map =
             ComposeIndexingMaps(output_permutation, normalized_indexing_map);
       }
-      if (operand_permutation.has_value()) {
+      if (!operand_permutation.GetAffineMap().isIdentity()) {
         normalized_indexing_map =
             ComposeIndexingMaps(normalized_indexing_map, operand_permutation);
       }
@@ -112,24 +110,22 @@ HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
 
   if (!use_physical_layout) return indexing;
 
-  std::optional<IndexingMap> input_permutation =
-      GetIndexingMapFromPhysicalLayoutToLogical(
-          root->operand(input_id)->shape(), mlir_context);
+  IndexingMap input_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
+      root->operand(input_id)->shape(), mlir_context);
 
   for (const auto& [output_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
-    std::optional<IndexingMap> operand_permutation =
-        GetIndexingMapFromLogicalToPhysicalLayout(
-            GetOutputShape(root, output_id), mlir_context);
+    IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
+        GetOutputShape(root, output_id), mlir_context);
 
-    absl::flat_hash_set<std::optional<IndexingMap>> operand_indexing_maps;
-    for (const std::optional<IndexingMap>& indexing_map : indexing_maps) {
+    absl::flat_hash_set<IndexingMap> operand_indexing_maps;
+    for (const IndexingMap& indexing_map : indexing_maps) {
       auto normalized_indexing_map = indexing_map;
-      if (input_permutation.has_value()) {
+      if (!input_permutation.GetAffineMap().isIdentity()) {
         normalized_indexing_map =
             ComposeIndexingMaps(input_permutation, normalized_indexing_map);
       }
-      if (operand_permutation.has_value()) {
+      if (!operand_permutation.GetAffineMap().isIdentity()) {
         normalized_indexing_map =
             ComposeIndexingMaps(normalized_indexing_map, operand_permutation);
       }

@@ -117,6 +117,8 @@ class IndexingMap {
     }
   }
 
+  static IndexingMap GetUndefined() { return IndexingMap(); }
+
   static IndexingMap FromTensorSizes(
       mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
@@ -164,6 +166,8 @@ class IndexingMap {
   // satisfies both constraints.
   bool IsKnownEmpty() const;
 
+  bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
+
   // Removes unused symbols from the `affine_map_` and constraints.
   void RemoveUnusedSymbols();
 
@@ -190,9 +194,8 @@ std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 
 // Composes affine maps, i.e. first ∘ second.
-std::optional<IndexingMap> ComposeIndexingMaps(
-    const std::optional<IndexingMap>& first,
-    const std::optional<IndexingMap>& second);
+IndexingMap ComposeIndexingMaps(const IndexingMap& first,
+                                const IndexingMap& second);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {

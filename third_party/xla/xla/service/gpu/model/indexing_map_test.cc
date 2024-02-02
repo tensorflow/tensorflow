@@ -102,7 +102,7 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
                           s0 mod 3 in [1, 1]
                           s2 mod 4 in [0, 0]
                         )"));
-  composed->Simplify();
+  composed.Simplify();
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
                           domain:

@@ -565,6 +565,8 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
 // simplification, because the ranges of constraints were already optimized once
 // when IndexingMap was constructed.
 bool IndexingMap::Simplify() {
+  if (IsUndefined()) return false;
+
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
   bool constraints_were_simplified = false;
   while (true) {
@@ -634,6 +636,8 @@ bool IndexingMap::SimplifyConstraintRanges() {
 }
 
 void IndexingMap::RemoveUnusedSymbols() {
+  if (IsUndefined()) return;
+
   // Remove unused symbols from the affine_map.
   unsigned num_symbols_before = affine_map_.getNumSymbols();
   auto unused_symbols_bit_vector =
@@ -680,28 +684,27 @@ void IndexingMap::RemoveUnusedSymbols() {
   }
 }
 
-std::optional<IndexingMap> ComposeIndexingMaps(
-    const std::optional<IndexingMap>& first,
-    const std::optional<IndexingMap>& second) {
-  if (!second.has_value() || !first.has_value()) {
-    return std::nullopt;
+IndexingMap ComposeIndexingMaps(const IndexingMap& first,
+                                const IndexingMap& second) {
+  if (second.IsUndefined() || first.IsUndefined()) {
+    return IndexingMap::GetUndefined();
   }
-  AffineMap producer_affine_map = second->GetAffineMap();
+  AffineMap producer_affine_map = second.GetAffineMap();
   // map1.compose(map2) computes map2 ∘ map1 for some reason.
-  AffineMap composed_map = producer_affine_map.compose(first->GetAffineMap());
+  AffineMap composed_map = producer_affine_map.compose(first.GetAffineMap());
 
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
   // symbols(consumer_map)].
   std::vector<Range> combined_symbol_ranges;
-  combined_symbol_ranges.reserve(second->GetSymbolCount() +
-                                 first->GetSymbolCount());
+  combined_symbol_ranges.reserve(second.GetSymbolCount() +
+                                 first.GetSymbolCount());
   for (const Range& symbol_range : llvm::concat<const Range>(
-           second->GetSymbolRanges(), first->GetSymbolRanges())) {
+           second.GetSymbolRanges(), first.GetSymbolRanges())) {
     combined_symbol_ranges.push_back(symbol_range);
   }
 
-  IndexingMap composed_indexing_map(composed_map, first->GetDimensionRanges(),
+  IndexingMap composed_indexing_map(composed_map, first.GetDimensionRanges(),
                                     std::move(combined_symbol_ranges));
   // Add constraints that are already present in the producer_map. We have to
   // compute consumer_map(producer_constraints). To keep all symbols and
@@ -711,32 +714,32 @@ std::optional<IndexingMap> ComposeIndexingMaps(
   //   (constraint_1, ..., constraint_N) and then compose.
   std::vector<AffineExpr> constraints;
   std::vector<Range> constraints_ranges;
-  for (const auto& [expr, range] : second->GetConstraints()) {
+  for (const auto& [expr, range] : second.GetConstraints()) {
     constraints.push_back(expr);
     constraints_ranges.push_back(range);
   }
   auto constraints_map = AffineMap::get(
       producer_affine_map.getNumDims(), producer_affine_map.getNumSymbols(),
       constraints, producer_affine_map.getContext());
-  auto remapped_constraints = constraints_map.compose(first->GetAffineMap());
+  auto remapped_constraints = constraints_map.compose(first.GetAffineMap());
   for (const auto& [expr, range] :
        llvm::zip(remapped_constraints.getResults(), constraints_ranges)) {
     composed_indexing_map.AddConstraint(expr, range);
   }
   // Remap symbol ids and add constraints that are already present in the
   // consumer_map.
-  for (const auto& [expr, range] : first->GetConstraints()) {
+  for (const auto& [expr, range] : first.GetConstraints()) {
     composed_indexing_map.AddConstraint(
-        expr.shiftSymbols(first->GetSymbolCount(), second->GetSymbolCount()),
+        expr.shiftSymbols(first.GetSymbolCount(), second.GetSymbolCount()),
         range);
   }
   // Add constraints for consumer's codomain w.r.t. producer's domain.
   for (auto [index, expr] :
-       llvm::enumerate(first->GetAffineMap().getResults())) {
+       llvm::enumerate(first.GetAffineMap().getResults())) {
     Range producer_dim_range =
-        second->GetDimensionRange(static_cast<int64_t>(index));
+        second.GetDimensionRange(static_cast<int64_t>(index));
     composed_indexing_map.AddConstraint(
-        expr.shiftSymbols(first->GetSymbolCount(), second->GetSymbolCount()),
+        expr.shiftSymbols(first.GetSymbolCount(), second.GetSymbolCount()),
         producer_dim_range);
   }
   return composed_indexing_map;

@@ -69,9 +69,8 @@ using mlir::MLIRContext;
 
 HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
   HloInstructionIndexing indexing;
-  indexing.indexing_maps =
-      std::vector<absl::flat_hash_set<std::optional<IndexingMap>>>(
-          count, {std::nullopt});
+  indexing.indexing_maps = std::vector<absl::flat_hash_set<IndexingMap>>(
+      count, {IndexingMap::GetUndefined()});
   return indexing;
 }
 
@@ -793,13 +792,13 @@ IndexingMap GetIndexingMapForTiling(AffineMap block_offsets,
 bool HloInstructionIndexing::Simplify() {
   bool any_simplified = false;
   for (auto& operand_indexing : indexing_maps) {
-    std::vector<std::optional<IndexingMap>> to_remove, to_add;
-    for (std::optional<IndexingMap> map : operand_indexing) {
+    std::vector<IndexingMap> to_remove, to_add;
+    for (IndexingMap map : operand_indexing) {
       to_remove.push_back(map);
-      if (!map.has_value()) {
+      if (map.IsUndefined()) {
         to_add.push_back(map);
-      } else if (map->Simplify()) {
-        map->RemoveUnusedSymbols();
+      } else if (map.Simplify()) {
+        map.RemoveUnusedSymbols();
       } else {
         to_remove.pop_back();
       }
@@ -839,11 +838,11 @@ void HloInstructionIndexing::Print(std::ostream& out,
        llvm::enumerate(indexing_maps)) {
     out << "operand id = " << operand_id << ' ';
     for (const auto& indexing_map : indexing_maps) {
-      if (!indexing_map.has_value()) {
+      if (indexing_map.IsUndefined()) {
         out << "unknown indexing";
         continue;
       }
-      indexing_map->Print(out, printer);
+      indexing_map.Print(out, printer);
     }
   }
 }
@@ -891,16 +890,11 @@ GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
     for (const auto& [producer_operand_id, producer_operand_indexing] :
          llvm::enumerate(producer_indexing.indexing_maps)) {
       auto producer_operand_adaptor = it->GetOperand(producer_operand_id);
-      for (const std::optional<IndexingMap>& producer_map :
-           producer_operand_indexing) {
-        for (const std::optional<IndexingMap>& consumer_map :
-             consumer_indexing_maps) {
+      for (const IndexingMap& producer_map : producer_operand_indexing) {
+        for (const IndexingMap& consumer_map : consumer_indexing_maps) {
           auto composed_map = ComposeIndexingMaps(consumer_map, producer_map);
-          if (composed_map.has_value()) {
-            composed_map->Simplify();
-
-            composed_map->RemoveUnusedSymbols();
-          }
+          composed_map.Simplify();
+          composed_map.RemoveUnusedSymbols();
           grouped_indexing_maps[&producer_operand_adaptor.instruction()].insert(
               composed_map);
         }

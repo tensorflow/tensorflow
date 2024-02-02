@@ -32,13 +32,14 @@ namespace gpu {
 // Matches two strings ignoring whitespaces.
 bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
 
+MATCHER(UndefinedMap, "") { return arg.IsUndefined(); }
+
 MATCHER_P(MatchIndexingMap, indexing_string, "") {
-  if (!arg.has_value()) {
+  if (arg.IsUndefined()) {
     return false;
   }
-  return ExplainMatchResult(true,
-                            ApproximateMatch(indexing_string, arg->ToString()),
-                            result_listener);
+  return ExplainMatchResult(
+      true, ApproximateMatch(indexing_string, arg.ToString()), result_listener);
 }
 
 MATCHER_P(MatchIndexingString, indexing_string, "") {

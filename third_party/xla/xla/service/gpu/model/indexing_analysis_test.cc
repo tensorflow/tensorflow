@@ -1604,21 +1604,22 @@ TEST_F(IndexingAnalysisTest, UnsupportedOps) {
     }
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt), ElementsAre(std::nullopt),
-                          ElementsAre(std::nullopt)));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(ElementsAre(UndefinedMap()), ElementsAre(UndefinedMap()),
+                  ElementsAre(UndefinedMap())));
 
   auto output_indexing_0 = GetInputToOutputIndexingForEntryComputation(ir, 0);
   EXPECT_THAT(output_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt)));
+              ElementsAre(ElementsAre(UndefinedMap())));
 
   auto output_indexing_1 = GetInputToOutputIndexingForEntryComputation(ir, 1);
   EXPECT_THAT(output_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt)));
+              ElementsAre(ElementsAre(UndefinedMap())));
 
   auto output_indexing_2 = GetInputToOutputIndexingForEntryComputation(ir, 2);
   EXPECT_THAT(output_indexing_2.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt)));
+              ElementsAre(ElementsAre(UndefinedMap())));
 }
 
 TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
@@ -1647,8 +1648,8 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
                             d0 in [0, 4]
                             d1 in [0, 4]
                           )"),
-                                               std::nullopt),
-                          ElementsAre(std::nullopt)));
+                                               UndefinedMap()),
+                          ElementsAre(UndefinedMap())));
 }
 
 TEST_F(IndexingAnalysisTest, TilingIndexing) {

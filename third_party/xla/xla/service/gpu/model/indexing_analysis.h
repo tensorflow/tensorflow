@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -39,6 +38,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
+
 // Contains indexing maps for all N-dimensional tensor input operands that
 // correspond to a particular output.
 struct HloInstructionIndexing {
@@ -56,7 +57,7 @@ struct HloInstructionIndexing {
       absl::Span<const IndexingMap> indexing_maps);
 
   // Maps input operand index to the indexing map for one particular output.
-  std::vector<absl::flat_hash_set<std::optional<IndexingMap>>> indexing_maps;
+  std::vector<IndexingMapSet> indexing_maps;
 };
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
@@ -75,7 +76,6 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     mlir::MLIRContext* ctx);
 
-using IndexingMapSet = absl::flat_hash_set<std::optional<IndexingMap>>;
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
 
