@@ -155,9 +155,14 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
-      # Install the TensorFlow package built by Apple if the user is running
-      # macOS on an Apple Silicon machine.
-      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      # Starting with TF 2.16, Apple Silicon packages are uploaded directly
+      # to the "tensorflow" project on PyPI. In order to not break users who
+      # are still using `tensorflow-macos`, we upload the installer wheel to
+      # "tensorflow-macos" and add "tensorflow" as its dependency. Please note
+      # that this will go away in TF 2.17 and `tensorflow-macos` will be
+      # considered deprecated. Nightly is left intentionally blank as no
+      # installer wheel is uploaded to `tf-nightly-macos`.
+      standard_or_nightly('tensorflow', '') + '==' +
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
