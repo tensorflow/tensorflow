@@ -1603,10 +1603,28 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       result->input_mapping));
 
   for (const auto& [key, send] : host_compute_sends_) {
-    *result->host_compute_metadata.add_device_to_host() = send;
+    auto* d2h = result->host_compute_metadata.add_device_to_host();
+    *d2h = send;
+
+    for (int i = 0; i < d2h->metadata_size(); ++i) {
+      const std::string channel_name =
+          GetDeviceToHostChannelName(d2h->key(), i);
+      xla::ChannelHandle handle;
+      TF_RETURN_IF_ERROR(GetDeviceToHostChannelHandle(channel_name, &handle));
+      d2h->mutable_metadata(i)->set_channel_id(handle.handle());
+    }
   }
   for (const auto& [key, recv] : host_compute_recvs_) {
-    *result->host_compute_metadata.add_host_to_device() = recv;
+    auto* h2d = result->host_compute_metadata.add_host_to_device();
+    *h2d = recv;
+
+    for (int i = 0; i < h2d->metadata_size(); ++i) {
+      const std::string channel_name =
+          GetHostToDeviceChannelName(h2d->key(), i);
+      xla::ChannelHandle handle;
+      TF_RETURN_IF_ERROR(GetHostToDeviceChannelHandle(channel_name, &handle));
+      h2d->mutable_metadata(i)->set_channel_id(handle.handle());
+    }
   }
 
   if (!tsl::tensor_float_32_execution_enabled()) {
