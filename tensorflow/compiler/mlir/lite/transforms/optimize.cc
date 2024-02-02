@@ -811,6 +811,14 @@ struct SqueezeReshapesAroundBroadcastOp
     // TODO: b/323217483. This code needs to generalized to additional cases.
     // For example- inner-shape = [1, 1, 1, 8, 1, 10],
     // broadcast_shape = [1, 1, 1, 8, 16, 10] & outer_shape = [1, 1, 1, 1280, 1]
+    // And extend the pettern to handle dynamic shapes.
+    if (!inner_reshape_op.getOutput().getType().hasStaticShape() ||
+        !tfl_broadcast_to_op.getOutput().getType().hasStaticShape() ||
+        !outer_reshape_op.getOutput().getType().hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          loc, "Unsupported shapes. Currely only static shapes are supported");
+    }
+
     if (!IsLastDimEqualToNumElements(inner_reshape_input.getType(),
                                      inner_reshape_op.getOutput().getType()) ||
         !IsLastDimEqualToNumElements(
@@ -830,8 +838,7 @@ struct SqueezeReshapesAroundBroadcastOp
         GetNumTrailingOnes(broadcast_output_shapetype);
 
     // Get the new shape for the inner reshape_op after removing the extra 1s.
-    auto reshape_input_type = inner_reshape_input.getType().cast<ShapedType>();
-    llvm::SmallVector<int64_t, 6> new_reshape_shape{
+    llvm::SmallVector<int32_t, 6> new_reshape_shape_i32{
         inner_reshape_op.getOutput()
             .getType()
             .cast<RankedTensorType>()
@@ -841,12 +848,10 @@ struct SqueezeReshapesAroundBroadcastOp
 
     Value new_reshape_shape_value = rewriter.create<arith::ConstantOp>(
         inner_reshape_op->getLoc(),
-        GetI64ElementsAttr(new_reshape_shape, &rewriter));
+        GetI32ElementsAttr(new_reshape_shape_i32, &rewriter));
 
     auto new_inner_reshape_op = rewriter.create<TFL::ReshapeOp>(
         inner_reshape_op->getLoc(),
-        RankedTensorType::get(new_reshape_shape,
-                              reshape_input_type.getElementType()),
         inner_reshape_input, new_reshape_shape_value);
 
     // Create a new reshape_op to replace the old inner reshape_op.
