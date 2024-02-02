@@ -313,6 +313,7 @@ cc_library(
     hdrs = ["float_normalization.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":call_graph",
         ":float_support",
         ":hlo_dce",
         ":hlo_pass",
