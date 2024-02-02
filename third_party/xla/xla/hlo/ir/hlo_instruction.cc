@@ -3481,7 +3481,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
       (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
        !metadata_->source_file().empty())) {
     printer->Append(", metadata={");
-    printer->Append(xla::OpMetadataToString(*metadata_));
+    printer->Append(xla::OpMetadataToString(
+        *metadata_, options.print_metadata_only_op_name()));
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
