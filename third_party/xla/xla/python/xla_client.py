@@ -213,7 +213,7 @@ def generate_pjrt_gpu_plugin_options(
   options = {}
   if visible_devices != 'all':
     options['visible_devices'] = [int(x) for x in visible_devices.split(',')]
-    options['platform_name'] = 'cuda'
+  options['platform_name'] = 'cuda'
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION', '')
   preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE', '')
