@@ -879,5 +879,8 @@ build:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 # Increase the test timeout as tests often take longer on mac.
 test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
+# Limit jobs to 100 to avoid running into "out of memory" issues (b/316266643)
+build:rbe_cross_compile_macos_x86 --jobs=100
+test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
