@@ -220,8 +220,8 @@ absl::Status GpuCommandBuffer::DisableBarriersExecution(
     TF_RETURN_IF_ERROR(GpuDriver::GraphNodeSetEnabled(exec, barrier, false));
   }
   for (ConditionalCommandBuffers& cmd_buffers : conditional_command_buffers_) {
-    for (CommandBuffer& cmd_buffer : cmd_buffers.command_buffers) {
-      TF_RETURN_IF_ERROR(Cast(&cmd_buffer)->DisableBarriersExecution(exec));
+    for (auto& cmd_buffer : cmd_buffers.command_buffers) {
+      TF_RETURN_IF_ERROR(cmd_buffer->DisableBarriersExecution(exec));
     }
   }
   return absl::OkStatus();
@@ -535,12 +535,12 @@ GpuCommandBuffer::CreateConditionalNodes(
   return conditional_graphs;
 }
 
-absl::StatusOr<std::vector<CommandBuffer>>
+absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
 GpuCommandBuffer::CreateConditionalCommandBuffers(
     absl::Span<const GpuGraphConditionalHandle> handles,
     absl::Span<const GpuGraphHandle> graphs,
     absl::Span<const ConditionBuilder> builders) {
-  std::vector<CommandBuffer> cmd_buffers;
+  std::vector<std::unique_ptr<GpuCommandBuffer>> cmd_buffers;
 
   // Conditional command buffers always created in nested mode and with
   // underlying graphs owned by a conditional node.
@@ -548,13 +548,10 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
   bool is_owned_graph = false;
 
   for (size_t i = 0; i < handles.size(); ++i) {
-    auto command_buffer_impl = parent_->GetCommandBufferImplementation(
-        nested, graphs[i], is_owned_graph);
-
-    auto command_buffer = CommandBuffer::Create(std::move(command_buffer_impl));
-
-    TF_RETURN_IF_ERROR(builders[i](&command_buffer, handles[i]));
-    TF_RETURN_IF_ERROR(command_buffer.Finalize());
+    auto command_buffer =
+        parent_->CreateCommandBuffer(nested, graphs[i], is_owned_graph);
+    TF_RETURN_IF_ERROR(builders[i](command_buffer.get(), handles[i]));
+    TF_RETURN_IF_ERROR(command_buffer->Finalize());
 
     cmd_buffers.push_back(std::move(command_buffer));
   }
@@ -564,16 +561,16 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
 
 absl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
     absl::Span<const GpuGraphConditionalHandle> handles,
-    absl::Span<CommandBuffer> command_buffers,
+    absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
     absl::Span<const ConditionBuilder> builders) {
   for (size_t i = 0; i < command_buffers.size(); ++i) {
     // Use parent graph executable for conditional command buffer update.
-    ScopedGpuGraphExec scoped_exec(Cast(&command_buffers[i]), exec_);
+    ScopedGpuGraphExec scoped_exec(command_buffers[i].get(), exec_);
 
     // Update command buffer using user-provided builder callback.
-    TF_RETURN_IF_ERROR(command_buffers[i].Update());
-    TF_RETURN_IF_ERROR(builders[i](&command_buffers[i], handles[i]));
-    TF_RETURN_IF_ERROR(command_buffers[i].Finalize());
+    TF_RETURN_IF_ERROR(command_buffers[i]->Update());
+    TF_RETURN_IF_ERROR(builders[i](command_buffers[i].get(), handles[i]));
+    TF_RETURN_IF_ERROR(command_buffers[i]->Finalize());
   }
   return absl::OkStatus();
 }
@@ -647,8 +644,8 @@ absl::Status GpuCommandBuffer::If(StreamExecutor* executor,
   }
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
-    return Launch(set_if_condition, ThreadDim(), BlockDim(), handles[0],
-                  predicate);
+    return CommandBuffer::Launch(set_if_condition, ThreadDim(), BlockDim(),
+                                 handles[0], predicate);
   };
 
   std::array<ConditionBuilder, 1> builders = {
@@ -676,8 +673,8 @@ absl::Status GpuCommandBuffer::IfElse(StreamExecutor* executor,
   }
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
-    return Launch(set_if_else_condition, ThreadDim(), BlockDim(), handles[0],
-                  handles[1], predicate);
+    return CommandBuffer::Launch(set_if_else_condition, ThreadDim(), BlockDim(),
+                                 handles[0], handles[1], predicate);
   };
 
   std::array<ConditionBuilder, 2> builders = {
@@ -719,10 +716,11 @@ absl::Status GpuCommandBuffer::Case(
                                                           handles.end());
     padded_handles.resize(8);
 
-    return Launch(set_case_condition, ThreadDim(), BlockDim(),
-                  padded_handles[0], padded_handles[1], padded_handles[2],
-                  padded_handles[3], padded_handles[4], padded_handles[5],
-                  padded_handles[6], padded_handles[7], index, num_handles);
+    return CommandBuffer::Launch(
+        set_case_condition, ThreadDim(), BlockDim(), padded_handles[0],
+        padded_handles[1], padded_handles[2], padded_handles[3],
+        padded_handles[4], padded_handles[5], padded_handles[6],
+        padded_handles[7], index, num_handles);
   };
 
   // Wrap all branches into conditional command buffer builders.
@@ -758,8 +756,8 @@ absl::Status GpuCommandBuffer::For(StreamExecutor* executor,
   TF_RETURN_IF_ERROR(Barrier(executor));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
-    return Launch(set_for_condition, ThreadDim(), BlockDim(), handles[0],
-                  loop_counter, num_iteration);
+    return CommandBuffer::Launch(set_for_condition, ThreadDim(), BlockDim(),
+                                 handles[0], loop_counter, num_iteration);
   };
 
   auto body = [&](CommandBuffer* body, GpuGraphConditionalHandle handle) {
@@ -795,12 +793,12 @@ absl::Status GpuCommandBuffer::While(StreamExecutor* executor,
   }
 
   // Record condition commands into the parent command buffer.
-  TF_RETURN_IF_ERROR(CommandBuffer::Build(this, cond_builder));
+  TF_RETURN_IF_ERROR(cond_builder(this));
   TF_RETURN_IF_ERROR(Barrier(executor));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
-    return Launch(set_while_condition, ThreadDim(), BlockDim(), handles[0],
-                  pred);
+    return CommandBuffer::Launch(set_while_condition, ThreadDim(), BlockDim(),
+                                 handles[0], pred);
   };
 
   auto body = [&](CommandBuffer* body, GpuGraphConditionalHandle handle) {
