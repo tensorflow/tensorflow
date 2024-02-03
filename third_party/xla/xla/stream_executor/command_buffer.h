@@ -57,8 +57,14 @@ class CommandBuffer {
   using Builder = std::function<absl::Status(CommandBuffer*)>;
 
   ~CommandBuffer();
+
+  // TODO(b/323534971): We should delete move constructors from command buffer
+  // once we remove implementation indirection via interface.
   CommandBuffer(CommandBuffer&&);
   CommandBuffer& operator=(CommandBuffer&&);
+
+  CommandBuffer(const CommandBuffer&) = delete;
+  void operator=(const CommandBuffer&) = delete;
 
   // Command buffer state:
   //
@@ -86,9 +92,13 @@ class CommandBuffer {
   // Command buffer constructors
   //===--------------------------------------------------------------------===//
 
+  // TODO(b/323534971): Command buffer constructors should be moved to
+  // StreamExecutor or a dedicated CommandBufferFactory accessible via
+  // StreamExecutor.
+
   // Creates a new empty command buffer on the given executor.
-  static absl::StatusOr<CommandBuffer> Create(StreamExecutor* executor,
-                                              Mode mode = Mode::kPrimary);
+  static absl::StatusOr<std::unique_ptr<CommandBuffer>> Create(
+      StreamExecutor* executor, Mode mode = Mode::kPrimary);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation. All StreamExecutor operations on a Stream argument will be
@@ -100,14 +110,14 @@ class CommandBuffer {
   // default we construct traced command buffers in nested mode because the
   // primary use case for traced command buffers is to be inserted into primary
   // command buffers constructed with explicit APIs.
-  static absl::StatusOr<CommandBuffer> Trace(
+  static absl::StatusOr<std::unique_ptr<CommandBuffer>> Trace(
       StreamExecutor* executor,
       absl::AnyInvocable<absl::Status(Stream*)> function,
       Mode mode = Mode::kNested);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation using a user provided stream that will be passed to `function`.
-  static absl::StatusOr<CommandBuffer> Trace(
+  static absl::StatusOr<std::unique_ptr<CommandBuffer>> Trace(
       StreamExecutor* executor, Stream* stream,
       absl::AnyInvocable<absl::Status(Stream*)> function,
       Mode mode = Mode::kNested);
@@ -234,11 +244,13 @@ class CommandBuffer {
 
   // Creates a command buffer from a platform-specific command buffer
   // implementation.
+  // TODO(b/323534971): Remove together with interface indirection.
   static CommandBuffer Create(
       std::unique_ptr<internal::CommandBufferInterface> implementation);
 
   // An adaptor for a command buffer builder that records commands into the
   // platform-specific implementation
+  // TODO(b/323534971): Remove together with interface indirection.
   static absl::Status Build(internal::CommandBufferInterface* implementation,
                             const CommandBuffer::Builder& builder);
 
@@ -250,15 +262,13 @@ class CommandBuffer {
 
   // A custom deleter to be able to construct command buffer that doesn't own
   // underlying implementation (behaves like std::weak_ptr for implementation).
+  // TODO(b/323534971): Remove together with interface indirection.
   struct Deleter {
     void operator()(internal::CommandBufferInterface*);
     bool owned = true;
   };
 
   std::unique_ptr<internal::CommandBufferInterface, Deleter> implementation_;
-
-  CommandBuffer(const CommandBuffer&) = delete;
-  void operator=(const CommandBuffer&) = delete;
 };
 
 //===----------------------------------------------------------------------===//

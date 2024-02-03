@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
-#include "xla/util.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -884,14 +883,14 @@ absl::Status GemmCmd::Record(const RecordParams& params,
   VLOG(5) << "  Workspace: " << workspace_ << " (" << workspace.opaque() << ")";
 
   TF_ASSIGN_OR_RETURN(
-      auto nested_buffer,
+      auto nested_cmd,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
             return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
                            stream);
           }));
 
-  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
 }
 
 CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
@@ -905,8 +904,8 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
 // CustomCallCmd
 //===----------------------------------------------------------------------===//
 
-Status CustomCallCmd::Record(const RecordParams& params,
-                             se::CommandBuffer* command_buffer) {
+absl::Status CustomCallCmd::Record(const RecordParams& params,
+                                   se::CommandBuffer* command_buffer) {
   std::vector<void*> buffers;
   buffers.reserve(operands_.size() + results_.size());
   for (auto& slices : {operands_, results_}) {
@@ -948,7 +947,7 @@ Status CustomCallCmd::Record(const RecordParams& params,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
-      auto nested_buffer,
+      auto nested_cmd,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
             se::gpu::GpuStreamHandle gpu_stream =
@@ -963,7 +962,7 @@ Status CustomCallCmd::Record(const RecordParams& params,
             }
             return absl::OkStatus();
           }));
-  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
 #else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Unavailable(
       "Custom calls on GPU are not supported in this configuration. Please "
@@ -1065,14 +1064,14 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
                  params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
-      auto nested_buffer,
+      auto nested_cmd,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
             return RunAllReduce(nccl_api(), reduction_kind_, device_buffers,
                                 *stream, *comm);
           }));
 
-  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
 }
 
 CommandBufferCmd::BufferUsageVector AllReduceCmd::buffers() {
@@ -1133,14 +1132,14 @@ absl::Status ReduceScatterCmd::Record(const RecordParams& params,
                  params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
-      auto nested_buffer,
+      auto nested_cmd,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
             return RunReduceScatter(nccl_api(), reduction_kind_, device_buffers,
                                     *stream, *comm);
           }));
 
-  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
 }
 
 CommandBufferCmd::BufferUsageVector ReduceScatterCmd::buffers() {
@@ -1198,13 +1197,13 @@ absl::Status AllGatherCmd::Record(const RecordParams& params,
                  params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
-      auto nested_buffer,
+      auto nested_cmd,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
             return RunAllGather(nccl_api(), device_buffers, *stream, *comm);
           }));
 
-  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
 }
 
 CommandBufferCmd::BufferUsageVector AllGatherCmd::buffers() {

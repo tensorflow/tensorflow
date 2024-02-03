@@ -52,7 +52,7 @@ using tsl::profiler::TraceMeEncode;
 //===----------------------------------------------------------------------===//
 
 CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
-    se::CommandBuffer command_buffer)
+    std::unique_ptr<se::CommandBuffer> command_buffer)
     : command_buffer(std::move(command_buffer)) {}
 
 CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
@@ -155,7 +155,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // before execution, because command buffers when instantiated will allocate
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
-  if (cmd_buffer->command_buffer.state() == se::CommandBuffer::State::kCreate &&
+  if (cmd_buffer->command_buffer->state() ==
+          se::CommandBuffer::State::kCreate &&
       cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
@@ -171,7 +172,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     TF_RETURN_IF_ERROR(
-        commands_.Record(record_params, &cmd_buffer->command_buffer));
+        commands_.Record(record_params, cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Initialized command buffer on device #"
@@ -233,7 +234,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     TF_RETURN_IF_ERROR(
-        commands_.Record(record_params, &cmd_buffer->command_buffer));
+        commands_.Record(record_params, cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Updated command buffer in " << (end_micros - start_micros)
@@ -254,7 +255,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
                           {"num_executions", cmd_buffer->num_executions}});
   });
 
-  return executor->Submit(params.stream, cmd_buffer->command_buffer);
+  return executor->Submit(params.stream, *cmd_buffer->command_buffer);
 }
 
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>

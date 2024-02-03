@@ -44,17 +44,17 @@ void CommandBuffer::Deleter::operator()(
   if (owned) delete impl;
 }
 
-/*static*/ absl::StatusOr<CommandBuffer> CommandBuffer::Create(
+absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<internal::CommandBufferInterface> command_buffer,
       executor->implementation()->GetCommandBufferImplementation(mode));
 
-  CommandBuffer cmd(std::move(command_buffer));
-  return cmd;
+  return std::unique_ptr<CommandBuffer>(
+      new CommandBuffer(std::move(command_buffer)));
 }
 
-/*static*/ absl::StatusOr<CommandBuffer> CommandBuffer::Trace(
+absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
     StreamExecutor* executor,
     absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
   Stream stream(executor);
@@ -65,7 +65,7 @@ void CommandBuffer::Deleter::operator()(
   return Trace(executor, &stream, std::move(function), mode);
 }
 
-/*static*/ absl::StatusOr<CommandBuffer> CommandBuffer::Trace(
+absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
     StreamExecutor* executor, Stream* stream,
     absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
   if (stream == nullptr)
@@ -73,19 +73,18 @@ void CommandBuffer::Deleter::operator()(
         "Can't trace command buffer on a null stream");
 
   // Prepare an empty command buffer instance.
-  TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> command_buffer,
                       CommandBuffer::Create(executor, mode));
 
   // Trace and finalize the command buffer.
-  TF_RETURN_IF_ERROR(command_buffer.implementation()->Trace(
+  TF_RETURN_IF_ERROR(command_buffer->implementation()->Trace(
       stream, [&]() { return function(stream); }));
-  TF_RETURN_IF_ERROR(command_buffer.implementation()->Finalize());
+  TF_RETURN_IF_ERROR(command_buffer->implementation()->Finalize());
 
   return command_buffer;
 }
 
-/*static*/ bool CommandBuffer::SupportsConditionalCommands(
-    const Platform* platform) {
+bool CommandBuffer::SupportsConditionalCommands(const Platform* platform) {
   // TODO(ezhulenev): We should extend a Platform with a way to query
   // implemented StreamExecutor features, for now we know that only CUDA
   // platform supports conditional commands in command buffers.
@@ -103,12 +102,12 @@ internal::CommandBufferInterface* CommandBuffer::implementation() {
   return implementation_.get();
 }
 
-/*static*/ CommandBuffer CommandBuffer::Create(
+CommandBuffer CommandBuffer::Create(
     std::unique_ptr<internal::CommandBufferInterface> implementation) {
   return CommandBuffer(std::move(implementation));
 }
 
-/*static*/ absl::Status CommandBuffer::Build(
+absl::Status CommandBuffer::Build(
     internal::CommandBufferInterface* implementation,
     const CommandBuffer::Builder& builder) {
   CommandBuffer command_buffer(implementation);

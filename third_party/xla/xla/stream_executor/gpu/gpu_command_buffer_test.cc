@@ -91,10 +91,10 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 
   // Create a command buffer with a single kernel launch.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, c));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Launch(add, ThreadDim(), BlockDim(4), a, b, c));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -108,11 +108,11 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   stream.ThenMemZero(&d, byte_length);
 
   // Update command buffer to write into `d` buffer.
-  TF_ASSERT_OK(cmd_buffer.Update());
-  TF_ASSERT_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, d));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Update());
+  TF_ASSERT_OK(cmd_buffer->Launch(add, ThreadDim(), BlockDim(4), a, b, d));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
@@ -176,7 +176,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
       primary);
 
   TF_ASSERT_OK(cmd_buffer.status());
-  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, **cmd_buffer));
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -214,11 +214,11 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   // Create a command buffer with a single kernel launch.
   auto primary_cmd = CommandBuffer::Create(executor).value();
   auto nested_cmd = CommandBuffer::Create(executor, nested).value();
-  TF_ASSERT_OK(nested_cmd.Launch(add, ThreadDim(), BlockDim(4), a, b, c));
-  TF_ASSERT_OK(primary_cmd.AddNestedCommandBuffer(nested_cmd));
-  TF_ASSERT_OK(primary_cmd.Finalize());
+  TF_ASSERT_OK(nested_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, c));
+  TF_ASSERT_OK(primary_cmd->AddNestedCommandBuffer(*nested_cmd));
+  TF_ASSERT_OK(primary_cmd->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, primary_cmd));
+  TF_ASSERT_OK(executor->Submit(&stream, *primary_cmd));
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -234,12 +234,12 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   // Update command buffer to write into `d` buffer by creating a new nested
   // command buffer.
   nested_cmd = CommandBuffer::Create(executor, nested).value();
-  TF_ASSERT_OK(nested_cmd.Launch(add, ThreadDim(), BlockDim(4), a, b, d));
-  TF_ASSERT_OK(primary_cmd.Update());
-  TF_ASSERT_OK(primary_cmd.AddNestedCommandBuffer(nested_cmd));
-  TF_ASSERT_OK(primary_cmd.Finalize());
+  TF_ASSERT_OK(nested_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, d));
+  TF_ASSERT_OK(primary_cmd->Update());
+  TF_ASSERT_OK(primary_cmd->AddNestedCommandBuffer(*nested_cmd));
+  TF_ASSERT_OK(primary_cmd->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, primary_cmd));
+  TF_ASSERT_OK(executor->Submit(&stream, *primary_cmd));
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
@@ -266,10 +266,10 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
 
   // Create a command buffer with a single a to b memcpy command.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.MemcpyDeviceToDevice(&b, a, byte_length));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->MemcpyDeviceToDevice(&b, a, byte_length));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -279,14 +279,14 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   ASSERT_EQ(dst, expected);
 
   // Update command buffer to swap the memcpy direction.
-  TF_ASSERT_OK(cmd_buffer.Update());
-  TF_ASSERT_OK(cmd_buffer.MemcpyDeviceToDevice(&a, b, byte_length));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Update());
+  TF_ASSERT_OK(cmd_buffer->MemcpyDeviceToDevice(&a, b, byte_length));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
   // Clear destination to test that command buffer actually copied memory.
   stream.ThenMemset32(&a, 0, byte_length);
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `a` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -309,10 +309,10 @@ TEST(GpuCommandBufferTest, Memset) {
 
   // Create a command buffer with a single memset command.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.Memset(&a, uint32_t{42}, length));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Memset(&a, uint32_t{42}, length));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `a` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -322,11 +322,11 @@ TEST(GpuCommandBufferTest, Memset) {
   ASSERT_EQ(dst, expected);
 
   // Update command buffer to use a new bit pattern.
-  TF_ASSERT_OK(cmd_buffer.Update());
-  TF_ASSERT_OK(cmd_buffer.Memset(&a, uint32_t{43}, length));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Update());
+  TF_ASSERT_OK(cmd_buffer->Memset(&a, uint32_t{43}, length));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
@@ -378,10 +378,10 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.If(executor, pred, then_builder));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->If(executor, pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -397,7 +397,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Submit the same command buffer, but this time it should not execute
   // conditional branch as conditional handle should be updated to false.
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   stream.ThenMemcpy(dst.data(), c, byte_length);
   std::vector<int32_t> zeroes = {0, 0, 0, 0};
@@ -416,11 +416,11 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   };
 
   // Update command buffer with a conditional to use new builder.
-  TF_ASSERT_OK(cmd_buffer.Update());
-  TF_ASSERT_OK(cmd_buffer.If(executor, pred, then_builder));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Update());
+  TF_ASSERT_OK(cmd_buffer->If(executor, pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
@@ -482,10 +482,10 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.IfElse(executor, pred, then_builder, else_builder));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->IfElse(executor, pred, then_builder, else_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `c` data back to host.
@@ -501,7 +501,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Submit the same command buffer, but this time it should execute `else`
   // branch and multiply inputs.
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   stream.ThenMemcpy(dst.data(), c, byte_length);
@@ -518,11 +518,11 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   };
 
   // Update command buffer with a conditional to use new `else` builder.
-  TF_ASSERT_OK(cmd_buffer.Update());
-  TF_ASSERT_OK(cmd_buffer.IfElse(executor, pred, then_builder, else_builder));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Update());
+  TF_ASSERT_OK(cmd_buffer->IfElse(executor, pred, then_builder, else_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `d` data back to host.
@@ -584,10 +584,10 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.Case(executor, index, {branch0, branch1}));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->Case(executor, index, {branch0, branch1}));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   // Copy `c` data back to host.
@@ -601,7 +601,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   stream.ThenMemset32(&index, 1, sizeof(int32_t));
 
   // Submit the same command buffer, but this time it should multiply inputs.
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   stream.ThenMemcpy(dst.data(), c, byte_length);
@@ -611,7 +611,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   // Set index to `-1` (out of bound index value).
   stream.ThenMemset32(&index, -1, sizeof(int32_t));
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   stream.ThenMemcpy(dst.data(), c, byte_length);
@@ -620,7 +620,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   // Set index to `2` (out of bound index value).
   stream.ThenMemset32(&index, 2, sizeof(int32_t));
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   stream.ThenMemcpy(dst.data(), c, byte_length);
@@ -669,10 +669,11 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.For(executor, num_iters, loop_counter, body_builder));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(
+      cmd_buffer->For(executor, num_iters, loop_counter, body_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -741,10 +742,10 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
   // Create a command buffer with a single conditional operation.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(cmd_buffer.While(executor, pred, cond_builder, body_builder));
-  TF_ASSERT_OK(cmd_buffer.Finalize());
+  TF_ASSERT_OK(cmd_buffer->While(executor, pred, cond_builder, body_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
 
-  TF_ASSERT_OK(executor->Submit(&stream, cmd_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 42);
@@ -777,9 +778,9 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
   for (auto s : state) {
     auto cmd_buffer = CommandBuffer::Create(executor, nested).value();
     for (int i = 1; i < state.range(0); ++i) {
-      CHECK_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), b, b, b));
+      CHECK_OK(cmd_buffer->Launch(add, ThreadDim(), BlockDim(4), b, b, b));
     }
-    CHECK_OK(cmd_buffer.Finalize());
+    CHECK_OK(cmd_buffer->Finalize());
   }
 }
 
@@ -827,16 +828,16 @@ static void BM_UpdateCommandBuffer(benchmark::State& state) {
 
   auto cmd_buffer = CommandBuffer::Create(executor, primary).value();
   for (int i = 1; i < state.range(0); ++i) {
-    CHECK_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), b, b, b));
+    CHECK_OK(cmd_buffer->Launch(add, ThreadDim(), BlockDim(4), b, b, b));
   }
-  CHECK_OK(cmd_buffer.Finalize());
+  CHECK_OK(cmd_buffer->Finalize());
 
   for (auto s : state) {
-    CHECK_OK(cmd_buffer.Update());
+    CHECK_OK(cmd_buffer->Update());
     for (int i = 1; i < state.range(0); ++i) {
-      CHECK_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), b, b, b));
+      CHECK_OK(cmd_buffer->Launch(add, ThreadDim(), BlockDim(4), b, b, b));
     }
-    CHECK_OK(cmd_buffer.Finalize());
+    CHECK_OK(cmd_buffer->Finalize());
   }
 }
 
