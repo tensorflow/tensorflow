@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -679,13 +680,12 @@ class RewriteUpstreamQuantizedConvolutionOp
 
   // Returns the stride amount for the height and width, respectively.
   std::pair<int64_t, int64_t> GetStrides(stablehlo::ConvolutionOp op) const {
-    const Attribute window_strides_attr = op.getWindowStridesAttr();
+    const DenseI64ArrayAttr window_strides_attr = op.getWindowStridesAttr();
     if (!window_strides_attr) {
       return {1, 1};  // Default values.
     }
 
-    const auto window_strides_attr_value =
-        hlo::getI64Array(window_strides_attr);
+    const auto window_strides_attr_value = window_strides_attr.asArrayRef();
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {window_strides_attr_value[0], window_strides_attr_value[1]};
@@ -694,12 +694,12 @@ class RewriteUpstreamQuantizedConvolutionOp
   // Returns the dilation amount for the height and width, respectively.
   std::pair<int64_t, int64_t> GetDilationFactors(
       stablehlo::ConvolutionOp op) const {
-    const Attribute lhs_dilation_attr = op.getLhsDilationAttr();
+    const DenseI64ArrayAttr lhs_dilation_attr = op.getLhsDilationAttr();
     if (!lhs_dilation_attr) {
       return {1, 1};  // Default values.
     }
 
-    const auto lhs_dilation_attr_value = hlo::getI64Array(lhs_dilation_attr);
+    const auto lhs_dilation_attr_value = lhs_dilation_attr.asArrayRef();
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};
@@ -1551,7 +1551,8 @@ class RewriteQuantizedBroadcastInDimOp
 
   Value InsertTransposeOp(stablehlo::BroadcastInDimOp op,
                           PatternRewriter& rewriter) const {
-    SmallVector<int64_t> sorted_dims = op.getBroadcastDimensions();
+    SmallVector<int64_t> sorted_dims =
+        llvm::to_vector(op.getBroadcastDimensions());
     llvm::sort(sorted_dims);
     auto broadcast_dims = op.getBroadcastDimensions();
     SmallVector<int32_t> permutation(
@@ -1574,7 +1575,8 @@ class RewriteQuantizedBroadcastInDimOp
                            int64_t output_rank) const {
     auto input_type = input.getType().cast<TensorType>();
     SmallVector<int64_t> input_shape(input_type.getShape());
-    SmallVector<int64_t> input_dims = op.getBroadcastDimensions();
+    SmallVector<int64_t> input_dims =
+        llvm::to_vector(op.getBroadcastDimensions());
 
     while (input_dims.size() < output_rank) {
       int32_t dim_to_expand = 0;

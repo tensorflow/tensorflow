@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,131 +13,20 @@
+@@ -13,153 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -25,6 +25,11 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -if(POLICY CMP0116)
 -  cmake_policy(SET CMP0116 OLD)
 -endif()
+-
+-# Support for return(PROPAGATE ...) in functions.
+-if (POLICY CMP0140)
+-  cmake_policy(SET CMP0140 NEW)
+-endif()
 +# This build of StableHLO is meant to be embedded in MLIR-HLO.
 +# As a result, its root CMakeLists.txt is different from the original
 +# CMakeLists.txt from https://github.com/openxla/stablehlo.
@@ -39,6 +44,9 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
 -option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
 -option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
+-option(STABLEHLO_ENABLE_SANITIZER "Enable a sanitizer [OFF, address]" OFF)
+-option(STABLEHLO_ENABLE_SPLIT_DWARF "Enable split DWARF if the platform supports it" OFF)
+-option(STABLEHLO_ENABLE_LLD "Use LLD as the linker if available" OFF)
  
 -#-------------------------------------------------------------------------------
 -# Project setup and globals
@@ -53,29 +61,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  project(stablehlo LANGUAGES CXX C)
 -  set(CMAKE_C_STANDARD 11)
 -  set(CMAKE_CXX_STANDARD 17)
--endif()
--
--# Build with ccache if the package is present
--set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
--if(LLVM_CCACHE_BUILD)
--  find_program(CCACHE_PROGRAM ccache)
--  if(CCACHE_PROGRAM)
--      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
--      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
--      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
--          CACHE STRING "Parameters to pass through to ccache")
--
--      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
--      if (LLVM_CCACHE_MAXSIZE)
--        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
--      endif()
--      if (LLVM_CCACHE_DIR)
--        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
--      endif()
--      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
--  else()
--    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
--  endif()
 -endif()
 -
 -#-------------------------------------------------------------------------------
@@ -114,8 +99,37 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  message(STATUS "Building StableHLO embedded in another project")
 -endif()
 -
+-# Add the CMake modules specific to StableHLO
+-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+-
 -if(LLVM_ENABLE_ZLIB)
 -  find_package(ZLIB)
+-endif()
+-
+-#-------------------------------------------------------------------------------
+-# Performance configuration
+-#-------------------------------------------------------------------------------
+-
+-include(CheckCXXCompilerFlag)
+-include(CheckLinkerFlag)
+-if (STABLEHLO_ENABLE_LLD)
+-  message(STATUS "Enabling LLD as the linker")
+-  add_link_options("-fuse-ld=lld")
+-endif()
+-
+-if(STABLEHLO_ENABLE_SPLIT_DWARF)
+-    check_cxx_compiler_flag(-gsplit-dwarf STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-    if (STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-      message(STATUS "Enabling split-dwarf build")
+-      add_compile_options(-gsplit-dwarf -ggnu-pubnames)
+-    endif()
+-    check_linker_flag(CXX "-Wl,--gdb-index" STABLEHLO_SUPPORTS_GDB_INDEX)
+-    # If we set LLD it doesn't seem to affect the check_linker_flag above.
+-    # Account for it with the generator expression OR
+-    if (STABLEHLO_SUPPORTS_GDB_INDEX OR STABLEHLO_ENABLE_LLD)
+-      message(STATUS "Enabling GDB index in binary")
+-      add_link_options("-Wl,--gdb-index")
+-    endif()
 -endif()
 -
 -include(TableGen)
@@ -128,6 +142,14 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -include_directories(${CMAKE_CURRENT_BINARY_DIR})
 -link_directories(${LLVM_BUILD_LIBRARY_DIR})
 -add_definitions(${LLVM_DEFINITIONS})
+-
+-
+-#-------------------------------------------------------------------------------
+-# Sanitizer configuration
+-#-------------------------------------------------------------------------------
+-
+-include(SetupSanitizers)
+-setup_sanitizers()
 -
 -#-------------------------------------------------------------------------------
 -# Python configuration
@@ -152,104 +174,6 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
---- stablehlo/stablehlo/api/PortableApi.h
-+++ stablehlo/stablehlo/api/PortableApi.h
-@@ -27,7 +27,7 @@
- 
- /// Return the current version for portable API.
- /// Increments on all meaningful changes to this file.
--inline int64_t getApiVersion() { return 5; }
-+inline int64_t getApiVersion() { return 6; }
- 
- // Get the current StableHLO version.
- //
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -23,6 +23,7 @@
- #include "llvm/ADT/TypeSwitch.h"
- #include "mlir/Dialect/Complex/IR/Complex.h"
- #include "mlir/Dialect/Traits.h"
-+#include "mlir/IR/BuiltinAttributes.h"
- #include "mlir/IR/Diagnostics.h"
- #include "mlir/IR/PatternMatch.h"
- #include "mlir/Transforms/InliningUtils.h"
-@@ -165,7 +166,7 @@
-   auto broadcastDimensionsAttr = op->getAttr("broadcast_dimensions");
-   if (broadcastDimensionsAttr &&
-       !hlo::isLegalNumpyRankedBroadcast(
--          lhs, rhs, hlo::getI64Array(broadcastDimensionsAttr))) {
-+          lhs, rhs, broadcastDimensionsAttr.cast<mlir::DenseI64ArrayAttr>())) {
-     // Note: It is unclear whether the general specification of explicit
-     // broadcast_dimensions on binary ops is a feature we want to carry
-     // forward. While it can technically be implemented for ranked-dynamic,
-@@ -212,7 +213,7 @@
- 
- void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
-                                Value lhs, Value rhs,
--                               Attribute broadcastDimensions,
-+                               DenseI64ArrayAttr broadcastDimensions,
-                                chlo::ComparisonDirection comparisonDirection,
-                                chlo::ComparisonType compareType) {
-   build(builder, result, lhs, rhs, broadcastDimensions,
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
---- stablehlo/stablehlo/dialect/ChloOps.td
-+++ stablehlo/stablehlo/dialect/ChloOps.td
-@@ -101,7 +101,7 @@
-     HLO_Tensor:$rhs,
-     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
-     // padded rank-broadcast semantics if omitted.
--    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
-+    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
-   );
- 
-   let results = (outs HLO_Tensor);
-@@ -313,7 +313,7 @@
-     HLO_FpTensor:$rhs,
-     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
-     // padded rank-broadcast semantics if omitted.
--    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
-+    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
-   );
-   let results = (outs HLO_FpTensor);
- }
-@@ -331,7 +331,7 @@
-     HLO_PredOrIntTensor:$rhs,
-     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
-     // padded rank-broadcast semantics if omitted.
--    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
-+    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
-   );
- }
- 
-@@ -448,7 +448,7 @@
-     HLO_FpTensor:$rhs,
-     // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
-     // padded rank-broadcast semantics if omitted.
--    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions
-+    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions
-   );
-   let results = (outs HLO_ComplexTensor);
- }
-@@ -755,7 +755,7 @@
-   let arguments = (ins
-     HLO_Tensor:$lhs,
-     HLO_Tensor:$rhs,
--    OptionalAttr<I64DenseArrayOrElements1DAttr>:$broadcast_dimensions,
-+    OptionalAttr<DenseI64ArrayAttr>:$broadcast_dimensions,
-     CHLO_ComparisonDirectionAttr:$comparison_direction,
-     OptionalAttr<CHLO_ComparisonTypeAttr>:$compare_type
-   );
-@@ -763,7 +763,7 @@
- 
-   let builders = [
-     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
--      "Attribute":$broadcast_dimensions,
-+      "DenseI64ArrayAttr":$broadcast_dimensions,
-       "::mlir::chlo::ComparisonDirection":$comparison_direction,
-       CArg<"::mlir::chlo::ComparisonType",
-       "::mlir::chlo::ComparisonType::NOTYPE">:$compare_type)>,
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
