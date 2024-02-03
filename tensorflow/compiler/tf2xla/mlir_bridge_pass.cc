@@ -216,8 +216,7 @@ MlirOptimizationPassState GetPassStateImpl(
   // GetMlirBridgeRolloutPolicy will analyze a TPU graph if users have not
   // explicltly requested a policy.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      graph, &function_library, config_proto,
-      /*is_tpu_graph*/ run_replicated_bridge,
+      graph, &function_library, config_proto, run_replicated_bridge,
       /*uses_uninitialized_resource_args=*/false,
       /*is_v1_compat=*/false, /*record_stats=*/false);
   // GetPassState is called once before MlirBridgePass starts, and the pass
@@ -367,7 +366,7 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
-      /*is_tpu_graph*/ true,
+      /*run_replicated_bridge*/ true,
       /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
       /*record_stats=*/false);
   switch (policy) {
