@@ -594,52 +594,6 @@ class Stream {
         stride_c, batch_count, numeric_options, context);
   }
 
-  // See BlasSupport::DoBlasTrsm.
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, float alpha, const DeviceMemory<float> &a,
-                       int lda, DeviceMemory<float> *b, int ldb);
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, double alpha, const DeviceMemory<double> &a,
-                       int lda, DeviceMemory<double> *b, int ldb);
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       DeviceMemory<std::complex<float>> *b, int ldb);
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       DeviceMemory<std::complex<double>> *b, int ldb);
-
-  // See BlasSupport::DoBlasTrsmBatched.
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, float alpha,
-                              const DeviceMemory<float *> &as, int lda,
-                              DeviceMemory<float *> *bs, int ldb,
-                              int batch_count);
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, double alpha,
-                              const DeviceMemory<double *> &as, int lda,
-                              DeviceMemory<double *> *bs, int ldb,
-                              int batch_count);
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, std::complex<float> alpha,
-                              const DeviceMemory<std::complex<float> *> &as,
-                              int lda, DeviceMemory<std::complex<float> *> *bs,
-                              int ldb, int batch_count);
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, std::complex<double> alpha,
-                              const DeviceMemory<std::complex<double> *> &as,
-                              int lda, DeviceMemory<std::complex<double> *> *bs,
-                              int ldb, int batch_count);
-
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
