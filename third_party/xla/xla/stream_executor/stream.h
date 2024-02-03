@@ -741,19 +741,6 @@ class Stream {
   Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
                        uint64_t size);
 
-  // Enqueue a CTCLoss operation onto the stream.
-  // See DnnSupport::DoCtcLoss for more details.
-  Stream &ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
-                      const DeviceMemory<float> &probs_data,
-                      absl::Span<const int> labels_data,
-                      absl::Span<const int> labels_lengths_data,
-                      absl::Span<const int> input_lengths_data,
-                      const NumericOptions &numeric_options,
-                      DeviceMemory<float> *costs_data,
-                      const dnn::RnnStateTensorDescriptor &grads_desc,
-                      DeviceMemory<float> *grads_data,
-                      ScratchAllocator *workspace_allocator);
-
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
   Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,

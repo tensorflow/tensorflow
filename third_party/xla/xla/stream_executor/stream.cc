@@ -967,40 +967,6 @@ Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
   return *this;
 }
 
-Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
-                            const DeviceMemory<float> &probs_data,
-                            absl::Span<const int> labels_data,
-                            absl::Span<const int> labels_lengths_data,
-                            absl::Span<const int> input_lengths_data,
-                            const NumericOptions &numeric_options,
-                            DeviceMemory<float> *costs_data,
-                            const dnn::RnnStateTensorDescriptor &grads_desc,
-                            DeviceMemory<float> *grads_data,
-                            ScratchAllocator *workspace_allocator) {
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8_t> scratch_memory;
-    int ctc_loss_algo_id;
-    auto status =
-        dnn->PrepareForCtcLoss(
-               this, probs_desc, probs_data, grads_desc, labels_data,
-               labels_lengths_data, input_lengths_data, numeric_options,
-               workspace_allocator, &scratch_memory, &ctc_loss_algo_id)
-            .ok();
-    if (status) {
-      status = dnn->DoCtcLoss(this, probs_desc, probs_data, labels_data,
-                              labels_lengths_data, input_lengths_data,
-                              costs_data, grads_desc, grads_data,
-                              &scratch_memory, ctc_loss_algo_id);
-    }
-    if (!status) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
                                     dnn::DataType input_type,
                                     const DeviceMemoryBase &input_data,
