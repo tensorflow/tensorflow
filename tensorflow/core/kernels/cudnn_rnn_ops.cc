@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -137,6 +138,13 @@ using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
 using tsl::StatusOr;
 
+absl::StatusOr<stream_executor::dnn::DnnSupport*> GetDnn(Stream* stream) {
+  auto dnn = stream->parent()->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InternalError("No DNN for stream");
+  }
+  return dnn;
+}
 uint64 HashList(const std::vector<int>& list) {
   if (list.empty()) {
     return 0;
@@ -853,21 +861,18 @@ Status DoForwardImpl(OpKernelContext* context, const RnnDescriptor& rnn_desc,
     }
   }
 
-  bool launch_success =
-      stream
-          ->ThenRnnForward(rnn_desc, *input_desc, input_data, seq_lengths_ptr,
-                           *h_state_desc, input_h_data, *c_state_desc,
-                           input_c_data, params_data, *output_desc,
-                           &output_data, *h_state_desc, &output_h_data,
-                           *c_state_desc, &output_c_data, is_training,
-                           reserve_space_allocator, workspace_allocator,
-                           output_profile_result)
-          .ok();
-  return launch_success
-             ? OkStatus()
-             : errors::Internal(
-                   "Failed to call ThenRnnForward with model config: ",
-                   model_types.DebugString(), ", ", model_shapes.DebugString());
+  TF_ASSIGN_OR_RETURN(auto dnn, GetDnn(stream));
+  bool launch_success = dnn->DoRnnForward(
+      stream, rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
+      input_h_data, *c_state_desc, input_c_data, params_data, *output_desc,
+      &output_data, *h_state_desc, &output_h_data, *c_state_desc,
+      &output_c_data, is_training, reserve_space_allocator, workspace_allocator,
+      output_profile_result);
+  return launch_success ? OkStatus()
+                        : absl::InternalError(absl::StrCat(
+                              "Failed to call DoRnnForward with model config: ",
+                              model_types.DebugString(), ", ",
+                              model_shapes.DebugString()));
 }
 
 template <typename T>
@@ -1039,23 +1044,21 @@ Status DoBackwardImpl(
     }
   }
 
-  bool launch_success =
-      stream
-          ->ThenRnnBackward(
-              rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
-              input_h_data, *c_state_desc, input_c_data, params_data,
-              *output_desc, output_data, *h_state_desc, output_h_data,
-              *c_state_desc, output_c_data, output_backprop_data,
-              output_h_backprop_data, output_c_backprop_data,
-              &input_backprop_data, &input_h_backprop_data,
-              &input_c_backprop_data, &params_backprop_data,
-              &reserve_space_uint8, workspace_allocator, output_profile_result)
-          .ok();
+  TF_ASSIGN_OR_RETURN(auto dnn, GetDnn(stream));
+  bool launch_success = dnn->DoRnnBackward(
+      stream, rnn_desc, *input_desc, input_data, seq_lengths_ptr, *h_state_desc,
+      input_h_data, *c_state_desc, input_c_data, params_data, *output_desc,
+      output_data, *h_state_desc, output_h_data, *c_state_desc, output_c_data,
+      output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+      &input_backprop_data, &input_h_backprop_data, &input_c_backprop_data,
+      &params_backprop_data, &reserve_space_uint8, workspace_allocator,
+      output_profile_result);
   return launch_success
              ? OkStatus()
-             : errors::Internal(
-                   "Failed to call ThenRnnBackward with model config: ",
-                   model_types.DebugString(), ", ", model_shapes.DebugString());
+             : absl::InternalError(absl::StrCat(
+                   "Failed to call DoRnnBackward with model config: ",
+                   model_types.DebugString(), ", ",
+                   model_shapes.DebugString()));
 }
 
 template <typename T>
