@@ -503,21 +503,20 @@ void IrEmitterUnnested::CreateStore(llvm::Value* data, llvm::Value* address,
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
-absl::Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
-  // TODO(jurahul): Create an op to represent PadToStatic.
-  auto pad_to_static = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
+absl::Status IrEmitterUnnested::EmitPadToStatic(
+    const HloCustomCallInstruction* instr) {
   int unroll_factor = 1;
-  std::string ir_name = GetIrNameFromLoc(pad_to_static.getLoc());
+  std::string ir_name = std::string(instr->name());
 
-  const Shape& input_shape = GetShape(pad_to_static.getArgs().front());
+  const Shape& input_shape = instr->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   std::vector<llvm_ir::IrArray> input_arrays;
   std::vector<llvm_ir::IrArray> output_arrays;
-  TF_ASSIGN_OR_RETURN(
-      std::tie(input_arrays, output_arrays),
-      BuildKernelThunkForNonFusionOp(pad_to_static, launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::tie(input_arrays, output_arrays),
+                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
+                                                     launch_dimensions));
 
   CHECK_EQ(output_arrays.size(), 0);
   const llvm_ir::IrArray source_array = input_arrays[0];
@@ -525,8 +524,8 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   auto output_dim_arrays =
       absl::Span<const llvm_ir::IrArray>(input_arrays).subspan(2);
 
-  llvm::Type* index_ty = GetIndexTypeForKernel(
-      pad_to_static, launch_dimensions.launch_bound(), &b_);
+  llvm::Type* index_ty =
+      GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
 
   // pseudo code for PadToStatic on a 2d array
   //   int* source_array = input[0];
@@ -544,10 +543,13 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
   std::vector<llvm::Value*> dynamic_dims;
   int alignment = raw_data_size % sizeof(int32_t);
-  for (int64_t i = 1; i < pad_to_static.getOutput().size(); ++i) {
+  std::vector<ShapeUtil::IndexedShape> output_shapes =
+      ShapeUtil::GetLeafShapes(instr->shape());
+
+  for (int64_t i = 1; i < output_shapes.size(); ++i) {
     // Dynamic size of each dimension is attached at the end of the source
     // array(operand(0)). We need to extract these value.
-    const Shape& dim_shape = GetShape(pad_to_static.getOutput()[i]);
+    const Shape& dim_shape = output_shapes[i].shape;
     TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
 
     const int64_t dim_index = i - 1;
@@ -567,7 +569,7 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   //     *output[2] = *dyn_dim1_size;
   //   }
   KernelSupportLibrary{&b_}.If("is_thread_0", IsBlock0Thread0(&b_), [&] {
-    for (int64_t i = 1; i < pad_to_static.getOutput().size(); ++i) {
+    for (int64_t i = 1; i < output_shapes.size(); ++i) {
       const int64_t dim_index = i - 1;
       llvm::Value* dest_dim_size_address =
           output_dim_arrays[dim_index].GetBasePointer();
@@ -617,7 +619,7 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
     return absl::OkStatus();
   };
 
-  const Shape& data_shape = GetShape(pad_to_static.getOutput().front());
+  const Shape& data_shape = instr->shape().tuple_shapes(0);
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                          launch_dimensions, &b_,
                                          {unroll_factor})
@@ -4193,7 +4195,8 @@ absl::Status IrEmitterUnnested::EmitOp(
 
   if (auto call = mlir::dyn_cast<mlir::lmhlo::CustomCallOp>(op)) {
     if (call.getCallTargetName() == "PadToStatic") {
-      return EmitPadToStatic(op);
+      return EmitPadToStatic(
+          Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
     }
     if (call.getCallTargetName() == "SliceToDynamic") {
       return EmitSliceToDynamic(op);
@@ -4636,6 +4639,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         return EmitCubDeviceRadixSort(custom_call);
       }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      if (custom_call->custom_call_target() == "PadToStatic") {
+        return EmitPadToStatic(custom_call);
+      }
       return EmitCustomCallThunk(custom_call);
     }
     case HloOpcode::kFusion: {

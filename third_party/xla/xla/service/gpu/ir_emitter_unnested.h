@@ -331,7 +331,7 @@ class IrEmitterUnnested : public IrEmitter {
   //   return;
   // }
   //   ```
-  absl::Status EmitPadToStatic(mlir::Operation* op);
+  absl::Status EmitPadToStatic(const HloCustomCallInstruction* instr);
 
   // Input = {dynamic array(with dynamic dimension meta data at the end)}
   // Output = {static array, dynamic_dim0, dynamic_dim1}
