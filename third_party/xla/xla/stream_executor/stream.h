@@ -343,28 +343,6 @@ class Stream {
   /////////////////
   // BLAS support
 
-  // See BlasSupport::DoBlasGemv.
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &x, int incx, float beta,
-                       DeviceMemory<float> *y, int incy);
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
-                       double alpha, const DeviceMemory<double> &a, int lda,
-                       const DeviceMemory<double> &x, int incx, double beta,
-                       DeviceMemory<double> *y, int incy);
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
-                       std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       const DeviceMemory<std::complex<float>> &x, int incx,
-                       std::complex<float> beta,
-                       DeviceMemory<std::complex<float>> *y, int incy);
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
-                       std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       const DeviceMemory<std::complex<double>> &x, int incx,
-                       std::complex<double> beta,
-                       DeviceMemory<std::complex<double>> *y, int incy);
-
   template <typename InputType, typename OutputType>
   absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                             uint64_t m, uint64 n, uint64 k,
