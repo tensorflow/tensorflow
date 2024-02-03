@@ -75,6 +75,10 @@ CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
       return {HloOpcode::kAsyncStart, HloOpcode::kAllGather};
     case HloOpcode::kCollectivePermuteStart:
       return {HloOpcode::kAsyncStart, HloOpcode::kCollectivePermute};
+    case HloOpcode::kCopyStart:
+      return {HloOpcode::kAsyncStart, HloOpcode::kCopy};
+    case HloOpcode::kCopyDone:
+      return {HloOpcode::kAsyncDone, HloOpcode::kCopy};
     case HloOpcode::kAllReduceDone:
       return {HloOpcode::kAsyncDone, HloOpcode::kAllReduce};
     case HloOpcode::kAllGatherDone:
@@ -135,6 +139,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
         return true;
       default:
@@ -162,6 +167,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kCopy:
       case HloOpcode::kReduceScatter:
         return true;
       default:
@@ -184,6 +190,8 @@ ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
         return ResourceType::kAllToAll;
       case HloOpcode::kCollectivePermute:
         return ResourceType::kCollectivePermute;
+      case HloOpcode::kCopy:
+        return ResourceType::kCopy;
       case HloOpcode::kReduceScatter:
         return ResourceType::kReduceScatter;
       default:
@@ -327,6 +335,8 @@ void AsyncTracker::SetConcurrentResourceLimits(
   max_concurrent_resource[ResourceTypeToIndex(
       ResourceType::kCollectivePermute)] =
       config_.collective_permute_overlap_limit;
+  max_concurrent_resource[ResourceTypeToIndex(ResourceType::kCopy)] =
+      config_.copy_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllToAll)] =
       config_.all_to_all_overlap_limit;
   max_concurrent_resource[ResourceTypeToIndex(ResourceType::kAllGather)] =
@@ -362,6 +372,8 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
       return "kAllReduce";
     case ResourceTypeToIndex(ResourceType::kCollectivePermute):
       return "kCollectivePermute";
+    case ResourceTypeToIndex(ResourceType::kCopy):
+      return "kCopy";
     case ResourceTypeToIndex(ResourceType::kSendRecv):
       return "kSendRecv";
     case ResourceTypeToIndex(ResourceType::kSendHost):
