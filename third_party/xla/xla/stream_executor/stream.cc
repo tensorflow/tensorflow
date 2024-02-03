@@ -526,30 +526,6 @@ Stream &ThenBlasImpl<Args...>::Run(
   return *stream;
 }
 
-Stream &Stream::ThenBlasAxpy(uint64_t elem_count, float alpha,
-                             const DeviceMemory<float> &x, int incx,
-                             DeviceMemory<float> *y, int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(alpha), PARAM(x), PARAM(incx), PARAM(y),
-            PARAM(incy));
-
-  ThenBlasImpl<uint64_t, float, const DeviceMemory<float> &, int,
-               DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasAxpy, elem_count, alpha, x, incx,
-              y, incy);
-}
-
-Stream &Stream::ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
-                             int incx, DeviceMemory<float> *y, int incy) {
-  VLOG_CALL(PARAM(elem_count), PARAM(x), PARAM(incx), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<uint64_t, const DeviceMemory<float> &, int,
-               DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasCopy, elem_count, x, incx, y,
-              incy);
-}
-
 Stream &Stream::ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
                              float alpha, const DeviceMemory<float> &a, int lda,
                              const DeviceMemory<float> &x, int incx, float beta,
@@ -619,21 +595,6 @@ Stream &Stream::ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
                std::complex<double>, DeviceMemory<std::complex<double>> *, int>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemv, trans, m, n, alpha, a, lda,
-              x, incx, beta, y, incy);
-}
-
-Stream &Stream::ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k,
-                             float alpha, const DeviceMemory<float> &a, int lda,
-                             const DeviceMemory<float> &x, int incx, float beta,
-                             DeviceMemory<float> *y, int incy) {
-  VLOG_CALL(PARAM(uplo), PARAM(n), PARAM(k), PARAM(alpha), PARAM(a), PARAM(lda),
-            PARAM(x), PARAM(incx), PARAM(beta), PARAM(y), PARAM(incy));
-
-  ThenBlasImpl<blas::UpperLower, uint64_t, uint64_t, float,
-               const DeviceMemory<float> &, int, const DeviceMemory<float> &,
-               int, float, DeviceMemory<float> *, int>
-      impl;
-  return impl(this, &blas::BlasSupport::DoBlasSbmv, uplo, n, k, alpha, a, lda,
               x, incx, beta, y, incy);
 }
 

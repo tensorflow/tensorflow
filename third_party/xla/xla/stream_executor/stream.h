@@ -343,19 +343,6 @@ class Stream {
   /////////////////
   // BLAS support
 
-  // See BlasSupport::DoBlasAxpy. Note that, even for the case where alpha is
-  // present in DeviceMemory, it must be an execution-time constant (i.e. a
-  // value
-  // that the stream does not change or populate during the course of
-  // execution). The value is effectively captured at stream-enqueue time.
-  Stream &ThenBlasAxpy(uint64_t elem_count, float alpha,
-                       const DeviceMemory<float> &x, int incx,
-                       DeviceMemory<float> *y, int incy);
-
-  // See BlasSupport::DoBlasCopy.
-  Stream &ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
-                       int incx, DeviceMemory<float> *y, int incy);
-
   // See BlasSupport::DoBlasGemv.
   Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n, float alpha,
                        const DeviceMemory<float> &a, int lda,
@@ -377,12 +364,6 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &x, int incx,
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *y, int incy);
-
-  // See BlasSupport::DoBlasSbmv.
-  Stream &ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &x, int incx, float beta,
-                       DeviceMemory<float> *y, int incy);
 
   template <typename InputType, typename OutputType>
   absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
