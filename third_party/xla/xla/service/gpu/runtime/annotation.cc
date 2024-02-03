@@ -134,13 +134,8 @@ std::string MakeTitle(const HloModule& mod, std::string_view longest_prefix) {
 }
 }  // namespace
 
-ModuleAnnotation::ModuleAnnotation(std::string module_name_, int module_id_)
-    : longest_prefix{},
-      title_str{
-          module_id_ >= 0
-              ? absl::StrFormat("XlaModule:#hlo_module=%s,program_id=%d",
-                                module_name_, module_id_)
-              : absl::StrFormat("XlaModule:#hlo_module=%s", module_name_)},
+ModuleAnnotation::ModuleAnnotation(const std::string& module_name)
+    : title_str{absl::StrFormat("XlaModule:#hlo_module=%s", module_name)},
       title{RegisterString(title_str.c_str())} {}
 
 ModuleAnnotation::ModuleAnnotation(const HloModule& mod)
@@ -195,6 +190,9 @@ std::string_view KernelAnnotation::Title() const { return title_str; }
 nvtxStringHandle_t KernelAnnotation::NvtxRegisteredTitle() const {
   return title;
 }
+
+ModuleAnnotations::ModuleAnnotations(const std::string& module_name)
+    : top_level{module_name} {}
 
 ModuleAnnotations::ModuleAnnotations(const HloModule& mod) : top_level{mod} {
   // loop through `mod` and populate `kernels` (string -> KernelAnnotation map)

@@ -1280,6 +1280,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",

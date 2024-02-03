@@ -526,6 +526,7 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
+        ":tracing",
         "//xla:statusor",
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
@@ -688,7 +689,6 @@ cc_library(
 
 cc_library(
     name = "support",
-    srcs = ["support.cc"],
     hdrs = ["support.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
@@ -702,8 +702,6 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation_stack",
     ],
 )
 
@@ -746,10 +744,14 @@ cc_library(
         ":support",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:custom_call_registry",
+        "//xla/runtime:diagnostics",
         "//xla/runtime:executable",
+        "//xla/runtime:logical_result",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

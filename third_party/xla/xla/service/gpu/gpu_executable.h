@@ -314,7 +314,12 @@ class GpuExecutable : public Executable {
   // This object is also used for dumping debug info.
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
 
-  std::optional<ModuleAnnotations> annotation_info_;
+  ModuleAnnotations module_annotations_ = [this] {
+    if (has_module()) {
+      return ModuleAnnotations(module());
+    }
+    return ModuleAnnotations(module_name_);
+  }();
 
   int64_t debug_buffer_assignment_show_max_;
 
