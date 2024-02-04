@@ -132,8 +132,16 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
 
 static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config) {
-  if (auto* fusion = DynCast<HloFusionInstruction>(hlo))
-    return config.contains(DebugOptions::FUSION);
+  if (auto* fusion = DynCast<HloFusionInstruction>(hlo)) {
+    // TODO(vuson): Make address computation fusion compatible with command
+    // buffer
+    auto gpu_config = fusion->backend_config<GpuBackendConfig>();
+    const FusionBackendConfig& backend_config =
+        gpu_config->fusion_backend_config();
+    const auto& custom_config = backend_config.custom_fusion_config();
+    return custom_config.name() != "address_computation" &&
+           config.contains(DebugOptions::FUSION);
+  }
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return config.contains(DebugOptions::FUSION);
