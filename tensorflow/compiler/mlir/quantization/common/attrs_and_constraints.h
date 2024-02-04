@@ -150,6 +150,13 @@ FailureOr<T> TryCast(Operation *op, const StringRef name) {
   }
 }
 
+FailureOr<int32_t> CastI64ToI32(int64_t value);
+
+// Tries to cast an array of int64 to int32. If any of the element in the
+// array is not in the range of int32, returns failure().
+FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
+    ArrayRef<int64_t> int64_array);
+
 }  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_

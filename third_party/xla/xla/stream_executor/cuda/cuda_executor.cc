@@ -934,18 +934,16 @@ GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
 }
 
-absl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
+absl::StatusOr<std::unique_ptr<CommandBuffer>> GpuExecutor::CreateCommandBuffer(
+    CommandBuffer::Mode mode) {
   VLOG(2) << "Create CUDA command buffer (CUDA graph)";
   GpuGraphHandle graph = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
-std::unique_ptr<internal::CommandBufferInterface>
-GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode,
-                                            GpuGraphHandle graph,
-                                            bool is_owned_graph) {
+std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
+    CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph) {
   VLOG(2) << "Create CUDA command buffer (CUDA graph) from existing graph "
           << graph << "; is_owned_graph=" << is_owned_graph;
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,

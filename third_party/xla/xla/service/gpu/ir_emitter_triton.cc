@@ -119,7 +119,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/NVGPUToLLVM/NVGPUToLLVMPass.h"
-#include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
+#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -742,7 +742,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   clusterInfo.clusterDimZ = config.cluster_dims.z;
 
   // Based on make_ttir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
@@ -753,7 +753,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSymbolDCEPass());
 
   // Based on make_ttgir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
@@ -800,7 +800,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   }
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createDecomposeConversionsPass());
+  pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
@@ -812,7 +812,9 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Based on make_llir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
+  pm.addPass(mlir::createTritonNvidiaGPUAddDescriptorArgs());
+  pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   // // TODO(b/316566238): Use TMA info collected here in XLA runtime.

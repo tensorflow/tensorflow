@@ -50,6 +50,8 @@ class PostCalibrationComponent : public Component {
   // passes.
   void AddPasses(
       OpPassManager& pm,
+      const ::stablehlo::quantization::StaticRangePtqPreset&
+          static_range_ptq_preset,
       const ::stablehlo::quantization::PipelineConfig& pipeline_config) const;
 
  private:

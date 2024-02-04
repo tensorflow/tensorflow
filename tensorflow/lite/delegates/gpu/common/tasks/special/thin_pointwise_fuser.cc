@@ -930,7 +930,8 @@ absl::Status TryThinPointwiseFuser(
         gpu_info.IsApple() || gpu_info.IsAMD())) {
     return absl::NotFoundError("ThinPointwiseFuser not suitable.");
   }
-  if (gpu_info.IsMali() && gpu_info.mali_info.IsMidgard()) {
+  // TODO(b/322801363): Add more precise checks for Mali
+  if (gpu_info.IsMali()) {
     return absl::NotFoundError("ThinPointwiseFuser not suitable.");
   }
   auto* node = graph.GetNode(first_node_id);

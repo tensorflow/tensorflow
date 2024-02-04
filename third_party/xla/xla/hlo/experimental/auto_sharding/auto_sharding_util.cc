@@ -356,6 +356,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -615,6 +616,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -1733,18 +1735,13 @@ AliasSet BuildAliasSet(const HloModule* module,
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
+        // Aliasing between the while op, and the parameters of its body and
+        // conditional computations is handled by making the latter follow the
+        // input tuple to thew while loop in the function
+        // BuildStrategyAndCost().
         traverse_tuple_alias(
             strategy_map.at(instruction).get(),
             strategy_map.at(instruction->while_body()->root_instruction())
-                .get());
-        traverse_tuple_alias(
-            strategy_map.at(instruction).get(),
-            strategy_map.at(instruction->while_body()->parameter_instruction(0))
-                .get());
-        traverse_tuple_alias(
-            strategy_map.at(instruction).get(),
-            strategy_map
-                .at(instruction->while_condition()->parameter_instruction(0))
                 .get());
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         auto branch_computations = instruction->branch_computations();

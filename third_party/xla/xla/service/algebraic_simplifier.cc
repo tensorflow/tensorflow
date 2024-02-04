@@ -1495,10 +1495,19 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
     return OkStatus();
   }
 
-  if (HloInstruction* bitcast_operand =
-          BitcastingOperandOfReshapeOrCopyChain(copy, options_)) {
-    ReplaceWithBitcast(copy, bitcast_operand);
-    return OkStatus();
+  const bool copy_is_to_different_memory_space =
+      options_.is_layout_sensitive() && copy->shape().has_layout() &&
+      copy->operand(0)->shape().has_layout() &&
+      copy->shape().layout().memory_space() !=
+          copy->operand(0)->shape().layout().memory_space();
+  if (!copy_is_to_different_memory_space) {
+    // Do not replace a copy between different memory spaces with a bitcast.
+    HloInstruction* bitcast_operand =
+        BitcastingOperandOfReshapeOrCopyChain(copy, options_);
+    if (bitcast_operand != nullptr) {
+      ReplaceWithBitcast(copy, bitcast_operand);
+      return OkStatus();
+    }
   }
 
   // Replace Copy(Reshape()) with Reshape() if the Reshape is a logical bitcast.
@@ -5123,9 +5132,8 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
         new_operands.push_back(operand);
       }
     }
-    VLOG(4) << "Sinking broadcast after user:"
-            << "\n  old broadcast: " << broadcast->ToString()
-            << "\n  old user: " << user->ToString();
+    VLOG(4) << "Sinking broadcast after user:" << "\n  old broadcast: "
+            << broadcast->ToString() << "\n  old user: " << user->ToString();
     changed_shape = ShapeUtil::ChangeElementType(operand->shape(),
                                                  user->shape().element_type());
     simplifier_->UpdateLayout(&changed_shape);
@@ -6773,6 +6781,20 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
   if (options_.is_layout_sensitive()) {
     return OkStatus();
+  }
+
+  HloInstruction* negate_arg;
+  if (ShapeUtil::ElementIsFloating(reduce->shape()) &&
+      Match(arg, m::Negate(m::Op(&negate_arg))) &&
+      IsScalarConstantZero(init_value) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    TF_RETURN_IF_ERROR(reduce->ReplaceOperandWith(0, negate_arg));
+    auto users = reduce->users();
+    auto* negated_reduce = arg->AddInstruction(HloInstruction::CreateUnary(
+        reduce->shape(), HloOpcode::kNegate, reduce));
+    MarkAsChanged();
+    return reduce->ReplaceUsesWith(users, negated_reduce);
   }
 
   // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))

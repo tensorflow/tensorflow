@@ -52,48 +52,48 @@ extern void rocm_Broadcast_fp32(void *stream, float *dst, int dst_stride,
                                 int size);
 
 template <class T>
-const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
-    const DeviceMemory<T> &a) {
-  return reinterpret_cast<
-      const typename RocBlasTypeConversionHelper<T>::mapped_type *>(
-      GpuMemory(a));
+const RocBlasType_t<T> *complex_cast(const DeviceMemory<T> &a) {
+  return reinterpret_cast<const RocBlasType_t<T> *>(GpuMemory(a));
 }
 
 template <class T>
-const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
-    const T &a) {
-  return reinterpret_cast<
-      const typename RocBlasTypeConversionHelper<T>::mapped_type *>(&a);
+const RocBlasType_t<T> *complex_cast(const T &a) {
+  return reinterpret_cast<const RocBlasType_t<T> *>(&a);
 }
 template <class T>
-typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
-    DeviceMemory<T> *a) {
-  return reinterpret_cast<
-      typename RocBlasTypeConversionHelper<T>::mapped_type *>(
-      GpuMemoryMutable(a));
+RocBlasType_t<T> *complex_cast(DeviceMemory<T> *a) {
+  return reinterpret_cast<RocBlasType_t<T> *>(GpuMemoryMutable(a));
 }
 
 static void blas_log(const char *c) {}
 
 static string ToString(rocblas_status status) {
+#define XVAL(x) \
+  case x:       \
+    return #x
   switch (status) {
-    case rocblas_status_success:
-      return "rocblas_status_success";
-    case rocblas_status_invalid_handle:
-      return "rocblas_status_invalid_handle";
-    case rocblas_status_not_implemented:
-      return "rocblas_status_not_implemented";
-    case rocblas_status_invalid_pointer:
-      return "rocblas_status_invalid_pointer";
-    case rocblas_status_invalid_size:
-      return "rocblas_status_invalid_size";
-    case rocblas_status_memory_error:
-      return "rocblas_status_memory_error";
-    case rocblas_status_internal_error:
-      return "rocblas_status_internal_error";
+    XVAL(rocblas_status_success);
+    XVAL(rocblas_status_invalid_handle);
+    XVAL(rocblas_status_not_implemented);
+    XVAL(rocblas_status_invalid_pointer);
+    XVAL(rocblas_status_invalid_size);
+    XVAL(rocblas_status_memory_error);
+    XVAL(rocblas_status_internal_error);
+#if TF_ROCM_VERSION >= 60000
+    XVAL(rocblas_status_perf_degraded);
+    XVAL(rocblas_status_size_query_mismatch);
+    XVAL(rocblas_status_size_increased);
+    XVAL(rocblas_status_size_unchanged);
+    XVAL(rocblas_status_invalid_value);
+    XVAL(rocblas_status_continue);
+    XVAL(rocblas_status_check_numerics_fail);
+    XVAL(rocblas_status_excluded_from_build);
+    XVAL(rocblas_status_arch_mismatch);
+#endif
     default:
       return absl::StrCat("<invalid rocBLAS status: ", status, ">");
   }
+#undef XVAL
 }
 
 bool ROCMBlas::Init() {
@@ -203,17 +203,112 @@ rocblas_side ROCMBlasSide(blas::Side side) {
   }
 }
 
+absl::StatusOr<rocblas_datatype> AsRocBlasType(blas::DataType type) {
+  switch (type) {
+    case blas::DataType::kHalf:
+      return rocblas_datatype_f16_r;
+    case blas::DataType::kBF16:
+      return rocblas_datatype_bf16_r;
+    case blas::DataType::kFloat:
+      return rocblas_datatype_f32_r;
+    case blas::DataType::kDouble:
+      return rocblas_datatype_f64_r;
+    case blas::DataType::kInt8:
+      return rocblas_datatype_i8_r;
+    case blas::DataType::kInt32:
+      return rocblas_datatype_i32_r;
+    case blas::DataType::kComplexFloat:
+      return rocblas_datatype_f32_c;
+    case blas::DataType::kComplexDouble:
+      return rocblas_datatype_f64_c;
+    default:
+      return absl::InternalError(
+          absl::StrFormat("Unsupported blas data type: %d", (int)type));
+  }
+}
+
+absl::StatusOr<rocblas_datatype> AsRocBlasComputeType(
+    blas::ComputationType type) {
+  switch (type) {
+    case blas::ComputationType::kF16:
+      return rocblas_datatype_f16_r;
+    case blas::ComputationType::kF32:
+      return rocblas_datatype_f32_r;
+    case blas::ComputationType::kF64:
+      return rocblas_datatype_f64_r;
+    case blas::ComputationType::kI32:
+      return rocblas_datatype_i32_r;
+    case blas::ComputationType::kF16AsF32:
+    case blas::ComputationType::kBF16AsF32:
+    case blas::ComputationType::kTF32AsF32:
+    default:
+      return absl::InternalError(
+          absl::StrFormat("Unsupported compute type: %d", (int)type));
+  }
+}
+
+void CheckPreconditions(blas::Transpose transa, blas::Transpose transb,
+                        uint64_t m, uint64_t n, uint64_t k,
+                        blas::DataType dtype, int lda, int ldb) {
+  if (dtype == blas::DataType::kHalf || dtype == blas::DataType::kFloat) {
+    if (transa == blas::Transpose::kNoTranspose) {
+      if (lda < static_cast<int64_t>(m)) {
+        LOG(WARNING) << "GEMM lda was smaller than m (no transpose case); "
+                        "precondition violation";
+      }
+    } else {
+      if (lda < static_cast<int64_t>(k)) {
+        LOG(WARNING) << "GEMM lda (" << lda << ") was smaller than k (" << k
+                     << ") (transpose case); precondition violation";
+      }
+    }
+    if (transb == blas::Transpose::kNoTranspose) {
+      if (ldb < static_cast<int64_t>(k)) {
+        LOG(WARNING) << "GEMM ldb (" << ldb << ") was smaller than k (" << k
+                     << ") (no transpose case); precondition violation";
+      }
+    } else {
+      if (ldb < static_cast<int64_t>(n)) {
+        LOG(WARNING) << "GEMM ldb was smaller than n (transpose case); "
+                        "precondition violation";
+      }
+    }
+  }
+}
+
+uint32_t GemmFloat16Flags(blas::DataType dtype, blas::CallContext context) {
+  bool is_backprop = (context == blas::CallContext::kBackpropInput1 ||
+                      context == blas::CallContext::kBackpropInput2);
+
+  return dtype == blas::DataType::kHalf && is_backprop
+             ? rocblas_gemm_flags_fp16_alt_impl
+             : rocblas_gemm_flags_none;
+}
+
+absl::Status PopulateProfileFromTimer(
+    std::optional<GpuTimer> &timer, blas::AlgorithmType algorithm,
+    blas::ProfileResult *output_profile_result) {
+  if (output_profile_result) {
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(algorithm);
+    output_profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(duration));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 template <typename FuncT, typename... Args>
-bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
-                                  bool pointer_mode_host, bool err_on_failure,
-                                  Args... args) {
+absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
+                                          bool pointer_mode_host,
+                                          bool err_on_failure, Args &&...args) {
   absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
-    return false;
+    return absl::InternalError("Setting stream failed");
   }
 
   gpu::ScopedActivateExecutorContext sac{parent_};
@@ -224,17 +319,21 @@ bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   if (!allow_atomics) {
     ret = wrap::rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
     if (err_on_failure && ret != rocblas_status_success) {
-      LOG(ERROR) << "failed to to set atomics mode before "
-                 << rocblas_func.kName << ": " << ToString(ret);
+      LOG(ERROR) << "failed to to set atomics mode before " << FuncT::kName
+                 << ": " << ToString(ret);
     }
   }
 
-  ret = rocblas_func(blas_, args...);
-  if (err_on_failure && ret != rocblas_status_success) {
-    LOG(ERROR) << "failed to run ROCBLAS routine " << rocblas_func.kName << ": "
-               << ToString(ret);
+  ret = rocblas_func(blas_, std::forward<Args>(args)...);
+  if (ret != rocblas_status_success) {
+    auto err_str =
+        absl::StrFormat("%s failed with: %s", FuncT::kName, ToString(ret));
+    if (err_on_failure) {
+      LOG(ERROR) << err_str;
+    }
+    return absl::InternalError(err_str);
   }
-  return ret == rocblas_status_success;
+  return absl::OkStatus();
 }
 
 bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,
@@ -360,7 +459,7 @@ bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
 
 absl::Status ROCMBlas::DoBlasGemm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64 n, uint64_t k, blas::DataType dtype, const void *alpha,
+    uint64_t n, uint64_t k, blas::DataType dtype, const void *alpha,
     const DeviceMemoryBase &a, int lda, const DeviceMemoryBase &b, int ldb,
     const void *beta, DeviceMemoryBase *c, int ldc,
     const NumericOptions &numeric_options, blas::CallContext context) {
@@ -371,45 +470,14 @@ absl::Status ROCMBlas::DoBlasGemm(
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc);
-  if (dtype == blas::DataType::kHalf || dtype == blas::DataType::kFloat) {
-    if (transa == blas::Transpose::kNoTranspose) {
-      if (lda < static_cast<int64_t>(m)) {
-        LOG(WARNING) << "GEMM lda was smaller than m (no transpose case); "
-                        "precondition violation";
-      }
-    } else {
-      if (lda < static_cast<int64_t>(k)) {
-        LOG(WARNING) << "GEMM lda (" << lda << ") was smaller than k (" << k
-                     << ") (transpose case); precondition violation";
-      }
-    }
-    if (transb == blas::Transpose::kNoTranspose) {
-      if (ldb < static_cast<int64_t>(k)) {
-        LOG(WARNING) << "GEMM ldb (" << ldb << ") was smaller than k (" << k
-                     << ") (no transpose case); precondition violation";
-      }
-    } else {
-      if (ldb < static_cast<int64_t>(n)) {
-        LOG(WARNING) << "GEMM ldb was smaller than n (transpose case); "
-                        "precondition violation";
-      }
-    }
-  }
+
+  CheckPreconditions(transa, transb, m, n, k, dtype, lda, ldb);
 
   switch (dtype) {
     case blas::DataType::kHalf: {
       absl::StatusOr<bool> maybe_hasXDLOPS = GpuDriver::GetMFMASupport();
       if (maybe_hasXDLOPS.ok() && maybe_hasXDLOPS.value()) {
         VLOG(1) << "Using rocblas_gemm_ex";
-        bool is_backprop = (context == blas::CallContext::kBackpropInput1) ||
-                           (context == blas::CallContext::kBackpropInput2);
-
-        uint32_t flags = rocblas_gemm_flags_none;
-#if TF_ROCM_VERSION >= 50000
-        if (is_backprop) {
-          flags = rocblas_gemm_flags_fp16_alt_impl;
-        }
-#endif
         return DoBlasInternalStatus(
             wrap::rocblas_gemm_ex, stream, /* pointer_mode_host = */ true,
             ROCMBlasTranspose(transa), ROCMBlasTranspose(transb),
@@ -417,7 +485,7 @@ absl::Status ROCMBlas::DoBlasGemm(
             rocblas_datatype_f16_r, lda, b.opaque(), rocblas_datatype_f16_r,
             ldb, beta, c->opaque(), rocblas_datatype_f16_r, ldc, c->opaque(),
             rocblas_datatype_f16_r, ldc, rocblas_datatype_f32_r,
-            rocblas_gemm_algo_standard, 0, flags);
+            rocblas_gemm_algo_standard, 0, GemmFloat16Flags(dtype, context));
       } else {
         VLOG(1) << "Using rocblas_hgemm";
         const Eigen::half alpha_half(*static_cast<const float *>(alpha));
@@ -491,38 +559,208 @@ absl::Status ROCMBlas::DoBlasGemm(
 
 absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
+    uint64_t n, uint64_t k, const void *alpha, const DeviceMemoryBase &a,
     blas::DataType type_a, int lda, const DeviceMemoryBase &b,
     blas::DataType type_b, int ldb, const void *beta, DeviceMemoryBase *c,
     blas::DataType type_c, int ldc, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, const NumericOptions &numeric_options,
-    blas::ProfileResult *output_profile_result, blas::CallContext context) {
-  // ROCM TODO: properly implement the interface
-  return absl::InternalError(
-      "DoBlasGemmWithAlgorithm "
-      "is not implemented on ROCm yet");
+    blas::ProfileResult *profile_result, blas::CallContext context) {
+  blas_log("DoBlasGemmWithAlgorithm");
+  if (type_a != type_b) {
+    return absl::InternalError(absl::StrFormat(
+        "DoBlasGemmWithAlgorithm: different "
+        "datatypes for the inputs a (%d) and b (%d) are unsupported",
+        static_cast<int>(type_a), static_cast<int>(type_b)));
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), profile_result != nullptr));
+
+  // fall back to the default implementation
+  if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
+    TF_RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k, type_a,
+                                  alpha, a, lda, b, ldb, beta, c, ldc,
+                                  numeric_options, context));
+
+  } else {
+    CheckPreconditions(transa, transb, m, n, k, type_a, lda, ldb);
+    TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
+    TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
+    TF_ASSIGN_OR_RETURN(auto roc_comp_type,
+                        AsRocBlasComputeType(computation_type));
+
+    VLOG(1) << absl::StreamFormat(
+        "doing rocBLAS GEMM with Algorithm: at=%d bt=%d m=%u n=%u "
+        "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
+        "c=%p ldc=%d algorithm=%d type_a/b=%d type_c=%d comp_type=%d",
+        static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
+        a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc, algorithm,
+        static_cast<int>(roc_type_a), static_cast<int>(roc_type_c),
+        static_cast<int>(roc_comp_type));
+
+    TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+        wrap::rocblas_gemm_ex, stream,
+        /* pointer_mode_host = */ true,
+        /* error_on_failure = */ false, ROCMBlasTranspose(transa),
+        ROCMBlasTranspose(transb), (rocblas_int)m, (rocblas_int)n,
+        (rocblas_int)k, alpha, a.opaque(), roc_type_a, lda, b.opaque(),
+        roc_type_a, ldb, beta, c->opaque(), roc_type_c, ldc, c->opaque(),
+        roc_type_c, ldc, roc_comp_type, rocblas_gemm_algo_solution_index,
+        algorithm, GemmFloat16Flags(type_a, context)));
+  }
+  TF_RETURN_IF_ERROR(
+      PopulateProfileFromTimer(timer, algorithm, profile_result));
+
+  return absl::OkStatus();
 }
 
 absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, const void *alpha, const DeviceMemoryBase &a,
+    uint64_t n, uint64_t k, const void *alpha, const DeviceMemoryBase &a,
     blas::DataType type_a, int lda, int64_t stride_a, const DeviceMemoryBase &b,
     blas::DataType type_b, int ldb, int64_t stride_b, const void *beta,
     DeviceMemoryBase *c, blas::DataType type_c, int ldc, int64_t stride_c,
     int batch_count, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, const NumericOptions &numeric_options,
-    blas::ProfileResult *output_profile_result, blas::CallContext context) {
-  // ROCM TODO: properly implement the interface
-  return absl::InternalError(
-      "DoBlasGemmStridedBatchedWithAlgorithm "
-      "is not implemented on ROCm yet");
+    blas::ProfileResult *profile_result, blas::CallContext context) {
+  blas_log("DoBlasGemmStridedBatchedWithAlgorithm");
+  if (type_a != type_b) {
+    return absl::InternalError(absl::StrFormat(
+        "DoBlasGemmStridedBatchedWithAlgorithm: different "
+        "datatypes for the inputs a (%d) and b (%d) are unsupported",
+        static_cast<int>(type_a), static_cast<int>(type_b)));
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), profile_result != nullptr));
+
+  // fall back to the default implementation
+  if (algorithm == blas::kDefaultAlgorithm && type_a == type_c) {
+    TF_RETURN_IF_ERROR(DoBlasGemmStridedBatched(
+        stream, transa, transb, m, n, k, type_a, alpha, a, lda, stride_a, b,
+        ldb, stride_b, beta, c, ldc, stride_c, batch_count, numeric_options,
+        context));
+  } else {
+    VLOG(1) << absl::StreamFormat(
+        "doing rocBLAS GEMM strided batched with Algorithm: at=%d bt=%d m=%u "
+        "n=%u "
+        "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
+        "c=%p ldc=%d algorithm=%d type_a/b=%d type_c=%d stride_a/b/c=%d/%d/%d "
+        "batch_count=%d",
+        static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
+        a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc, algorithm,
+        static_cast<int>(type_a), static_cast<int>(type_c), stride_a, stride_b,
+        stride_c, batch_count);
+
+    TF_ASSIGN_OR_RETURN(auto roc_type_a, AsRocBlasType(type_a));
+    TF_ASSIGN_OR_RETURN(auto roc_type_c, AsRocBlasType(type_c));
+    TF_ASSIGN_OR_RETURN(auto roc_comp_type,
+                        AsRocBlasComputeType(computation_type));
+
+    TF_RETURN_IF_ERROR(DoBlasInternalImpl(
+        wrap::rocblas_gemm_strided_batched_ex, stream,
+        /* pointer_mode_host = */ true,
+        /* error_on_failure = */ false, ROCMBlasTranspose(transa),
+        ROCMBlasTranspose(transb), (rocblas_int)m, (rocblas_int)n,
+        (rocblas_int)k, alpha, a.opaque(), roc_type_a, lda, stride_a,
+        b.opaque(), roc_type_a, ldb, stride_b, beta, c->opaque(), roc_type_c,
+        ldc, stride_c, c->opaque(), roc_type_c, ldc, stride_c, batch_count,
+        roc_comp_type, rocblas_gemm_algo_solution_index, algorithm,
+        GemmFloat16Flags(type_a, context)));
+  }
+  TF_RETURN_IF_ERROR(
+      PopulateProfileFromTimer(timer, algorithm, profile_result));
+
+  return absl::OkStatus();
 }
 
+template <class Lambda>
+struct NameWrap : Lambda {
+  using Lambda::operator();
+  constexpr static const char *kName = "rocblas_gemm_ex_get_solutions";
+};
+template <class Func>
+NameWrap(Func) -> NameWrap<Func>;
+
+#define ASSIGN_OR_FALSE(lhs, rexpr)                 \
+  result = (rexpr);                                 \
+  if (TF_PREDICT_FALSE(!result.ok())) return false; \
+  lhs = std::move(result).value()
+
 bool ROCMBlas::GetBlasGemmAlgorithms(
-    Stream *stream, std::vector<blas::AlgorithmType> *out_algorithms) {
-  // ROCM TODO: properly implement the interface
-  return true;
+    Stream *stream, const gpu::MatrixDescriptor &a,
+    const gpu::MatrixDescriptor &b, gpu::OutputMatrixDescriptor *c,
+    const void *alpha, const void *beta,
+    std::vector<blas::AlgorithmType> *out_algorithms) {
+  out_algorithms->clear();
+  auto blas_lambda = [this, out_algorithms](auto handle, auto &&blas_func,
+                                            auto &&...rest) {
+    rocblas_int num_sols = 0;
+
+    if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
+                             nullptr, &num_sols);
+        ret != rocblas_status_success) {
+      return ret;
+    }
+    solutions_.resize(num_sols);
+    if (auto ret = blas_func(handle, std::forward<decltype(rest)>(rest)...,
+                             solutions_.data(), &num_sols);
+        ret != rocblas_status_success) {
+      return ret;
+    }
+    out_algorithms->resize(num_sols);
+    for (rocblas_int i = 0; i < num_sols; i++) {
+      (*out_algorithms)[i] = solutions_[i];
+    }
+    return rocblas_status_success;
+  };
+
+  VLOG(1) << absl::StreamFormat(
+      "GetBlasAlgorithms: at=%d bt=%d m=%u n=%u "
+      "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
+      "c=%p ldc=%d type_a/b=%d type_c=%d stride_a/b/c=%d/%d/%d "
+      "batch_count=%d",
+      static_cast<int>(a.transpose), static_cast<int>(b.transpose), c->m, c->n,
+      c->k, alpha, a.data.opaque(), a.leading_dim_stride, b.data.opaque(),
+      b.leading_dim_stride, beta, c->data.opaque(), c->leading_dim_stride,
+      static_cast<int>(a.type), static_cast<int>(c->type), a.batch_stride,
+      b.batch_stride, c->batch_stride, c->batch_size);
+
+  if (a.type != b.type) {
+    LOG(ERROR) << "Gemm arguments types differ: no feasible solutions!";
+    return false;
+  }
+  absl::StatusOr<rocblas_datatype> result;
+  ASSIGN_OR_FALSE(auto roc_type_a, AsRocBlasType(a.type));
+  ASSIGN_OR_FALSE(auto roc_type_c, AsRocBlasType(c->type));
+  ASSIGN_OR_FALSE(auto roc_comp_type, AsRocBlasComputeType(c->compute_type));
+
+  if (c->batch_size == 1) {
+    // TODO: we should possibly use GemmFloat16Flags(type_a, context) here..
+    return DoBlasInternalFailureOK(
+        NameWrap{blas_lambda}, stream, true,
+        wrap::rocblas_gemm_ex_get_solutions, ROCMBlasTranspose(a.transpose),
+        ROCMBlasTranspose(b.transpose), c->m, c->n, c->k, alpha,
+        a.data.opaque(), roc_type_a, a.leading_dim_stride, b.data.opaque(),
+        roc_type_a, b.leading_dim_stride, beta, c->data.opaque(), roc_type_c,
+        c->leading_dim_stride, c->data.opaque(), roc_type_c,
+        c->leading_dim_stride, roc_comp_type, rocblas_gemm_algo_solution_index,
+        0);
+  }
+  return DoBlasInternalFailureOK(
+      NameWrap{blas_lambda}, stream, true,
+      wrap::rocblas_gemm_strided_batched_ex_get_solutions,
+      ROCMBlasTranspose(a.transpose), ROCMBlasTranspose(b.transpose), c->m,
+      c->n, c->k, alpha, a.data.opaque(), roc_type_a, a.leading_dim_stride,
+      a.batch_stride, b.data.opaque(), roc_type_a, b.leading_dim_stride,
+      b.batch_stride, beta, c->data.opaque(), roc_type_c, c->leading_dim_stride,
+      c->batch_stride, c->data.opaque(), roc_type_c, c->leading_dim_stride,
+      c->batch_stride, c->batch_size, roc_comp_type,
+      rocblas_gemm_algo_solution_index, 0);
 }
+#undef ASSIGN_OR_FALSE
+
+namespace {
 
 struct MemoryCopyOp {
   char *src_ptr;
@@ -535,7 +773,7 @@ struct MemoryCopyOp {
 
 // Check whether two Memory Copy Ops can be fold together.
 // If it's true, fold it. Otherwise, return false.
-static bool MemCopyOpsFold(MemoryCopyOp &y, const MemoryCopyOp &x) {
+bool MemCopyOpsFold(MemoryCopyOp &y, const MemoryCopyOp &x) {
   bool misaligned = (x.size & 3) ||
                     (reinterpret_cast<uint64_t>(x.dst_ptr) & 3) ||
                     (reinterpret_cast<uint64_t>(x.src_ptr) & 3) ||
@@ -636,19 +874,21 @@ absl::Status ReorganizeMemory(Stream *stream,
 }
 
 template <typename T>
-absl::Status ROCMBlas::AllocateStridedBuffer(
-    const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
-        &raw_ptrs,
-    int batch_count, uint64_t batch_stride, ScratchAllocator *scratch_allocator,
-    Stream *stream,
-    std::unique_ptr<TemporaryDeviceMemory<
-        typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
-    DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-        *device_memory,
-    bool copy_data, bool &reallocated) {
-  assert(device_memory != nullptr);
+struct AllocateStridedResult {
+  using Type = RocBlasType_t<T>;
+  DeviceMemory<Type> device_mem;
+  bool reallocated;
+};
 
-  using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
+// A helper allocation function to convert raw pointers memory layout to
+// strided flavor
+template <typename T>
+absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
+    const std::vector<RocBlasType_t<T> *> &raw_ptrs, int batch_count,
+    uint64_t batch_stride, ScratchAllocator *scratch_allocator, Stream *stream,
+    bool copy_data) {
+  using MAPPED_T = RocBlasType_t<T>;
+  AllocateStridedResult<T> res;
 
   bool needs_allocate_strided = false;
   for (int i = 1; i < batch_count; ++i) {
@@ -664,42 +904,37 @@ absl::Status ROCMBlas::AllocateStridedBuffer(
 
   // No need to do re-allocation, take the short cut and return
   if (!needs_allocate_strided) {
-    *device_memory = DeviceMemory<MAPPED_T>(
+    res.device_mem = DeviceMemory<MAPPED_T>(
         DeviceMemoryBase(raw_ptrs[0], matrix_batch_byte_size));
-    reallocated = false;
-    return absl::OkStatus();
+    res.reallocated = false;
+    return res;
   }
 
-  if (scratch_allocator != nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        DeviceMemory<uint8> batch_matrix_bytes,
-        scratch_allocator->AllocateBytes(matrix_batch_byte_size));
-    *device_memory = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
-  } else {
-    assert(temp_memory != nullptr);
-    TF_ASSIGN_OR_RETURN(*temp_memory, stream->AllocateTemporaryArray<MAPPED_T>(
-                                          matrix_batch_byte_size));
-    *device_memory =
-        DeviceMemory<MAPPED_T>(*(*temp_memory)->mutable_device_memory());
+  if (scratch_allocator == nullptr) {
+    return absl::InternalError("scratch_allocator is null");
   }
-
-  reallocated = true;
-
-  if (copy_data)
-    return ReorganizeMemory(stream, device_memory, raw_ptrs, batch_count,
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> batch_matrix_bytes,
+                      scratch_allocator->AllocateBytes(matrix_batch_byte_size));
+  res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
+  res.reallocated = true;
+  if (copy_data) {
+    return ReorganizeMemory(stream, &res.device_mem, raw_ptrs, batch_count,
                             batch_stride, true);
-  return absl::OkStatus();
+  }
+  return res;
 }
+
+}  // namespace
 
 template <typename T, typename FuncT>
 absl::Status ROCMBlas::DoBlasGemmBatchedInternal(
     FuncT rocblas_func, Stream *stream, blas::Transpose transa,
-    blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
+    blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, T alpha,
     DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,
     DeviceMemorySlice<T> b_ptrs_to_wrappers, int ldb, T beta,
     DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
     ScratchAllocator *scratch_allocator) {
-  using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
+  using MAPPED_T = RocBlasType_t<T>;
 
   // Sanity checks before making any further progress
   uint64_t batch_stride_a = 0;
@@ -726,46 +961,32 @@ absl::Status ROCMBlas::DoBlasGemmBatchedInternal(
   }
 
   // Allocate local vectors to hold device pointers to matrices
-  std::vector<MAPPED_T *> a_raw_ptrs, b_raw_ptrs, c_raw_ptrs;
+  std::vector<MAPPED_T *> a_raw_ptrs(batch_count), b_raw_ptrs(batch_count),
+      c_raw_ptrs(batch_count);
   for (int i = 0; i < batch_count; ++i) {
     // static_cast does work when converting Eigen::half* to rocblas_half*,
     // hence the use of reinterpret_cast
-    a_raw_ptrs.push_back(
-        reinterpret_cast<MAPPED_T *>(a_ptrs_to_wrappers[i]->opaque()));
-    b_raw_ptrs.push_back(
-        reinterpret_cast<MAPPED_T *>(b_ptrs_to_wrappers[i]->opaque()));
-    c_raw_ptrs.push_back(
-        reinterpret_cast<MAPPED_T *>(c_ptrs_to_wrappers[i]->opaque()));
+    a_raw_ptrs[i] =
+        reinterpret_cast<MAPPED_T *>(a_ptrs_to_wrappers[i]->opaque());
+    b_raw_ptrs[i] =
+        reinterpret_cast<MAPPED_T *>(b_ptrs_to_wrappers[i]->opaque());
+    c_raw_ptrs[i] =
+        reinterpret_cast<MAPPED_T *>(c_ptrs_to_wrappers[i]->opaque());
   }
 
-  DeviceMemory<MAPPED_T> a;
   // Make sure the temporary memory are in-scope before the function returns
-  std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> a_temp;
-  bool reallocated_a, reallocated_b, reallocated_c;
-  absl::Status a_allocation_status = AllocateStridedBuffer<T>(
-      a_raw_ptrs, batch_count, batch_stride_a, scratch_allocator, stream,
-      &a_temp, &a, true, reallocated_a);
-  if (a_allocation_status != absl::OkStatus()) {
-    return a_allocation_status;
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto a, AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
+                                       scratch_allocator, stream, true));
 
-  DeviceMemory<MAPPED_T> b;
-  std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> b_temp;
-  absl::Status b_allocation_status = AllocateStridedBuffer<T>(
-      b_raw_ptrs, batch_count, batch_stride_b, scratch_allocator, stream,
-      &b_temp, &b, true, reallocated_b);
-  if (b_allocation_status != absl::OkStatus()) {
-    return b_allocation_status;
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto b, AllocateStridedBuffer<T>(b_raw_ptrs, batch_count, batch_stride_b,
+                                       scratch_allocator, stream, true));
 
-  DeviceMemory<MAPPED_T> c;
-  std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> c_temp;
-  absl::Status c_allocation_status = AllocateStridedBuffer<T>(
-      c_raw_ptrs, batch_count, batch_stride_c, scratch_allocator, stream,
-      &c_temp, &c, true, reallocated_c);  // can disable copy if beta=0
-  if (c_allocation_status != absl::OkStatus()) {
-    return c_allocation_status;
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto c, AllocateStridedBuffer<T>(c_raw_ptrs, batch_count, batch_stride_c,
+                                       scratch_allocator, stream,
+                                       true));  // can disable copy if beta=0
 
   bool ok;
   if constexpr (std::is_same_v<T, Eigen::bfloat16>) {
@@ -777,31 +998,36 @@ absl::Status ROCMBlas::DoBlasGemmBatchedInternal(
     ok = DoBlasInternal(
         rocblas_func, stream, /* pointer_mode_host = */ true,
         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
-        alpha_ptr, a.opaque(), rocblas_datatype_bf16_r, lda, batch_stride_a,
-        b.opaque(), rocblas_datatype_bf16_r, ldb, batch_stride_b, beta_ptr,
-        c.opaque(), rocblas_datatype_bf16_r, ldc, batch_stride_c, c.opaque(),
+        alpha_ptr, a.device_mem.opaque(), rocblas_datatype_bf16_r, lda,
+        batch_stride_a, b.device_mem.opaque(), rocblas_datatype_bf16_r, ldb,
+        batch_stride_b, beta_ptr, c.device_mem.opaque(),
+        rocblas_datatype_bf16_r, ldc, batch_stride_c, c.device_mem.opaque(),
         rocblas_datatype_bf16_r, ldc, batch_stride_c, batch_count,
         rocblas_datatype_f32_r, rocblas_gemm_algo_standard, 0, 0);
   } else {
     MAPPED_T *alpha_ptr = reinterpret_cast<MAPPED_T *>(&alpha);
     MAPPED_T *beta_ptr = reinterpret_cast<MAPPED_T *>(&beta);
-    ok = DoBlasInternal(rocblas_func, stream, /* pointer_mode_host = */ true,
-                        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
-                        n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
-                        batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
-                        GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
-                        batch_stride_c, batch_count);
+    ok = DoBlasInternal(
+        rocblas_func, stream, /* pointer_mode_host = */ true,
+        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
+        GpuComplex(alpha_ptr), GpuMemory(a.device_mem), lda, batch_stride_a,
+        GpuMemory(b.device_mem), ldb, batch_stride_b, GpuComplex(beta_ptr),
+        GpuMemoryMutable(&c.device_mem), ldc, batch_stride_c, batch_count);
   }
-  if (!ok) return absl::InternalError("failed BLAS call, see log for details");
-  if (reallocated_c)
-    return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,
-                            false);
+  if (!ok) {
+    return absl::Status(absl::StatusCode::kInternal,
+                        "failed BLAS call, see log for details");
+  }
+  if (c.reallocated) {
+    return ReorganizeMemory(stream, &c.device_mem, c_raw_ptrs, batch_count,
+                            batch_stride_c, false);
+  }
   return absl::OkStatus();
 }
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha, DeviceMemorySlice<Eigen::half> a,
+    uint64_t n, uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a,
     int lda, DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
     DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
     const NumericOptions &numeric_options, ScratchAllocator *scratch_allocator,
@@ -823,7 +1049,7 @@ bool ROCMBlas::DoBlasGemmBatched(
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha,
+    uint64_t n, uint64_t k, float alpha,
     DeviceMemorySlice<Eigen::bfloat16> a_array, int lda,
     DeviceMemorySlice<Eigen::bfloat16> b_array, int ldb, float beta,
     DeviceMemorySlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
@@ -845,7 +1071,7 @@ bool ROCMBlas::DoBlasGemmBatched(
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, float alpha, DeviceMemorySlice<float> a_array,
+    uint64_t n, uint64_t k, float alpha, DeviceMemorySlice<float> a_array,
     int lda, DeviceMemorySlice<float> b_array, int ldb, float beta,
     DeviceMemorySlice<float> c_array, int ldc, int batch_count,
     const NumericOptions &numeric_options, ScratchAllocator *scratch_allocator,
@@ -863,7 +1089,7 @@ bool ROCMBlas::DoBlasGemmBatched(
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, double alpha, DeviceMemorySlice<double> a_array,
+    uint64_t n, uint64_t k, double alpha, DeviceMemorySlice<double> a_array,
     int lda, DeviceMemorySlice<double> b_array, int ldb, double beta,
     DeviceMemorySlice<double> c_array, int ldc, int batch_count,
     const NumericOptions &numeric_options, ScratchAllocator *scratch_allocator,
@@ -881,7 +1107,7 @@ bool ROCMBlas::DoBlasGemmBatched(
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, std::complex<float> alpha,
+    uint64_t n, uint64_t k, std::complex<float> alpha,
     DeviceMemorySlice<std::complex<float>> a_array, int lda,
     DeviceMemorySlice<std::complex<float>> b_array, int ldb,
     std::complex<float> beta, DeviceMemorySlice<std::complex<float>> c_array,
@@ -900,7 +1126,7 @@ bool ROCMBlas::DoBlasGemmBatched(
 
 bool ROCMBlas::DoBlasGemmBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, std::complex<double> alpha,
+    uint64_t n, uint64_t k, std::complex<double> alpha,
     DeviceMemorySlice<std::complex<double>> a_array, int lda,
     DeviceMemorySlice<std::complex<double>> b_array, int ldb,
     std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c_array,
@@ -919,7 +1145,7 @@ bool ROCMBlas::DoBlasGemmBatched(
 
 bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64_t n,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) {
   blas_log("DoBlasTrsm");
@@ -932,7 +1158,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64_t n,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) {
   blas_log("DoBlasTrsm");
@@ -945,7 +1171,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64_t n,
                           std::complex<float> alpha,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) {
@@ -958,7 +1184,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           blas::UpperLower uplo, blas::Transpose transa,
-                          blas::Diagonal diag, uint64_t m, uint64 n,
+                          blas::Diagonal diag, uint64_t m, uint64_t n,
                           std::complex<double> alpha,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) {
@@ -971,7 +1197,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
-                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 blas::Diagonal diag, uint64_t m, uint64_t n,
                                  float alpha, const DeviceMemory<float *> &as,
                                  int lda, DeviceMemory<float *> *bs, int ldb,
                                  int batch_count) {
@@ -984,7 +1210,7 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
-                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 blas::Diagonal diag, uint64_t m, uint64_t n,
                                  double alpha, const DeviceMemory<double *> &as,
                                  int lda, DeviceMemory<double *> *bs, int ldb,
                                  int batch_count) {
@@ -997,7 +1223,7 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
-                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 blas::Diagonal diag, uint64_t m, uint64_t n,
                                  std::complex<float> alpha,
                                  const DeviceMemory<std::complex<float> *> &as,
                                  int lda,
@@ -1014,7 +1240,7 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
 
 bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
                                  blas::UpperLower uplo, blas::Transpose transa,
-                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 blas::Diagonal diag, uint64_t m, uint64_t n,
                                  std::complex<double> alpha,
                                  const DeviceMemory<std::complex<double> *> &as,
                                  int lda,
@@ -1031,17 +1257,18 @@ bool ROCMBlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
 
 absl::Status ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64 k, blas::DataType dtype, const void *alpha,
+    uint64_t n, uint64_t k, blas::DataType dtype, const void *alpha,
     const DeviceMemoryBase &a, int lda, int64_t stride_a,
     const DeviceMemoryBase &b, int ldb, int64_t stride_b, const void *beta,
     DeviceMemoryBase *c, int ldc, int64_t stride_c, int batch_count,
     const NumericOptions &numeric_options, blas::CallContext context) {
   VLOG(1) << absl::StreamFormat(
-      "doing rocBLAS SGEMM Strided Batched<float>: at=%d bt=%d m=%u n=%u "
+      "doing rocBLAS GEMM Strided Batched: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "
-      "c=%p ldc=%d",
+      "c=%p ldc=%d stride_a/b/c=%d/%d/%d batch_count=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
-      a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc);
+      a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc, stride_a,
+      stride_b, stride_c, batch_count);
 
   switch (dtype) {
     case blas::DataType::kHalf: {
@@ -1124,7 +1351,25 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatched(
 }
 
 absl::Status ROCMBlas::GetVersion(string *version) {
+#if TF_ROCM_VERSION >= 60300  // Not yet available in ROCM-6.1
+  absl::MutexLock lock{&mu_};
+  size_t len = 0;
+  if (auto res = rocblas_get_version_string_size(&len);
+      res != rocblas_status_success) {
+    return absl::InternalError(
+        absl::StrCat("GetVersion failed with: ", ToString(res)));
+  }
+  std::vector<char> buf(len + 1);
+  if (auto res = rocblas_get_version_string(buf.data(), len);
+      res != rocblas_status_success) {
+    return absl::InternalError(
+        absl::StrCat("GetVersion failed with: ", ToString(res)));
+  }
+  *version = string(buf.begin(), buf.end());
+  return absl::OkStatus();
+#else
   return absl::UnimplementedError("");
+#endif
 }
 
 }  // namespace gpu

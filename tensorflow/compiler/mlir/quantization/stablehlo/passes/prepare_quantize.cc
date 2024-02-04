@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -40,10 +41,10 @@ namespace mlir {
 namespace quant {
 namespace stablehlo {
 
-namespace {
-
 #define GEN_PASS_DEF_PREPAREQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
+
+namespace {
 
 // Applies prepare quantization on the model in TF dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
@@ -53,12 +54,14 @@ namespace {
 class PrepareQuantizePass
     : public impl::PrepareQuantizePassBase<PrepareQuantizePass> {
  public:
-  PrepareQuantizePass() = default;
-  PrepareQuantizePass(const PrepareQuantizePass&) = default;
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizePass)
 
-  explicit PrepareQuantizePass(bool enable_per_channel_quantization,
+  using impl::PrepareQuantizePassBase<
+      PrepareQuantizePass>::PrepareQuantizePassBase;
+
+  explicit PrepareQuantizePass(bool enable_per_channel_quantized_weight,
                                int bit_width) {
-    enable_per_channel_quantization_ = enable_per_channel_quantization;
+    enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
     bit_width_ = bit_width;
   }
 
@@ -162,9 +165,11 @@ void PrepareQuantizePass::runOnOperation() {
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
-      func, /*is_signed=*/true, bit_width_, !enable_per_channel_quantization_,
-      GetStableHloOpQuantSpec, GetStableHloQuantScaleSpec,
-      /*infer_tensor_ranges=*/true, /*legacy_float_scale=*/false);
+      func, /*is_signed=*/true, bit_width_,
+      !enable_per_channel_quantized_weight_, GetStableHloOpQuantSpec,
+      GetStableHloQuantScaleSpec,
+      /*infer_tensor_ranges=*/true, /*legacy_float_scale=*/false,
+      /*is_qdq_conversion=*/false);
 
   // Restore constants as stablehlo::ConstantOp.
   RewritePatternSet patterns_2(ctx);
@@ -180,9 +185,9 @@ void PrepareQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    bool enable_per_channel_quantization, int bit_width) {
-  return std::make_unique<PrepareQuantizePass>(enable_per_channel_quantization,
-                                               bit_width);
+    bool enable_per_channel_quantized_weight, int bit_width) {
+  return std::make_unique<PrepareQuantizePass>(
+      enable_per_channel_quantized_weight, bit_width);
 }
 
 }  // namespace stablehlo

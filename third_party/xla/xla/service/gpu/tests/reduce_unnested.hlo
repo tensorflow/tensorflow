@@ -80,34 +80,3 @@ ENTRY reduce.1 {
         f32[131072,1024] parameter0
     ), kind=kLoop, calls=fusion_not_vectorized
 }
-
-// -----
-
-// TODO(jreiffers): This should most likely not be unrolled. The heuristic only
-// checks instructions that are directly in the fusion, not nested computations.
-
-// CHECK: define void @fusion_row_reduction_sin_does_not_prevent_vectorization(
-// CHECK-COUNT-2: {{^x_in_tile-true}}
-// CHECK-NOT: {{^x_in_tile-true}}
-
-HloModule RowReductionVectorized, is_scheduled=true
-
-Sum {
-    x.1 = f32[] parameter(0)
-    y.1 = f32[] parameter(1)
-    sin = f32[] sine(y.1)
-    ROOT add.1 = f32[] add(x.1, sin)
-}
-
-fusion_vectorized {
-    a = f32[131072,1024] parameter(0)
-    init = f32[] constant(0)
-    ROOT reduce = f32[131072] reduce(a, init), dimensions={1}, to_apply=Sum
-}
-
-ENTRY reduce.1 {
-    parameter0 = f32[131072,1024] parameter(0)
-    ROOT fusion_row_reduction_sin_does_not_prevent_vectorization = f32[131072] fusion(
-        f32[131072,1024] parameter0
-    ), kind=kLoop, calls=fusion_vectorized
-}

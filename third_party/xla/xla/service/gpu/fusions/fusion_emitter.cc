@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
@@ -114,7 +113,7 @@ absl::Status AnnotateKernelLaunchDimensions(
 
 }  // namespace
 
-mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
+IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor,
     const Shape& output_shape, mlir::MLIRContext* ctx) {
   std::vector<mlir::AffineExpr> output_dims(output_shape.rank());
@@ -165,13 +164,6 @@ mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     divisor *= output_shape.dimensions(dimension);
   }
 
-  return mlir::AffineMap::get(/*dimCount=*/6,
-                              /*symbolCount=*/unroll_factor > 1 ? 1 : 0,
-                              output_dims, ctx);
-}
-
-Domain KernelFusionInterface::GetThreadIdDomain(
-    const LaunchDimensions& launch_dims, int unroll_factor) {
   std::vector<Range> dimension_ranges = {
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
@@ -184,7 +176,13 @@ Domain KernelFusionInterface::GetThreadIdDomain(
   if (unroll_factor > 1) {
     symbol_ranges.push_back({0, unroll_factor - 1});
   }
-  return Domain(dimension_ranges, symbol_ranges);
+  IndexingMap indexing_map(
+      mlir::AffineMap::get(/*dimCount=*/6,
+                           /*symbolCount=*/unroll_factor > 1 ? 1 : 0,
+                           output_dims, ctx),
+      dimension_ranges, symbol_ranges);
+  indexing_map.Simplify();
+  return indexing_map;
 }
 
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,

@@ -29,128 +29,281 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
-using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-using ::testing::UnorderedElementsAre;
-
 class IndexingMapTest : public HloTestBase {
  public:
   mlir::MLIRContext mlir_context_;
   AffineMapPrinter printer_;
 };
 
-TEST_F(IndexingMapTest, ComposeWithPermutation) {
-  IndexingMap producer{
+TEST_F(IndexingMapTest, Composition_Permutation) {
+  IndexingMap producer = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)", &mlir_context_),
-      Domain::FromUpperBounds({4, 4}, {2, 2})};
+      {4, 4}, {2, 2});
 
-  IndexingMap consumer{ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-                       Domain::FromUpperBounds({4}, {4})};
+  IndexingMap consumer = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_), {4}, {4});
 
-  auto composed = ComposeIndexingMaps(producer, consumer);
-  EXPECT_THAT(composed,
-              MatchIndexingMap(
-                  "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)",
-                  MatchDomain(ElementsAre(MatchRange(0, 3)),
-                              ElementsAre(MatchRange(0, 1), MatchRange(0, 1),
-                                          MatchRange(0, 3)))));
+  auto composed = ComposeIndexingMaps(consumer, producer);
+  EXPECT_THAT(composed, MatchIndexingMap(R"(
+                          (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+                          domain:
+                          d0 in [0, 3]
+                          s0 in [0, 1]
+                          s1 in [0, 1]
+                          s2 in [0, 3]
+                        )"));
 }
 
-TEST_F(IndexingMapTest, ComposeWithRestrictedRange) {
-  IndexingMap producer{
+TEST_F(IndexingMapTest, Composition_RestrictedRange) {
+  IndexingMap producer = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)", &mlir_context_),
-      Domain::FromUpperBounds({5, 6}, {7, 2})};
+      {5, 6}, {7, 2});
 
-  IndexingMap consumer{ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
-                       Domain::FromUpperBounds({10}, {8})};
+  IndexingMap consumer = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_), {10}, {8});
 
-  auto composed = ComposeIndexingMaps(producer, consumer);
-  EXPECT_THAT(composed,
-              MatchIndexingMap(
-                  "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)",
-                  MatchDomain(ElementsAre(MatchRange(0, 4)),
-                              ElementsAre(MatchRange(0, 5), MatchRange(0, 1),
-                                          MatchRange(0, 7)))));
+  auto composed = ComposeIndexingMaps(consumer, producer);
+  EXPECT_THAT(composed, MatchIndexingMap(R"(
+                          (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+                          domain:
+                          d0 in [0, 4]
+                          s0 in [0, 6]
+                          s1 in [0, 1]
+                          s2 in [0, 5]
+                        )"));
 }
 
-TEST_F(IndexingMapTest, ComposeWithAddedConstraint) {
-  IndexingMap producer{ParseAffineMap("(d0) -> (d0)", &mlir_context_),
-                       Domain::FromUpperBounds({2}, {})};
+TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
+  IndexingMap producer = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)", &mlir_context_),
+      {50, 60}, {70, 20});
+  producer.AddConstraint(ParseAffineExpr("d0 mod 8", &mlir_context_),
+                         Range{0, 0});
+  producer.AddConstraint(ParseAffineExpr("s0 mod 3", &mlir_context_),
+                         Range{1, 1});
 
-  IndexingMap consumer{ParseAffineMap("(d0) -> (d0 mod 8)", &mlir_context_),
-                       Domain::FromUpperBounds({100}, {})};
+  IndexingMap consumer = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_), {10}, {8});
+  consumer.AddConstraint(ParseAffineExpr("d0 + s0", &mlir_context_),
+                         Range{0, 20});
+  consumer.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
+                         Range{0, 0});
 
-  auto composed = ComposeIndexingMaps(producer, consumer);
-  EXPECT_THAT(composed,
-              MatchIndexingMap("(d0) -> (d0 mod 8)",
-                               MatchDomainWithGenericConstraints(
-                                   ElementsAre(MatchRange(0, 99)), IsEmpty(),
-                                   UnorderedElementsAre(MatchExprRange(
-                                       "d0 mod 8", MatchRange(0, 1))))));
+  auto composed = ComposeIndexingMaps(consumer, producer);
+  EXPECT_THAT(composed, MatchIndexingMap(R"(
+                          (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+                          domain:
+                          d0 in [0, 9]
+                          s0 in [0, 69]
+                          s1 in [0, 19]
+                          s2 in [0, 7]
+                          d0 + s2 in [0, 20]
+                          d0 mod 8 in [0, 0]
+                          s0 mod 3 in [1, 1]
+                          s2 mod 4 in [0, 0]
+                        )"));
+  composed.Simplify();
+  EXPECT_THAT(composed, MatchIndexingMap(R"(
+                          (d0)[s0, s1, s2] -> (s2, d0, s1, s0)
+                          domain:
+                          d0 in [0, 9]
+                          s0 in [0, 69]
+                          s1 in [0, 19]
+                          s2 in [0, 7]
+                          d0 mod 8 in [0, 0]
+                          s0 mod 3 in [1, 1]
+                          s2 mod 4 in [0, 0]
+                        )"));
 }
 
-TEST_F(IndexingMapTest, SimplifyConstantDims) {
-  IndexingMap indexing_map{ParseAffineMap("(d0) -> (d0)", &mlir_context_),
-                           Domain{{Range{5, 5}}, {}}};
+TEST_F(IndexingMapTest, ConstraintRangeSimplification_Sum) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});
+
+  indexing_map.AddConstraint(ParseAffineExpr("(d0 mod 8) + 5", &mlir_context_),
+                             Range{50, 54});
+
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0) -> (d0)
+                          domain:
+                          d0 in [0, 99]
+                          d0 mod 8 in [45, 49]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintRangeSimplification_FloorDivPositiveDivisorPositiveBounds) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});
+
+  indexing_map.AddConstraint(ParseAffineExpr("d0 floordiv 8", &mlir_context_),
+                             Range{5, 11});
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0) -> (d0)
+                          domain:
+                          d0 in [40, 95]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintRangeSimplification_FloorDivPositiveDivisorNegativeBounds) {
+  IndexingMap indexing_map =
+      IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
+                  {Range{0, 99}}, {Range{-99, 99}});
+
+  indexing_map.AddConstraint(ParseAffineExpr("s0 floordiv 3", &mlir_context_),
+                             Range{-11, -5});
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0)[s0] -> (d0)
+                          domain:
+                          d0 in [0, 99]
+                          s0 in [-33, -13]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintRangeSimplification_FloorDivNegativeDivisorNegativeBounds) {
+  IndexingMap indexing_map =
+      IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
+                  {Range{0, 99}}, {Range{-99, 99}});
+
+  indexing_map.AddConstraint(ParseAffineExpr("s0 floordiv -3", &mlir_context_),
+                             Range{-11, -5});
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0)[s0] -> (d0)
+                          domain:
+                          d0 in [0, 99]
+                          s0 in [15, 35]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintRangeSimplification_MulPositiveMultiplierPositiveBounds) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});
+
+  indexing_map.AddConstraint(ParseAffineExpr("d0 * 8", &mlir_context_),
+                             Range{14, 33});
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0) -> (d0)
+                          domain:
+                          d0 in [2, 4]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintRangeSimplification_MulPositiveMultiplierNegativeBounds) {
+  IndexingMap indexing_map =
+      IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
+                  {Range{0, 99}}, {Range{-99, 99}});
+
+  indexing_map.AddConstraint(ParseAffineExpr("s0 * 3", &mlir_context_),
+                             Range{-11, -5});
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0)[s0] -> (d0)
+                          domain:
+                          d0 in [0, 99]
+                          s0 in [-3, -2]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintRangeSimplification_MulNegativeMultiplierNegativeBounds) {
+  IndexingMap indexing_map =
+      IndexingMap(ParseAffineMap("(d0)[s0] -> (d0)", &mlir_context_),
+                  {Range{0, 99}}, {Range{-99, 99}});
+
+  indexing_map.AddConstraint(ParseAffineExpr("s0 * -3", &mlir_context_),
+                             Range{-11, -5});
+  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+                          (d0)[s0] -> (d0)
+                          domain:
+                          d0 in [0, 99]
+                          s0 in [2, 3]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
+  IndexingMap indexing_map = IndexingMap(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_), {Range{5, 5}}, {});
   indexing_map.Simplify();
-  EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
-              HasSubstr("(d0) -> (5)"));
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                  (d0) -> (5)
+                                                  domain:
+                                                  d0 in [5, 5]
+                                                )"));
 }
 
-TEST_F(IndexingMapTest, SimplifyDivsAndModsIfSmallerThanDivisor) {
+TEST_F(IndexingMapTest,
+       AffineMapSimplification_DivsAndModsIfSmallerThanDivisor) {
   auto serialized_map = "(d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16)";
-  IndexingMap indexing_map{ParseAffineMap(serialized_map, &mlir_context_),
-                           Domain::FromUpperBounds({8, 16}, {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {8, 16}, {});
   indexing_map.Simplify();
-
-  EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
-              HasSubstr("(d0, d1) -> (d0, d1)"));
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                  (d0, d1) -> (d0, d1)
+                                                  domain:
+                                                  d0 in [0, 7]
+                                                  d1 in [0, 15]
+                                                )"));
 }
 
-TEST_F(IndexingMapTest, SimplifyDivsAndModsWithMultipliers) {
+TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithMultipliers) {
   auto serialized_map =
       "(d0, d1, d2) -> ((d0 * 100 + d1 * 10 + d2) floordiv 100, "
       "((d0 * 100 + d1 * 10 + d2) mod 100) floordiv 10, "
       "d2 mod 10)";
 
-  IndexingMap indexing_map{ParseAffineMap(serialized_map, &mlir_context_),
-                           Domain::FromUpperBounds({9, 9, 9}, {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {9, 9, 9}, {});
   indexing_map.Simplify();
 
-  EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
-              HasSubstr("(d0, d1, d2) -> (d0, d1, d2)"));
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                  (d0, d1, d2) -> (d0, d1, d2)
+                                                  domain:
+                                                  d0 in [0, 8]
+                                                  d1 in [0, 8]
+                                                  d2 in [0, 8]
+                                                )"));
 }
 
-TEST_F(IndexingMapTest, SimplifyDivsAndModsWithDivisibleMultipliers) {
+TEST_F(IndexingMapTest,
+       AffineMapSimplification_DivsAndModsWithDivisibleMultipliers) {
   auto serialized_map =
       "(d0, d1, d2) -> ((d0 * 16 + d1 * 4 + d2) floordiv 8, "
-      "(d0 * 16 + d1 * 4 + d2) mod 8)";
+      "                 (d0 * 16 + d1 * 4 + d2) mod 8)";
 
-  IndexingMap indexing_map{ParseAffineMap(serialized_map, &mlir_context_),
-                           Domain::FromUpperBounds({10, 10, 10}, {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {10, 10, 10}, {});
   indexing_map.Simplify();
-
-  EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
-              HasSubstr("(d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, "
-                        "(d1 * 4 + d2) mod 8)"));
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+    (d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, (d1 * 4 + d2) mod 8)
+    domain:
+    d0 in [0, 9]
+    d1 in [0, 9]
+    d2 in [0, 9]
+  )"));
 }
 
-TEST_F(IndexingMapTest, SimplifyDivsAndModsWithReverse) {
+TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithReverse) {
   auto serialized_map =
       "(d0, d1) -> (-((d0 * -11 - d1 + 109) floordiv 11) + 9, "
       "d0 * 11 + d1 + ((d0 * -11 - d1 + 109) floordiv 11) * 11 - 99)";
-  IndexingMap indexing_map{ParseAffineMap(serialized_map, &mlir_context_),
-                           Domain::FromUpperBounds({8, 9}, {})};
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {8, 9}, {});
   indexing_map.Simplify();
-
-  EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
-              HasSubstr("(d0, d1) -> (d0, d1)"));
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+                                                 (d0, d1) -> (d0, d1)
+                                                 domain:
+                                                 d0 in [0, 7]
+                                                 d1 in [0, 8]
+                                               )"));
 }
 
 TEST_F(IndexingMapTest, RangeEvaluatorTest) {
-  Domain domain({Range{0, 9}, Range{-10, -1}, Range{-1, 2}, Range{0, 0}}, {});
-  RangeEvaluator range_evaluator(&domain);
+  RangeEvaluator range_evaluator(
+      {Range{0, 9}, Range{-10, -1}, Range{-1, 2}, Range{0, 0}}, {},
+      &mlir_context_);
   mlir::AffineExpr d0, d1, d2, d3;
   bindDims(&mlir_context_, d0, d1, d2, d3);
 
@@ -177,17 +330,6 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
 
 // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
 // `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
-
-TEST_F(IndexingMapTest, AffineMapPrinterTest) {
-  auto map =
-      ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + d1 floordiv 8, s0 + s1 mod 16)",
-                     &mlir_context_);
-  printer_.SetDimensionName(0, "offset");
-  printer_.SetSymbolName(1, "linear_index");
-  EXPECT_THAT(printer_.ToString(map),
-              HasSubstr("(offset, d1)[s0, linear_index] -> "
-                        "(offset + d1 floordiv 8, s0 + linear_index mod 16)"));
-}
 
 }  // namespace
 }  // namespace gpu

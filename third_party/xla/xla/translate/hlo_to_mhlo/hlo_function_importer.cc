@@ -2012,6 +2012,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kReplicaId, ReplicaIdOp);
       NO_ATTRIBUTE_CASE(kStochasticConvert, StochasticConvertOp);
       NO_ATTRIBUTE_CASE(kLogistic, LogisticOp);
+      NO_ATTRIBUTE_CASE(kErf, ErfOp);
       // The dimensions attribute is not present on the HLO Reshape
       // instruction. If dimensions are non-default, the XLA builder
       // implements it as a separate transpose.

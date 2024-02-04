@@ -55,17 +55,11 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         as defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
         input SavedModel.
 
-        `representative_dataset_file_map_serialized` is a signature key ->
-        `RepresentativeDatasetFile` (serialized) mapping for running the
-        calibration step. Each dataset file stores the representative dataset
-        for the function matching the signature key.
-
         Raises `StatusNotOk` exception if when the run was unsuccessful.
         )pbdoc",
         py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
         py::arg("quantization_config_serialized"), py::kw_only(),
         py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
-        py::arg("function_aliases"), py::arg("py_function_library"),
-        py::arg("representative_dataset_file_map_serialized"));
+        py::arg("function_aliases"), py::arg("py_function_library"));
   // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
 }

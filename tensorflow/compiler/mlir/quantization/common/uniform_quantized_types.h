@@ -32,17 +32,20 @@ namespace quant {
 // values. The produced type has f32 as its expressed type and i8 as its
 // storage type. The available values use the full range of the storage value,
 // i.e. [-128, 127]. Assumes asymmetric quantization, meaning the zero point
-// values can be non-zero values.
+// value can be a non-zero value.
+// If `narrow_range` is set true (ex: for weights), a restricted range of
+// integers will be used for symmetric mapping, i.e. [-127, 127].
 UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
                                                      MLIRContext& context,
                                                      double scale,
-                                                     int64_t zero_point);
+                                                     int64_t zero_point,
+                                                     bool narrow_range = false);
 
 // Creates a `UniformQuantizedType` with the given `scale` and `zero_point`
 // values. The produced type has f32 as its expressed type and i32 as its
 // storage type. The available values use the full range of the storage value.
-// Assumes asymmetric quantization, meaning the zero point values can be
-// non-zero values.
+// Assumes asymmetric quantization, meaning the zero point value can be
+// a non-zero value.
 UniformQuantizedType CreateI32F32UniformQuantizedType(Location loc,
                                                       MLIRContext& context,
                                                       double scale,
@@ -53,7 +56,19 @@ UniformQuantizedType CreateI32F32UniformQuantizedType(Location loc,
 // i8 as its storage type. The available values use the full range of the
 // storage value, i.e. [-128, 127]. Assumes asymmetric quantization, meaning the
 // zero point values can be non-zero values.
+// If `narrow_range` is set true (ex: for weights), a restricted range of
+// integers will be used for symmetric mapping, i.e. [-127, 127].
 UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
+    Location loc, MLIRContext& context, ArrayRef<double> scales,
+    ArrayRef<int64_t> zero_points, int quantization_dimension,
+    bool narrow_range = false);
+
+// Creates a `UniformQuantizedPerAxisType` with the given `scales` and
+// `zero_points` values. The produced type has f32 as its expressed type and
+// i32 as its storage type. The available values use the full range of the
+// storage value. Assumes asymmetric quantization, meaning the
+// zero point values can be non-zero values.
+UniformQuantizedPerAxisType CreateI32F32UniformQuantizedPerAxisType(
     Location loc, MLIRContext& context, ArrayRef<double> scales,
     ArrayRef<int64_t> zero_points, int quantization_dimension);
 

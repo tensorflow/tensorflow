@@ -27,15 +27,20 @@ function is_linux_gpu_job() {
 }
 
 function is_linux_cpu_arm64_job() {
-  [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/arm64/.*cpu.* ]]
+  [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*arm64.*/.*cpu.* ]]
 }
 
-# Pull the container (in case it was updated since the instance started) and
-# store its SHA in the Sponge log.
-docker pull "$DOCKER_IMAGE"
-echo "TF_INFO_DOCKER_IMAGE,$DOCKER_IMAGE" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
-echo "TF_INFO_DOCKER_SHA,$(docker pull "$DOCKER_IMAGE" | sed -n '/Digest:/s/Digest: //g p')" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
+function pull_docker_image_with_retries() {
+  # Pull the container (in case it was updated since the instance started) and
+  # store its SHA in the Sponge log.
+  docker pull "$DOCKER_IMAGE" || sleep 15
+  docker pull "$DOCKER_IMAGE" || sleep 15
+  docker pull "$DOCKER_IMAGE"
+  echo "TF_INFO_DOCKER_IMAGE,$DOCKER_IMAGE" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
+  echo "TF_INFO_DOCKER_SHA,$(docker pull "$DOCKER_IMAGE" | sed -n '/Digest:/s/Digest: //g p')" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
+}
 
+pull_docker_image_with_retries
 # Start a container in the background
 docker run --name xla -w /tf/xla -itd --rm \
     -v "$KOKORO_ARTIFACTS_DIR/github/xla:/tf/xla" \
@@ -50,7 +55,7 @@ RBE_FLAGS=""
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
-    RBE_FLAGS="--config=rbe_linux_cuda_nvcc"
+    RBE_FLAGS="--config=rbe_linux_cuda_nvcc --jobs=150"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
 else
@@ -59,9 +64,9 @@ else
 
     if is_linux_cpu_arm64_job ; then
         TAGS_FILTER="$TAGS_FILTER,-no_aarch64"
-        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --action_env PYTHON_BIN_PATH=/usr/bin/python3.11 --python_path=/usr/bin/python3.11"
+        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=tf_public_cache_push --action_env PYTHON_BIN_PATH=/usr/bin/python3.10 --python_path=/usr/bin/python3.10"
     else
-        RBE_FLAGS="--config=rbe_linux_cpu"
+        RBE_FLAGS="--config=rbe_linux_cpu --jobs=150"
     fi
 fi
 
@@ -76,7 +81,6 @@ docker exec xla bazel \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \
         $RBE_FLAGS \
-        --jobs=150 \
         --nobuild_tests_only \
         $ADDITIONAL_FLAGS \
         -- //xla/... //build_tools/...

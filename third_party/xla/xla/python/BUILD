@@ -373,6 +373,7 @@ cc_library(
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
+        "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocm_headers",
     ]),

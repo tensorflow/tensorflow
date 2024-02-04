@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1128,6 +1128,25 @@ def OptimizeSliceOp : Pat<
   (TFL_SliceOp:$output $input, (Arith_ConstantOp $begin), (Arith_ConstantOp $size)),
   (replaceWithValue $input),
   [(CanOptimizeIdentitySliceOp $input, $begin, $size)]>;
+
+// Convert the StridedSliceOp to a SliceOp when possible. This will enable other
+// optimizations on SliceOp to run.
+def OptimizeStridedSlice : Pat<
+  (TFL_StridedSliceOp $input,
+    (Arith_ConstantOp $begin),
+    (Arith_ConstantOp $end),
+    (Arith_ConstantOp $stride),
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ZeroIntAttr:$_,
+    ConstBoolAttrFalse),
+  (TFL_SliceOp $input,
+    (Arith_ConstantOp $begin),
+    (Arith_ConstantOp (GetOffSet $begin, $end))),
+  [(IsAllOnesConstant $stride),
+   (HasNonNegativeOffset $begin, $end)]>;
 
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0.getType())">;
 

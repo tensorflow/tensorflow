@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -6236,7 +6237,8 @@ void AlternateMemoryBestFitHeap::AddAsyncSlicesForPrefetch(
       std::make_unique<MemorySpaceAssignment::SlicedCopyAllocation>(
           prev_allocation, MemorySpaceAssignment::MemorySpace::kAlternate,
           slice_decisions_sorted_by_start_time, prefetch_end_time,
-          allocation_end_time));
+          allocation_end_time, options_.sliced_prefetch_options,
+          options_.get_equivalent_s8_shape_fn));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -7890,7 +7892,9 @@ int64_t GetSlicedCopyAllocationExclusiveStartTime(
 MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
     const Allocation& prev_allocation, MemorySpace memory_space,
     std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
-    int64_t copy_done_schedule_before_time, int64_t end_time)
+    int64_t copy_done_schedule_before_time, int64_t end_time,
+    const SlicedPrefetchOptions& sliced_prefetch_options,
+    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space,
           GetSlicedCopyAllocationChunk(
@@ -7902,7 +7906,9 @@ MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
           end_time,
           /*is_scoped_allocation=*/false),
       original_shape_to_slice_(prev_allocation.defining_position().shape()),
-      prev_allocation_(prev_allocation) {
+      prev_allocation_(prev_allocation),
+      sliced_prefetch_options_(sliced_prefetch_options),
+      get_equivalent_s8_shape_fn_(get_equivalent_s8_shape_fn) {
   CHECK_GE(slice_decisions_sorted_by_exclusive_start_time.size(), 2);
   slice_details_sorted_by_start_time_.reserve(
       slice_decisions_sorted_by_exclusive_start_time.size());
@@ -7989,16 +7995,34 @@ Status MemorySpaceAssignment::SlicedCopyAllocation::Process() {
   std::vector<HloInstruction*> slice_dones;
   slice_dones.reserve(slice_details_sorted_by_start_time_.size());
 
+  // If we are trying to make all slices a uniform size, we bitcast the
+  // producing instruction to an array of bytes, so it is easy to slice into any
+  // size.
+  Shape slice_shape = shape;
+  if (IsUniformSliceSizingEnabled(sliced_prefetch_options_)) {
+    slice_shape = get_equivalent_s8_shape_fn_(shape);
+    producing_instruction = producing_instruction->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(slice_shape, producing_instruction));
+  }
+
   // Sliced copy allocations need to insert asynchronous copy nodes.
   for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
     TF_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
-        shape, *producing_instruction, *computation));
+        slice_shape, *producing_instruction, *computation));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
             << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);
   }
 
   TF_RETURN_IF_ERROR(CreateBitcastConcat(shape, slice_dones));
+
+  // If we bitcast to an array of bytes above, the result of the concatenated
+  // slices will also be an array of bytes. Thus, we need to cast the
+  // concatentation back to the original shape.
+  if (IsUniformSliceSizingEnabled(sliced_prefetch_options_)) {
+    concat_ = concat_->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(shape, concat_));
+  }
 
   return ProcessCopyLikeAllocationUses(defining_position_, uses_, computation,
                                        concat_);
@@ -9174,6 +9198,10 @@ MemoryBoundednessBufferIntervalComparator::GetTuple(
   return std::make_tuple(priority, inverse_memory_boundedness,
                          inverse_buffer_size, inverse_buffer_duration,
                          latest_use_time, buffer_start_time, buffer_id);
+}
+
+bool IsUniformSliceSizingEnabled(const SlicedPrefetchOptions& options) {
+  return options.max_slices() > 0 && options.preferred_slice_size() > 0;
 }
 
 }  // namespace memory_space_assignment

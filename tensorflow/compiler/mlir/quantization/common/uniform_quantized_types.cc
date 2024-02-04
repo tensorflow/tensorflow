@@ -35,12 +35,14 @@ namespace quant {
 UniformQuantizedType CreateI8F32UniformQuantizedType(const Location loc,
                                                      MLIRContext& context,
                                                      const double scale,
-                                                     const int64_t zero_point) {
+                                                     const int64_t zero_point,
+                                                     const bool narrow_range) {
   return UniformQuantizedType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),
       /*expressedType=*/FloatType::getF32(&context), scale, zero_point,
-      /*storageTypeMin=*/llvm::minIntN(8), /*storageTypeMax=*/llvm::maxIntN(8));
+      /*storageTypeMin=*/llvm::minIntN(8) + (narrow_range ? 1 : 0),
+      /*storageTypeMax=*/llvm::maxIntN(8));
 }
 
 UniformQuantizedType CreateI32F32UniformQuantizedType(
@@ -56,14 +58,28 @@ UniformQuantizedType CreateI32F32UniformQuantizedType(
 
 UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
     const Location loc, MLIRContext& context, const ArrayRef<double> scales,
-    const ArrayRef<int64_t> zero_points, const int quantization_dimension) {
+    const ArrayRef<int64_t> zero_points, const int quantization_dimension,
+    const bool narrow_range) {
   return UniformQuantizedPerAxisType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),
       /*expressedType=*/FloatType::getF32(&context),
       SmallVector<double>(scales), SmallVector<int64_t>(zero_points),
-      quantization_dimension, /*storageTypeMin=*/llvm::minIntN(8),
+      quantization_dimension,
+      /*storageTypeMin=*/llvm::minIntN(8) + (narrow_range ? 1 : 0),
       /*storageTypeMax=*/llvm::maxIntN(8));
+}
+
+UniformQuantizedPerAxisType CreateI32F32UniformQuantizedPerAxisType(
+    const Location loc, MLIRContext& context, const ArrayRef<double> scales,
+    const ArrayRef<int64_t> zero_points, const int quantization_dimension) {
+  return UniformQuantizedPerAxisType::getChecked(
+      loc, /*flags=*/QuantizationFlags::Signed,
+      /*storageType=*/IntegerType::get(&context, /*width=*/32),
+      /*expressedType=*/FloatType::getF32(&context),
+      SmallVector<double>(scales), SmallVector<int64_t>(zero_points),
+      quantization_dimension, /*storageTypeMin=*/llvm::minIntN(32),
+      /*storageTypeMax=*/llvm::maxIntN(32));
 }
 
 bool IsStorageTypeI8(const QuantizedType quantized_type) {

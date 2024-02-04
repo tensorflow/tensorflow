@@ -48,9 +48,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
-#include "xla/stream_executor/temporary_device_memory.h"
-#include "xla/stream_executor/temporary_memory_manager.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -159,12 +158,6 @@ class Stream {
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
   void ReturnSubStream(Stream *sub_stream) TF_LOCKS_EXCLUDED(mu_);
 
-  // Allocate temporary memories. The stream will deallocate them when blocked
-  // or destroyed.
-  template <typename T>
-  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
-  AllocateTemporaryArray(uint64_t element_count);
-
   // Entrains onto the stream of operations: a kernel launch with the given
   // (variadic) parameters for the invocation. These arguments can be things
   // like DeviceMemory or primitive types such as int. What arguments you may
@@ -231,99 +224,6 @@ class Stream {
   // DNN support
   //
   // See DnnSupport::* for comments on the following methods.
-
-  Stream &ThenBatchNormalizationForward(
-      const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &offset,
-      const DeviceMemory<float> &estimated_mean,
-      const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
-      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
-      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
-      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training, ScratchAllocator *reserve_space_allocator,
-      ScratchAllocator *workspace_allocator);
-
-  Stream &ThenBatchNormalizationBackward(
-      const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
-      const DeviceMemory<float> &scale, const DeviceMemory<float> &offset,
-      const DeviceMemory<float> &mean, const DeviceMemory<float> &inv_var,
-      const DeviceMemory<float> &y, const dnn::BatchDescriptor &x_desc,
-      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<float> *x_backprop,
-      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
-      DeviceMemory<float> *side_input_backprop,
-      DeviceMemory<uint8_t> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
-
-  Stream &ThenBatchNormalizationForward(
-      const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &offset,
-      const DeviceMemory<float> &estimated_mean,
-      const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<Eigen::half> &side_input,
-      const dnn::BatchDescriptor &x_desc,
-      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
-      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
-      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training, ScratchAllocator *reserve_space_allocator,
-      ScratchAllocator *workspace_allocator);
-
-  Stream &ThenBatchNormalizationBackward(
-      const DeviceMemory<Eigen::half> &y_backprop,
-      const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &inv_var, const DeviceMemory<Eigen::half> &y,
-      const dnn::BatchDescriptor &x_desc,
-      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      dnn::ActivationMode activation_mode,
-      DeviceMemory<Eigen::half> *x_backprop,
-      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
-      DeviceMemory<Eigen::half> *side_input_backprop,
-      DeviceMemory<uint8_t> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
-
-  Stream &ThenBatchNormalizationForward(
-      const DeviceMemory<Eigen::bfloat16> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &offset,
-      const DeviceMemory<float> &estimated_mean,
-      const DeviceMemory<float> &estimated_variance,
-      const DeviceMemory<Eigen::bfloat16> &side_input,
-      const dnn::BatchDescriptor &x_desc,
-      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      const double exponential_average_factor,
-      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16> *y,
-      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
-      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
-      bool is_training, ScratchAllocator *reserve_space_allocator,
-      ScratchAllocator *workspace_allocator);
-
-  Stream &ThenBatchNormalizationBackward(
-      const DeviceMemory<Eigen::bfloat16> &y_backprop,
-      const DeviceMemory<Eigen::bfloat16> &x, const DeviceMemory<float> &scale,
-      const DeviceMemory<float> &offset, const DeviceMemory<float> &mean,
-      const DeviceMemory<float> &inv_var,
-      const DeviceMemory<Eigen::bfloat16> &y,
-      const dnn::BatchDescriptor &x_desc,
-      const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      dnn::ActivationMode activation_mode,
-      DeviceMemory<Eigen::bfloat16> *x_backprop,
-      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
-      DeviceMemory<Eigen::bfloat16> *side_input_backprop,
-      DeviceMemory<uint8_t> *reserve_space_data,
-      ScratchAllocator *workspace_allocator);
-
-  Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
-                       const DeviceMemory<float> &input_data,
-                       const dnn::FilterDescriptor &filter_descriptor,
-                       const DeviceMemory<float> &filter_data,
-                       const dnn::ConvolutionDescriptor &convolution_descriptor,
-                       const dnn::BatchDescriptor &output_descriptor,
-                       DeviceMemory<float> *output);
 
   template <typename InputType, typename OutputType>
   absl::Status ConvolveWithAlgorithm(
@@ -397,139 +297,6 @@ class Stream {
     return absl::UnimplementedError("DNN library is not found.");
   }
 
-  absl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor &input_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      const dnn::ConvolutionDescriptor &convolution_descriptor) {
-    dnn::DnnSupport *dnn_support = parent_->AsDnn();
-    if (!dnn_support) {
-      return absl::UnimplementedError("DNN library is not found.");
-    }
-    return dnn_support->ConvolveRunnerFromDesc(
-        this, algorithm_desc, kind, element_type, output_type, input_descriptor,
-        filter_descriptor, output_descriptor, convolution_descriptor);
-  }
-
-  absl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
-  GraphConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType output_type,
-      const dnn::BatchDescriptor &input_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      std::string serialized_graph) {
-    dnn::DnnSupport *dnn_support = parent_->AsDnn();
-    if (!dnn_support) {
-      return absl::UnimplementedError("DNN library is not found.");
-    }
-    return dnn_support->GraphConvolveRunnerFromDesc(
-        this, algorithm_desc, kind, element_type, output_type, input_descriptor,
-        filter_descriptor, output_descriptor, convolution_descriptor,
-        serialized_graph);
-  }
-
-  absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
-  FusedConvolveRunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
-      dnn::DataType element_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_input_scale,
-      double side_input_scale, double leakyrelu_alpha,
-      const dnn::BatchDescriptor &input_descriptor,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      dnn::ActivationMode activation_mode) {
-    dnn::DnnSupport *dnn_support = parent_->AsDnn();
-    if (!dnn_support) {
-      return absl::UnimplementedError("DNN library is not found.");
-    }
-    return dnn_support->FusedConvolveRunnerFromDesc(
-        this, algorithm_desc, kind, element_type, bias_type, output_type,
-        conv_input_scale, side_input_scale, leakyrelu_alpha, input_descriptor,
-        filter_descriptor, bias_descriptor, output_descriptor,
-        convolution_descriptor, activation_mode);
-  }
-
-  absl::StatusOr<std::unique_ptr<const dnn::NormRunner>> NormRunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, double epsilon,
-      const dnn::TensorDescriptor &input_descriptor,
-      const dnn::TensorDescriptor &scale_descriptor,
-      const dnn::TensorDescriptor &bias_descriptor,
-      const dnn::TensorDescriptor &output_descriptor,
-      std::optional<dnn::TensorDescriptor> expectation_descriptor,
-      std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
-    dnn::DnnSupport *dnn_support = parent_->AsDnn();
-    if (!dnn_support) {
-      return absl::UnimplementedError("DNN library is not found.");
-    }
-    return dnn_support->NormRunnerFromDesc(
-        this, algorithm_desc, epsilon, input_descriptor, scale_descriptor,
-        bias_descriptor, output_descriptor, expectation_descriptor,
-        norm_factor_descriptor);
-  }
-
-  absl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
-  FusedMHARunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor &bmm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor &bmm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor &bmm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor &intermediate_bmm2_lhs_descriptor,
-      const dnn::TensorDescriptor &output_descriptor,
-      std::optional<dnn::TensorDescriptor> activation_descriptor,
-      std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask) {
-    dnn::DnnSupport *dnn_support = parent_->AsDnn();
-    if (!dnn_support) {
-      return absl::UnimplementedError("DNN library is not found.");
-    }
-    return dnn_support->FusedMHARunnerFromDesc(
-        this, algorithm_desc, kind, bmm1_lhs_descriptor, bmm1_rhs_descriptor,
-        bmm2_rhs_descriptor, intermediate_bmm2_lhs_descriptor,
-        output_descriptor, activation_descriptor, mask_descriptor,
-        bias_descriptor, scale, dropout_rate, seed, is_flash_attention,
-        is_causal_mask);
-  }
-
-  absl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
-  FusedMHABackwardRunnerFromDesc(
-      const dnn::AlgorithmDesc &algorithm_desc, dnn::FusedMHAKind kind,
-      const dnn::MatmulTensorDescriptor &bmm1_grad_gemm1_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor &bmm1_grad_gemm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor &bmm2_grad_gemm1_lhs_descriptor,
-      const dnn::MatmulTensorDescriptor &bmm2_grad_gemm2_rhs_descriptor,
-      const dnn::MatmulTensorDescriptor &d_output_descriptor,
-      const dnn::TensorDescriptor &d_bmm1_lhs_descriptor,
-      const dnn::TensorDescriptor &d_bmm1_rhs_descriptor,
-      const dnn::TensorDescriptor &d_bmm2_rhs_descriptor,
-      std::optional<dnn::TensorDescriptor> d_s_descriptor,
-      std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
-      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
-      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      bool is_flash_attention, bool is_causal_mask) {
-    dnn::DnnSupport *dnn_support = parent_->AsDnn();
-    if (!dnn_support) {
-      return absl::UnimplementedError("DNN library is not found.");
-    }
-    return dnn_support->FusedMHABackwardRunnerFromDesc(
-        this, algorithm_desc, kind, bmm1_grad_gemm1_rhs_descriptor,
-        bmm1_grad_gemm2_rhs_descriptor, bmm2_grad_gemm1_lhs_descriptor,
-        bmm2_grad_gemm2_rhs_descriptor, d_output_descriptor,
-        d_bmm1_lhs_descriptor, d_bmm1_rhs_descriptor, d_bmm2_rhs_descriptor,
-        d_s_descriptor, mask_descriptor, d_bias_descriptor,
-        fwd_output_descriptor, bias_descriptor, scale, dropout_rate, seed,
-        is_flash_attention, is_causal_mask);
-  }
-
   template <typename ElementType>
   absl::Status ThenPoolForward(
       const dnn::PoolingDescriptor &pooling_dimensions,
@@ -568,20 +335,6 @@ class Stream {
     return absl::UnimplementedError("DNN library is not found.");
   }
 
-  Stream &ThenNormalizeWithDimensions(
-      const dnn::NormalizeDescriptor &normalize_descriptor,
-      const dnn::BatchDescriptor &dimensions,
-      const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data);
-
-  Stream &ThenNormalizeBackwardWithDimensions(
-      const dnn::NormalizeDescriptor &normalize_descriptor,
-      const dnn::BatchDescriptor &dimensions,
-      const DeviceMemory<float> &raw_data,
-      const DeviceMemory<float> &normalized_data,
-      const DeviceMemory<float> &normalized_variable_gradient,
-      DeviceMemory<float> *raw_variable_gradient,
-      ScratchAllocator *workspace_allocator = nullptr);
-
   Stream &ThenDepthConcatenate(
       absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float> *const> input_data,
@@ -589,61 +342,6 @@ class Stream {
 
   /////////////////
   // BLAS support
-
-  // See BlasSupport::DoBlasAxpy. Note that, even for the case where alpha is
-  // present in DeviceMemory, it must be an execution-time constant (i.e. a
-  // value
-  // that the stream does not change or populate during the course of
-  // execution). The value is effectively captured at stream-enqueue time.
-  Stream &ThenBlasAxpy(uint64_t elem_count, float alpha,
-                       const DeviceMemory<float> &x, int incx,
-                       DeviceMemory<float> *y, int incy);
-
-  // See BlasSupport::DoBlasCopy.
-  Stream &ThenBlasCopy(uint64_t elem_count, const DeviceMemory<float> &x,
-                       int incx, DeviceMemory<float> *y, int incy);
-
-  // See BlasSupport::DoBlasScal.
-  Stream &ThenBlasScal(uint64_t elem_count, float alpha, DeviceMemory<float> *x,
-                       int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, double alpha,
-                       DeviceMemory<double> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, float alpha,
-                       DeviceMemory<std::complex<float>> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, double alpha,
-                       DeviceMemory<std::complex<double>> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, std::complex<float> alpha,
-                       DeviceMemory<std::complex<float>> *x, int incx);
-  Stream &ThenBlasScal(uint64_t elem_count, std::complex<double> alpha,
-                       DeviceMemory<std::complex<double>> *x, int incx);
-
-  // See BlasSupport::DoBlasGemv.
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &x, int incx, float beta,
-                       DeviceMemory<float> *y, int incy);
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
-                       double alpha, const DeviceMemory<double> &a, int lda,
-                       const DeviceMemory<double> &x, int incx, double beta,
-                       DeviceMemory<double> *y, int incy);
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
-                       std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       const DeviceMemory<std::complex<float>> &x, int incx,
-                       std::complex<float> beta,
-                       DeviceMemory<std::complex<float>> *y, int incy);
-  Stream &ThenBlasGemv(blas::Transpose trans, uint64_t m, uint64 n,
-                       std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       const DeviceMemory<std::complex<double>> &x, int incx,
-                       std::complex<double> beta,
-                       DeviceMemory<std::complex<double>> *y, int incy);
-
-  // See BlasSupport::DoBlasSbmv.
-  Stream &ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k, float alpha,
-                       const DeviceMemory<float> &a, int lda,
-                       const DeviceMemory<float> &x, int incx, float beta,
-                       DeviceMemory<float> *y, int incy);
 
   template <typename InputType, typename OutputType>
   absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
@@ -809,16 +507,6 @@ class Stream {
   template <typename T>
   using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;
 
-  // See BlasSupport::DoBlasGemmBatched.
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64 k, float alpha,
-                              DeviceMemorySlice<float> a, int lda,
-                              DeviceMemorySlice<float> b, int ldb, float beta,
-                              DeviceMemorySlice<float> c, int ldc,
-                              int batch_count,
-                              const NumericOptions &numeric_options,
-                              blas::CallContext context);
-
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
@@ -906,70 +594,6 @@ class Stream {
         stride_c, batch_count, numeric_options, context);
   }
 
-  // See BlasSupport::DoBlasTrsm.
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, float alpha, const DeviceMemory<float> &a,
-                       int lda, DeviceMemory<float> *b, int ldb);
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, double alpha, const DeviceMemory<double> &a,
-                       int lda, DeviceMemory<double> *b, int ldb);
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, std::complex<float> alpha,
-                       const DeviceMemory<std::complex<float>> &a, int lda,
-                       DeviceMemory<std::complex<float>> *b, int ldb);
-  Stream &ThenBlasTrsm(blas::Side side, blas::UpperLower uplo,
-                       blas::Transpose transa, blas::Diagonal diag, uint64_t m,
-                       uint64_t n, std::complex<double> alpha,
-                       const DeviceMemory<std::complex<double>> &a, int lda,
-                       DeviceMemory<std::complex<double>> *b, int ldb);
-
-  // See BlasSupport::DoBlasTrsmBatched.
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, float alpha,
-                              const DeviceMemory<float *> &as, int lda,
-                              DeviceMemory<float *> *bs, int ldb,
-                              int batch_count);
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, double alpha,
-                              const DeviceMemory<double *> &as, int lda,
-                              DeviceMemory<double *> *bs, int ldb,
-                              int batch_count);
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, std::complex<float> alpha,
-                              const DeviceMemory<std::complex<float> *> &as,
-                              int lda, DeviceMemory<std::complex<float> *> *bs,
-                              int ldb, int batch_count);
-  Stream &ThenBlasTrsmBatched(blas::Side side, blas::UpperLower uplo,
-                              blas::Transpose transa, blas::Diagonal diag,
-                              uint64_t m, uint64 n, std::complex<double> alpha,
-                              const DeviceMemory<std::complex<double> *> &as,
-                              int lda, DeviceMemory<std::complex<double> *> *bs,
-                              int ldb, int batch_count);
-
-  // See FftSupport::DoFft.
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<float>> &input,
-                  DeviceMemory<std::complex<float>> *output);
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<double>> &input,
-                  DeviceMemory<std::complex<double>> *output);
-  Stream &ThenFft(fft::Plan *plan, const DeviceMemory<float> &input,
-                  DeviceMemory<std::complex<float>> *output);
-  Stream &ThenFft(fft::Plan *plan, const DeviceMemory<double> &input,
-                  DeviceMemory<std::complex<double>> *output);
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<float>> &input,
-                  DeviceMemory<float> *output);
-  Stream &ThenFft(fft::Plan *plan,
-                  const DeviceMemory<std::complex<double>> &input,
-                  DeviceMemory<double> *output);
-
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
@@ -1029,160 +653,6 @@ class Stream {
   // by 4). The location must not be null.
   Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
                        uint64_t size);
-
-  // Enqueue a forward operation of the RNN model onto the stream.
-  // See DnnSupport::DoRnnForward for more details.
-  Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
-                         const dnn::RnnSequenceTensorDescriptor &input_desc,
-                         const DeviceMemory<Eigen::half> &input_data,
-                         const DeviceMemory<int> &seq_lengths_data,
-                         const dnn::RnnStateTensorDescriptor &input_h_desc,
-                         const DeviceMemory<Eigen::half> &input_h_data,
-                         const dnn::RnnStateTensorDescriptor &input_c_desc,
-                         const DeviceMemory<Eigen::half> &input_c_data,
-                         const DeviceMemory<Eigen::half> &params,
-                         const dnn::RnnSequenceTensorDescriptor &output_desc,
-                         DeviceMemory<Eigen::half> *output_data,
-                         const dnn::RnnStateTensorDescriptor &output_h_desc,
-                         DeviceMemory<Eigen::half> *output_h_data,
-                         const dnn::RnnStateTensorDescriptor &output_c_desc,
-                         DeviceMemory<Eigen::half> *output_c_data,
-                         bool is_training,
-                         ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator,
-                         dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
-                         const dnn::RnnSequenceTensorDescriptor &input_desc,
-                         const DeviceMemory<float> &input_data,
-                         const DeviceMemory<int> &seq_lengths_data,
-                         const dnn::RnnStateTensorDescriptor &input_h_desc,
-                         const DeviceMemory<float> &input_h_data,
-                         const dnn::RnnStateTensorDescriptor &input_c_desc,
-                         const DeviceMemory<float> &input_c_data,
-                         const DeviceMemory<float> &params,
-                         const dnn::RnnSequenceTensorDescriptor &output_desc,
-                         DeviceMemory<float> *output_data,
-                         const dnn::RnnStateTensorDescriptor &output_h_desc,
-                         DeviceMemory<float> *output_h_data,
-                         const dnn::RnnStateTensorDescriptor &output_c_desc,
-                         DeviceMemory<float> *output_c_data, bool is_training,
-                         ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator,
-                         dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
-                         const dnn::RnnSequenceTensorDescriptor &input_desc,
-                         const DeviceMemory<double> &input_data,
-                         const DeviceMemory<int> &seq_lengths_data,
-                         const dnn::RnnStateTensorDescriptor &input_h_desc,
-                         const DeviceMemory<double> &input_h_data,
-                         const dnn::RnnStateTensorDescriptor &input_c_desc,
-                         const DeviceMemory<double> &input_c_data,
-                         const DeviceMemory<double> &params,
-                         const dnn::RnnSequenceTensorDescriptor &output_desc,
-                         DeviceMemory<double> *output_data,
-                         const dnn::RnnStateTensorDescriptor &output_h_desc,
-                         DeviceMemory<double> *output_h_data,
-                         const dnn::RnnStateTensorDescriptor &output_c_desc,
-                         DeviceMemory<double> *output_c_data, bool is_training,
-                         ScratchAllocator *reserve_space_allocator,
-                         ScratchAllocator *workspace_allocator,
-                         dnn::ProfileResult *output_profile_result);
-
-  // Enqueue a backward operation of the RNN model onto the stream.
-  // See DnnSupport::DoRnnBackward for more details.
-  Stream &ThenRnnBackward(
-      const dnn::RnnDescriptor &rnn_desc,
-      const dnn::RnnSequenceTensorDescriptor &input_desc,
-      const DeviceMemory<Eigen::half> &input_data,
-      const DeviceMemory<int> &seq_lengths_data,
-      const dnn::RnnStateTensorDescriptor &input_h_desc,
-      const DeviceMemory<Eigen::half> &input_h_data,
-      const dnn::RnnStateTensorDescriptor &input_c_desc,
-      const DeviceMemory<Eigen::half> &input_c_data,
-      const DeviceMemory<Eigen::half> &params,
-      const dnn::RnnSequenceTensorDescriptor &output_desc,
-      const DeviceMemory<Eigen::half> &output_data,
-      const dnn::RnnStateTensorDescriptor &output_h_desc,
-      const DeviceMemory<Eigen::half> &output_h_data,
-      const dnn::RnnStateTensorDescriptor &output_c_desc,
-      const DeviceMemory<Eigen::half> &output_c_data,
-      const DeviceMemory<Eigen::half> &output_backprop_data,
-      const DeviceMemory<Eigen::half> &output_h_backprop_data,
-      const DeviceMemory<Eigen::half> &output_c_backprop_data,
-      DeviceMemory<Eigen::half> *input_backprop_data,
-      DeviceMemory<Eigen::half> *input_h_backprop_data,
-      DeviceMemory<Eigen::half> *input_c_backprop_data,
-      DeviceMemory<Eigen::half> *params_backprop_data,
-      DeviceMemory<uint8_t> *reserve_space_data,
-      ScratchAllocator *workspace_allocator,
-      dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
-                          const dnn::RnnSequenceTensorDescriptor &input_desc,
-                          const DeviceMemory<float> &input_data,
-                          const DeviceMemory<int> &seq_lengths_data,
-                          const dnn::RnnStateTensorDescriptor &input_h_desc,
-                          const DeviceMemory<float> &input_h_data,
-                          const dnn::RnnStateTensorDescriptor &input_c_desc,
-                          const DeviceMemory<float> &input_c_data,
-                          const DeviceMemory<float> &params,
-                          const dnn::RnnSequenceTensorDescriptor &output_desc,
-                          const DeviceMemory<float> &output_data,
-                          const dnn::RnnStateTensorDescriptor &output_h_desc,
-                          const DeviceMemory<float> &output_h_data,
-                          const dnn::RnnStateTensorDescriptor &output_c_desc,
-                          const DeviceMemory<float> &output_c_data,
-                          const DeviceMemory<float> &output_backprop_data,
-                          const DeviceMemory<float> &output_h_backprop_data,
-                          const DeviceMemory<float> &output_c_backprop_data,
-                          DeviceMemory<float> *input_backprop_data,
-                          DeviceMemory<float> *input_h_backprop_data,
-                          DeviceMemory<float> *input_c_backprop_data,
-                          DeviceMemory<float> *params_backprop_data,
-                          DeviceMemory<uint8_t> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator,
-                          dnn::ProfileResult *output_profile_result);
-
-  Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
-                          const dnn::RnnSequenceTensorDescriptor &input_desc,
-                          const DeviceMemory<double> &input_data,
-                          const DeviceMemory<int> &seq_lengths_data,
-                          const dnn::RnnStateTensorDescriptor &input_h_desc,
-                          const DeviceMemory<double> &input_h_data,
-                          const dnn::RnnStateTensorDescriptor &input_c_desc,
-                          const DeviceMemory<double> &input_c_data,
-                          const DeviceMemory<double> &params,
-                          const dnn::RnnSequenceTensorDescriptor &output_desc,
-                          const DeviceMemory<double> &output_data,
-                          const dnn::RnnStateTensorDescriptor &output_h_desc,
-                          const DeviceMemory<double> &output_h_data,
-                          const dnn::RnnStateTensorDescriptor &output_c_desc,
-                          const DeviceMemory<double> &output_c_data,
-                          const DeviceMemory<double> &output_backprop_data,
-                          const DeviceMemory<double> &output_h_backprop_data,
-                          const DeviceMemory<double> &output_c_backprop_data,
-                          DeviceMemory<double> *input_backprop_data,
-                          DeviceMemory<double> *input_h_backprop_data,
-                          DeviceMemory<double> *input_c_backprop_data,
-                          DeviceMemory<double> *params_backprop_data,
-                          DeviceMemory<uint8_t> *reserve_space_data,
-                          ScratchAllocator *workspace_allocator,
-                          dnn::ProfileResult *output_profile_result);
-
-  // Enqueue a CTCLoss operation onto the stream.
-  // See DnnSupport::DoCtcLoss for more details.
-  Stream &ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
-                      const DeviceMemory<float> &probs_data,
-                      absl::Span<const int> labels_data,
-                      absl::Span<const int> labels_lengths_data,
-                      absl::Span<const int> input_lengths_data,
-                      const NumericOptions &numeric_options,
-                      DeviceMemory<float> *costs_data,
-                      const dnn::RnnStateTensorDescriptor &grads_desc,
-                      DeviceMemory<float> *grads_data,
-                      ScratchAllocator *workspace_allocator);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
@@ -1262,9 +732,6 @@ class Stream {
   RocmComputeCapability GetRocmComputeCapability() const {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
-  // Returns the (internal usage) temporary-memory-allocation manager associated
-  // with this stream.
-  internal::TemporaryMemoryManager *temporary_memory_manager();
 
   // Returns a debugging string "[stream=0x...,impl=0x...]".
   std::string DebugStreamPointers() const;
@@ -1365,12 +832,6 @@ class Stream {
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
       ABSL_GUARDED_BY(mu_);
 
-  // Streams can allocate temporary memories to help with work they enqueue
-  // (e.g. for scratch memory spaces). This member tracks those allocations and
-  // notes when they can be reclaimed -- reclamation is attempted when
-  // BlockHostUntilDone() is called.
-  internal::TemporaryMemoryManager temporary_memory_manager_;
-
   // Non-extended BLAS interface requires alpha/beta to be floats when input
   // type is Eigen::half. However, for consistency purposes it is convenient
   // for the interface to accept Eigen::half.
@@ -1443,16 +904,6 @@ inline absl::Status Stream::ThenLaunch(
   TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
                                      cluster_dims, kernel, *kernel_args));
   return absl::OkStatus();
-}
-
-template <typename T>
-inline absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
-Stream::AllocateTemporaryArray(uint64_t element_count) {
-  return temporary_memory_manager_.AllocateArray<T>(element_count);
-}
-
-inline internal::TemporaryMemoryManager *Stream::temporary_memory_manager() {
-  return &temporary_memory_manager_;
 }
 
 template <>

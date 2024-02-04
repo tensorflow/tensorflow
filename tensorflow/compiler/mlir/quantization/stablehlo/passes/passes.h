@@ -32,17 +32,13 @@ namespace mlir::quant::stablehlo {
 // Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
 // dcast ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const quant::QuantizationSpecs& quantization_specs);
+    const quant::QuantizationSpecs& quantization_specs,
+    bool enable_per_channel_quantized_weight = true);
 
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     const ::stablehlo::quantization::QuantizationComponentSpec&
         quantization_component_spec = {});
-
-// Creates an instance of the StableHLO dialect PrepareQuantize pass without any
-// arguments. Preset method of SRQ is set to the quantization option by default.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    bool enable_per_channel_quantization = false, int bit_width = 8);
 
 // Converts a serialized StableHLO module to bfloat16 and output serialized
 // module.

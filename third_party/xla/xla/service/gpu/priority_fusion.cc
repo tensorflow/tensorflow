@@ -22,7 +22,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
-#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,11 +34,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
-#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -49,11 +49,13 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -276,23 +278,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
     gpu_performance_model_cache_.Invalidate(*instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
-
-    for (auto* user : instruction->users()) {
-      fusion_node_evaluations_.erase(user);
-    }
-    fusion_node_evaluations_.erase(instruction);
   }
 
   // Updates data for the new fusion instruction and its users and operands.
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
-    absl::string_view emitter_fusion_kind =
-        HloFusionAnalysis::GetEmitterFusionKindString(
-            fusion_analysis_cache_.Get(*fusion).GetEmitterFusionKind());
-    fusion->SetAndSanitizeName(absl::StrCat(emitter_fusion_kind, "_fusion"));
-    fusion->UniquifyName(&fusion->GetModule()->instruction_name_uniquer());
-
     if (fusion_process_dump_) {
       auto* fusion_step =
           fusion_process_dump_->add_fusion_steps()->mutable_fusion();
@@ -445,14 +436,13 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // switch it to the loop emitter. This often occurs during epilog fusion for
     // reductions, which suffer from limited emitter support.
     // TODO(b/312686229): Cost model should handle this.
-    const auto& analysis_fused =
-        fusion_analysis_cache_.Get(*producer, *consumer);
-    if (producer->IsInputFusion() &&
-        analysis_fused.GetEmitterFusionKind() ==
-            HloFusionAnalysis::EmitterFusionKind::kLoop) {
-      const auto& analysis = fusion_analysis_cache_.Get(*producer);
-      if (analysis.GetEmitterFusionKind() ==
-          HloFusionAnalysis::EmitterFusionKind::kReduction) {
+    const auto& analysis = fusion_analysis_cache_.Get(*producer);
+    if (analysis.GetEmitterFusionKind() ==
+        HloFusionAnalysis::EmitterFusionKind::kReduction) {
+      const auto& analysis_fused =
+          fusion_analysis_cache_.Get(*producer, *consumer);
+      if (analysis_fused.GetEmitterFusionKind() ==
+          HloFusionAnalysis::EmitterFusionKind::kLoop) {
         return "fusion into output of a reduce fusion would create a loop "
                "fusion";
       }
@@ -471,18 +461,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
     // have exponential time/memory requirements for emitting certain fusion
     // kernels, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-    if (consumer->opcode() == HloOpcode::kFusion) {
-      absl::MutexLock lock(&fusion_node_evaluations_mutex_);
-      if (fusion_node_evaluations_.find(consumer) ==
-          fusion_node_evaluations_.end()) {
-        // We have no cached results for this fusion node yet. Compute it now.
-        fusion_node_evaluations_.emplace(
-            consumer, FusionNodeIndexingEvaluation(consumer));
-      }
-      if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
-              producer)) {
-        return "the fusion would result in an overly large code duplication";
-      }
+    if (cost_analysis_.ProducerConsumerMergedTooLarge(*producer, *consumer)) {
+      return "the fusion would result in an overly large code duplication";
     }
 
     // Don't fuse across a root instruction. There are situation when a root
@@ -588,12 +568,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   absl::Mutex can_fuse_cache_mutex_;
 
   GpuPerformanceModelCache gpu_performance_model_cache_;
-
-  // Keep track of the number of times each instruction inside a fusion node is
-  // indexed with different index vectors.
-  absl::Mutex fusion_node_evaluations_mutex_;
-  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
-      fusion_node_evaluations_;
 };
 
 }  // namespace
@@ -639,6 +613,8 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
       DumpingEnabledForHloPass(name(), module->config().debug_options());
   if (dump_enabled) {
     fusion_process_dump_ = std::make_unique<FusionProcessDumpProto>();
+    *fusion_process_dump_->mutable_gpu_device_info() =
+        device_info_.ToGpuProto();
   }
 
   // Appends ".0" suffix to all instructions.
@@ -656,6 +632,11 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
       module->SetAndUniquifyInstrName(instruction,
                                       absl::StrCat(instruction->name(), ".0"));
     }
+  }
+
+  if (dump_enabled) {
+    fusion_process_dump_->set_hlo_module_before_fusion(
+        module->ToString(HloPrintOptions::ShortParsable()));
   }
 
   auto result = InstructionFusion::Run(module, execution_threads);

@@ -17,12 +17,16 @@
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
+from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 
-# TODO(b/137402359): Remove lazy loading wrapper
 
-
-def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
-                         debug_info_str, enable_mlir_converter):
+def wrapped_toco_convert(
+    model_flags_str,
+    toco_flags_str,
+    input_data_str,
+    debug_info_str,
+    enable_mlir_converter,
+):
   """Wraps TocoConvert with lazy loader."""
   return _pywrap_toco_api.TocoConvert(
       model_flags_str,
@@ -30,20 +34,38 @@ def wrapped_toco_convert(model_flags_str, toco_flags_str, input_data_str,
       input_data_str,
       False,  # extended_return
       debug_info_str,
-      enable_mlir_converter)
+      enable_mlir_converter,
+      py_function_lib.PyFunctionLibrary(),
+  )
 
 
 def wrapped_experimental_mlir_quantize(
-    input_data_str, disable_per_channel, fully_quantize, inference_type,
-    input_data_type, output_data_type, enable_numeric_verify,
-    enable_whole_model_verify, denylisted_ops, denylisted_nodes,
-    enable_variable_quantization):
+    input_data_str,
+    disable_per_channel,
+    fully_quantize,
+    inference_type,
+    input_data_type,
+    output_data_type,
+    enable_numeric_verify,
+    enable_whole_model_verify,
+    denylisted_ops,
+    denylisted_nodes,
+    enable_variable_quantization,
+):
   """Wraps experimental mlir quantize model."""
   return _pywrap_toco_api.ExperimentalMlirQuantizeModel(
-      input_data_str, disable_per_channel, fully_quantize, inference_type,
-      input_data_type, output_data_type, enable_numeric_verify,
-      enable_whole_model_verify, denylisted_ops, denylisted_nodes,
-      enable_variable_quantization)
+      input_data_str,
+      disable_per_channel,
+      fully_quantize,
+      inference_type,
+      input_data_type,
+      output_data_type,
+      enable_numeric_verify,
+      enable_whole_model_verify,
+      denylisted_ops,
+      denylisted_nodes,
+      enable_variable_quantization,
+  )
 
 
 def wrapped_experimental_mlir_sparsify(input_data_str):

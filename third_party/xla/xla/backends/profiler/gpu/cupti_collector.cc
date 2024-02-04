@@ -140,7 +140,7 @@ class PerDeviceCollector {
   }
 
   void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
-                    tsl::uint64 start_gpu_ns, tsl::uint64 end_gpu_ns,
+                    uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                     XLineBuilder* line) {
     if (event.start_time_ns < start_gpu_ns || event.end_time_ns > end_gpu_ns ||
         event.start_time_ns > event.end_time_ns) {
@@ -177,7 +177,7 @@ class PerDeviceCollector {
     if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
-          absl::StrCat("$$", static_cast<tsl::uint64>(event.context_id)));
+          absl::StrCat("$$", static_cast<uint64_t>(event.context_id)));
     }
 
     if (event.type == CuptiTracerEventType::Kernel &&
@@ -320,7 +320,7 @@ class PerDeviceCollector {
     events_.emplace_back(std::move(event));
   }
 
-  size_t Flush(tsl::uint64 start_gpu_ns, tsl::uint64 end_gpu_ns,
+  size_t Flush(uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
     mutex_lock l(m_);
     // Tracking event types per line.
@@ -392,7 +392,7 @@ class PerDeviceCollector {
       // Times 2 because HBM is DDR memory; it gets two data bits per each
       // data lane.
       auto memory_bandwidth =
-          tsl::uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
+          uint64_t{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
               GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -404,7 +404,7 @@ class PerDeviceCollector {
       device_plane->AddStatValue(
           *device_plane->GetOrCreateStatMetadata(
               GetStatTypeStr(StatType::kDevCapMemorySize)),
-          static_cast<tsl::uint64>(total_memory));
+          static_cast<uint64_t>(total_memory));
     }
 
     auto compute_capability_major = GetDeviceAttribute(
@@ -469,7 +469,7 @@ class PerDeviceCollector {
 
 }  // namespace
 
-void AnnotationMap::Add(tsl::uint32 device_id, tsl::uint32 correlation_id,
+void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
                         const absl::string_view annotation,
                         const absl::string_view nvtx_range) {
   if (annotation.empty() && nvtx_range.empty()) return;
@@ -488,8 +488,8 @@ void AnnotationMap::Add(tsl::uint32 device_id, tsl::uint32 correlation_id,
   }
 }
 
-AnnotationMap::AnnotationInfo AnnotationMap::LookUp(
-    tsl::uint32 device_id, tsl::uint32 correlation_id) {
+AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32_t device_id,
+                                                    uint32_t correlation_id) {
   if (device_id >= per_device_map_.size()) return AnnotationInfo();
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
@@ -503,8 +503,7 @@ AnnotationMap::AnnotationInfo AnnotationMap::LookUp(
 class CuptiTraceCollectorImpl : public CuptiTraceCollector {
  public:
   CuptiTraceCollectorImpl(const CuptiTracerCollectorOptions& option,
-                          tsl::uint64 start_walltime_ns,
-                          tsl::uint64 start_gpu_ns)
+                          uint64_t start_walltime_ns, uint64_t start_gpu_ns)
       : CuptiTraceCollector(option),
         num_callback_events_(0),
         num_activity_events_(0),
@@ -531,13 +530,13 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     per_device_collector_[event.device_id].AddEvent(std::move(event));
   }
   void OnEventsDropped(const std::string& reason,
-                       tsl::uint32 num_events) override {
+                       uint32_t num_events) override {
     absl::MutexLock lock(&mutex_);
     dropped_events_[reason] += num_events;
   }
   void Flush() override {}
   // Returns true if some GPU events are captured.
-  bool Export(XSpace* space, tsl::uint64 end_gpu_ns) override {
+  bool Export(XSpace* space, uint64_t end_gpu_ns) override {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
@@ -587,10 +586,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
   absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, tsl::uint64> dropped_events_
+  absl::flat_hash_map<std::string, uint64_t> dropped_events_
       ABSL_GUARDED_BY(mutex_);
-  tsl::uint64 start_walltime_ns_;
-  tsl::uint64 start_gpu_ns_;
+  uint64_t start_walltime_ns_;
+  uint64_t start_gpu_ns_;
   int num_gpus_;
 
   // Set the all XLines of specified XPlane to starting walltime.
@@ -599,7 +598,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   // this fact. Eventually we change line start time to corresponding
   // start_walltime_ns to normalize with CPU wall time.
   static void NormalizeTimeStamps(XPlaneBuilder* plane,
-                                  tsl::uint64 start_walltime_ns) {
+                                  uint64_t start_walltime_ns) {
     plane->ForEachLine(
         [&](XLineBuilder line) { line.SetTimestampNs(start_walltime_ns); });
   }
@@ -611,8 +610,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
 };
 
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
-    const CuptiTracerCollectorOptions& options,
-    const tsl::uint64 start_walltime_ns, const tsl::uint64 start_gputime_ns) {
+    const CuptiTracerCollectorOptions& options, uint64_t start_walltime_ns,
+    uint64_t start_gputime_ns) {
   return std::make_unique<CuptiTraceCollectorImpl>(options, start_walltime_ns,
                                                    start_gputime_ns);
 }

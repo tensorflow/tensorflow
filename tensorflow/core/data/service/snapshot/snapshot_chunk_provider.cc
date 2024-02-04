@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -72,18 +73,6 @@ void Backoff(int num_retries, tsl::Env* env) {
   }
 }
 
-std::string SetToString(const absl::btree_set<std::string>& s) {
-  return absl::StrJoin(s, kSetElementDelimiter);
-}
-
-absl::btree_set<std::string> SetFromString(absl::string_view s) {
-  if (s.empty()) {
-    return {};
-  }
-  std::vector<std::string> split = absl::StrSplit(s, kSetElementDelimiter);
-  return absl::btree_set<std::string>(split.begin(), split.end());
-}
-
 }  // namespace
 
 SnapshotChunkProvider::SnapshotChunkProvider(absl::string_view snapshot_path,
@@ -120,7 +109,7 @@ absl::Status SnapshotChunkProvider::UpdateSnapshot()
   TF_ASSIGN_OR_RETURN(snapshot_state_, GetSnapshotState());
   TF_RETURN_IF_ERROR(snapshot_state_.status);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> chunks, GetAvailableChunks());
-  for (absl::string_view chunk : chunks) {
+  for (const std::string& chunk : chunks) {
     if (!chunks_read_.contains(chunk)) {
       chunks_unread_.insert(std::string(chunk));
     }
@@ -196,6 +185,45 @@ void SnapshotChunkProvider::Cancel() {
   snapshot_state_.status = absl::CancelledError(
       absl::StrCat("Cancelled loading tf.data snapshot at ", snapshot_path_));
   VLOG(2) << snapshot_state_.status;
+}
+
+std::string SnapshotChunkProvider::SetToString(
+    const SnapshotChunkProvider::OrderedChunkSet& s) {
+  return absl::StrJoin(s, kSetElementDelimiter);
+}
+
+SnapshotChunkProvider::OrderedChunkSet SnapshotChunkProvider::SetFromString(
+    absl::string_view s) {
+  if (s.empty()) {
+    return {};
+  }
+  std::vector<std::string> split = absl::StrSplit(s, kSetElementDelimiter);
+  return OrderedChunkSet(split.begin(), split.end());
+}
+
+bool SnapshotChunkProvider::ChunkOrder::operator()(
+    const std::string& chunk1, const std::string& chunk2) const {
+  absl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> tokens1 =
+      ParseChunkFilename(chunk1);
+  absl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> tokens2 =
+      ParseChunkFilename(chunk2);
+  if (!tokens1.status().ok()) {
+    LOG_EVERY_N_SEC(ERROR, 60) << "Failed to parse tf.data snapshot chunk file "
+                               << chunk1 << ": " << tokens1.status();
+    return chunk1 < chunk2;
+  }
+  if (!tokens2.status().ok()) {
+    LOG_EVERY_N_SEC(ERROR, 60) << "Failed to parse tf.data snapshot chunk file "
+                               << chunk2 << ": " << tokens2.status();
+    return chunk1 < chunk2;
+  }
+
+  auto [stream_index1, chunk_index1, num_records1] = *tokens1;
+  auto [stream_index2, chunk_index2, num_records2] = *tokens2;
+  if (chunk_index1 != chunk_index2) {
+    return chunk_index1 < chunk_index2;
+  }
+  return stream_index1 < stream_index2;
 }
 
 }  // namespace data

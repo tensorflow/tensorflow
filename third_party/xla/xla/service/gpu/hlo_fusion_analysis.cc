@@ -166,29 +166,6 @@ HloFusionAnalysis HloFusionAnalysis::Create(
 }
 
 // static
-absl::string_view HloFusionAnalysis::GetEmitterFusionKindString(
-    EmitterFusionKind kind) {
-  switch (kind) {
-    case EmitterFusionKind::kLoop:
-      return "loop";
-    case EmitterFusionKind::kCustomFusion:
-      return "custom";
-    case EmitterFusionKind::kTriton:
-      return "triton";
-    case EmitterFusionKind::kReduction:
-      return "reduction";
-    case EmitterFusionKind::kTranspose:
-      return "transpose";
-    case EmitterFusionKind::kConcatenate:
-      return "concatenate";
-    case EmitterFusionKind::kInputSlices:
-      return "input_slices";
-    case EmitterFusionKind::kScatter:
-      return "scatter";
-  }
-}
-
-// static
 HloFusionAnalysis HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {

@@ -135,13 +135,14 @@ Status HloCostAnalysis::HandleElementwiseOp(
   // operation can correspond to several floating point ops.
   // kLogistic is included in "trascendental" as it is implemented using
   // trascendental ops (tanh or exp).
-  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
-      opcode == HloOpcode::kLogistic || opcode == HloOpcode::kPower ||
-      opcode == HloOpcode::kSqrt || opcode == HloOpcode::kCbrt ||
-      opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
-      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos ||
-      opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog1p ||
-      opcode == HloOpcode::kAtan2 || opcode == HloOpcode::kTan) {
+  if (opcode == HloOpcode::kErf || opcode == HloOpcode::kExp ||
+      opcode == HloOpcode::kLog || opcode == HloOpcode::kLogistic ||
+      opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
+      opcode == HloOpcode::kCbrt || opcode == HloOpcode::kRsqrt ||
+      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
+      opcode == HloOpcode::kCos || opcode == HloOpcode::kExpm1 ||
+      opcode == HloOpcode::kLog1p || opcode == HloOpcode::kAtan2 ||
+      opcode == HloOpcode::kTan) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from

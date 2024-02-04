@@ -217,7 +217,7 @@ class MatmulTensorDescriptor {
 // Specifies the descriptor for a RNN model.
 //
 // An example use case:
-//   * The user first creates a model through createRnnDescriptor.
+//   * The user first creates a model through CreateRnnDescriptor.
 //   * The user queries the size of the underlying opaque parameter buffer.
 //   * The user creates and initializes a parameter buffer of the proper size.
 //   * The user runs forward and backward operations using this RNN descriptor.
@@ -1841,7 +1841,7 @@ class DnnSupport {
   //    is no longer in use.
   //  use_padded_io: a bool to specify whether the input is using padded IO.
   virtual absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-  createRnnDescriptor(int num_layers, int hidden_size, int input_size,
+  CreateRnnDescriptor(int num_layers, int hidden_size, int input_size,
                       int cell_size, int batch_size,
                       dnn::RnnInputMode input_mode,
                       dnn::RnnDirectionMode direction_mode,
@@ -1850,7 +1850,7 @@ class DnnSupport {
                       const NumericOptions& numeric_options, float dropout,
                       uint64_t seed, ScratchAllocator* state_allocator,
                       bool use_padded_io) {
-    return absl::UnimplementedError("createRnnDescriptor is unimplemented");
+    return absl::UnimplementedError("CreateRnnDescriptor is unimplemented");
   }
 
   // Create a RNN sequence descriptor that specifies either the input or output
@@ -1863,35 +1863,35 @@ class DnnSupport {
   //  seq_lengths: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
   virtual absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+  CreateRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
     return absl::UnimplementedError(
-        "createRnnSequenceTensorDescriptor is unimplemented");
+        "CreateRnnSequenceTensorDescriptor is unimplemented");
   }
 
   virtual absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+  CreateRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major, dnn::DataType data_type) {
     return absl::UnimplementedError(
-        "createRnnSequenceTensorDescriptor is unimplemented");
+        "CreateRnnSequenceTensorDescriptor is unimplemented");
   }
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
   virtual absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+  CreateRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) {
     return absl::UnimplementedError(
-        "createRnnStateTensorDescriptor is unimplemented");
+        "CreateRnnStateTensorDescriptor is unimplemented");
   }
 
   // Enqueue a forward operation of the RNN model onto the stream.
   //
   // Arguments:
   //  stream: pointer to the stream where this operation should be enqueued to.
-  //  rnn_desc: a RNN descriptor created by createRnnDescriptor.
+  //  rnn_desc: a RNN descriptor created by CreateRnnDescriptor.
   //  input_desc: descriptor for the input sequence.
   //  input_data: the device memory region that contains the input data.
   //  input_h_desc: descriptor for the input "h" state.
@@ -1985,7 +1985,7 @@ class DnnSupport {
   //
   // Arguments:
   //  stream: pointer to the stream where this operation should be enqueued to.
-  //  rnn_desc: a RNN descriptor created by createRnnDescriptor.
+  //  rnn_desc: a RNN descriptor created by CreateRnnDescriptor.
   //  input_desc: descriptor for the input sequence.
   //  input_data: the device memory region that contains the input data.
   //  input_h_desc: descriptor for the input "h" state.

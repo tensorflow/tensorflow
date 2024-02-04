@@ -64,7 +64,7 @@ void CuptiProfiler::Enable(const CuptiProfilerOptions &option) {}
 
 void CuptiProfiler::Disable() {}
 
-/*static*/ tsl::uint64 CuptiProfiler::GetTimestamp() {
+/*static*/ uint64_t CuptiProfiler::GetTimestamp() {
   uint64_t tsc;
   CuptiInterface *cupti_interface = GetCuptiInterface();
   if (cupti_interface && cupti_interface->GetTimestamp(&tsc) == CUPTI_SUCCESS) {

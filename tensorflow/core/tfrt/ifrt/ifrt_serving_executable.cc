@@ -315,9 +315,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   TF_RETURN_IF_ERROR(status);
 
   std::vector<tensorflow::Tensor> outputs;
-  std::vector<xla::ifrt::Future<absl::Status>> output_futures;
-  output_futures.reserve(execution_result.outputs.size());
-  outputs.reserve(execution_result.outputs.size());
 
   if (executable_bundle.compile_metadata.retvals().size() !=
       execution_result.outputs.size()) {
@@ -332,50 +329,19 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     const tpu::TPUCompileMetadataProto::Retval& metadata_retval =
         executable_bundle.compile_metadata.retvals()[i];
 
-    TF_RETURN_IF_ERROR(tensorflow::TensorShape::BuildTensorShape(
-        array_for_copy->shape().dims(), &tensor_shape));
-    TF_ASSIGN_OR_RETURN(tensorflow::DataType data_type,
-                        ToTensorDataType(array_for_copy->dtype()));
-
-    tensorflow::Tensor tensor(data_type, std::move(tensor_shape));
-
     // IFRT's return does not contain sufficient information; so we use
     // sharding spec from metadata.
     VLOG(2) << "Output sharding: " << array_for_copy->sharding().DebugString();
 
     TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(
                                                metadata_retval.sharding()));
-
-    // TODO(b/313922535): support sharded outputs.
-    if (!hlo_sharding.IsReplicated()) {
-      return absl::UnimplementedError(
-          absl::StrCat("Only supported replicated output. But got ",
-                       hlo_sharding.ToString()));
-    }
-
-    TF_ASSIGN_OR_RETURN(auto fully_replicated_array,
-                        array_for_copy->FullyReplicatedShard(
-                            xla::ifrt::ArrayCopySemantics::kDonateInput));
-
-    if (fully_replicated_array->shape() !=
-        xla::ifrt::Shape(tensor.shape().dim_sizes())) {
-      return absl::UnimplementedError(
-          absl::StrCat("Not fully replicated output. Expected ",
-                       tensor.shape().DebugString(), " but got ",
-                       fully_replicated_array->shape().DebugString()));
-    }
-
-    xla::ifrt::Future<absl::Status> copy_future =
-        fully_replicated_array->CopyToHostBuffer(
-            tensor.data(), /*byte_strides=*/std::nullopt,
-            xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
-
-    output_futures.push_back(copy_future);
+    TF_ASSIGN_OR_RETURN(
+        tensorflow::Tensor tensor,
+        MakeTensorFromArray(*ifrt_client_, *array_for_copy, hlo_sharding,
+                            device_list, thread_pool_device_));
     outputs.push_back(std::move(tensor));
   }
 
-  TF_RETURN_IF_ERROR(
-      xla::ifrt::JoinFutures(absl::MakeSpan(output_futures)).Await());
   return outputs;
 }
 

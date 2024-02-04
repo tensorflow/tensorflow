@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
+#include "xla/service/rendezvous.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
@@ -288,9 +289,9 @@ class GpuExecutable : public Executable {
   // initialization might allocate new control data structures on device, which
   // can lead to deadlocks if executed concurrently with other replicas.
   //
-  // We use atomic CAS operations to decide if a thread running XLA executable
-  // should join the rendezvous, see implementation for details.
-  std::atomic<int64_t> thunks_initialized_{0};
+  // We use rendezvous to guarantee that all participating threads complete
+  // thunk initialization before we start executing any of them.
+  RendezvousSingleFlag thunks_initialized_flag_;
 
   // Gpu runtime executable that encapsulates all the state for running Gpu
   // runtime custom calls implementing gpu abstraction layer (available only if
@@ -313,7 +314,12 @@ class GpuExecutable : public Executable {
   // This object is also used for dumping debug info.
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
 
-  std::optional<ModuleAnnotations> annotation_info_;
+  ModuleAnnotations module_annotations_ = [this] {
+    if (has_module()) {
+      return ModuleAnnotations(module());
+    }
+    return ModuleAnnotations(module_name_);
+  }();
 
   int64_t debug_buffer_assignment_show_max_;
 

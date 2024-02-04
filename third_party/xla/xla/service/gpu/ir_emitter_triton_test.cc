@@ -77,7 +77,20 @@ class TritonGemmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
+    // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
+    // Do not autotune split-k by default, since this prevents deterministically
+    // matching the optimized HLO.
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    return debug_options;
+  }
+};
+
+class TritonGemmTestWithSplitK : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_split_k_autotuning(true);
     return debug_options;
   }
 };
@@ -883,7 +896,8 @@ ENTRY entry {
   EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 }
 
-TEST_F(TritonGemmTest, WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
+TEST_F(TritonGemmTestWithSplitK,
+       WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
   // The condition mentioned in the test name is fulfilled by
   // GemmKey(16, 64, 256, 8, 1, 4), which was part of the default configs for
   // Ampere at the time of the addition of this test case.
@@ -971,10 +985,11 @@ TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
 HloModule t
 
 ENTRY e {
-  p0 = s8[3,122,96,12]{3,2,1,0} parameter(0)
+  p0 = pred[3,122,96,12]{3,2,1,0} parameter(0)
   cp0 = f16[3,122,96,12]{3,2,1,0} convert(p0)
-  p1 = f16[1,5,122]{2,1,0} parameter(1)
-  ROOT _ = f16[3,96,12,1,5]{4,3,2,1,0} dot(cp0, p1),
+  p1 = pred[1,5,122]{2,1,0} parameter(1)
+  cp1 = f16[1,5,122]{2,1,0} convert(p1)
+  ROOT _ = f16[3,96,12,1,5]{4,3,2,1,0} dot(cp0, cp1),
     lhs_contracting_dims={1}, rhs_contracting_dims={2}
 })";
 
@@ -987,7 +1002,7 @@ ENTRY e {
 ; CHECK-SAME: "block_m":
 )");
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
 TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
@@ -1608,7 +1623,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: fused_computation
+; CHECK: fused_subtract
 ; CHECK: negate
 ; CHECK: negate
 ; CHECK: ROOT
@@ -2171,7 +2186,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonGemmTest, SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
+TEST_F(TritonGemmTestWithSplitK,
+       SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
   const std::string kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)

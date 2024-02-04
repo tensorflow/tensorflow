@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -55,7 +54,7 @@ class CudnnSupport : public dnn::DnnSupport {
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
 
-  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> CreateRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -64,19 +63,19 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* state_allocator, bool use_padded_io) override;
 
   absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+  CreateRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     dnn::DataType data_type) override;
 
   absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+  CreateRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major,
                                     dnn::DataType data_type) override;
 
   absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+  CreateRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,

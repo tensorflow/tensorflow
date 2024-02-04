@@ -25,6 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Estimates the size of the Tensors when serialized as TensorProtos.
 ByteSize EstimatedSize(const std::vector<Tensor>& tensors);
 
 }  // namespace data

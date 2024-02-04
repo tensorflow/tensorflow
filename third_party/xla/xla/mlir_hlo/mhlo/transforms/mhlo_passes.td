@@ -18,12 +18,26 @@ include "mlir/Pass/PassBase.td"
 def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
   let summary = "Legalize CHLO to HLO.";
   let constructor = "createChloLegalizeToHloPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "chlo::ChloDialect",
+                           "shape::ShapeDialect", "scf::SCFDialect"];
   let options = [
     Option<"legalize_broadcasts_", "legalize-broadcasts", "bool",
            /*default=*/"true", "Legalize implicit broadcasts to explicit HLO broadcasting forms">,
     Option<"expand_compositions_", "expand-compositions", "bool",
            /*default=*/"true", "Expands client-centric compositions to HLO primitives">,
   ];
+}
+
+def ChloLegalizeToHloBasisOpsPass : Pass<"chlo-legalize-to-hlo-basis-ops", "func::FuncOp"> {
+  let summary = "Legalize specific CHLO ops (e.g. ErfOf and TopKOp) to basis MHLO ops.";
+  let description = [{
+    XLA has specialization for certain CHLO ops (ErfOp, TopKOp), and other
+    backends still require decomposition of these ops into the basis set which
+    can be converted safely to StableHLO. This pass is needed until we have
+    direct CHLO to StableHLO lowerings.
+  }];
+  let constructor = "createChloLegalizeToHloBasisOpsPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "chlo::ChloDialect"];
 }
 
 def LegalizeSparseOpsPass : Pass<"legalize-sparse-ops", "func::FuncOp"> {

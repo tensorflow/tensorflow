@@ -833,7 +833,9 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
 }
 
 bool CUDABlas::GetBlasGemmAlgorithms(
-    Stream *stream, std::vector<blas::AlgorithmType> *out_algorithms) {
+    Stream *stream, const gpu::MatrixDescriptor &,
+    const gpu::MatrixDescriptor &, gpu::OutputMatrixDescriptor *, const void *,
+    const void *, std::vector<blas::AlgorithmType> *out_algorithms) {
   // cublasGemmAlgo_t (and the function that accepts this type, cublasGemmEx)
   // were first introduced in CUDA 8.
   //
@@ -942,45 +944,18 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
 
   const size_t size = batch_count * sizeof(CUDA_T *);
 
-  // Device-side copy of pointers to matrices.
-  DeviceMemory<CUDA_T *> a;
-  DeviceMemory<CUDA_T *> b;
-  DeviceMemory<CUDA_T *> c;
-
-  // If temporary space is allocated for device-side copies of pointers to
-  // matrices, that temporary space should not be freed until this function
-  // returns. Although the values for these unique_ptrs are not set here, they
-  // are declared at this scope so they will be destroyed when the function
-  // returns.
-  //
-  // If a scratch allocator is provided, these pointers will not be used at all.
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> a_temporary;
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> b_temporary;
-  std::unique_ptr<TemporaryDeviceMemory<CUDA_T *>> c_temporary;
-
-  // Decide how to allocate device-side copy of pointers to matrices based on
-  // whether a scratch allocator was passed.
-  if (scratch_allocator != nullptr) {
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> a_bytes,
-                        scratch_allocator->AllocateBytes(size));
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> b_bytes,
-                        scratch_allocator->AllocateBytes(size));
-    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> c_bytes,
-                        scratch_allocator->AllocateBytes(size));
-    a = DeviceMemory<CUDA_T *>(a_bytes);
-    b = DeviceMemory<CUDA_T *>(b_bytes);
-    c = DeviceMemory<CUDA_T *>(c_bytes);
-  } else {
-    TF_ASSIGN_OR_RETURN(a_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    TF_ASSIGN_OR_RETURN(b_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    TF_ASSIGN_OR_RETURN(c_temporary,
-                        stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    a = DeviceMemory<CUDA_T *>(*a_temporary->mutable_device_memory());
-    b = DeviceMemory<CUDA_T *>(*b_temporary->mutable_device_memory());
-    c = DeviceMemory<CUDA_T *>(*c_temporary->mutable_device_memory());
+  if (scratch_allocator == nullptr) {
+    return absl::InternalError("scratch_allocator is null");
   }
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> a_bytes,
+                      scratch_allocator->AllocateBytes(size));
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> b_bytes,
+                      scratch_allocator->AllocateBytes(size));
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> c_bytes,
+                      scratch_allocator->AllocateBytes(size));
+  DeviceMemory<CUDA_T *> a(a_bytes);
+  DeviceMemory<CUDA_T *> b(b_bytes);
+  DeviceMemory<CUDA_T *> c(c_bytes);
 
   if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
       !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||

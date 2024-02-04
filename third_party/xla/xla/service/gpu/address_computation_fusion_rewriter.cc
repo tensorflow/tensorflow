@@ -28,13 +28,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,11 +56,25 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
   absl::InlinedVector<HloInstruction*, 8> sliced_operand_chains = {
       const_cast<HloInstruction*>(instr)};
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
+  absl::flat_hash_set<HloInstruction*> processed_sliced_chain_set;
+
+  const auto& aliasing_pairs =
+      Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  absl::flat_hash_set<int64_t> aliased_operands;
+  for (const auto& pair : aliasing_pairs) {
+    aliased_operands.insert(pair.second.first);
+  }
+
   for (auto* operand : instr->operands()) {
+    // output_to_operand_aliasing means the operand is to be materialized, which
+    // is against the whole idea of address computation fusion. Skip this
+    // operand.
+    if (aliased_operands.contains(instr->operand_index(operand))) continue;
     absl::InlinedVector<HloInstruction*, 4> maybe_sliced_operand_chain;
     auto maybe_slice_adaptor =
         HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
           const HloInstruction* cur = &node.instruction();
+          if (processed_sliced_chain_set.contains(cur)) return true;
           maybe_sliced_operand_chain.push_back(
               const_cast<HloInstruction*>(cur));
           // TODO(vuson): lift the first restriction by considering fusing other
@@ -70,10 +87,13 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
         });
     if (maybe_slice_adaptor == std::nullopt) continue;
     const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
-    if (IsContiguousSlice(maybe_slice_instr)) {
+    if (IsContiguousSlice(maybe_slice_instr) ||
+        processed_sliced_chain_set.contains(&maybe_slice_instr)) {
       sliced_operand_chains.insert(sliced_operand_chains.end(),
                                    maybe_sliced_operand_chain.begin(),
                                    maybe_sliced_operand_chain.end());
+      processed_sliced_chain_set.insert(maybe_sliced_operand_chain.begin(),
+                                        maybe_sliced_operand_chain.end());
     }
   }
   return sliced_operand_chains;
@@ -157,6 +177,9 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       captures, body));
   module->SetAndUniquifyInstrName(fusion, "address_computation");
 
+  // We don't need to set/update output_to_operand_aliasing for the new fusion
+  // instruction because all buffers are already assigned at this point.
+
   // Set backends config to a matched custom fusion config.
   GpuBackendConfig gpu_config;
   FusionBackendConfig& backend_config =
@@ -175,7 +198,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto instructions = module->entry_computation()->MakeInstructionPostOrder();
+  if (!module->has_schedule()) return Internal("module is not scheduled");
   bool changed = false;
 
   absl::flat_hash_map<HloInstruction*, absl::InlinedVector<HloInstruction*, 8>>
@@ -195,17 +218,34 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     }
   }
 
+  HloSchedule& schedule = module->schedule();
   for (auto& kv : matches) {
     auto captures = GetPatternCaptures(kv.second);
     std::reverse(kv.second.begin(), kv.second.end());
+
     TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
                         CreateFusionBody(module, kv.second, captures));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * fusion,
         CreateFusionInstruction(module, kv.first, captures, fusion_body));
+
+    // As we are running after scheduling we have to keep it valid.
     HloComputation* parent = kv.first->parent();
+
+    // Update schedule to replace the custom call instruction with the fusion
+    // instruction.
+    // Removal of the rest of the instructions in the sequence is handled by
+    // schedule update below.
+    HloInstructionSequence& sequence = schedule.GetOrCreateSequence(parent);
+    sequence.replace_instruction(kv.first, fusion);
+
+    // TODO(vuson): handle control dependencies
     TF_RETURN_IF_ERROR(parent->ReplaceInstruction(kv.first, fusion));
     changed = true;
+  }
+
+  if (changed) {
+    TF_RETURN_IF_ERROR(module->schedule().Update());
   }
 
   return changed;

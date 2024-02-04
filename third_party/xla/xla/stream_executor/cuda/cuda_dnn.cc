@@ -2555,7 +2555,7 @@ absl::Status CudnnSupport::DoCtcLossImpl(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-CudnnSupport::createRnnDescriptor(
+CudnnSupport::CreateRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -2579,7 +2579,7 @@ CudnnSupport::createRnnDescriptor(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
+CudnnSupport::CreateRnnSequenceTensorDescriptor(int max_seq_length,
                                                 int batch_size, int data_size,
                                                 dnn::DataType data_type) {
   TF_ASSIGN_OR_RETURN(CudnnRnnSequenceTensorDescriptor descriptor,
@@ -2591,7 +2591,7 @@ CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-CudnnSupport::createRnnSequenceTensorDescriptor(
+CudnnSupport::CreateRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
     const absl::Span<const int>& seq_lengths, bool time_major,
     dnn::DataType data_type) {
@@ -2604,7 +2604,7 @@ CudnnSupport::createRnnSequenceTensorDescriptor(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-CudnnSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
+CudnnSupport::CreateRnnStateTensorDescriptor(int num_layer, int batch_size,
                                              int data_size,
                                              dnn::DataType data_type) {
   return std::unique_ptr<dnn::RnnStateTensorDescriptor>(

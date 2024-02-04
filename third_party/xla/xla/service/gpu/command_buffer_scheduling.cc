@@ -123,12 +123,7 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
 
   if (config.contains(DebugOptions::CUSTOM_CALL)) {
     if (hlo->custom_call_target() == "cu_threefry2x32") {
-      if (hlo->operand_count() == 4) {
-        return true;
-      }
-      // This version of cu_threefy2x32 requires synchronization, which is not
-      // supported by command buffers.
-      DCHECK_EQ(hlo->operand_count(), 5);
+      return true;
     }
   }
 
@@ -137,8 +132,16 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
 
 static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config) {
-  if (auto* fusion = DynCast<HloFusionInstruction>(hlo))
-    return config.contains(DebugOptions::FUSION);
+  if (auto* fusion = DynCast<HloFusionInstruction>(hlo)) {
+    // TODO(vuson): Make address computation fusion compatible with command
+    // buffer
+    auto gpu_config = fusion->backend_config<GpuBackendConfig>();
+    const FusionBackendConfig& backend_config =
+        gpu_config->fusion_backend_config();
+    const auto& custom_config = backend_config.custom_fusion_config();
+    return custom_config.name() != "address_computation" &&
+           config.contains(DebugOptions::FUSION);
+  }
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
     return config.contains(DebugOptions::FUSION);
@@ -466,7 +469,7 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     HloComputation* parent, const HloInstructionSequence& seq,
     CommandBuffer command_buffer) {
   if (command_buffer.results.empty())
-    return absl::InternalError("command buffer rsults must be not empty");
+    return absl::InternalError("command buffer results must not be empty");
 
   // If we have more than one result we return them as tuple, and get individual
   // values using `get-tuple-element` instructions. Otherwise we simply return

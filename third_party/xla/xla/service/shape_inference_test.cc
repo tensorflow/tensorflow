@@ -4355,6 +4355,31 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
   }
 }
 
+TEST_F(ShapeInferenceTest, UnboundedScatter) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape input, ParseShape("f32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scatter_indices, ParseShape("s32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape updates, ParseShape("f32[?, ?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, ?]"));
+
+  const ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+
+  ScatterDimensionNumbers dimension_numbers;
+  dimension_numbers.add_update_window_dims(2);
+  dimension_numbers.add_update_window_dims(3);
+  dimension_numbers.add_inserted_window_dims(0);
+  dimension_numbers.add_scatter_dims_to_operand_dims(1);
+  dimension_numbers.add_scatter_dims_to_operand_dims(0);
+  dimension_numbers.set_index_vector_dim(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape result,
+      ShapeInference::InferScatterShape({&input, &scatter_indices, &updates},
+                                        to_apply, dimension_numbers));
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "inferred: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedTranspose) {
   TF_ASSERT_OK_AND_ASSIGN(Shape operand,
                           ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}"));
@@ -4537,6 +4562,7 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                               {"f32[?]", "f32[?]", HloOpcode::kCeil},
                               {"u32[?]", "u32[?]", HloOpcode::kClz},
                               {"f32[?]", "f32[?]", HloOpcode::kCos},
+                              {"f32[?]", "f32[?]", HloOpcode::kErf},
                               {"f32[?]", "f32[?]", HloOpcode::kExp},
                               {"f32[?]", "f32[?]", HloOpcode::kExpm1},
                               {"f32[?]", "f32[?]", HloOpcode::kFloor},

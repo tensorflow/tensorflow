@@ -50,7 +50,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @fusion
+; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK: fadd
@@ -243,7 +243,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @fusion
+; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK-NOT: load float

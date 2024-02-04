@@ -720,15 +720,15 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         }
 
         BlasScratchAllocator scratch_allocator(context, max_scratch_size);
-        bool blas_launch_status =
-            stream
-                ->ThenBlasGemmBatchedWithScratch(
-                    blas_transpose_b, blas_transpose_a, n, m, k,
-                    static_cast<Coefficient>(1.0), b_ptrs,
-                    adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
-                    static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    GetNumericOptions(), &scratch_allocator, call_context)
-                .ok();
+        auto blas = stream->parent()->AsBlas();
+        OP_REQUIRES(context, blas != nullptr,
+                    absl::InternalError("No blas support for stream"));
+        bool blas_launch_status = blas->DoBlasGemmBatched(
+            stream, blas_transpose_b, blas_transpose_a, n, m, k,
+            static_cast<Coefficient>(1.0), b_ptrs, adj_y || trans_y ? k : n,
+            a_ptrs, adj_x || trans_x ? m : k, static_cast<Coefficient>(0.0),
+            c_ptrs, n, batch_size, GetNumericOptions(), &scratch_allocator,
+            call_context);
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
               "Blas xGEMMBatched launch failed: a.shape=",
@@ -785,6 +785,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
       // C' = B' x A', where ' stands for transpose (not adjoint).
       // TODO(yangzihao): Choose the best of the three strategies using
       // autotune.
+      auto blas = stream->parent()->AsBlas();
+      OP_REQUIRES(context, blas != nullptr,
+                  absl::InternalError("No blas support for stream"));
       if (batch_size == 1) {
         // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
         // overhead of the scratch allocator and the batch interface.
@@ -803,14 +806,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                 blas_transpose_a == se::blas::Transpose::kTranspose
                     ? se::blas::Transpose::kNoTranspose
                     : se::blas::Transpose::kTranspose;
-            bool blas_launch_status =
-                stream
-                    ->ThenBlasGemv(gemv_trans_a, adj_x || trans_x ? m : k,
-                                   adj_x || trans_x ? k : m,
-                                   static_cast<Coefficient>(1.0), *(a_ptrs[0]),
-                                   adj_x || trans_x ? m : k, *(b_ptrs[0]), 1,
-                                   static_cast<Coefficient>(0.0), c_ptrs[0], 1)
-                    .ok();
+            bool blas_launch_status = blas->DoBlasGemv(
+                stream, gemv_trans_a, adj_x || trans_x ? m : k,
+                adj_x || trans_x ? k : m, static_cast<Coefficient>(1.0),
+                *(a_ptrs[0]), adj_x || trans_x ? m : k, *(b_ptrs[0]), 1,
+                static_cast<Coefficient>(0.0), c_ptrs[0], 1);
             if (!blas_launch_status) {
               context->SetStatus(errors::Internal(
                   "Blas xGEMV launch failed : a.shape=",
@@ -838,15 +838,12 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                          batch_size, GetNumericOptions(), call_context));
       } else {
         BlasScratchAllocator scratch_allocator(context);
-        bool blas_launch_status =
-            stream
-                ->ThenBlasGemmBatchedWithScratch(
-                    blas_transpose_b, blas_transpose_a, n, m, k,
-                    static_cast<Coefficient>(1.0), b_ptrs,
-                    adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
-                    static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    GetNumericOptions(), &scratch_allocator, call_context)
-                .ok();
+        bool blas_launch_status = blas->DoBlasGemmBatched(
+            stream, blas_transpose_b, blas_transpose_a, n, m, k,
+            static_cast<Coefficient>(1.0), b_ptrs, adj_y || trans_y ? k : n,
+            a_ptrs, adj_x || trans_x ? m : k, static_cast<Coefficient>(0.0),
+            c_ptrs, n, batch_size, GetNumericOptions(), &scratch_allocator,
+            call_context);
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
               "Blas xGEMMBatched launch failed : a.shape=",

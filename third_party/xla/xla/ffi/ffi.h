@@ -20,7 +20,9 @@ limitations under the License.
 #error Two different XLA FFI implementations cannot be included together
 #endif  // XLA_FFI_API_FFI_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 
 // IWYU pragma: begin_exports
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/memref_view.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
@@ -47,7 +50,7 @@ struct CalledComputation {};
 // Arguments
 //===----------------------------------------------------------------------===//
 
-struct Buffer {
+struct BufferBase {
   PrimitiveType dtype;
   se::DeviceMemoryBase data;
   absl::Span<const int64_t> dimensions;
@@ -59,20 +62,81 @@ struct Buffer {
   }
 };
 
+namespace internal {
+
+inline constexpr size_t kDynamicRank = std::numeric_limits<size_t>::max();
+
+template <PrimitiveType dtype>
+using NativeType = typename primitive_util::PrimitiveTypeToNative<dtype>::type;
+
+}  // namespace internal
+
+template <PrimitiveType dtype, size_t rank = internal::kDynamicRank>
+struct Buffer {
+  se::DeviceMemory<internal::NativeType<dtype>> data;
+  absl::Span<const int64_t> dimensions;
+};
+
+// clang-format off
+template <PrimitiveType dtype> using BufferR0 = Buffer<dtype, 0>;
+template <PrimitiveType dtype> using BufferR1 = Buffer<dtype, 1>;
+template <PrimitiveType dtype> using BufferR2 = Buffer<dtype, 2>;
+template <PrimitiveType dtype> using BufferR3 = Buffer<dtype, 3>;
+template <PrimitiveType dtype> using BufferR4 = Buffer<dtype, 4>;
+// clang-format on
+
 //===----------------------------------------------------------------------===//
 // Arguments decoding
 //===----------------------------------------------------------------------===//
 
 template <>
-struct ArgDecoding<Buffer> {
-  static std::optional<Buffer> Decode(XLA_FFI_ArgType type, void* arg,
-                                      DiagnosticEngine&) {
-    if (type != XLA_FFI_ArgType_BUFFER) return std::nullopt;
+struct ArgDecoding<BufferBase> {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<BufferBase> Decode(XLA_FFI_ArgType type, void* arg,
+                                          DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_ArgType_BUFFER) {
+      return diagnostic.Emit("Wrong argument type: expected ")
+             << XLA_FFI_ArgType_BUFFER << " but got " << type;
+    }
+
     auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
 
-    Buffer buffer;
+    BufferBase buffer;
     buffer.dtype = PrimitiveType(buf->dtype);
     buffer.data = se::DeviceMemoryBase(buf->data);
+    buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
+    return buffer;
+  }
+};
+
+template <PrimitiveType dtype, size_t rank>
+struct ArgDecoding<Buffer<dtype, rank>> {
+  XLA_ATTRIBUTE_ALWAYS_INLINE
+  static std::optional<Buffer<dtype, rank>> Decode(
+      XLA_FFI_ArgType type, void* arg, DiagnosticEngine& diagnostic) {
+    if (type != XLA_FFI_ArgType_BUFFER) {
+      return diagnostic.Emit("Wrong argument type: expected ")
+             << XLA_FFI_ArgType_BUFFER << " but got " << type;
+    }
+
+    auto* buf = reinterpret_cast<XLA_FFI_Buffer*>(arg);
+
+    if (auto actual_dtype = PrimitiveType(buf->dtype); actual_dtype != dtype) {
+      return diagnostic.Emit("Wrong buffer dtype: expected ")
+             << primitive_util::LowercasePrimitiveTypeName(dtype) << " but got "
+             << primitive_util::LowercasePrimitiveTypeName(actual_dtype);
+    }
+
+    if constexpr (rank != internal::kDynamicRank) {
+      if (buf->rank != rank) {
+        return diagnostic.Emit("Wrong buffer rank: expected ")
+               << rank << " but got " << buf->rank;
+      }
+    }
+
+    Buffer<dtype, rank> buffer;
+    buffer.data = se::DeviceMemory<internal::NativeType<dtype>>(
+        se::DeviceMemoryBase(buf->data));
     buffer.dimensions = absl::MakeConstSpan(buf->dims, buf->rank);
     return buffer;
   }

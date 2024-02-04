@@ -34,3 +34,22 @@ def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::Mo
   ];
 
 }
+
+def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::ModuleOp"> {
+  let summary = "Sink variable tensor for tpu device as named IFRT array";
+
+  let description = [{
+    This pass converts applicable `tf.AssignVariableOp` to `tf.IfrtLoadVariableOp`. 
+
+    A `tf.AssignVariableOp` can be lowered to `tf.IfrtLoadVariableOp` if its variable tensor
+    is used as an input to `tf.IfrtCall` TPU program. Additionally, the corresponding tensor
+    will be sunk as an attribute from `tf.IfrtCall`'s argument list because the runtime
+    ensures that `tf.IfrtCall` kernel can bind the IFRT array by its name as input to the TPU
+    program.
+
+    If a variable tensor is exclusively used for TPU devices, then its defining
+    `tf.VarHandleOp`, `tf.ReadVariableOp` will be pruned.
+  }];
+
+  let constructor = "CreateSinkVariableAsNamedArrayPass()";
+}

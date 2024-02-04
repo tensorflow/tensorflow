@@ -37,20 +37,16 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/platform/errors.h"
 
 namespace stream_executor::gpu {
 
-// GpuCommandBuffer provides platform-specific CommandBufferInterface
-// implementation (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
-class GpuCommandBuffer : public internal::CommandBufferInterface {
+// GpuCommandBuffer provides platform-specific CommandBuffer implementation
+// (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
+class GpuCommandBuffer : public CommandBuffer {
  public:
-  GpuCommandBuffer(CommandBuffer::Mode mode, GpuExecutor* parent,
-                   GpuGraphHandle graph, bool is_owned_graph = true);
+  GpuCommandBuffer(Mode mode, GpuExecutor* parent, GpuGraphHandle graph,
+                   bool is_owned_graph = true);
   ~GpuCommandBuffer() override;
-
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
 
   absl::Status Barrier(StreamExecutor* executor) override;
 
@@ -63,8 +59,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                                     const DeviceMemoryBase& src,
                                     uint64_t size) override;
 
-  absl::Status Memset(DeviceMemoryBase* dst,
-                      CommandBuffer::BitPattern bit_pattern,
+  absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
 
   absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) override;
@@ -72,22 +67,20 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   absl::Status Free(DeviceMemoryBase dst) override;
 
   absl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
-                  CommandBuffer::Builder then_builder) override;
+                  Builder then_builder) override;
 
   absl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> predicate,
-                      CommandBuffer::Builder then_builder,
-                      CommandBuffer::Builder else_builder) override;
+                      Builder then_builder, Builder else_builder) override;
 
   absl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
-                    std::vector<CommandBuffer::Builder> branches) override;
+                    std::vector<Builder> branches) override;
 
   absl::Status For(StreamExecutor* executor, int32_t num_iteration,
                    DeviceMemory<int32_t> loop_counter,
-                   CommandBuffer::Builder body_builder) override;
+                   Builder body_builder) override;
 
   absl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
-                     CommandBuffer::Builder cond_builder,
-                     CommandBuffer::Builder body_builder) override;
+                     Builder cond_builder, Builder body_builder) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;
@@ -95,14 +88,20 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   GpuGraphExecHandle executable() const { return exec_; }
   GpuGraphHandle graph() const { return graph_; }
 
-  CommandBuffer::Mode mode() const override { return mode_; }
-  CommandBuffer::State state() const override { return state_; }
+  Mode mode() const override { return mode_; }
+  State state() const override { return state_; }
 
-  // A helper template for launching typed kernels.
-  template <typename... Params, typename... Args>
-  absl::Status Launch(const TypedKernel<Params...>& kernel,
-                      const ThreadDim& threads, const BlockDim& blocks,
-                      Args... args);
+  static GpuCommandBuffer* Cast(CommandBuffer* command_buffer) {
+    return static_cast<GpuCommandBuffer*>(command_buffer);
+  }
+
+  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
+    return static_cast<const GpuCommandBuffer*>(command_buffer);
+  }
+
+ private:
+  absl::Status Trace(Stream* stream,
+                     absl::AnyInvocable<absl::Status()> function) override;
 
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -116,15 +115,6 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // thousands of command buffers alive at the same time.
   static int64_t AllocatedExecs();
   static int64_t AliveExecs();
-
-  static GpuCommandBuffer* Cast(CommandBuffer* command_buffer) {
-    return static_cast<GpuCommandBuffer*>(command_buffer->implementation());
-  }
-
-  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
-    return static_cast<const GpuCommandBuffer*>(
-        command_buffer->implementation());
-  }
 
  private:
   using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
@@ -156,13 +146,13 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   using SetConditionFn =
       std::function<absl::Status(absl::Span<const GpuGraphConditionalHandle>)>;
 
-  // An extension of `CommandBuffer::Builder` for building conditional command
-  // buffers tied to conditional handles.
+  // An extension of `Builder` for building conditional command buffers tied to
+  // conditional handles.
   using ConditionBuilder =
       std::function<absl::Status(CommandBuffer*, GpuGraphConditionalHandle)>;
 
   // Wraps a regular command buffer builder into condition builder.
-  static ConditionBuilder ToConditionBuilder(CommandBuffer::Builder builder);
+  static ConditionBuilder ToConditionBuilder(Builder builder);
 
   using ConditionType = typename GpuDriver::GpuGraphConditionalNodeParams::Type;
 
@@ -183,13 +173,14 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // For each conditional node in the Gpu graph we keep a record of conditional
   // command buffers attached to a node, so we can apply updates to them.
   struct ConditionalCommandBuffers {
-    ConditionalCommandBuffers(std::vector<GpuGraphConditionalHandle> handles,
-                              std::vector<CommandBuffer> command_buffers)
+    ConditionalCommandBuffers(
+        std::vector<GpuGraphConditionalHandle> handles,
+        std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers)
         : handles(std::move(handles)),
           command_buffers(std::move(command_buffers)) {}
 
     std::vector<GpuGraphConditionalHandle> handles;
-    std::vector<CommandBuffer> command_buffers;
+    std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers;
   };
 
   using AllocationResult = std::pair<GpuDevicePtr, uint64_t>;
@@ -200,14 +191,15 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   absl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
       ConditionType type, absl::Span<const GpuGraphConditionalHandle> handles);
 
-  absl::StatusOr<std::vector<CommandBuffer>> CreateConditionalCommandBuffers(
+  absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
+  CreateConditionalCommandBuffers(
       absl::Span<const GpuGraphConditionalHandle> handles,
       absl::Span<const GpuGraphHandle> graphs,
       absl::Span<const ConditionBuilder> builders);
 
   absl::Status UpdateConditionalCommandBuffers(
       absl::Span<const GpuGraphConditionalHandle> handles,
-      absl::Span<CommandBuffer> command_buffers,
+      absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
       absl::Span<const ConditionBuilder> builders);
 
   absl::Status CreateConditionalCommand(
@@ -248,8 +240,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   static_assert(std::is_pointer_v<GpuGraphNodeHandle>,
                 "GpuGraphNodeHandle must be a pointer");
 
-  CommandBuffer::Mode mode_;
-  CommandBuffer::State state_ = CommandBuffer::State::kCreate;
+  Mode mode_;
+  State state_ = State::kCreate;
 
   GpuExecutor* parent_;  // not owned, must outlive *this
 
@@ -303,15 +295,6 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // Loaded instance of a no-op kernel used as command buffer barrier.
   std::unique_ptr<NoOpKernel> noop_kernel_;
 };
-
-template <typename... Params, typename... Args>
-inline absl::Status GpuCommandBuffer::Launch(
-    const TypedKernel<Params...>& kernel, const ThreadDim& threads,
-    const BlockDim& blocks, Args... args) {
-  auto kernel_args = PackKernelArgs(kernel, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
-  return absl::OkStatus();
-}
 
 //===----------------------------------------------------------------------===//
 // Implementation details device kernels required by GpuCommandBuffer.

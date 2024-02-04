@@ -301,6 +301,10 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "algorithm stopping criterion is met.",
         "name");
 
+auto* tf_data_debug = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/debug",
+    "The number of times this event occured, for debugging.", "event");
+
 auto* tf_data_error = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/error",
     "The number of times an error of this type occurred with this status code.",
@@ -668,6 +672,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 
 void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataDebug(const string& event) {
+  tf_data_debug->GetCell(event)->IncrementBy(1);
 }
 
 void RecordTFDataError(const string& error_type, const string& status_code) {

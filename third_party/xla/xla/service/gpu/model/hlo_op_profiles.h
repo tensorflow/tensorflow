@@ -40,6 +40,9 @@ class HloOpProfiles {
       absl::flat_hash_map<std::string,  // compute capability.
                           HloOpProfile>;
 
+  // Returns singleton with profiler data.
+  static const HloOpProfiles& Singleton();
+
   // Returns profile name for the gived device.
   // For CUDA, the format is "sm_XX".
   static std::string GetProfileName(const se::DeviceDescription* device_info);

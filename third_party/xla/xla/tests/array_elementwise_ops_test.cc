@@ -2716,6 +2716,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, ErfF32s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kNaN = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder, {-kInf, -2.5f, 3.14f, -0.0f, 0.0f, 2.25f, kInf, kNaN});
+
+  Erf(a);
+
+  ErrorSpec error_spec{1e-5f, 1e-5f};
+  ComputeAndCompare(&builder, {}, error_spec);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   XlaBuilder builder(TestName());
   auto kInf = std::numeric_limits<float>::infinity();

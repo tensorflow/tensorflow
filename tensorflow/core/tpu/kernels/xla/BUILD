@@ -8,10 +8,52 @@ package(
 )
 
 cc_library(
+    name = "host_compute_ops",
+    srcs = [
+        "host_compute_ops.cc",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:sharding_util",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla/kernels:if_op",
+        "//tensorflow/compiler/tf2xla/kernels:index_ops",
+        "//tensorflow/compiler/tf2xla/kernels:while_op",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu/kernels:cross_replica_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:macros",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:side_effect_util",
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/stream_executor/tpu:c_api_conversions",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_ops",
     srcs = [
         "get_item_op.cc",
-        "host_compute_ops.cc",
         "index_ops.cc",
         "infeed_op.cc",
         "inplace_ops.cc",
@@ -19,6 +61,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":host_compute_ops",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:sharding_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",

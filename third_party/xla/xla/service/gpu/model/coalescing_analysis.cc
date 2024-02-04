@@ -15,27 +15,21 @@ limitations under the License.
 
 #include "xla/service/gpu/model/coalescing_analysis.h"
 
-#include <cstdint>
 #include <optional>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/span.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout.h"
-#include "xla/permutation_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
-
-using mlir::AffineMap;
 
 bool IsReadCoalescedHeuristic(const HloFusionAnalysis& fusion_analysis,
                               const HloInstruction* producer,
@@ -83,41 +77,33 @@ bool IsReadCoalescedHeuristic(const HloFusionAnalysis& fusion_analysis,
   return true;
 }
 
-namespace {
-
-// Converts a layout to a dimensions transposition necessary to get to that
-// layout from identity.
-std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
-  std::vector<int64_t> out(l.minor_to_major().begin(),
-                           l.minor_to_major().end());
-  absl::c_reverse(out);
-  return out;
-}
-
-}  // namespace
-
 bool IsReadCoalesced(const HloInstruction* operand, const HloInstruction* instr,
                      const absl::flat_hash_map<const HloInstruction*,
                                                IndexingMapSet>& indexing_maps,
                      mlir::MLIRContext* mlir_context) {
+  bool is_coalesced = true;
   const Shape& output_shape = instr->shape();
   const Shape& operand_shape = operand->shape();
-
-  AffineMap output_transpose = ComputeTransposeIndexingMap(
-      ToTransposeDimensions(output_shape.layout()), mlir_context);
-  AffineMap operand_transpose = ComputeTransposeIndexingMap(
-      InversePermutation(ToTransposeDimensions(operand_shape.layout())),
-      mlir_context);
-
-  bool is_coalesced = true;
+  auto output_physical_to_logical_map =
+      GetIndexingMapFromPhysicalLayoutToLogical(output_shape, mlir_context);
+  auto input_logical_to_physical_map =
+      GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);
   for (const auto& indexing_map : indexing_maps.at(operand)) {
-    if (!indexing_map.has_value()) return false;
+    if (indexing_map.IsUndefined()) return false;
 
-    AffineMap normalized_indexing_map = operand_transpose.compose(
-        indexing_map->affine_map.compose(output_transpose));
+    auto normalized_indexing_map = indexing_map;
+    if (!output_physical_to_logical_map.GetAffineMap().isIdentity()) {
+      normalized_indexing_map = ComposeIndexingMaps(
+          output_physical_to_logical_map, normalized_indexing_map);
+    }
+    if (!input_logical_to_physical_map.GetAffineMap().isIdentity()) {
+      normalized_indexing_map = ComposeIndexingMaps(
+          normalized_indexing_map, input_logical_to_physical_map);
+    }
     // First version is naive, we just check that the affine maps of input and
     // output have the same minor dimension.
-    is_coalesced &= normalized_indexing_map.isMinorIdentityWithBroadcasting();
+    is_coalesced &= normalized_indexing_map.GetAffineMap()
+                        .isMinorIdentityWithBroadcasting();
   }
   return is_coalesced;
 }

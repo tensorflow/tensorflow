@@ -55,7 +55,7 @@ ENTRY primitive_computation_mul.8 {
   EXPECT_FALSE(failed_executable.ok());
   EXPECT_THAT(
       failed_executable.status().ToString(),
-      ::testing::ContainsRegex("Kernel 'fusion.*' launch needs more blocks"));
+      ::testing::ContainsRegex("Kernel '.*fusion.*' launch needs more blocks"));
 }
 
 }  // namespace

@@ -43,6 +43,10 @@ class NcclRecvThunk : public NcclCollectiveThunk {
                 int64_t replica_count, int64_t partition_count,
                 const Buffer& buffer);
 
+  NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
+                const HloRecvInstruction* instr, int64_t replica_count,
+                int64_t partition_count, const Buffer& buffer);
+
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,

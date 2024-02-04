@@ -46,13 +46,11 @@ using dnnl::stream;
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnLayerNorm(
     void* result, void** args) {
-  // args[0]: ptr to nargs
+  // args[0]: ptr to nargs. We don't use nargs here.
   // args[1]: ptr to ExecutableRunOptions
   // args[2]: ptr to OneDnnLayerNormConfig
   // args[3...]: ptrs to operands
-  int arg_indx = 0;
-  const int64_t num_args = *(static_cast<int64_t*>(args[arg_indx++]));
-
+  int arg_indx = 1;
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(args[arg_indx++]);
   XLA_LIGHTWEIGHT_CHECK(run_options != nullptr);

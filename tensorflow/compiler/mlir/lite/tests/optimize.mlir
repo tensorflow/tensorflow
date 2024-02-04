@@ -377,6 +377,28 @@ func.func @DontFuseMulIntoFullyConnectedForLargeFilter(%arg0: tensor<128x256000x
 }
 
 
+// CHECK-LABEL: @skipFuseMulIntoFullyConnected
+func.func @skipFuseMulIntoFullyConnected(%arg0: tensor<4x2xf32>) -> (tensor<1x8xf32>, tensor<4x2xf32>) {
+  %cst0 = arith.constant dense<[[1.0, 2.0], [3.0, 4.0]]> : tensor<2x2xf32>
+  %cst1 = arith.constant dense<2.0> : tensor<2xf32>
+  %cst2 = arith.constant dense<[1.0, 2.0]> : tensor<2xf32>
+  %cst3 = arith.constant dense<[1, 8]> : tensor<2xi32>
+
+  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %1 = "tfl.reshape"(%0, %cst3) : (tensor<4x2xf32>, tensor<2xi32>) -> tensor<1x8xf32>
+  %2 = "tfl.mul"(%0, %cst2) {fused_activation_function = "RELU6"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+
+  func.return %1, %2 : tensor<1x8xf32>, tensor<4x2xf32>
+  // CHECK:  %cst = arith.constant dense<{{\[}}[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>
+  // CHECK:  %cst_0 = arith.constant dense<2.000000e+00> : tensor<2xf32>
+  // CHECK:  %cst_1 = arith.constant dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>
+  // CHECK:  %cst_2 = arith.constant dense<[1, 8]> : tensor<2xi32>
+  // CHECK:  %0 = "tfl.fully_connected"(%arg0, %cst, %cst_0) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  // CHECK:  %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4x2xf32>, tensor<2xi32>) -> tensor<1x8xf32>
+  // CHECK:  %2 = tfl.mul(%0, %cst_1) {fused_activation_function = "RELU6"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  // CHECK:  return %1, %2 : tensor<1x8xf32>, tensor<4x2xf32>
+}
+
 // CHECK-LABEL: @fuseAddIntoFollowingFullyConnectedWithQDQs
 func.func @fuseAddIntoFollowingFullyConnectedWithQDQs(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
   %cst2 = arith.constant dense<1.5> : tensor<f32>
@@ -3896,4 +3918,123 @@ func.func @NoReorderNCHWTransposeAddNotBias(%arg0: tensor<1x40x40x1xf32>, %filte
   // CHECK: %[[transpose:.*]] = "tfl.transpose"
   // CHECK: %[[add:.*]] = tfl.add %[[transpose]],
   // CHECK: return %[[add]]
+}
+
+// CHECK-LABEL: @ConvertStridedSliceToSlice
+func.func @ConvertStridedSliceToSlice(%arg0: tensor<2x3872x1x128xf32>) -> tensor<1x3872x1x128xf32> {
+  %44 = arith.constant dense<0> : tensor<4xi32>
+  %45 = arith.constant dense<[1, 3872, 1, 128]> : tensor<4xi32>
+  %46 = arith.constant dense<1> : tensor<4xi32>
+  %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<2x3872x1x128xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x3872x1x128xf32>
+  func.return %47 : tensor<1x3872x1x128xf32>
+
+  // CHECK: %[[slice:.*]] = "tfl.slice"
+  // CHECK: return %[[slice]]
+}
+
+
+// CHECK-LABEL: @broadcast_to_f32_low_dim
+func.func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
+  // CHECK:  %cst = arith.constant dense<1.000000e+00> : tensor<3x3xf32>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+  // CHECK:  return %0 : tensor<3x3xf32>
+}
+
+// CHECK-LABEL: @broadcast_to_i32_low_dim
+func.func @broadcast_to_i32_low_dim(%arg0: tensor<3xi32>, %arg1: tensor<2xi32>) -> tensor<3x3xi32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
+  return %0 : tensor<3x3xi32>
+  // CHECK:  %cst = arith.constant dense<1> : tensor<3x3xi32>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
+  // CHECK:  return %0 : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @broadcast_to_low_dim_with_unknown_shape
+func.func @broadcast_to_low_dim_with_unknown_shape(%arg0: tensor<3xf32>, %arg1: tensor<*xi32>) -> tensor<3x3xf32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xf32>, tensor<*xi32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
+  // CHECK:  %cst = arith.constant dense<1.000000e+00> : tensor<3x3xf32>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+  // CHECK:  return %0 : tensor<3x3xf32>
+}
+
+// CHECK-LABEL: @broadcast_to_i16_low_dim
+func.func @broadcast_to_i16_low_dim(%arg0: tensor<3xi16>, %arg1: tensor<2xi32>) -> tensor<3x3xi16> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xi16>, tensor<2xi32>) -> tensor<3x3xi16>
+  return %0 : tensor<3x3xi16>
+  // CHECK:  %cst = arith.constant dense<1> : tensor<3x3xi16>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xi16>, tensor<3x3xi16>) -> tensor<3x3xi16>
+  // CHECK:  return %0 : tensor<3x3xi16>
+}
+
+// CHECK-LABEL: @broadcast_to_i32_low_dim_with_unknown_output
+func.func @broadcast_to_i32_low_dim_with_unknown_output(%arg0: tensor<3xi32>, %arg1: tensor<2xi32>) -> tensor<*xi32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xi32>, tensor<2xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+  // CHECK:  %cst = arith.constant dense<1> : tensor<i32>
+  // CHECK:  %0 = "tfl.fill"(%arg1, %cst) : (tensor<2xi32>, tensor<i32>) -> tensor<*xi32>
+  // CHECK:  %1 = tfl.mul(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<*xi32>) -> tensor<*xi32>
+  // CHECK:  return %1 : tensor<*xi32>
+}
+
+// CHECK-LABEL: @broadcast_to_ui32
+func.func @broadcast_to_ui32(%arg0: tensor<ui32>, %arg1: tensor<1xi64>) -> tensor<10xui32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<ui32>, tensor<1xi64>) -> tensor<10xui32>
+  return %0 : tensor<10xui32>
+  // CHECK:  %cst = arith.constant dense<1> : tensor<10xui32>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<ui32>, tensor<10xui32>) -> tensor<10xui32>
+  // CHECK:  return %0 : tensor<10xui32>
+}
+
+// CHECK-LABEL: @broadcast_to_f32
+func.func @broadcast_to_f32(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
+  // CHECK:  %cst = arith.constant dense<1.000000e+00> : tensor<3x3xf32>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+  // CHECK:  return %0 : tensor<3x3xf32>
+}
+
+// CHECK-LABEL: @broadcast_to_i32
+func.func @broadcast_to_i32(%arg0: tensor<3xi32>, %arg1: tensor<2xi32>) -> tensor<3x3xi32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
+  return %0 : tensor<3x3xi32>
+  // CHECK:  %cst = arith.constant dense<1> : tensor<3x3xi32>
+  // CHECK:  %0 = tfl.mul(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
+  // CHECK:  return %0 : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: @broadcast_to_i32_with_dynamic_shape_and_output
+func.func @broadcast_to_i32_with_dynamic_shape_and_output(%arg0: tensor<3xi32>, %arg1: tensor<2xi32>) -> tensor<3x?xi32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x?xi32>
+  return %0 : tensor<3x?xi32>
+  // CHECK:  %cst = arith.constant dense<1> : tensor<i32>
+  // CHECK:  %0 = "tfl.fill"(%arg1, %cst) : (tensor<2xi32>, tensor<i32>) -> tensor<3x?xi32>
+  // CHECK:  %1 = tfl.mul(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<3x?xi32>) -> tensor<3x?xi32>
+  // CHECK:  return %1 : tensor<3x?xi32>
+}
+
+// CHECK-LABEL: @broadcast_to_ui32_with_dynamic_output
+func.func @broadcast_to_ui32_with_dynamic_output(%arg0: tensor<1xi32>) -> tensor<?xui32> {
+  %cst = arith.constant dense<0> : tensor<1xui32>
+  %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
+  return %0 : tensor<?xui32>
+
+  // CHECK:  %cst = arith.constant dense<0> : tensor<1xui32>
+  // CHECK:  %0 = "tfl.broadcast_to"(%cst, %arg0) : (tensor<1xui32>, tensor<1xi32>) -> tensor<?xui32>
+  // CHECK:  return %0 : tensor<?xui32>
+}
+
+
+// CHECK-LABEL: @ConvertStridedSliceToSliceNeg
+func.func @ConvertStridedSliceToSliceNeg(%arg0: tensor<5x5x5x5xf32>) -> tensor<*xf32> {
+  %44 = arith.constant dense<[5, 5, 5, 5]> : tensor<4xi32>
+  %45 = arith.constant dense<[1, 1, 1, 1]> : tensor<4xi32>
+  %46 = arith.constant dense<1> : tensor<4xi32>
+  %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<5x5x5x5xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+  func.return %47 : tensor<*xf32>
+
+  // CHECK-NOT: %[[slice:.*]] = "tfl.slice"
 }

@@ -589,7 +589,7 @@ Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
                                          erfcApprox);
 }
 
-struct ConvertErfOp : public OpConversionPattern<ErfOp> {
+struct BasisConvertErfOp : public OpConversionPattern<ErfOp> {
   using OpConversionPattern<ErfOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       ErfOp op, OpAdaptor adaptor,
@@ -1553,10 +1553,7 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
 //                              (tensor<16x16xf32>) -> tensor<16x8xf32>
 // %6 = "mhlo.slice"(%4) ...
 //
-// TODO(b/284078162): Decide what to do with this pattern given that we now
-// have mhlo::TopKOp. No action needed for now given that mhlo::TopKOp is
-// currently categorized as `hasPrivateFeaturesNotInStablehlo`.
-struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
+struct BasisConvertTopKOp : public OpConversionPattern<TopKOp> {
   using OpConversionPattern<TopKOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       TopKOp op, OpAdaptor /*adaptor*/,
@@ -1941,6 +1938,14 @@ void populateChloBroadcastingPatterns(MLIRContext *context,
           context);
 }
 
+void populateChloLegalizeToHloBasisOpsPatterns(MLIRContext *context,
+                                               RewritePatternSet *patterns) {
+  // Patterns that decompose to a basis set of HLOs
+  // These are guaranteed to be convertible to StableHLO, but discard some
+  // higher level information that is useful to XLA compilation.
+  patterns->add<BasisConvertErfOp, BasisConvertTopKOp>(context);
+}
+
 void populateDecomposeChloPatterns(MLIRContext *context,
                                    RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
@@ -1950,14 +1955,13 @@ void populateDecomposeChloPatterns(MLIRContext *context,
   patterns->add<ConvertBesselI1eOp,
                    ConvertCoshOp,
                    ConvertDigammaOp,
-                   ConvertErfOp,
                    ConvertErfcOp,
                    ConvertErfInvOp,
                    ConvertLgammaOp,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
-                   ConvertTopKOp,
+                   BasisConvertTopKOp,  // TODO: Remove once TopKOp ready
                    ConvertZetaOp>(context);
   // clang-format on
 }

@@ -85,6 +85,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                         llvm::Value* value) override;
 
+  absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
+                                       llvm::Value* value) override;
+
   absl::StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                               llvm::Value* value) override;
 

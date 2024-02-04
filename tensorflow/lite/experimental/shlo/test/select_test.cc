@@ -17,8 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
@@ -46,21 +46,9 @@ void test(std::initializer_list<DimensionSize>&& shape,
       expected_values.size());
   Tensor result(TensorType(Shape(shape), element_type), result_values.data());
 
-  auto res = Select(pred, on_true, on_false, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "pred=" << pred;
-    LOG(INFO) << "on_true=" << on_true;
-    LOG(INFO) << "on_false=" << on_false;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Select(pred, on_true, on_false, result));
+  EXPECT_EQ(result, expected) << "pred: " << pred << "\non_true: " << on_true
+                              << "\nnon_false: " << on_false;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -103,21 +91,9 @@ void test(
                           QuantizedTensorElementType(element_type)),
       result_quant_values.data());
 
-  auto res = Select(pred, on_true, on_false, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "pred=" << pred;
-    LOG(INFO) << "on_true=" << on_true;
-    LOG(INFO) << "on_false=" << on_false;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Select(pred, on_true, on_false, result));
+  EXPECT_EQ(result, expected) << "pred: " << pred << "\non_true: " << on_true
+                              << "\nnon_false: " << on_false;
 }
 
 TEST(Select, Unquantized) {

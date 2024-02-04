@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/gemm.h"
 #include "xla/service/gpu/runtime/kernel_launch.h"
 #include "xla/service/gpu/runtime/support.h"
+#include "xla/service/gpu/runtime/tracing.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"

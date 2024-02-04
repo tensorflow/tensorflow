@@ -81,6 +81,10 @@ struct MhloToScalarOp<mhlo::CosineOp> {
   using COp = ::mlir::complex::CosOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::ErfOp> {
+  using FOp = ::mlir::math::ErfOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::ExpOp> {
   using FOp = ::mlir::math::ExpOp;
   using COp = ::mlir::complex::ExpOp;

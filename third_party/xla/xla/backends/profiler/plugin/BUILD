@@ -34,6 +34,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_tsl//tsl/profiler/utils:xplane_schema",
     ],
     alwayslink = True,
 )

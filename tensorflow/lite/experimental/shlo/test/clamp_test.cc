@@ -17,10 +17,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
-#include "tensorflow/lite/experimental/shlo/src/debug.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
 #include "tensorflow/lite/experimental/shlo/test/util.h"
 
@@ -45,21 +45,9 @@ void test(std::initializer_list<DimensionSize>&& shape,
       expected_values.size());
   Tensor result(TensorType(Shape(shape), element_type), result_values.data());
 
-  auto res = Clamp(min, operand, max, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "min=" << min;
-    LOG(INFO) << "max=" << max;
-    LOG(INFO) << "operand=" << operand;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Clamp(min, operand, max, result));
+  EXPECT_EQ(result, expected)
+      << "min: " << min << "\nmax: " << max << "\noperand: " << operand;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -107,21 +95,9 @@ void test(
                           QuantizedTensorElementType(element_type)),
       result_quant_values.data());
 
-  auto res = Clamp(min, operand, max, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "min=" << min;
-    LOG(INFO) << "max=" << max;
-    LOG(INFO) << "operand=" << operand;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Clamp(min, operand, max, result));
+  EXPECT_EQ(result, expected)
+      << "min: " << min << "\nmax: " << max << "\noperand: " << operand;
 }
 
 TEST(Clamp, Unquantized) {

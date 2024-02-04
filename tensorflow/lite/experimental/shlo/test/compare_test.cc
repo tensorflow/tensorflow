@@ -17,8 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
@@ -44,22 +44,11 @@ void test(
   Tensor result(TensorType(Shape(shape), ElementType::kI1),
                 result_values.data());
 
-  auto res = Compare(lhs, rhs, comparison_direction, compare_type, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "comparison_direction: " << comparison_direction;
-    LOG(INFO) << "compare_type: " << compare_type;
-    LOG(INFO) << "lhs: " << lhs;
-    LOG(INFO) << "rhs: " << rhs;
-    LOG(INFO) << "expected: " << expected;
-    LOG(INFO) << "result: " << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Compare(lhs, rhs, comparison_direction, compare_type, result));
+  EXPECT_EQ(result, expected)
+      << "comparison_direction: " << comparison_direction
+      << "\ncompare_type: " << compare_type << "\nlhs: " << lhs
+      << "\nrhs: " << rhs;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -94,22 +83,11 @@ void test(
   Tensor result(TensorType(Shape(shape), ElementType::kI1),
                 result_values.data());
 
-  auto res = Compare(lhs, rhs, comparison_direction, compare_type, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "comparison_direction: " << comparison_direction;
-    LOG(INFO) << "compare_type: " << compare_type;
-    LOG(INFO) << "lhs: " << lhs;
-    LOG(INFO) << "rhs: " << rhs;
-    LOG(INFO) << "expected: " << expected;
-    LOG(INFO) << "result: " << result;
-  }
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(Compare(lhs, rhs, comparison_direction, compare_type, result));
+  EXPECT_EQ(result, expected)
+      << "comparison_direction: " << comparison_direction
+      << "\ncompare_type: " << compare_type << "\nlhs: " << lhs
+      << "\nrhs: " << rhs;
 }
 
 TEST(Compare, Unquantized) {

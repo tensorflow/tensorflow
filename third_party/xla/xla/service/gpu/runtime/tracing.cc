@@ -15,12 +15,20 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/tracing.h"
 
-#include <memory>
+#include <string>
+#include <string_view>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/runtime/custom_call_registry.h"
+#include "xla/runtime/diagnostics.h"
 #include "xla/runtime/executable.h"
+#include "xla/runtime/logical_result.h"
 #include "xla/runtime/tracing.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "tsl/profiler/lib/scoped_annotation_stack.h"
 
@@ -46,17 +54,18 @@ void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
 
 namespace {
 thread_local const ModuleAnnotations* current_annotations{};
+thread_local std::string_view current_tracing_scope = {};
 }
 
 static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
-  SetCurrentTracingScope(annotation.hlo_op);
+  current_tracing_scope = annotation.hlo_op;
   if (current_annotations) {
     // We know which HloModule we belong to, and may have pre-prepared
     // annotation structs ready to use
-    const auto iter = current_annotations->kernels.find(annotation.hlo_op);
-    if (iter != current_annotations->kernels.end()) {
+    const auto it = current_annotations->kernels.find(annotation.hlo_op);
+    if (it != current_annotations->kernels.end()) {
       // Have a pre-prepared annotation, use it
-      return ScopedAnnotationStack::ActivityStart([&] { return iter->second; });
+      return ScopedAnnotationStack::ActivityStart([&] { return it->second; });
     }
   }
   return ScopedAnnotationStack::ActivityStart([&] {
@@ -66,7 +75,7 @@ static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
 }
 
 static absl::Status ActivityEnd(int64_t activity_id) {
-  ResetCurrentTracingScope();
+  current_tracing_scope = {};
   ScopedAnnotationStack::ActivityEnd(activity_id);
   return absl::OkStatus();
 }
@@ -88,6 +97,52 @@ void RegisterTracingCustomCalls(runtime::DirectCustomCallRegistry& registry) {
 const ModuleAnnotations* SetCurrentModuleAnnotations(
     const ModuleAnnotations* annotations) {
   return std::exchange(current_annotations, annotations);
+}
+
+static void AppendTracingScopeAndModuleAnnotations(
+    std::string* diagnostic, bool append_annotation_stack) {
+  // Append the current trace which should help identifying original HLO
+  // operation that fails.
+  if (!current_tracing_scope.empty()) {
+    absl::StrAppend(diagnostic,
+                    "; current tracing scope: ", current_tracing_scope);
+  }
+
+  if (!append_annotation_stack || current_annotations == nullptr) {
+    return;
+  }
+
+  // Append current profiling annotation which will have the XLA
+  // executable name and program id.
+  absl::StrAppend(diagnostic, "; current profiling annotation: ",
+                  current_annotations->top_level.Title());
+
+  if (current_tracing_scope.empty()) {
+    return;
+  }
+  const auto it = current_annotations->kernels.find(current_tracing_scope);
+  if (it == current_annotations->kernels.end()) {
+    return;
+  }
+
+  absl::StrAppend(diagnostic, "::", it->second.Title());
+}
+
+void AppendDiagnosticToString(runtime::DiagnosticEngine& diagnostic_engine,
+                              std::string* diagnostic,
+                              bool append_annotation_stack) {
+  diagnostic_engine.AddHandler([append_annotation_stack,
+                                diagnostic](runtime::Diagnostic& d) {
+    if (!diagnostic->empty()) absl::StrAppend(diagnostic, "; ");
+    absl::StrAppend(diagnostic, d.status().message());
+    AppendTracingScopeAndModuleAnnotations(diagnostic, append_annotation_stack);
+
+    LOG(WARNING) << "Intercepted XLA runtime error:\n"
+                 << d.status().ToString(
+                        absl::StatusToStringMode::kWithEverything);
+
+    return runtime::success();
+  });
 }
 
 }  // namespace gpu

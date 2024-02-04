@@ -238,7 +238,7 @@ std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
 // Cast op may be added right after the input.
 //
 // TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
-// Case, While) ops and Caller return values.
+// Case) ops and Caller return values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
 std::optional<llvm::StringRef> GetXlaShardingFromArg(
@@ -258,6 +258,15 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
         if (auto logical_device = AssignLogicalDeviceFromTPUReplicatedCoreAttr(
                 owner, logical_device_vec)) {
           return logical_device;
+        }
+
+        if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(owner)) {
+          const int operand_number = use.getOperandNumber();
+          next_values_to_visit.push_back(
+              while_op.getCond().front().getArgument(operand_number));
+          next_values_to_visit.push_back(
+              while_op.getBody().front().getArgument(operand_number));
+          continue;
         }
 
         if (llvm::isa<TF::IdentityOp, TF::CastOp, TF::ReadVariableOp>(owner)) {

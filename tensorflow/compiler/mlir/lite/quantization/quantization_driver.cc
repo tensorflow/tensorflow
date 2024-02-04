@@ -109,7 +109,8 @@ class QuantizationDriver {
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
                               OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-                              bool infer_tensor_range, bool legacy_float_scale)
+                              bool infer_tensor_range, bool legacy_float_scale,
+                              bool is_qdq_conversion)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
@@ -118,7 +119,8 @@ class QuantizationDriver {
         op_quant_spec_getter_(op_quant_spec_getter),
         op_quant_scale_spec_getter_(op_quant_scale_spec_getter),
         infer_tensor_range_(infer_tensor_range),
-        legacy_float_scale_(legacy_float_scale) {}
+        legacy_float_scale_(legacy_float_scale),
+        is_qdq_conversion_(is_qdq_conversion) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -429,6 +431,10 @@ class QuantizationDriver {
   // Calculate scales in float instead of double, so that the scales and
   // quantized values are exactly the same with the TOCO quantizer.
   bool legacy_float_scale_;
+
+  // If true, the model is a floating point graph with QDQ ops to be eliminated
+  // and fused into quantized kernels.
+  bool is_qdq_conversion_;
 };
 }  // namespace
 
@@ -956,7 +962,10 @@ bool QuantizationDriver::PropagateParams() {
         }
     }
 
-    if (scale_spec->has_fixed_output_range && infer_tensor_range_) {
+    // If the model already contains immutable QDQs, require upstream to
+    // explicitly fix output range instead.
+    if (scale_spec->has_fixed_output_range && infer_tensor_range_ &&
+        !is_qdq_conversion_) {
       // Infer ranges from the activation ops. This is usually required for
       // the post-training quantization workflow.
       // TODO(fengliuai): different result can have different fixed range.
@@ -1182,20 +1191,22 @@ void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         int bit_width, bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
-                                        bool legacy_float_scale) {
+                                        bool legacy_float_scale,
+                                        bool is_qdq_conversion) {
   ApplyQuantizationParamsPropagation(
       func, is_signed, bit_width, disable_per_channel, op_quant_spec_getter,
-      GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale);
+      GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale,
+      is_qdq_conversion);
 }
 
 void ApplyQuantizationParamsPropagation(
     mlir::func::FuncOp func, bool is_signed, int bit_width,
     bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale) {
+    bool legacy_float_scale, bool is_qdq_conversion) {
   QuantizationDriver(func, is_signed, bit_width, disable_per_channel,
                      op_quant_spec_getter, op_quant_scale_spec_getter,
-                     infer_tensor_ranges, legacy_float_scale)
+                     infer_tensor_ranges, legacy_float_scale, is_qdq_conversion)
       .Run();
 }
 

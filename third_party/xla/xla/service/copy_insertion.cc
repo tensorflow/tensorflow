@@ -833,15 +833,14 @@ class ComputeRelativeLocation {
     // During live range analysis of results of `branch_0` this function will be
     // called when entry1 and entry2 are different outputs on `fusion` in
     // `branch_1`. `fusion` defines two buffers, but `value_definition` in
-    // LiveRangeRegions::InstructionInfo does not track output index. The
+    // LiveRangeRegions::InstructionInfo does not track the output index. The
     // analysis will say that they are not interfering and assign the same
-    // buffer to both. This will lead to incorrect numerical results during
-    // runtime.
+    // buffer to both.
     //
     // This check makes sure that outputs of multi-output instructions are
     // always interfering and can not be combined. It can be a false positive
     // when entry1 and entry2 correspond to the same output, but we prefer that
-    // over numerical issues.
+    // over correctness issues.
     //
     // A proper solution would be to track output index in
     // LiveRangeRegions::InstructionInfo.

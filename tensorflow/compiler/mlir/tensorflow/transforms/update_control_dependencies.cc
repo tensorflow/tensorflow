@@ -116,7 +116,8 @@ LogicalResult FillOpToParallelIdsMap(
     if (id_pairs.empty()) continue;
 
     TF::ParallelIdsMap& ids_map = op_to_parallel_ids_map[island];
-    for (auto [group_id, branch_id] : id_pairs) ids_map[group_id] = branch_id;
+    for (const auto& [group_id, branch_id] : id_pairs)
+      ids_map[group_id] = branch_id;
   }
   return success();
 }

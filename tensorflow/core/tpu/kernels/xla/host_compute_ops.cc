@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/sharding_builder.h"
@@ -180,7 +181,7 @@ class HostComputeOp : public XlaOpKernel {
     // Send values to the host.
     std::vector<xla::XlaOp> send_to_host_tokens;
     for (int i = 0; i < input_handles.size(); ++i) {
-      const string channel_name = absl::StrCat(send_key_, "_dtoh_", i);
+      const string channel_name = GetDeviceToHostChannelName(send_key_, i);
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(input_dtypes_[i],
                                                 input_shapes[i], &xla_shape));
@@ -242,7 +243,7 @@ class HostComputeOp : public XlaOpKernel {
     // Copy results to the device.
     std::vector<xla::XlaOp> recv_from_host_tokens;
     for (int i = 0; i < output_shapes->size(); ++i) {
-      const string channel_name = absl::StrCat(recv_key_, "_htod_", i);
+      const string channel_name = GetHostToDeviceChannelName(recv_key_, i);
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
       (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =

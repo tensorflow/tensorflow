@@ -17,8 +17,8 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
@@ -40,19 +40,8 @@ void test(
   Tensor result(TensorType(Shape(shape), ElementType::kI1),
                 result_values.data());
 
-  auto res = IsFinite(input, result);
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "input=" << input;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(IsFinite(input, result));
+  EXPECT_EQ(result, expected) << "input: " << input;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -70,19 +59,8 @@ void test(
   Tensor result(TensorType(Shape(shape), ElementType::kI1),
                 result_values.data());
 
-  auto res = IsFinite(input, result);
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != expected) {
-    LOG(INFO) << "input=" << input;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(result, expected);
+  ASSERT_OK(IsFinite(input, result));
+  EXPECT_EQ(result, expected) << "input: " << input;
 }
 
 TEST(IsFinite, Unquantized) {

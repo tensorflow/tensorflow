@@ -151,6 +151,10 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
   se::StreamExecutor* stream_exec = stream->parent();
   std::vector<GenericConvRunner> result;
 
+  auto dnn = stream_exec->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InvalidArgumentError("No DNN in stream executor.");
+  }
   switch (kind) {
     default:
       return Internal("Unknown ConvolutionKind %d", kind);
@@ -160,7 +164,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
             "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
-      TF_RETURN_IF_ERROR(stream_exec->GetFusedConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetFusedConvolveRunners(
           use_cudnn_frontend,
           // This refers to the kind of convolution op inside the fusion, not
           // the whole fused graph.
@@ -186,7 +190,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(stream_exec->GetGraphConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetGraphConvolveRunners(
           kind, input_type, output_type, stream, config.input_descriptor,
           config.filter_descriptor, config.output_descriptor, config.conv_desc,
           use_fallback, numeric_options, &runners, config.serialized_graph));
@@ -206,7 +210,7 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
       // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
       // allocator are unused; so, they're all provided as nullptr.
-      TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
+      TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
           use_cudnn_frontend, kind, input_type, output_type, stream,
           config.input_descriptor,
           /* input_data = */ DeviceMemoryBase(nullptr),
@@ -250,7 +254,11 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
       GetGpuConvParams(config, operand_buffers, result_buffers));
 
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
-  TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
+  auto dnn = stream_exec->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InvalidArgumentError("No DNN in stream executor.");
+  }
+  TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
       /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
       params.config->input_descriptor, params.input_buf,
       params.config->filter_descriptor, params.filter_buf,

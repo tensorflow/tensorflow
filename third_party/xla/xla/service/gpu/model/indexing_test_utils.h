@@ -29,73 +29,39 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-MATCHER_P2(MatchRange, lower_bound, upper_bound,
-           absl::StrCat(negation ? "equals " : "doesn't equal ", "range [",
-                        lower_bound, ", ", upper_bound, "]")) {
-  return ExplainMatchResult(::testing::FieldsAre(lower_bound, upper_bound), arg,
-                            result_listener);
-}
-
-MATCHER_P2(MatchDomain, dim_ranges, symbol_ranges, "") {
-  return ExplainMatchResult(0, arg.GetExprCount(), result_listener) &&
-         ExplainMatchResult(dim_ranges, arg.GetDimensionRanges(),
-                            result_listener) &&
-         ExplainMatchResult(symbol_ranges, arg.GetSymbolRanges(),
-                            result_listener);
-}
-
-MATCHER(IsEmptyDomain, "") {
-  return ExplainMatchResult(true, arg.IsKnownEmpty(), result_listener);
-}
-
-MATCHER_P3(MatchDomainWithGenericConstraints, dim_ranges, symbol_ranges,
-           expr_ranges, "") {
-  return ExplainMatchResult(dim_ranges, arg.GetDimensionRanges(),
-                            result_listener) &&
-         ExplainMatchResult(symbol_ranges, arg.GetSymbolRanges(),
-                            result_listener) &&
-         ExplainMatchResult(expr_ranges, arg.GetExprRanges(), result_listener);
-}
-
-MATCHER_P2(MatchExprRange, affine_map_string, range, "") {
-  return ExplainMatchResult(::testing::HasSubstr(affine_map_string),
-                            AffineMapPrinter().ToString(arg.first),
-                            result_listener) &&
-         ExplainMatchResult(range, arg.second, result_listener);
-}
-
-MATCHER_P2(MatchIndexingMap, affine_map_string, domain, "") {
-  if (!arg.has_value()) {
-    return false;
-  }
-  return ExplainMatchResult(::testing::HasSubstr(affine_map_string),
-                            AffineMapPrinter().ToString(arg->affine_map),
-                            result_listener) &&
-         ExplainMatchResult(domain, arg->domain, result_listener);
-}
-
 // Matches two strings ignoring whitespaces.
 bool ApproximateMatch(std::string_view lhs, std::string_view rhs);
 
-MATCHER_P(MatchIndexingString, indexing_string, "") {
-  if (!arg.has_value()) {
+MATCHER(UndefinedMap, "") { return arg.IsUndefined(); }
+
+MATCHER_P(MatchIndexingMap, indexing_string, "") {
+  if (arg.IsUndefined()) {
     return false;
   }
-  return ExplainMatchResult(true,
-                            ApproximateMatch(indexing_string, arg->ToString()),
+  return ExplainMatchResult(
+      true, ApproximateMatch(indexing_string, arg.ToString()), result_listener);
+}
+
+MATCHER_P(MatchIndexingString, indexing_string, "") {
+  return ExplainMatchResult(true, ApproximateMatch(indexing_string, arg),
                             result_listener);
 }
 
 HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
     HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int output_id = 0);
+    absl::string_view hlo_string, int output_id = 0,
+    bool use_physical_layout = false);
 
 HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
     HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int input_id = 0);
+    absl::string_view hlo_string, int input_id = 0,
+    bool use_physical_layout = false);
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
                                mlir::MLIRContext* context);
+
+mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
+                                 mlir::MLIRContext* context);
 
 }  // namespace gpu
 }  // namespace xla

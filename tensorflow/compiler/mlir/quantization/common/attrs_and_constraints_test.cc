@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 
+#include <cstdint>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -33,6 +37,7 @@ namespace {
 using ::mlir::quant::QuantizationTestBase;
 using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::DotGeneralOp;
+using ::testing::ElementsAreArray;
 
 class AttrsAndConstraintsTest : public QuantizationTestBase {};
 
@@ -99,6 +104,42 @@ TEST_F(AttrsAndConstraintsTest, TryCastFailsOnNullPtr) {
   EXPECT_EQ(op_nullptr, nullptr);
   EXPECT_TRUE(failed(TryCast<DotGeneralOp>(op_nullptr, /*name=*/"op_nullptr")));
   EXPECT_TRUE(failed(TryCast<DotGeneralOp>(nullptr, /*name=*/"nullptr")));
+}
+
+TEST_F(AttrsAndConstraintsTest, I64ValueInI32RangeAreCastedCorrectly) {
+  EXPECT_TRUE(succeeded(CastI64ToI32(llvm::minIntN(32))));
+  EXPECT_TRUE(succeeded(CastI64ToI32(llvm::maxIntN(32))));
+}
+
+TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ValueOutOfI32Range) {
+  EXPECT_TRUE(failed(CastI64ToI32(llvm::minIntN(32) - 10)));
+  EXPECT_TRUE(failed(CastI64ToI32(llvm::maxIntN(32) + 10)));
+}
+
+TEST_F(AttrsAndConstraintsTest, I64ArrayInI32RangeAreCastedCorrectly) {
+  const SmallVector<int64_t> array_i64 = {llvm::minIntN(32), -2, -1, 0, 1, 2,
+                                          llvm::maxIntN(32)};
+
+  FailureOr<SmallVector<int32_t>> array_i32 = CastI64ArrayToI32(array_i64);
+  EXPECT_TRUE(succeeded(array_i32));
+  EXPECT_THAT(
+      *array_i32,
+      ElementsAreArray({static_cast<int32_t>(llvm::minIntN(32)), -2, -1, 0, 1,
+                        2, static_cast<int32_t>(llvm::maxIntN(32))}));
+}
+
+TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayUnderI32Range) {
+  const int64_t under_min_i32 = -2147483658;
+  ArrayRef<int64_t> array_i64{under_min_i32};
+  EXPECT_EQ(under_min_i32, llvm::minIntN(32) - 10);
+  EXPECT_TRUE(failed(CastI64ArrayToI32(array_i64)));
+}
+
+TEST_F(AttrsAndConstraintsTest, CastingFailsForI64ArrayAboveI32Range) {
+  const int64_t below_max_i32 = 2147483657;
+  ArrayRef<int64_t> array_i64{below_max_i32};
+  EXPECT_EQ(below_max_i32, llvm::maxIntN(32) + 10);
+  EXPECT_TRUE(failed(CastI64ArrayToI32(array_i64)));
 }
 
 }  // namespace

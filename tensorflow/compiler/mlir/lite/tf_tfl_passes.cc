@@ -19,21 +19,22 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/experimental/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -47,7 +48,7 @@ CreateTFExecutorToControlDialectConversion();
 namespace tensorflow {
 namespace {
 // Data layout supported by TFLite.
-const char kTFLiteDataLayout[] = "NHWC";
+constexpr mlir::StringRef kTFLiteDataLayout = "NHWC";
 }  // namespace
 
 void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
@@ -136,11 +137,24 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
       mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
 }
 
-void AddConvertHloToTfPass(std::string entry_function_name,
-                           const mlir::TFL::PassConfig& pass_config,
-                           mlir::OpPassManager* pass_manager) {
-  pass_manager->addPass(
+void AddPreQuantizationStableHloToTfPasses(
+    const mlir::StringRef entry_function_name,
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager& pass_manager) {
+  pass_manager.addPass(
       mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+
+  // Add CHLO to StableHLO Decompositions:
+  // This is needed since we are relying on XlaCallModule uses MHLO
+  // specific features like mhlo::ErfOp which aren't supported
+  // in StableHLO, but we have CHLO->StableHLO decompositions to legalize.
+  pass_manager.addPass(
+      mlir::stablehlo::experimental::createChloRecomposeOpsPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloBasisOpsPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
+  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 
   // The following two passes find specific uniform quantization patterns in
   // StableHLO and converts them to TFLite ops that accept or produce uniform
@@ -153,65 +167,92 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   // There are future plans to make the framework to directly produce StableHLO
   // uniform quantized ops and deprecate `ComposeUniformQuantizedTypePass`. If
   // no quantization patterns are found, it is a no-op.
-  pass_manager->addPass(mlir::odml::CreateComposeUniformQuantizedTypePass());
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::odml::CreateUniformQuantizedStablehloToTflPass());
+  pass_manager.addPass(mlir::odml::CreateComposeUniformQuantizedTypePass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateUniformQuantizedStableHloToTflPass());
 
-  pass_manager->addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.
   // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
   // the random function body before being inlined.
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateLegalizeJaxRandomPass());
 
   // Canonicalize, CSE etc.
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
-  pass_manager->addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   // DCE for private symbols.
-  pass_manager->addPass(mlir::createSymbolDCEPass());
+  pass_manager.addPass(mlir::createSymbolDCEPass());
 
-  pass_manager->addPass(mlir::TF::CreateStripNoinlineAttributePass());
+  pass_manager.addPass(mlir::TF::CreateStripNoinlineAttributePass());
   // Add inline pass.
-  pass_manager->addPass(mlir::createInlinerPass());
+  pass_manager.addPass(mlir::createInlinerPass());
 
   // Expands mhlo.tuple ops.
-  pass_manager->addPass(
-      mlir::mhlo::createExpandHloTuplesPass(entry_function_name));
+  pass_manager.addPass(
+      mlir::mhlo::createExpandHloTuplesPass(entry_function_name.str()));
   // Flatten tuples for control flows.
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createFlattenTuplePass());
 
-  mlir::odml::AddMhloOptimizationPasses(*pass_manager);
+  mlir::odml::AddMhloOptimizationPasses(pass_manager);
 
   // Undo the MHLO::BroadcastInDimOp folding pattern on splat constants. This
   // pass must be added right before the legalization because pattern rewriter
   // driver applies folding by default.
-  // TODO(b/295966255): Remove this pass after moving MHLO folders to a separate
-  // pass.
-  pass_manager->addPass(mlir::odml::CreateUnfoldSplatConstantPass());
+  // TODO: b/295966255 - Remove this pass after moving MHLO folders to a
+  // separate pass.
+  pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
+
+  if (pass_config.enable_stablehlo_quantizer) {
+    // When using StableHLO Quantizer, MHLO ops should be transformed back into
+    // StableHLO because the quantizer takes StableHLO dialect as its input.
+    pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  }
+}
+
+void AddPostQuantizationStableHloToTfPasses(
+    const mlir::TFL::PassConfig& pass_config,
+    mlir::OpPassManager& pass_manager) {
+  if (pass_config.enable_stablehlo_quantizer) {
+    // StableHLO Quantizer emits quantized StableHLO module serialized within a
+    // XlaCallModule op. Add this pass to extract StableHLO module from the
+    // XlaCallModuleOp.
+    pass_manager.addPass(
+        mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+
+    // Convert StableHLO -> TFLite for fused quantization patterns early so that
+    // quantized types do not go through the TF dialect which doesn't support
+    // quantized types.
+    pass_manager.addNestedPass<mlir::func::FuncOp>(
+        mlir::odml::CreateUniformQuantizedStableHloToTflPass());
+
+    // StableHLO -> MHLO
+    pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  }
 
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
-    pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
+    pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
   }
   // TF dialect passes
-  pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfPass());
+  pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfPass());
 
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF
   // legalization; otherwise other passes like `ConvertTFBroadcastTo` will
   // constant fold the newly generated TF broadcast ops and materialize the
   // weights.
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateBroadcastFoldPass());
 
   // Canonicalization after TF legalization.
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
 
   // Legalize all remaining mhlo ops to stableHLO
-  pass_manager->addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 }
 
 // This is the early part of the conversion in isolation. This enables a caller
@@ -220,11 +261,6 @@ void AddConvertHloToTfPass(std::string entry_function_name,
 void AddPreVariableFreezingTFToTFLConversionPasses(
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager) {
-  if (pass_config.enable_hlo_to_tf_conversion) {
-    // TODO(b/194747383): We need to valid that indeed the "main" func is
-    // presented.
-    AddConvertHloToTfPass("main", pass_config, pass_manager);
-  }
   // This pass wraps all the tf.FakeQuant ops in a custom op so they are not
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
   auto wrapped_ops = mlir::TFL::AllTfFakeQuantOps();
@@ -266,7 +302,7 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
 
   // This decomposes resource ops like ResourceGather into read-variable op
   // followed by gather. This is used when the saved model import path is used
-  // during which resources dont get frozen in the python layer.
+  // during which resources don't get frozen in the python layer.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
@@ -375,7 +411,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // Force layout supported by TFLite, this will transpose the data
     // to match 'kTFLiteDataLayout'
     mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
-    layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    layout_optimization_options.force_data_format = kTFLiteDataLayout.str();
     layout_optimization_options.skip_fold_transpose_in_ops = true;
     mlir::TF::CreateLayoutOptimizationPipeline(
         pass_manager->nest<mlir::func::FuncOp>(), layout_optimization_options);

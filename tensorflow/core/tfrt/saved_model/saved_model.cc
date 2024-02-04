@@ -559,9 +559,6 @@ SavedModelImpl::LoadSavedModel(Options options,
                                   meta_graph_def.signature_def(), options);
   }
 
-  auto runner_table = std::make_unique<OpKernelRunnerTable>();
-  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
-
   auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
 
   // Creates a ResourceContext and populate it with per model resource from
@@ -647,6 +644,9 @@ SavedModelImpl::LoadSavedModel(Options options,
         bef_file, tfrt::CreateBefFileFromBefBuffer(
                       *options.graph_execution_options.runtime, bef));
   }
+
+  auto runner_table = std::make_unique<OpKernelRunnerTable>();
+  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
   if (loaded_executable) {
     RETURN_IF_ERROR_IN_INIT(RunBytecodeInitializers(
         graph_executor->options(), initializers_and_signatures,

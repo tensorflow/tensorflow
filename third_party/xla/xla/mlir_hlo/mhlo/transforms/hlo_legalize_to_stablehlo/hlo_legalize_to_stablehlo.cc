@@ -147,6 +147,12 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for TopK.
     return 1;
   }
+  // StableHLO doesn't support TopK yet.
+  // Proposal: https://github.com/openxla/stablehlo/pull/1593
+  if constexpr (std::is_same<HloOpTy, mhlo::ErfOp>::value) {
+    // Version 1: Initial version for ErfOp.
+    return 1;
+  }
   return std::nullopt;
 }
 
@@ -649,7 +655,8 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp,
+                                           mhlo::ErfOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

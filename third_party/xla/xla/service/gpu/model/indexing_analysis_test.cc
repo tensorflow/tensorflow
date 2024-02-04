@@ -35,6 +35,7 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
+using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -47,18 +48,58 @@ MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
 class IndexingAnalysisTest : public HloTestBase {
  public:
   HloInstructionIndexing GetOutputToInputIndexingForEntryComputation(
-      absl::string_view hlo_string, int output_id = 0) {
+      absl::string_view hlo_string, int output_id = 0,
+      bool use_physical_layout = false) {
     return ComputeOutputToInputIndexingForEntryComputation(
-        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, output_id);
+        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, output_id,
+        use_physical_layout);
   }
 
   HloInstructionIndexing GetInputToOutputIndexingForEntryComputation(
-      absl::string_view hlo_string, int input_id = 0) {
+      absl::string_view hlo_string, int input_id = 0,
+      bool use_physical_layout = false) {
     return ComputeInputToOutputIndexingForEntryComputation(
-        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, input_id);
+        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, input_id,
+        use_physical_layout);
   }
   mlir::MLIRContext mlir_context_;
 };
+
+TEST_F(IndexingAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      transpose_p0 = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
+      ROOT a0 = f32[1000, 1000] add(p0, transpose_p0)
+    }
+  )");
+  EXPECT_TRUE(module.ok());
+  const HloInstruction* root =
+      module.value()->entry_computation()->root_instruction();
+  const HloInstruction* parameter = root->operand(0);
+  const HloInstruction* transpose = root->operand(1);
+
+  auto root_indexing =
+      ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_);
+
+  auto grouped_by_key = GroupIndexingMapsByProducers(root_indexing, root);
+
+  EXPECT_THAT(
+      grouped_by_key,
+      UnorderedElementsAre(Pair(parameter, ElementsAre(MatchIndexingMap(R"(
+                    (d0, d1) -> (d0, d1)
+                    domain:
+                    d0 in [0, 999]
+                    d1 in [0, 999]
+                  )"))),
+                           Pair(transpose, ElementsAre(MatchIndexingMap(R"(
+                    (d0, d1) -> (d0, d1)
+                    domain:
+                    d0 in [0, 999]
+                    d1 in [0, 999]
+                  )")))));
+}
 
 TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -79,32 +120,125 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
       fusion_adaptor, /*output_id=*/0, &mlir_context_);
-  EXPECT_THAT(*grouped_indexing,
+  EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
-                  Pair(root, ElementsAre(MatchIndexingString(R"(
+                  Pair(root, ElementsAre(MatchIndexingMap(R"(
                     (d0, d1) -> (d0, d1)
                     domain:
                     d0 in [0, 999]
                     d1 in [0, 999]
                   )"))),
-                  Pair(transpose, ElementsAre(MatchIndexingString(R"(
+                  Pair(transpose, ElementsAre(MatchIndexingMap(R"(
                     (d0, d1) -> (d0, d1)
                     domain:
                     d0 in [0, 999]
                     d1 in [0, 999]
                   )"))),
-                  Pair(parameter, UnorderedElementsAre(MatchIndexingString(R"(
+                  Pair(parameter, UnorderedElementsAre(MatchIndexingMap(R"(
                         (d0, d1) -> (d0, d1)
                         domain:
                         d0 in [0, 999]
                         d1 in [0, 999]
                       )"),
-                                                       MatchIndexingString(R"(
+                                                       MatchIndexingMap(R"(
                         (d0, d1) -> (d1, d0)
                         domain:
                         d0 in [0, 999]
                         d1 in [0, 999]
                       )")))));
+}
+
+TEST_F(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 20, 30] parameter(0)
+      ROOT add0 = f32[10, 20, 30]{1, 0, 2} exponential(p0)
+    }
+  )";
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(
+      ir, /*output_id=*/0, /*use_physical_layout=*/true);
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (d1, d2, d0)
+                            domain:
+                            d0 in [0, 29]
+                            d1 in [0, 9]
+                            d2 in [0, 19]
+                          )"))));
+
+  auto output_indexing = GetInputToOutputIndexingForEntryComputation(
+      ir, /*input_id=*/0, /*use_physical_layout=*/true);
+  EXPECT_THAT(output_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (d2, d0, d1)
+                            domain:
+                            d0 in [0, 9]
+                            d1 in [0, 19]
+                            d2 in [0, 29]
+                          )"))));
+}
+
+TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 20, 30]{1, 0, 2} parameter(0)
+      ROOT add0 = f32[10, 20, 30] exponential(p0)
+    }
+  )";
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(
+      ir, /*output_id=*/0, /*use_physical_layout=*/true);
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (d2, d0, d1)
+                            domain:
+                            d0 in [0, 9]
+                            d1 in [0, 19]
+                            d2 in [0, 29]
+                          )"))));
+
+  auto output_indexing = GetInputToOutputIndexingForEntryComputation(
+      ir, /*input_id=*/0, /*use_physical_layout=*/true);
+  EXPECT_THAT(output_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (d1, d2, d0)
+                            domain:
+                            d0 in [0, 29]
+                            d1 in [0, 9]
+                            d2 in [0, 19]
+                          )"))));
+}
+
+TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputAndOutputPermutation) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 20, 30]{1, 0, 2} parameter(0)
+      ROOT add0 = f32[10, 20, 30]{1, 0, 2} exponential(p0)
+    }
+  )";
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(
+      ir, /*output_id=*/0, /*use_physical_layout=*/true);
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (d0, d1, d2)
+                            domain:
+                            d0 in [0, 29]
+                            d1 in [0, 9]
+                            d2 in [0, 19]
+                          )"))));
+
+  auto output_indexing = GetInputToOutputIndexingForEntryComputation(
+      ir, /*input_id=*/0, /*use_physical_layout=*/true);
+  EXPECT_THAT(output_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1, d2) -> (d0, d1, d2)
+                            domain:
+                            d0 in [0, 29]
+                            d1 in [0, 9]
+                            d2 in [0, 19]
+                          )"))));
 }
 
 TEST_F(IndexingAnalysisTest, ElementwiseOp) {
@@ -118,13 +252,13 @@ TEST_F(IndexingAnalysisTest, ElementwiseOp) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 9]
                             d1 in [0, 19]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 9]
@@ -134,7 +268,7 @@ TEST_F(IndexingAnalysisTest, ElementwiseOp) {
   auto output_indexing_0 =
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0);
   EXPECT_THAT(output_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 9]
@@ -144,7 +278,7 @@ TEST_F(IndexingAnalysisTest, ElementwiseOp) {
   auto output_indexing_1 =
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1);
   EXPECT_THAT(output_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 9]
@@ -161,7 +295,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsReshape) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 4 + d2)
                             domain:
                             d0 in [0, 3]
@@ -179,7 +313,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsTranspose) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, d3, d1, d2)
                             domain:
                             d0 in [0, 2]
@@ -199,7 +333,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d1, d0 floordiv 3, d0 mod 3)
                             domain:
                             d0 in [0, 50]
@@ -207,7 +341,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
                           )"))));
   auto output_indexing = GetInputToOutputIndexingForEntryComputation(ir);
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d1 * 3 + d2, d0)
                             domain:
                             d0 in [0, 15]
@@ -226,7 +360,7 @@ TEST_F(IndexingAnalysisTest, BroadcastOp) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d1)
                             domain:
                             d0 in [0, 9]
@@ -236,7 +370,7 @@ TEST_F(IndexingAnalysisTest, BroadcastOp) {
 
   auto output_indexing = GetInputToOutputIndexingForEntryComputation(ir);
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0, s1] -> (s0, d0, s1)
                             domain:
                             d0 in [0, 19]
@@ -269,21 +403,21 @@ TEST_F(IndexingAnalysisTest, ConcatenateOp) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1, d2)
                             domain:
                             d0 in [0, 1]
                             d1 in [0, 4]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 - 5, d2)
                             domain:
                             d0 in [0, 1]
                             d1 in [5, 15]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 - 16, d2)
                             domain:
                             d0 in [0, 1]
@@ -294,7 +428,7 @@ TEST_F(IndexingAnalysisTest, ConcatenateOp) {
   auto output_indexing_0 =
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0);
   EXPECT_THAT(output_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1, d2)
                             domain:
                             d0 in [0, 1]
@@ -305,7 +439,7 @@ TEST_F(IndexingAnalysisTest, ConcatenateOp) {
   auto output_indexing_1 =
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1);
   EXPECT_THAT(output_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 + 5, d2)
                             domain:
                             d0 in [0, 1]
@@ -316,7 +450,7 @@ TEST_F(IndexingAnalysisTest, ConcatenateOp) {
   auto output_indexing_2 =
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/2);
   EXPECT_THAT(output_indexing_2.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 + 16, d2)
                             domain:
                             d0 in [0, 1]
@@ -340,12 +474,12 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSingleBinaryOp) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0) -> (d0)
                             domain:
                             d0 in [0, 99]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> (d0)
                             domain:
                             d0 in [0, 99]
@@ -413,7 +547,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
   )");
 
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5)[s0] -> (d2, d0 * 768 + s0, d4, d5)
                 domain:
                 d0 in [0, 15]
@@ -424,7 +558,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
                 d5 in [0, 127]
                 s0 in [0, 767]
               )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5)[s0] -> (d0 * 768 + s0)
                 domain:
                 d0 in [0, 15]
@@ -435,7 +569,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
                 d5 in [0, 127]
                 s0 in [0, 767]
               )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5) -> (d1)
                 domain:
                 d0 in [0, 15]
@@ -445,7 +579,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
                 d4 in [0, 5]
                 d5 in [0, 127]
               )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5)[s0] -> (d1, d0 * 768 + s0)
                 domain:
                 d0 in [0, 15]
@@ -456,7 +590,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
                 d5 in [0, 127]
                 s0 in [0, 767]
               )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5)[s0] -> (d1, d0 * 768 + s0)
                 domain:
                 d0 in [0, 15]
@@ -467,7 +601,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
                 d5 in [0, 127]
                 s0 in [0, 767]
               )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5) -> (d2, d4, d5)
                 domain:
                 d0 in [0, 15]
@@ -526,7 +660,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSoftmax) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(UnorderedElementsAre(MatchIndexingString(R"(
+              ElementsAre(UnorderedElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2)[s0] -> (d0, d1, s0)
                             domain:
                             d0 in [0, 1]
@@ -534,7 +668,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSoftmax) {
                             d2 in [0, 124]
                             s0 in [0, 124]
                           )"),
-                                               MatchIndexingString(R"(
+                                               MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1, d2)
                             domain:
                             d0 in [0, 1]
@@ -557,13 +691,13 @@ TEST_F(IndexingAnalysisTest, FusionOpTensorPlusTransposedTensor) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(UnorderedElementsAre(MatchIndexingString(R"(
+              ElementsAre(UnorderedElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 999]
                             d1 in [0, 999]
                           )"),
-                                               MatchIndexingString(R"(
+                                               MatchIndexingMap(R"(
                             (d0, d1) -> (d1, d0)
                             domain:
                             d0 in [0, 999]
@@ -594,32 +728,32 @@ TEST_F(IndexingAnalysisTest, FusionExponentialDuplication) {
       calls=fused_computation
     })");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(UnorderedElementsAre(MatchIndexingString(R"(
+              ElementsAre(UnorderedElementsAre(MatchIndexingMap(R"(
                             (d0) -> (d0 + 1)
                             domain:
                             d0 in [0, 1]
                           )"),
-                                               MatchIndexingString(R"(
+                                               MatchIndexingMap(R"(
                             (d0) -> (d0)
                             domain:
                             d0 in [0, 1]
                           )"),
-                                               MatchIndexingString(R"(
+                                               MatchIndexingMap(R"(
                             (d0) -> (d0 + 2)
                             domain:
                             d0 in [0, 1]
                           )")),
-                          UnorderedElementsAre(MatchIndexingString(R"(
+                          UnorderedElementsAre(MatchIndexingMap(R"(
                             (d0) -> (d0 + 2)
                             domain:
                             d0 in [0, 1]
                           )"),
-                                               MatchIndexingString(R"(
+                                               MatchIndexingMap(R"(
                             (d0) -> (d0 + 1)
                             domain:
                             d0 in [0, 1]
                           )"),
-                                               MatchIndexingString(R"(
+                                               MatchIndexingMap(R"(
                             (d0) -> (d0)
                             domain:
                             d0 in [0, 1]
@@ -649,7 +783,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0, s1, s2] -> (s0, s2, d0, s1)
                             domain:
                             d0 in [0, 9]
@@ -657,7 +791,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
                             s1 in [0, 49]
                             s2 in [0, 19]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> ()
                             domain:
                             d0 in [0, 9]
@@ -687,14 +821,14 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfBroadcast) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1)[s0] -> (d0, s0)
                             domain:
                             d0 in [0, 14]
                             d1 in [0, 63]
                             s0 in [0, 19]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> ()
                             domain:
                             d0 in [0, 14]
@@ -728,7 +862,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithTransposeOfTranspose) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d2, d0, d1)
                             domain:
                             d0 in [0, 9]
@@ -760,14 +894,14 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReducedSlice) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0, s1] -> (s0 + 5, d0 * 2, s1 * 3 + 50)
                             domain:
                             d0 in [0, 31]
                             s0 in [0, 15]
                             s1 in [0, 127]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> ()
                             domain:
                             d0 in [0, 31]
@@ -788,7 +922,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0) -> (d0)
                             domain:
                             d0 in [0, 127]
@@ -809,7 +943,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 7]
@@ -831,7 +965,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1, d2)
                             domain:
                             d0 in [0, 9]
@@ -856,7 +990,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSliceOfSlice) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0 * 2 + 8,
                                              d1 * 6 + 8,
                                              d2 * 12 + 65)
@@ -887,21 +1021,21 @@ TEST_F(IndexingAnalysisTest, FusionOpSliceOfAllConcatenateOpInputs) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 3, d2)
                             domain:
                             d0 in [0, 1]
                             d1 in [0, 1]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 3 - 5, d2)
                             domain:
                             d0 in [0, 1]
                             d1 in [2, 5]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 3 - 16, d2)
                             domain:
                             d0 in [0, 1]
@@ -930,21 +1064,21 @@ TEST_F(IndexingAnalysisTest, FusionOpSliceOfOneOfConcatenateOpInputs) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 2, d2)
                             domain:
                             d0 in [0, 1]
                             d1 in [0, 2]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 2 - 5, d2)
                             domain:
                             d0 in [0, 1]
                             d1 in [3, 2]
                             d2 in [0, 6]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1 * 2 - 16, d2)
                             domain:
                             d0 in [0, 1]
@@ -969,17 +1103,19 @@ TEST_F(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0 * 8 + d1)
                             domain:
                             d0 in [0, 3]
                             d1 in [0, 7]
+                            d0 * 8 + d1 in [0, 1]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0 * 8 + d1 - 2)
                             domain:
                             d0 in [0, 3]
                             d1 in [0, 7]
+                            d0 * 8 + d1 in [2, 31]
                           )"))));
 }
 
@@ -1003,7 +1139,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpCollapseShape) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0) -> (d0 floordiv 8, d0 mod 8)
                             domain:
                             d0 in [0, 31]
@@ -1019,7 +1155,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandShape) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0 * 8 + d1)
                             domain:
                             d0 in [0, 3]
@@ -1037,7 +1173,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2) -> (d0 floordiv 8, d0 mod 8, d1 * 4 + d2)
                 domain:
                 d0 in [0, 31]
@@ -1047,7 +1183,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
 
   auto output_indexing = GetInputToOutputIndexingForEntryComputation(ir);
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2) -> (d0 * 8 + d1, d2 floordiv 4, d2 mod 4)
                 domain:
                 d0 in [0, 3]
@@ -1065,7 +1201,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandSubshapeOnly) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2) -> (d0 * 4 + d1, d2)
                 domain:
                 d0 in [0, 3]
@@ -1083,7 +1219,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8,
                                 (d1 * 4 + d2) mod 8)
                 domain:
@@ -1102,7 +1238,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> ((d0 * 8 + d1) floordiv 16,
                                         ((d0 * 8 + d1) mod 16) floordiv 4,
                                         d1 mod 4)
@@ -1129,7 +1265,7 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1)[s0, s1] -> (d0, s0, d1, s1)
                             domain:
                             d0 in [0, 149]
@@ -1137,7 +1273,7 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
                             s0 in [0, 19]
                             s1 in [0, 49]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> ()
                             domain:
                             d0 in [0, 149]
@@ -1146,7 +1282,7 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
 
   auto output_indexing = GetInputToOutputIndexingForEntryComputation(ir);
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, d2)
                             domain:
                             d0 in [0, 149]
@@ -1154,7 +1290,7 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
                             d2 in [0, 9]
                             d3 in [0, 49]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             ()[s0, s1] -> (s0, s1)
                             domain:
                             s0 in [0, 149]
@@ -1188,26 +1324,26 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
   auto output_indexing_0 =
       GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/0);
   EXPECT_THAT(output_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0] -> (s0, d0)
                             domain:
                             d0 in [0, 9]
                             s0 in [0, 255]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0] -> (s0, d0)
                             domain:
                             d0 in [0, 9]
                             s0 in [0, 255]
                           )")),
 
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> ()
                             domain:
                             d0 in [0, 9]
                           )")),
 
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> ()
                             domain:
                             d0 in [0, 9]
@@ -1216,24 +1352,24 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
   auto output_indexing_1 =
       GetOutputToInputIndexingForEntryComputation(ir, /*output_id=*/1);
   EXPECT_THAT(output_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0] -> (s0, d0)
                             domain:
                             d0 in [0, 9]
                             s0 in [0, 255]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0)[s0] -> (s0, d0)
                             domain:
                             d0 in [0, 9]
                             s0 in [0, 255]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> ()
                             domain:
                             d0 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0) -> ()
                             domain:
                             d0 in [0, 9]
@@ -1243,24 +1379,24 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0);
 
   EXPECT_THAT(input_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d1)
                             domain:
                             d0 in [0, 255]
                             d1 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d1)
                             domain:
                             d0 in [0, 255]
                             d1 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             ()[s0] -> (s0)
                             domain:
                             s0 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             ()[s0] -> (s0)
                             domain:
                             s0 in [0, 9]
@@ -1269,24 +1405,24 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
   auto input_indexing_1 =
       GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1);
   EXPECT_THAT(input_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d1)
                             domain:
                             d0 in [0, 255]
                             d1 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d1)
                             domain:
                             d0 in [0, 255]
                             d1 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             ()[s0] -> (s0)
                             domain:
                             s0 in [0, 9]
                           )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                             ()[s0] -> (s0)
                             domain:
                             s0 in [0, 9]
@@ -1303,7 +1439,7 @@ TEST_F(IndexingAnalysisTest, ReverseOp) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
                             domain:
                             d0 in [0, 0]
@@ -1314,7 +1450,7 @@ TEST_F(IndexingAnalysisTest, ReverseOp) {
 
   auto output_indexing = GetInputToOutputIndexingForEntryComputation(ir);
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)
                             domain:
                             d0 in [0, 0]
@@ -1341,7 +1477,7 @@ TEST_F(IndexingAnalysisTest, ReverseReshape) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0, d1)
                             domain:
                             d0 in [0, 9]
@@ -1359,7 +1495,7 @@ TEST_F(IndexingAnalysisTest, SliceOp) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0 + 5, d1 * 7 + 3, d2 * 2)
                             domain:
                             d0 in [0, 4]
@@ -1379,7 +1515,7 @@ TEST_F(IndexingAnalysisTest, TransposeOp) {
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, d3, d1, d2)
                             domain:
                             d0 in [0, 2]
@@ -1389,7 +1525,7 @@ TEST_F(IndexingAnalysisTest, TransposeOp) {
                           )"))));
   auto output_indexing = GetInputToOutputIndexingForEntryComputation(ir);
   EXPECT_THAT(output_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, d2, d3, d1)
                             domain:
                             d0 in [0, 2]
@@ -1408,7 +1544,7 @@ TEST_F(IndexingAnalysisTest, TransposeOp4D) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2, d3) -> (d0, d3, d1, d2)
                             domain:
                             d0 in [0, 2]
@@ -1430,7 +1566,7 @@ TEST_F(IndexingAnalysisTest, DotOp) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(MatchIndexingString(R"(
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5)[s0, s1] -> (d2, d1, s1, d3, s0, d0)
                 domain:
                 d0 in [0, 9]
@@ -1442,7 +1578,7 @@ TEST_F(IndexingAnalysisTest, DotOp) {
                 s0 in [0, 17]
                 s1 in [0, 16]
               )")),
-                          ElementsAre(MatchIndexingString(R"(
+                          ElementsAre(MatchIndexingMap(R"(
                 (d0, d1, d2, d3, d4, d5)[s0, s1] -> (s1, d0, d4, s0, d5, d1)
                 domain:
                 d0 in [0, 9]
@@ -1468,21 +1604,22 @@ TEST_F(IndexingAnalysisTest, UnsupportedOps) {
     }
   )";
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
-  EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt), ElementsAre(std::nullopt),
-                          ElementsAre(std::nullopt)));
+  EXPECT_THAT(
+      input_indexing.indexing_maps,
+      ElementsAre(ElementsAre(UndefinedMap()), ElementsAre(UndefinedMap()),
+                  ElementsAre(UndefinedMap())));
 
   auto output_indexing_0 = GetInputToOutputIndexingForEntryComputation(ir, 0);
   EXPECT_THAT(output_indexing_0.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt)));
+              ElementsAre(ElementsAre(UndefinedMap())));
 
   auto output_indexing_1 = GetInputToOutputIndexingForEntryComputation(ir, 1);
   EXPECT_THAT(output_indexing_1.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt)));
+              ElementsAre(ElementsAre(UndefinedMap())));
 
   auto output_indexing_2 = GetInputToOutputIndexingForEntryComputation(ir, 2);
   EXPECT_THAT(output_indexing_2.indexing_maps,
-              ElementsAre(ElementsAre(std::nullopt)));
+              ElementsAre(ElementsAre(UndefinedMap())));
 }
 
 TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
@@ -1505,14 +1642,38 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
     }
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
-              ElementsAre(UnorderedElementsAre(MatchIndexingString(R"(
+              ElementsAre(UnorderedElementsAre(MatchIndexingMap(R"(
                             (d0, d1) -> (d0 * 4, d1)
                             domain:
                             d0 in [0, 4]
                             d1 in [0, 4]
                           )"),
-                                               std::nullopt),
-                          ElementsAre(std::nullopt)));
+                                               UndefinedMap()),
+                          ElementsAre(UndefinedMap())));
+}
+
+TEST_F(IndexingAnalysisTest, TilingIndexing) {
+  Tiling tiling{/*shape=*/{1024, 256, 16},
+                /*tile_sizes=*/{8, 1, 4},
+                /*num_threads=*/{1, 4, 4}};
+  EXPECT_THAT(GetIndexingMapForTiling(tiling, &mlir_context_).ToString(),
+              MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
+          (d3 floordiv 64) * 8 + s0,
+          (d3 mod 64) * 4 + d0 floordiv 4,
+          d0 mod 4 + s2 * 4
+        )
+        domain:
+        d0 in [0, 15]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 8191]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 7]
+        s1 in [0, 0]
+        s2 in [0, 3]
+      )"));
 }
 
 }  // namespace

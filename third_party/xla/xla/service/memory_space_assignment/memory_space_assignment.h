@@ -979,7 +979,9 @@ class MemorySpaceAssignment {
     SlicedCopyAllocation(
         const Allocation& prev_allocation, MemorySpace memory_space,
         std::vector<SliceDecision> slice_decisions_sorted_by_start_time,
-        int64_t copy_done_schedule_before_time, int64_t end_time);
+        int64_t copy_done_schedule_before_time, int64_t end_time,
+        const SlicedPrefetchOptions& sliced_prefetch_options,
+        absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn);
 
     bool is_sliced_copy_allocation() const override { return true; }
 
@@ -1030,6 +1032,8 @@ class MemorySpaceAssignment {
     //   sorted_segments_[i+j].copy.start_before_time
     std::vector<SliceDetail> slice_details_sorted_by_start_time_;
     HloInstruction* concat_ = nullptr;
+    const SlicedPrefetchOptions& sliced_prefetch_options_;
+    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn_;
   };
 
   // An allocation in the default memory space that mirrors another Allocation
@@ -1428,6 +1432,8 @@ struct Options {
 
   // Size function for buffer values.
   BufferValue::SizeFunction size_fn;
+
+  std::function<Shape(const Shape&)> get_equivalent_s8_shape_fn;
 
   // This function can be used to prevent certain HloValues (e.g., based on
   // the opcode) to be placed on the alternate memory.
@@ -2714,6 +2720,11 @@ class AlternateMemoryBestFitHeap
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
 };
+
+// Returns true if the options indicate that we there is a preferred slice
+// size.
+bool IsUniformSliceSizingEnabled(const SlicedPrefetchOptions& options);
+
 }  // namespace memory_space_assignment
 }  // namespace xla
 

@@ -406,27 +406,27 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // example, once it's fully supported.
 
 namespace impl {
-static absl::Status AlwaysFail(ffi::Buffer arg, int32_t value) {
+static absl::Status AlwaysFail(ffi::BufferBase arg, int32_t value) {
   return AlwaysFailImpl(arg, value);
 }
 
 static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                           ffi::Buffer src, ffi::Buffer dst) {
+                           ffi::BufferBase src, ffi::BufferBase dst) {
   return MemcpyImpl(run_options, src, dst);
 }
 }  // namespace impl
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysFail, impl::AlwaysFail,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::Buffer>()      // arg
+                           .Arg<ffi::BufferBase>()  // arg
                            .Attr<int32_t>("value")  // value
 );
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, impl::Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ServiceExecutableRunOptions>()
-                           .Arg<ffi::Buffer>()  // src
-                           .Arg<ffi::Buffer>()  // dst
+                           .Arg<ffi::BufferBase>()  // src
+                           .Arg<ffi::BufferBase>()  // dst
 );
 
 // (4) Register custom calls handlers with XLA runtime.
@@ -472,13 +472,13 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
 }
 
 // Test passing arbitrary pointers as i64 attributes.
-static absl::Status HandleUserPointer(ffi::Buffer, const std::string* str) {
+static absl::Status HandleUserPointer(ffi::BufferBase, const std::string* str) {
   return absl::InternalError(*str);
 }
 
 XLA_FFI_DEFINE_HANDLER(kHandleUserPointer, HandleUserPointer,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::Buffer>()  // buffer for result
+                           .Arg<ffi::BufferBase>()  // buffer for result
                            .Attr<ffi::Pointer<std::string>>("message"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$user_data", PLATFORM,
@@ -506,8 +506,8 @@ TEST_F(CustomCallTest, PassUserPointerWithAttrs) {
 //===----------------------------------------------------------------------===//
 
 static absl::Status MemcpyWithCalledComputation(
-    const ServiceExecutableRunOptions* run_options, ffi::Buffer src,
-    ffi::Buffer dst, const HloComputation* called_computation) {
+    const ServiceExecutableRunOptions* run_options, ffi::BufferBase src,
+    ffi::BufferBase dst, const HloComputation* called_computation) {
   if (called_computation == nullptr)
     return absl::InternalError("Called computation is not defined");
 
@@ -524,8 +524,8 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        MemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
                            .Ctx<ServiceExecutableRunOptions>()
-                           .Arg<ffi::Buffer>()  // src
-                           .Arg<ffi::Buffer>()  // dst
+                           .Arg<ffi::BufferBase>()  // src
+                           .Arg<ffi::BufferBase>()  // dst
                            .Ctx<ffi::CalledComputation>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),

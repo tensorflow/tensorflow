@@ -43,11 +43,11 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 
+using absl::OkStatus;
+using absl::Status;
 using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
-using tsl::OkStatus;
-using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
@@ -216,20 +216,20 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   uint64_t start_gputime_ns_;
 
   mutex event_maps_mutex_;
-  absl::flat_hash_map<tsl::uint32, RocmTracerEvent> api_events_map_
+  absl::flat_hash_map<uint32_t, RocmTracerEvent> api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
-  absl::flat_hash_map<tsl::uint32, RocmTracerEvent> activity_api_events_map_
+  absl::flat_hash_map<uint32_t, RocmTracerEvent> activity_api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
   /* Some apis such as MEMSETD32 (based on an observation with ResNet50),
     trigger multiple HIP ops domain activities. We keep them in a vector and
     merge them with api activities at flush time.
   */
-  absl::flat_hash_map<tsl::uint32, std::vector<RocmTracerEvent>>
+  absl::flat_hash_map<uint32_t, std::vector<RocmTracerEvent>>
       activity_ops_events_map_ TF_GUARDED_BY(event_maps_mutex_);
   // This is for the APIs that we track because we need some information from
   // them to populate the corresponding activity that we actually track.
-  absl::flat_hash_map<tsl::uint32, RocmTracerEvent> auxiliary_api_events_map_
+  absl::flat_hash_map<uint32_t, RocmTracerEvent> auxiliary_api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
   const std::vector<RocmTracerEvent> ApiActivityInfoExchange() {
@@ -584,7 +584,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         // Times 2 because HBM is DDR memory; it gets two data bits per each
         // data lane.
         auto memory_bandwidth =
-            tsl::uint64{2} * (mem_clock_khz)*1000 * (mem_bus_width_bits) / 8;
+            uint64_t{2} * (mem_clock_khz) * 1000 * (mem_bus_width_bits) / 8;
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -596,7 +596,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemorySize)),
-            static_cast<tsl::uint64>(total_memory));
+            static_cast<uint64_t>(total_memory));
       }
 
       auto compute_capability_major = device_properties_.major;
@@ -721,7 +721,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       //   xevent.AddStatValue(
       //       *plane->GetOrCreateStatMetadata(
       //           GetStatTypeStr(StatType::kContextId)),
-      //       absl::StrCat("$$", static_cast<tsl::uint64>(event.context_id)));
+      //       absl::StrCat("$$", static_cast<uint64_t>(event.context_id)));
       // }
 
       if (event.type == RocmTracerEventType::Kernel &&
@@ -752,11 +752,11 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                             occ_stats.occupancy_pct);
         xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
                                 StatType::kOccupancyMinGridSize)),
-                            static_cast<tsl::int32>(occ_stats.min_grid_size));
+                            static_cast<int32_t>(occ_stats.min_grid_size));
         xevent.AddStatValue(
             *plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kOccupancySuggestedBlockSize)),
-            static_cast<tsl::int32>(occ_stats.suggested_block_size));
+            static_cast<int32_t>(occ_stats.suggested_block_size));
         xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                                 GetStatTypeStr(StatType::kKernelDetails)),
                             *plane->GetOrCreateStatMetadata(ToXStat(
@@ -921,7 +921,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
     mutex events_mutex;
     std::vector<RocmTracerEvent> events TF_GUARDED_BY(events_mutex);
-    absl::flat_hash_map<tsl::uint32, CorrelationInfo> correlation_info_
+    absl::flat_hash_map<uint32_t, CorrelationInfo> correlation_info_
         TF_GUARDED_BY(events_mutex);
     absl::flat_hash_map<RocmDeviceOccupancyParams, OccupancyStats>
         occupancy_cache_;

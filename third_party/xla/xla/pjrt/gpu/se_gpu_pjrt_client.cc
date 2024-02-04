@@ -329,6 +329,10 @@ class AsyncHostToDeviceTransferManager
     }
 
     ++transfers_in_flight_;
+    // Release the lock before transfer in case transfer or cleanup could be
+    // called on this thread, to avoid deadlock.
+    l.Release();
+
     auto event = device_->local_device_state()->event_pool().AllocateEvent(
         stream->parent());
     if (transfer_size != 0) {
@@ -336,9 +340,6 @@ class AsyncHostToDeviceTransferManager
     }
     device_->local_device_state()->event_pool().ThenRecordEvent(stream,
                                                                 event.value());
-    // Release the lock before calling ThenDoHostCallback in case cleanup
-    // could be called on this thread, to avoid deadlock.
-    l.Release();
 
     auto cleanup = [this, buffer_index, event = std::move(event).value(),
                     stream, is_last_transfer,
@@ -778,20 +779,17 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
   // Add any additional allocators for alternate memory spaces.
-  if (allocator_config.collective_memory_size != 0) {
-    for (const auto& ordinal_and_device : addressable_devices) {
-      TF_ASSIGN_OR_RETURN(
-          auto collective_bfc_allocator,
-          CreateCollectiveBFCAllocator(
-              ordinal_and_device.second->executor(),
-              /*allocator_memory=*/allocator_config.collective_memory_size,
-              /*preallocate=*/true));
-      allocators.emplace_back(std::move(collective_bfc_allocator),
-                              ordinal_and_device.second->compute_stream(),
-                              /*memory_space=*/1);
-    }
+  for (const auto& ordinal_and_device : addressable_devices) {
+    TF_ASSIGN_OR_RETURN(
+        auto collective_bfc_allocator,
+        CreateCollectiveBFCAllocator(
+            ordinal_and_device.second->executor(),
+            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
+            allocator_config.collective_memory_size));
+    allocators.emplace_back(std::move(collective_bfc_allocator),
+                            ordinal_and_device.second->compute_stream(),
+                            /*memory_space=*/1);
   }
-
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }
@@ -975,8 +973,6 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   if (options.enable_mock_nccl) {
     gpu_run_options->set_enable_mock_nccl_collectives();
   }
-  absl::flat_hash_map<std::string, std::string> device_maps;
-  absl::Mutex mu;
   std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
     kv_store = std::make_shared<InMemoryKeyValueStore>();

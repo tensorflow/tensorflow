@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -96,17 +99,41 @@ static absl::Duration TerminateTimeout() {
 // NcclClique
 //===----------------------------------------------------------------------===//
 
-std::string NcclClique::DebugString() const {
+NcclCliqueCommunicators::NcclCliqueCommunicators(
+    NcclCliqueKey clique_key, NcclCliqueId clique_id,
+    absl::node_hash_map<int32_t, NcclComm> communicators)
+    : clique_key_(std::move(clique_key)),
+      clique_id_(std::move(clique_id)),
+      communicators_(std::move(communicators)) {}
+
+std::optional<NcclComm*> NcclCliqueCommunicators::comm(int32_t rank) {
+  if (auto it = communicators_.find(rank); it != communicators_.end()) {
+    return &it->second;
+  }
+  return std::nullopt;
+}
+
+void NcclCliqueCommunicators::ForEachComm(
+    absl::FunctionRef<void(int32_t, NcclComm&)> fn) {
+  for (auto& [rank, comm] : communicators_) {
+    fn(rank, comm);
+  }
+}
+
+std::string NcclCliqueCommunicators::DebugString() const {
   std::string out = absl::StrFormat(
-      "NcclClique: clique_key: %s; hash(id): %d; size: %d; communicators: ",
-      value().clique_key.ToString(), absl::HashOf(value().clique_id),
-      value().communicators.size());
+      "clique_key: %s; hash(id): %d; size: %d; communicators: ",
+      clique_key_.ToString(), absl::HashOf(clique_id_), communicators_.size());
   int32_t cnt = 0;
-  for (const auto& [rank, comm] : value().communicators) {
+  for (const auto& [rank, comm] : communicators_) {
     if (cnt++) absl::StrAppend(&out, ", ");
     absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank, comm.value());
   }
   return out;
+}
+
+std::string NcclClique::DebugString() const {
+  return absl::StrFormat("NcclClique: %s", value().DebugString());
 }
 
 namespace {
@@ -136,9 +163,7 @@ static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
 
   absl::MutexLock lock(&cliques.mu);
   if (auto it = cliques.map.find(clique_key); it != cliques.map.end()) {
-    NcclClique::Lock clique = it->second.Acquire();
-    clique->run_id = run_id.ToInt();
-    return clique;
+    return it->second.Acquire();
   }
 
   // Return empty lock if we do not have a clique for `clique_key`.
@@ -170,13 +195,10 @@ static void CheckClique(const NcclCliqueKey& clique_key,
                         NcclClique& lockable_clique) {
   if (NcclClique::Lock clique = lockable_clique.TryAcquire()) {
     VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
-            << " for async errors; num_communicators="
-            << clique->communicators.size();
-    for (auto& [rank, comm] : clique->communicators) {
-      if (auto status = CheckComm(comm); !status.ok()) {
-        LOG(ERROR) << status;
-      }
-    }
+            << " for async errors; num_communicators=" << clique->size();
+    clique->ForEachComm([](int32_t rank, NcclComm& comm) {
+      if (auto status = CheckComm(comm); !status.ok()) LOG(ERROR) << status;
+    });
   } else {
     VLOG(5) << "Skip checking in-use NCCL clique " << clique_key.ToString();
   }
@@ -221,7 +243,7 @@ struct InitializationState {
   InitializationState(NcclCliqueId clique_id, Ranks ranks);
 
   NcclCliqueId clique_id;
-  absl::node_hash_map<int32_t, absl::StatusOr<NcclApi::NcclCommHandle>> comms;
+  absl::node_hash_map<int32_t, absl::StatusOr<NcclApi::OwnedNcclComm>> comms;
 
   // Signals when all participants updated entries in `comms`.
   std::unique_ptr<absl::Barrier> ready;
@@ -281,13 +303,11 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
           << " rank #" << rank << " of " << nranks
           << "; num_local_participants=" << num_local_participants;
 
-  // TODO(ezhulenev): Currently we leak this comm handle on error path. We
-  // need an OwnedNcclCommHandle with a custom deleter.
-  absl::StatusOr<NcclApi::NcclCommHandle> comm =
+  absl::StatusOr<NcclApi::OwnedNcclComm> comm =
       NcclApi::Default()->CommInitRank(nranks, state->clique_id, rank);
 
   if (comm.ok()) {
-    state->comms[rank] = *comm;
+    state->comms[rank] = std::move(*comm);
   } else {
     state->comms[rank] = comm.status();
   }
@@ -307,12 +327,12 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     // Create NCCL communicators from handles.
     absl::node_hash_map<int32_t, NcclComm> communicators;
-    for (const auto& [rank, comm] : state->comms) {
+    for (auto& [rank, comm] : state->comms) {
       if (*comm == nullptr) {
         return absl::InternalError(absl::StrFormat(
             "uninitialized NCCL communicator for rank %d", rank));
       }
-      communicators.try_emplace(rank, *comm);
+      communicators.try_emplace(rank, comm->release());
     }
 
     VLOG(3) << "Completed NCCL clique initialization for a clique "
@@ -420,14 +440,14 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
                                        AsyncStreamKind::kCollective)));
 
   // Check that clique has a communicator for our rank.
-  auto communicator = (*clique)->communicators.find(rank);
-  if (communicator == (*clique)->communicators.end()) {
+  auto communicator = (*clique)->comm(rank);
+  if (!communicator.has_value()) {
     return absl::InternalError(absl::StrCat("Communicator for rank ", rank,
                                             " not found in a NCCL clique ",
                                             clique_key.ToString()));
   }
 
-  return communicator->second.Acquire();
+  return (*communicator)->Acquire();
 }
 
 }  // namespace xla::gpu

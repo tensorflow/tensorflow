@@ -32,7 +32,6 @@ pytype_strict_library(
     deps = [
         ":pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:save_model",

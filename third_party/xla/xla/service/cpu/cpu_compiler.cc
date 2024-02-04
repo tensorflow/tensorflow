@@ -354,20 +354,6 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
   return se::host::kHostPlatformId;
 }
 
-CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
-    HloModuleProto hlo, std::string_view obj_file, std::string_view mlir_module,
-    const XlaFrameworkMapping& xla_framework_mapping) {
-  XlaRuntimeExecutableProto xla_runtime_executable;
-  *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
-  xla_runtime_executable.set_obj_file(std::string(obj_file));
-  xla_runtime_executable.set_mlir_module(std::string(mlir_module));
-
-  *xla_runtime_cpu_executable_.mutable_xla_runtime_executable() =
-      xla_runtime_executable;
-  *xla_runtime_cpu_executable_.mutable_xla_framework_mapping() =
-      xla_framework_mapping.ToProto();
-}
-
 namespace {
 
 namespace runtime = ::xla::runtime;
@@ -460,38 +446,6 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 }
 
 }  // namespace
-
-StatusOr<std::unique_ptr<Executable>>
-CpuXlaRuntimeAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* executor) const {
-  XlaRuntimeExecutableProto xla_runtime_executable =
-      xla_runtime_cpu_executable_.xla_runtime_executable();
-  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          xla_runtime_executable.hlo_module_proto(),
-                          GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
-                                 hlo_module_config));
-
-  XlaFrameworkMapping xla_framework_mapping;
-  xla_framework_mapping.FromProto(
-      xla_runtime_cpu_executable_.xla_framework_mapping());
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
-                      compiler->AssignBuffers(hlo_module.get(), executor));
-
-  // TODO(b/232263665): JitOptions should be used only for JIT case because it
-  // has details irrelevant to AOT.
-  runtime::JitExecutable::Options opts =
-      GetXlaRuntimeJitExecutableOptions(*hlo_module);
-
-  return CpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), xla_runtime_executable.obj_file(),
-      xla_runtime_executable.mlir_module(), std::move(buffer_assignment),
-      xla_framework_mapping, opts);
-}
 
 CpuAotCompilationResult::CpuAotCompilationResult(
     ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,

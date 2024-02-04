@@ -407,7 +407,9 @@ void PrepareQuantizePass::runOnOperation() {
   ApplyQuantizationParamsPropagation(
       func, is_signed, bit_width,
       disable_per_channel_ || quant_specs_.disable_per_channel, GetOpQuantSpec,
-      infer_tensor_range, quant_specs_.legacy_float_scale);
+      infer_tensor_range, quant_specs_.legacy_float_scale,
+      (is_qdq_conversion_ ||
+       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone));
 }
 
 }  // namespace

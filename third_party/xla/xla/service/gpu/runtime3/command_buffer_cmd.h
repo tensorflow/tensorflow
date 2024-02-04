@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -85,6 +86,58 @@ class CommandBufferCmd {
 
   using BufferUsageVector = absl::InlinedVector<BufferUsage, 4>;
 
+  // A base class for externally managed command state.
+  //
+  // Commands can be executed concurrently for many stream executors (underlying
+  // devices) and command buffers. Managing per-executor state can become
+  // expensive as it requires synchronization. Furthermore the number of command
+  // buffers command is recorded into is unbounded as they come and go (command
+  // buffers evicted and reconstructed) which makes it hard to manage the
+  // lifetime of resources attached to command buffers.
+  //
+  // Externally managed state (owned and synchronized by CommandBufferThunk)
+  // allows commands to attach a piece of information to command buffer in a
+  // safe and performant way.
+  class State {
+   public:
+    virtual ~State() = default;
+  };
+
+  // An external manager for a state attached by commands to command buffers.
+  class StateManager {
+   public:
+    virtual ~StateManager() = default;
+
+    template <typename ConcreteState>
+    ConcreteState* GetOrNull(const CommandBufferCmd* cmd) {
+      static_assert(std::is_base_of_v<State, ConcreteState>);
+      return static_cast<ConcreteState*>(GetOrNull(cmd));
+    }
+
+    template <typename ConcreteState>
+    ConcreteState* GetOrCreate(
+        const CommandBufferCmd* cmd,
+        absl::FunctionRef<std::unique_ptr<ConcreteState>()> create) {
+      static_assert(std::is_base_of_v<State, ConcreteState>);
+      return static_cast<ConcreteState*>(GetOrCreate(cmd, create));
+    }
+
+    template <typename ConcreteState>
+    ConcreteState* GetOrCreate(const CommandBufferCmd* cmd) {
+      static_assert(std::is_base_of_v<State, ConcreteState>);
+      return static_cast<ConcreteState*>(
+          GetOrCreate(cmd, [] { return std::make_unique<ConcreteState>(); }));
+    }
+
+   private:
+    State* GetOrNull(const CommandBufferCmd* cmd);
+
+    State* GetOrCreate(const CommandBufferCmd* cmd,
+                       absl::FunctionRef<std::unique_ptr<State>()> create);
+
+    absl::flat_hash_map<const CommandBufferCmd*, std::unique_ptr<State>> state_;
+  };
+
   // See Thunk documentation for XLA execution stages (prepare, initialize,
   // execute). Commands mirror thunks as they are executed as CommandBufferThunk
   // that is plugged into the Thunk execution cycle.
@@ -114,6 +167,7 @@ class CommandBufferCmd {
     const BufferAllocations* buffer_allocations = nullptr;
     const Thunk::CollectiveExecuteParams* collective_params = nullptr;
     const Thunk::CollectiveCliques* collective_cliques = nullptr;
+    StateManager* state = nullptr;
   };
 
   // Prepares a command for recording on a given executor. We split it into a

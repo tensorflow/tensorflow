@@ -83,13 +83,20 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::StatusOr<NcclCommHandle> CommInitRank(int32_t nranks,
-                                              const NcclCliqueId& clique_id,
-                                              int32_t rank) final {
+  absl::StatusOr<OwnedNcclComm> CommInitRank(int32_t, const NcclCliqueId&,
+                                             int32_t) final {
     return UnimplementedError();
   }
 
   absl::Status CommAbort(NcclCommHandle) final { return UnimplementedError(); }
+
+  absl::Status CommFinalize(NcclCommHandle) final {
+    return UnimplementedError();
+  }
+
+  absl::Status CommDestroy(NcclCommHandle) final {
+    return UnimplementedError();
+  }
 
   absl::StatusOr<int32_t> CommCount(NcclCommHandle) final {
     return UnimplementedError();

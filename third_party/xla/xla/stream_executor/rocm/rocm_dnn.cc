@@ -2761,7 +2761,7 @@ absl::Status MIOpenSupport::DoCtcLoss(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-MIOpenSupport::createRnnDescriptor(
+MIOpenSupport::CreateRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -2796,7 +2796,7 @@ MIOpenSupport::createRnnDescriptor(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-MIOpenSupport::createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+MIOpenSupport::CreateRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                                  int data_size,
                                                  dnn::DataType data_type) {
   std::unique_ptr<MIOpenRnnSequenceTensorDescriptor> seq_desc(
@@ -2810,7 +2810,7 @@ MIOpenSupport::createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-MIOpenSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
+MIOpenSupport::CreateRnnStateTensorDescriptor(int num_layer, int batch_size,
                                               int data_size,
                                               dnn::DataType data_type) {
   std::unique_ptr<MIOpenRnnStateTensorDescriptor> state_desc(
@@ -4245,7 +4245,7 @@ absl::Status MIOpenSupport::DoPoolForward(
   bool do_backward = false;
   uint8* workspace = nullptr;
   size_t workspace_size = 0;
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> wsp_mem;
+  ScopedDeviceMemory<uint8> wsp_mem;
   if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
     do_backward = true;
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
@@ -4264,12 +4264,10 @@ absl::Status MIOpenSupport::DoPoolForward(
                                miopenFloat, pdesc);
       if (cache_hit) {
         // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(
-            pdesc->workspace->mutable_device_memory()->opaque());
+        workspace = reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
       } else {
-        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size).value();
-        workspace = reinterpret_cast<uint8*>(
-            wsp_mem->mutable_device_memory()->opaque());
+        wsp_mem = stream->AllocateOwnedArray<uint8>(workspace_size).value();
+        workspace = reinterpret_cast<uint8*>(wsp_mem->ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
                                miopenFloat, wsp_mem, workspace_size,
@@ -4326,7 +4324,7 @@ void PoolingWorkspaceCache::insert(
     const void* p, const dnn::BatchDescriptor& input_dimensions,
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace, size_t wsp_size,
+    ScopedDeviceMemory<uint8>& workspace, size_t wsp_size,
     hipStream_t hip_stream) {
   PoolingWorkspaceDescriptor* desc = 0;
   auto it = cache.find(p);
@@ -4423,8 +4421,8 @@ absl::Status MIOpenSupport::DoPoolBackward(
                                           miopen_dtype, pdesc);
     if (cache_hit) {
       assert(pdesc != 0);
-      workspace_ptr = reinterpret_cast<uint8*>(
-          pdesc->workspace->mutable_device_memory()->opaque());
+      workspace_ptr =
+          reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
     } else {
       VLOG(1) << "Pooling cache miss";

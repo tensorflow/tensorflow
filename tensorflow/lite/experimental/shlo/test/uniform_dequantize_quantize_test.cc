@@ -17,12 +17,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
-#include "tensorflow/lite/experimental/shlo/src/debug.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/test/matchers.h"
 
 namespace stablehlo {
 namespace testing {
@@ -45,27 +45,14 @@ void test(std::initializer_list<DimensionSize>&& shape,
       input_values.size());
   Tensor result(TensorType(Shape(shape), expressed_type), result_values.data());
 
-  auto res = UniformQuantize(input, quant);
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  res = UniformDequantize(quant, result);
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  ASSERT_EQ(res.ok(), true);
-
-  if (result != input) {
-    LOG(INFO) << "input=" << input;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(AlmostSame(result, input), true);
+  ASSERT_OK(UniformQuantize(input, quant));
+  ASSERT_OK(UniformDequantize(quant, result));
+  EXPECT_THAT(result, IsAlmostSame(input));
 }
 
 TEST(QuantizeDequantize, All) {
+  test<ElementType::kSI8, ElementType::kBF16>(
+      {4}, {.scale = 1, .zero_point = 0}, {-2, -1, 0, 1, 2});
   test<ElementType::kSI8, ElementType::kBF16>(
       {4}, {.scale = 1, .zero_point = 0}, {-2, -1, 0, 1, 2});
   test<ElementType::kSI8, ElementType::kBF16>(

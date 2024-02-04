@@ -101,6 +101,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     max_depth = std::max(max_depth, iter.second);
   }
 
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      while_body_args_to_input_tuple;
   // Register strategies and their costs for each instruction.
   for (size_t instruction_id = 0; instruction_id < instructions.size();
        ++instruction_id) {
@@ -127,7 +129,38 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     }
 
     switch (opcode) {
-      case HloOpcode::kParameter:
+      case HloOpcode::kParameter: {
+        auto it = while_body_args_to_input_tuple.find(ins);
+        if (it != while_body_args_to_input_tuple.end()) {
+          const HloInstruction* while_input_tuple = it->second;
+          const StrategyGroup* while_input_tuple_strategy_group =
+              strategy_map.at(while_input_tuple).get();
+
+          VLOG(5) << "Following while input " << while_input_tuple->name();
+          strategy_group = CreateTupleStrategyGroup(instruction_id);
+          strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
+          for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+            std::unique_ptr<StrategyGroup> child_strategies =
+                MaybeFollowInsStrategyGroup(
+                    while_input_tuple_strategy_group->childs[i].get(),
+                    ins->shape().tuple_shapes().at(i), instruction_id,
+                    /* have_memory_cost= */ true, strategy_groups, cluster_env,
+                    pretrimmed_strategy_map);
+            child_strategies->tuple_element_idx = i;
+            strategy_group->childs.push_back(std::move(child_strategies));
+          }
+        } else {
+          strategy_group =
+              CreateAllStrategiesGroup(
+                  ins, ins->shape(), instruction_id, strategy_groups,
+                  cluster_env, strategy_map, option, replicated_penalty,
+                  batch_dim_map, call_graph, only_allow_divisible,
+                  option.allow_replicated_parameters,
+                  /* create_partially_replicated_strategies */ true)
+                  .value();
+        }
+        break;
+      }
       case HloOpcode::kRngBitGenerator:
       case HloOpcode::kRng: {
         strategy_group =
@@ -434,6 +467,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -553,6 +587,16 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           child_strategies->tuple_element_idx = i;
           strategy_group->childs.push_back(std::move(child_strategies));
         }
+
+        if (ins->users().size() == 1 &&
+            ins->users()[0]->opcode() == HloOpcode::kWhile) {
+          const HloInstruction* while_op = ins->users()[0];
+          while_body_args_to_input_tuple[while_op->while_body()
+                                             ->parameter_instruction(0)] = ins;
+          while_body_args_to_input_tuple[while_op->while_condition()
+                                             ->parameter_instruction(0)] = ins;
+        }
+
         break;
       }
       case HloOpcode::kGetTupleElement: {

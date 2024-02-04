@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -246,11 +247,12 @@ CubSortRunnerInterface::Create(PrimitiveType type,
                                 : CreateCubSortRunner(type);
 }
 
-CubSortThunk::CubSortThunk(ThunkInfo thunk_info, PrimitiveType type,
-                           std::optional<PrimitiveType> value_type,
-                           std::vector<BufferAllocation::Slice> operands,
-                           std::vector<BufferAllocation::Slice> results,
-                           BufferAllocation::Slice scratch, bool descending)
+CubSortThunk::CubSortThunk(
+    ThunkInfo thunk_info, PrimitiveType type,
+    std::optional<PrimitiveType> value_type,
+    absl::InlinedVector<BufferAllocation::Slice, 2> operands,
+    absl::InlinedVector<BufferAllocation::Slice, 2> results,
+    BufferAllocation::Slice scratch, bool descending)
     : Thunk(Thunk::kCubSort, thunk_info),
       runner_(CubSortRunnerInterface::Create(type, value_type).value()),
       operands_(std::move(operands)),

@@ -2547,7 +2547,7 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         }),
         data = data + select({
             "//conditions:default": kernels,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
+            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         exec_properties = exec_properties,
         **kwargs

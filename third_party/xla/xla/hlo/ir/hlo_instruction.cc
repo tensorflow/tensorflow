@@ -1298,6 +1298,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCos:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kClz:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -2348,6 +2349,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kImag:
@@ -2776,6 +2778,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -3325,6 +3328,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -3481,7 +3485,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
       (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
        !metadata_->source_file().empty())) {
     printer->Append(", metadata={");
-    printer->Append(xla::OpMetadataToString(*metadata_));
+    printer->Append(xla::OpMetadataToString(
+        *metadata_, options.print_metadata_only_op_name()));
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
@@ -3917,6 +3922,7 @@ bool HloInstruction::IsFusible() const {
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
+      index_in_parent_(~0u),
       opcode_(opcode),
       is_default_config_(false),
       cleaned_up_(false),
@@ -3943,6 +3949,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBatchNormInference(this);
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
+    case HloOpcode::kErf:
+      return visitor->HandleErf(this);
     case HloOpcode::kLogistic:
       return visitor->HandleLogistic(this);
     case HloOpcode::kSign:

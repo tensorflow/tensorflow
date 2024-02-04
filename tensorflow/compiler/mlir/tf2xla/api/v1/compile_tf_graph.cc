@@ -173,6 +173,7 @@ Status PrepareAndExportToLibrary(mlir::ModuleOp module,
   applyTensorflowAndCLOptions(manager);
   manager.addPass(mlir::TF::CreatePrepareTpuComputationForTfExportPass());
   manager.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+  manager.addPass(mlir::TF::CreateTFShapeInferencePass());
   manager.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   manager.addPass(mlir::CreateBreakUpIslandsPass());

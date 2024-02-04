@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -133,25 +132,11 @@ inline void PopulateDotDimsAttrEncoding(
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
 
-// Appends to `diagnostic_engine` a handler that appends all emitted errors to
-// the `diagnostic` string. If `append_annotation_stack` is true, it will append
-// current profiler annotation stack to the diagnostic message (annotation used
-// in Xprof).
-void AppendDiagnosticToString(runtime::DiagnosticEngine& diagnostic_engine,
-                              std::string* diagnostic,
-                              bool append_annotation_stack = false);
-
-// Sets the current tracing scope that will be added to all emitted diagnostics.
-void SetCurrentTracingScope(std::string_view scope);
-void ResetCurrentTracingScope();
-
 }  // namespace gpu
 }  // namespace xla
 
 namespace xla {
 namespace runtime {
-
-// using llvm::ArrayRef;
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::DotDimensionNumbers,

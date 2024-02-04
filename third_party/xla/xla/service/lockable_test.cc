@@ -84,8 +84,10 @@ TEST(LockableTest, ExclusiveAccess) {
 
   for (size_t i = 0; i < 100; ++i) {
     thread_pool.Schedule([&] {
-      auto exclusive_str = str.Acquire();
-      ASSERT_EQ(*exclusive_str, "foo");
+      {  // Decrement counter only after lock is released.
+        auto exclusive_str = str.Acquire();
+        ASSERT_EQ(*exclusive_str, "foo");
+      }
       counter.DecrementCount();
     });
   }

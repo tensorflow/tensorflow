@@ -340,6 +340,10 @@ class TfPjRtClient : public PjRtClient {
   StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
     return wrapped_->CreateHostToDeviceChannelHandle();
   }
+  StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return wrapped_->GetTopologyDescription();
+  }
   Status Defragment() override { return wrapped_->Defragment(); }
 
   PjRtClient* wrapped() const { return wrapped_.get(); }

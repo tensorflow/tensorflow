@@ -19,12 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
-#include "tensorflow/lite/experimental/shlo/src/debug.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/test/matchers.h"
 #include "tensorflow/lite/experimental/shlo/test/util.h"
 
 namespace stablehlo {
@@ -43,19 +44,8 @@ void test(absl::Status (*op)(const Tensor&, Tensor&),
       expected_values.size());
   Tensor result(TensorType(Shape(shape), element_type), result_values.data());
 
-  auto res = op(input, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  if (result != expected) {
-    LOG(INFO) << "input=" << input;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(res.ok(), true);
-  ASSERT_EQ(AlmostSame(result, expected), true);
+  ASSERT_OK(op(input, result));
+  EXPECT_THAT(result, IsAlmostSame(expected)) << "input: " << input;
 }
 
 template <ElementType storage_type, ElementType expressed_type>
@@ -88,19 +78,8 @@ void test(
                           QuantizedTensorElementType(element_type)),
       result_quant_values.data());
 
-  auto res = op(input, result);
-
-  if (!res.ok()) {
-    LOG(INFO) << "Failure: " << res;
-  }
-  if (result != expected) {
-    LOG(INFO) << "input=" << input;
-    LOG(INFO) << "expected=" << expected;
-    LOG(INFO) << "result=" << result;
-  }
-
-  ASSERT_EQ(res.ok(), true);
-  ASSERT_EQ(AlmostSame(result, expected), true);
+  ASSERT_OK(op(input, result));
+  EXPECT_THAT(result, IsAlmostSame(expected)) << "input: " << input;
 }
 
 TEST(ElementwiseUnary, Abs) {

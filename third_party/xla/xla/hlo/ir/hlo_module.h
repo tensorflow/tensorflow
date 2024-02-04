@@ -546,6 +546,12 @@ class HloModule {
     instr->UniquifyName(&instruction_name_uniquer_);
   }
 
+  void SetAndUniquifyComputationName(HloComputation* computation,
+                                     absl::string_view name) {
+    computation->SetAndSanitizeName(name);
+    computation->UniquifyName(&computation_name_uniquer_);
+  }
+
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
   // Checks if this config has a list of entry parameters' HLO shardings for

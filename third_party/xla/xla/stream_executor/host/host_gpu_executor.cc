@@ -32,9 +32,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_options.h"
-#include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/host/host_stream.h"
-#include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/mem.h"
@@ -273,32 +271,6 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_platform_version("Default Version");
 
   return builder.Build();
-}
-
-blas::BlasSupport* HostExecutor::CreateBlas() {
-  PluginRegistry* registry = PluginRegistry::Instance();
-  absl::StatusOr<PluginRegistry::BlasFactory> status =
-      registry->GetFactory<PluginRegistry::BlasFactory>(kHostPlatformId);
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to retrieve BLAS factory: "
-               << status.status().message();
-    return nullptr;
-  }
-
-  return status.value()(this);
-}
-
-fft::FftSupport* HostExecutor::CreateFft() {
-  PluginRegistry* registry = PluginRegistry::Instance();
-  absl::StatusOr<PluginRegistry::FftFactory> status =
-      registry->GetFactory<PluginRegistry::FftFactory>(kHostPlatformId);
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to retrieve FFT factory: "
-               << status.status().message();
-    return nullptr;
-  }
-
-  return status.value()(this);
 }
 
 std::unique_ptr<internal::StreamInterface>
