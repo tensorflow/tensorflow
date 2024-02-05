@@ -457,6 +457,9 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(
         FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
   }
+
+  // TODO(b/323581395): Order snapshot managers based on the number of assigned
+  // workers, so the snapshots with fewest assignments are heartbeated first.
   std::vector<SnapshotManager*> snapshots;
   {
     tf_shared_lock l(mu_);
