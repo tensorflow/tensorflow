@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
 
 #include <array>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
@@ -163,25 +162,26 @@ class GpuPerformanceModel {
       const EstimateRunTimeData& producer_runtime,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      const std::vector<HloInstruction*>& fused_consumers);
+      absl::Span<const HloInstruction* const> fused_consumers);
 
   static absl::Duration EstimateFusedExecTime(
       const HloInstruction* producer,
       const EstimateRunTimeData& producer_runtime,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      const std::vector<HloInstruction*>& fused_consumers, bool multi_output);
+      absl::Span<const HloInstruction* const> fused_consumers,
+      bool multi_output);
 
   static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      std::vector<HloInstruction*> fused_consumers = {},
+      absl::Span<const HloInstruction* const> fused_consumers = {},
       bool multi_output = false);
 
   static RunTimes EstimateRunTimesForPriorityFusion(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      std::vector<HloInstruction*> fused_consumers = {},
+      absl::Span<const HloInstruction* const> fused_consumers = {},
       bool multi_output = false);
 
   // Writes estimated execution time to FusionBackendConfig.reification_cost.
