@@ -79,8 +79,11 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:global_device_id",
         "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
+        "//xla/service/gpu/runtime3:nccl_all_gather_thunk",
+        "//xla/service/gpu/runtime3:nccl_all_reduce_thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -88,6 +91,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ] + if_gpu_is_configured([
         "//xla/service/gpu:mock_nccl_utils",
     ]),
@@ -209,7 +213,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
     ] + if_gpu_is_configured([
-        "//xla/service/gpu:cub_sort_thunk",
+        "//xla/service/gpu/runtime3:cub_sort_thunk",
     ]),
 )
 
@@ -522,6 +526,7 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
+        ":tracing",
         "//xla:statusor",
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
@@ -610,8 +615,8 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:stream_executor_util",
-        "//xla/service/gpu/kernels:custom_fusion",
         "//xla/service/gpu/kernels:custom_kernel",
+        "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_graph",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -684,7 +689,6 @@ cc_library(
 
 cc_library(
     name = "support",
-    srcs = ["support.cc"],
     hdrs = ["support.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
@@ -698,8 +702,6 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation_stack",
     ],
 )
 
@@ -742,10 +744,14 @@ cc_library(
         ":support",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:custom_call_registry",
+        "//xla/runtime:diagnostics",
         "//xla/runtime:executable",
+        "//xla/runtime:logical_result",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

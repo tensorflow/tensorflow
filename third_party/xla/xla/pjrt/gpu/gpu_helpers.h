@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,6 +57,13 @@ struct GpuAllocatorConfig {
   // fragmentation, allowing more of the total memory to be used. If false, the
   // allocator will allocate more memory as allocations are requested.
   bool preallocate = true;
+
+  // Amount of collective memory (ncclMemAlloc) to preallocate. If this value is
+  // 0, collective memory space will be grown as needed to fit the application's
+  // usage, with the drawback of potentially higher fragmentation. If set,
+  // should be set to a multiple of 512MB to avoid wasting memory due to
+  // granularity requirements.
+  size_t collective_memory_size = 0;
 };
 
 std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
@@ -65,6 +72,11 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
 // Builds a BFCAllocator for all local GPUs.
 StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate);
+
+// Builds a BFCAllocator for all local GPUs that uses collective memory.
+StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size);
 
 }  // namespace xla
 

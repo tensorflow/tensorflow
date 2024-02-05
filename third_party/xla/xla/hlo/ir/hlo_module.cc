@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,7 +188,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule() && !to_remove->IsCalledComputation()) {
+  if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
 
@@ -914,10 +914,10 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   absl::flat_hash_set<HloComputation*> nonroot_computations;
   nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
-    for (auto* instruction : computation->instructions()) {
-      if (instruction->has_called_computations()) {
-        for (HloComputation* called_computation :
-             instruction->called_computations()) {
+    for (const HloInstructionInfo& inst :
+         computation->instructions_with_info()) {
+      if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
+        for (HloComputation* called_computation : inst->called_computations()) {
           nonroot_computations.insert(called_computation);
         }
       }

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -94,7 +94,6 @@ namespace spmd {
 namespace {
 constexpr double kOverbudgetCoeff = 1e6;
 constexpr double kSaltiplier = 0.0;  // This value (0.0) disables salting.
-constexpr double kCoeffLimit = 1e7;  // May result in model cost scaling.
 }  // namespace
 
 // Compute the resharding cost vector from multiple possible strategies to a
@@ -239,20 +238,24 @@ void FollowArrayOrTokenStrategyGroup(
     const StrategyGroup& src_strategy_group, const Shape& shape,
     const size_t instruction_id, const bool have_memory_cost,
     const ClusterEnvironment& cluster_env,
-    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     StrategyGroup& strategy_group) {
   CHECK(shape.IsArray() || shape.IsToken());
 
+  std::vector<ShardingStrategy> pretrimmed_strategies;
   // Only follows the given strategy when there is no other strategy to be
   // restored.
-  if (!pretrimmed_strategy_map.contains(src_strategy_group.node_idx)) {
+  auto pretrimmed_strategy_map_it =
+      pretrimmed_strategy_map.find(src_strategy_group.node_idx);
+  if (pretrimmed_strategy_map_it != pretrimmed_strategy_map.end()) {
+    pretrimmed_strategies = pretrimmed_strategy_map_it->second;
+  } else {
     strategy_group.following = &src_strategy_group;
   }
+
   strategy_group.strategies.reserve(src_strategy_group.strategies.size());
   // Creates the sharding strategies and restores trimmed strategies, if any.
-  std::vector<ShardingStrategy>& pretrimmed_strategies =
-      pretrimmed_strategy_map[src_strategy_group.node_idx];
   for (int64_t sid = 0; sid < src_strategy_group.strategies.size() +
                                   pretrimmed_strategies.size();
        ++sid) {
@@ -289,7 +292,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     const size_t instruction_id, const bool have_memory_cost,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
-    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map) {
   std::unique_ptr<StrategyGroup> strategy_group;
   if (src_strategy_group->is_tuple) {
@@ -1522,7 +1525,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     const size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     const int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs) {
@@ -1669,7 +1672,6 @@ AutoShardingSolverResult CallSolver(
   request.mutable_solver_timeout()->set_solver_timeout_in_seconds(
       solver_timeout_in_seconds);
   request.mutable_overbudget_coeff()->set_coeff(kOverbudgetCoeff);
-  request.mutable_coeff_limit()->set_coeff(kCoeffLimit);
   request.set_crash_at_infinity_costs_check(!option.try_multiple_mesh_shapes);
   request.set_compute_iis(compute_iis);
   request.set_saltiplier(kSaltiplier);
@@ -1710,6 +1712,7 @@ AutoShardingSolverResult CallSolver(
     request.add_instruction_names(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
     AutoShardingSolverRequest_Costs ci, di, mi, pi;
+    AutoShardingSolverRequest_Names strategy_names;
     std::optional<HloSharding> default_strategy;
     auto iter = sharding_propagation_solution.find(instruction_name);
     if (iter != sharding_propagation_solution.end()) {
@@ -1730,6 +1733,7 @@ AutoShardingSolverResult CallSolver(
                    cost_graph.extra_node_costs_[node_idx][j]);
       mi.add_costs(strategy.memory_cost);
       pi.add_costs(default_strategy && sharding == *default_strategy ? 0 : 1);
+      strategy_names.add_names(sharding.ToString());
     }
     if (option.use_sharding_propagation_for_default_shardings &&
         *std::min_element(pi.costs().begin(), pi.costs().end()) > 0) {
@@ -1742,6 +1746,7 @@ AutoShardingSolverResult CallSolver(
     request.mutable_communication_costs()->Add(std::move(di));
     request.mutable_memory_costs()->Add(std::move(mi));
     request.mutable_departure_costs()->Add(std::move(pi));
+    request.mutable_strategy_names()->Add(std::move(strategy_names));
   }
   LOG(INFO) << "Total nodes without default: " << num_nodes_without_default;
 
@@ -2365,79 +2370,31 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
 }
 
 void SaveShardingForInstruction(
+    const HloInstruction* inst, bool save_for_copy_users,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
-        preserve_shardings,
-    HloInstruction* inst) {
-  if (!inst->has_sharding()) {
-    return;
-  }
-  if (!inst->sharding().IsTuple()) {
-    preserve_shardings[inst->name()] = {inst->sharding()};
-  } else {
-    preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
-  }
-}
+        preserve_shardings) {
+  auto save_sharding = [&preserve_shardings](const HloInstruction* inst) {
+    if (!inst->has_sharding()) {
+      return;
+    }
+    if (!inst->sharding().IsTuple()) {
+      preserve_shardings[inst->name()] = {inst->sharding()};
+    } else {
+      preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
+    }
+  };
 
-// Saves the user shardings that need to be preserved, and check whether they
-// are preserved after this pass.
-absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
-    HloModule* module,
-    const absl::flat_hash_set<std::string>& replicated_small_tensors,
-    AutoShardingOption::PreserveShardingsType type) {
-  absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
-  if (type == AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    // Saves shardings for all instructions.
-    for (const auto computation : module->computations()) {
-      for (const auto inst : computation->instructions()) {
-        SaveShardingForInstruction(preserve_shardings, inst);
-        for (const auto user : inst->users()) {
-          // Also preserve the shardings of copy ops that are the users of those
-          // instructions.
-          if (user->opcode() == HloOpcode::kCopy) {
-            SaveShardingForInstruction(preserve_shardings, user);
-          }
-        }
-      }
-    }
-  } else if (type == AutoShardingOption::PreserveShardingsType::
-                         kKeepInputOutputShardings) {
-    // Saves parameter shardings.
-    for (const auto inst :
-         module->entry_computation()->parameter_instructions()) {
-      SaveShardingForInstruction(preserve_shardings, inst);
-      for (const auto user : inst->users()) {
-        // Also preserve the shardings of copy ops that are the users of those
-        // instructions.
-        if (user->opcode() == HloOpcode::kCopy) {
-          SaveShardingForInstruction(preserve_shardings, user);
-        }
-      }
-    }
-    for (const auto computation : module->computations()) {
-      for (const auto inst : computation->instructions()) {
-        if (inst->opcode() == HloOpcode::kOutfeed ||
-            replicated_small_tensors.count(inst->name())) {
-          SaveShardingForInstruction(preserve_shardings, inst);
-        }
-      }
-    }
-    // Saves output shardings.
-    auto inst = module->entry_computation()->root_instruction();
-    SaveShardingForInstruction(preserve_shardings, inst);
-  }
+  save_sharding(inst);
 
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "User shardings that need to be kept (printing only the 1st "
-                 "elemenet of tuples): ";
-    for (const auto& tmp : preserve_shardings) {
-      std::string sharding;
-      for (const auto& s : tmp.second) {
-        sharding += s.ToString() + ",";
+  if (save_for_copy_users) {
+    for (const auto user : inst->users()) {
+      // Also preserve the shardings of copy ops that are the users of those
+      // instructions.
+      if (user->opcode() == HloOpcode::kCopy) {
+        save_sharding(user);
       }
-      LOG(INFO) << tmp.first << ": " << sharding;
     }
   }
-  return preserve_shardings;
 }
 
 // Check whether the shardings that need to be perserved are preserved.
@@ -3241,49 +3198,80 @@ bool HasReduceScatterOpportunity(
 
 }  // namespace spmd
 
-StatusOr<bool> AutoShardingImplementation::RemoveShardingAnnotation(
+std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
     HloModule* module,
     const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
+  absl::flat_hash_set<HloInstruction*> keep_inst;
+
+  for (const HloComputation* computation :
+       module->computations(execution_threads)) {
+    for (const auto inst : computation->instructions()) {
+      if (inst->opcode() == HloOpcode::kOutfeed) {
+        spmd::SaveShardingForInstruction(inst,
+                                         /* save_for_copy_users */ false,
+                                         preserve_shardings);
+      }
+    }
+  }
+
   if (option_.preserve_shardings ==
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    return false;
+    // Saves shardings for all instructions.
+    for (const HloComputation* computation :
+         module->computations(execution_threads)) {
+      for (const auto inst : computation->instructions()) {
+        spmd::SaveShardingForInstruction(inst,
+                                         /* save_for_copy_users */ true,
+                                         preserve_shardings);
+      }
+    }
+    return std::make_pair(preserve_shardings, /* module_is_changed */ false);
   }
-  VLOG(0) << "Removing user sharding annotations.";
-  bool changed = false;
-  absl::flat_hash_set<HloInstruction*> keep_inst;
+
+  bool module_is_changed = false;
   for (HloComputation* computation : module->computations(execution_threads)) {
     bool is_entry_computation = computation->IsEntryComputation();
 
     for (HloInstruction* ins : computation->instructions()) {
-      // Do not remove sharding annotations from instructions replicated as they
-      // are small tensors
+      // Do not remove sharding annotations from instructions replicated as
+      // they are small tensors
       if (replicated_small_tensors.count(ins->name())) {
         keep_inst.insert(ins);
+        spmd::SaveShardingForInstruction(ins,
+                                         /* save_for_copy_users */ false,
+                                         preserve_shardings);
         continue;
       }
-
       // Do not remove entry computation's parameter and root instruction's
       // sharding if preserve_shardings is kKeepInputOutputShardings.
       if (option_.preserve_shardings ==
               AutoShardingOption::PreserveShardingsType::
                   kKeepInputOutputShardings &&
-          (is_entry_computation &&
-           (ins->opcode() == HloOpcode::kParameter || ins->IsRoot()))) {
+          is_entry_computation &&
+          (ins->opcode() == HloOpcode::kParameter || ins->IsRoot())) {
         keep_inst.insert(ins);
+        spmd::SaveShardingForInstruction(
+            ins,
+            /* save_for_copy_users */ ins->opcode() == HloOpcode::kParameter,
+            preserve_shardings);
         continue;
       }
+
       if (ins->opcode() == HloOpcode::kCopy &&
           keep_inst.find(ins->operand(0)) != keep_inst.end()) {
         continue;
       }
+
       if (ins->has_sharding()) {
-        changed |= true;
+        module_is_changed |= true;
         ins->clear_sharding();
       }
     }
   }
-  return changed;
+  return std::make_pair(preserve_shardings, module_is_changed);
 }
 
 Status AutoShardingImplementation::CanonicalizeLayouts(HloModule* module) {
@@ -3348,27 +3336,12 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                "custom_call_target=Sharding.";
   }
 
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      preserve_shardings_result = SaveAndRemoveShardingAnnotation(
+          module, replicated_small_tensors, execution_threads);
   absl::flat_hash_map<std::string, std::vector<HloSharding>>
-      preserve_shardings = spmd::SaveUserShardings(
-          module, replicated_small_tensors, option_.preserve_shardings);
-
-  // Remove XLA sharding annotations, if there are any.
-  if (option_.preserve_shardings !=
-      AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    StatusOr<bool> changed = RemoveShardingAnnotation(
-        module, replicated_small_tensors, execution_threads);
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    if (changed.value()) {
-      module_is_changed = true;
-      LOG(INFO) << "XLA sharding annotations are removed.";
-    } else {
-      LOG(INFO) << "This workload does not have XLA sharding annotations.";
-    }
-  } else {
-    LOG(INFO) << "Preserving XLA sharding annotations.";
-  }
+      preserve_shardings = preserve_shardings_result.first;
+  module_is_changed |= preserve_shardings_result.second;
 
   // ----- Get a sequential schedule and do liveness analysis -----
   auto size_fn = [](const BufferValue& buffer) {

@@ -702,7 +702,8 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
 static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    const float* per_channel_scale) {
   const uint8_t* ledger_ptr = ledger;
   const int8* mat_ptr = matrix;
 
@@ -756,8 +757,12 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
             : [ledger_end] "r"(ledger_end)
             : "x0", "x1", "x7", "x8", "v0", "v1", "v8", "v9", "cc", "memory");
       }
+      float scaling_factor = scaling_factors[batch];
+      if (per_channel_scale) {
+        scaling_factor *= per_channel_scale[row];
+      }
       result[batch * m_rows + row] +=
-          static_cast<int32>(row_sum) * scaling_factors[batch];
+          static_cast<int32>(row_sum) * scaling_factor;
     }
   }
 }
@@ -2075,12 +2080,13 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    const float* per_channel_scale) {
 #ifdef __aarch64__
   if (HasSdotInstruction() && m_cols % 16 == 0) {
     DotprodSparseMatrixBatchVectorMultiplyAccumulate(
         matrix, ledger, m_rows, m_cols, vectors, scaling_factors, n_batch,
-        result);
+        result, per_channel_scale);
     return;
   }
 #endif  // __aarch64__
@@ -2137,7 +2143,11 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
         // Add the 4 intermediate sum values to get the final dot-prod value for
         // this row.
         int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
-        result[batch * m_rows + row] += dotprod * batch_scaling_factor;
+        float scaling_factor = batch_scaling_factor;
+        if (per_channel_scale) {
+          scaling_factor *= per_channel_scale[row];
+        }
+        result[batch * m_rows + row] += dotprod * scaling_factor;
       }
     }  // for row
   }    // for batch

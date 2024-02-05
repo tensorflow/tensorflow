@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,18 +58,25 @@ namespace gpu {
 // modifies the output in place without touching the un-updated elements. The
 // update slice is assumed to be the exact same for all the
 // dynamic-update-slice ops.
-class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
+class InPlaceDynamicUpdateSliceFusion : public KernelFusionEmitterBase {
  public:
-  explicit InPlaceDynamicUpdateSliceEmitter(const HloFusionAnalysis& analysis)
+  explicit InPlaceDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
         dus_ops_(
             GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t output_id, mlir::MLIRContext* ctx) const override {
+      int64_t root_index, mlir::MLIRContext* ctx) const override {
     // The mapping cannot be statically computed in general, since the offsets
     // are unknown.
+    return std::nullopt;
+  }
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
     return std::nullopt;
   }
 

@@ -31,11 +31,18 @@ message RepresentativeDatasetConfig {
 // Minimal user input about representative datasets is required. Representative
 // datasets are required for static-range PTQ to retrieve quantization
 // statistics via calibration.
-// Next ID: 2
+// Next ID: 3
 message StaticRangePtqPreset {
   // Configures representative dataset. Each item corresponds to a
   // representative dataset used to calibrate a function.
   repeated RepresentativeDatasetConfig representative_datasets = 1;
+
+  // NOTE: This field will be deprecated.
+  // Granularity should be controlled in custom configuration, deprecating
+  // this field once available.
+  // If set true, enable channel-wise quantization for all supported ops.
+  // This value is true by default.
+  bool enable_per_channel_quantized_weight = 2;
 }
 
 // Metadata specific to the input TensorFlow SavedModel, which may be required
@@ -45,6 +52,15 @@ message TfSavedModelConfig {
   // Set of tags that uniquely identify the `MetaGraphDef` existing in the
   // input SavedModel.
   repeated string tags = 1;
+}
+
+// Configures the graph transformation pipeline for quantization.
+message PipelineConfig {
+  // When set to True, unpacks ops with uniform quantized types into operations
+  // without uniform quantized types (mostly i8 or i32). Useful when the target
+  // hardware performs better with integer ops.
+  // Default value: true
+  optional bool unpack_quantized_types = 1;
 }
 
 // Quantization configuration for StableHLO Quantizer. This is the primary
@@ -58,4 +74,7 @@ message QuantizationConfig {
 
   // TF SavedModel specific information for the input model.
   TfSavedModelConfig tf_saved_model = 2;
+
+  // Configures the graph transformation pipeline for quantization.
+  PipelineConfig pipeline_config = 3;
 }

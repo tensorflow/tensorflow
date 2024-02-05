@@ -1029,7 +1029,7 @@ class RemapperFuseConvWithBiasAndAddActivation : public RemapperTest {
       ASSERT_EQ(tensors_expected.size(), 1);
       auto tensors = EvaluateNodes(output, item.fetch, item.feed);
       ASSERT_EQ(tensors.size(), 1);
-      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+      test::ExpectClose(tensors[0], tensors_expected[0], 0, 1e-6);
     }
   }
 };
@@ -2339,7 +2339,7 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAddN) {
   ASSERT_EQ(tensors_expected.size(), 1);
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  test::ExpectClose(tensors[0], tensors_expected[0], 0, 1e-6);
 }
 
 TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
@@ -2410,7 +2410,7 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
   ASSERT_EQ(tensors_expected.size(), 1);
   auto tensors = EvaluateNodes(output, item.fetch, item.feed);
   ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  test::ExpectClose(tensors[0], tensors_expected[0], 0, 1e-6);
 }
 
 // Conv2D + Add {6,} + Conv2D + Biasadd fusion.

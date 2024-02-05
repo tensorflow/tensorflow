@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,9 +188,3 @@ static void InitializeCudaPlatform() {
 
 REGISTER_MODULE_INITIALIZER(cuda_platform,
                             stream_executor::InitializeCudaPlatform());
-
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(cuda_platform, multi_platform_manager);
-REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-                                     cuda_platform);

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1094,6 +1094,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -1830,7 +1831,7 @@ StatusOr<std::string> WrapFusionExplorer(
     const FusionVisualizerProgress& visualizer_progress,
     absl::string_view graph_title) {
   if (visualizer_progress.frames.empty()) {
-    return InternalError("Empty");
+    return Internal("Empty");
   }
 
   std::string dot_graphs =
@@ -1930,7 +1931,7 @@ StatusOr<std::string> WrapFusionExplorer(
       var area = document.getElementById('rendered');
       area.innerHTML = `${svg}<style>${css_data}</style>`;
       var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, });
+          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
       var to_highlight = frame[2].length ?
         document.querySelector(`${frame[2]}`) : null;
       if (to_highlight) {

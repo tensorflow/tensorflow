@@ -2,7 +2,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_tsl//tsl:tsl.bzl", "if_nccl")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -79,11 +78,11 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/integrations:tf_allocator_adapter",
         "@com_google_absl//absl/base:core_headers",
@@ -113,13 +112,12 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/util:env_var",
     ] + if_cuda_or_rocm([
+        ":nccl_id_store",
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
-        ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
     ]) + if_rocm([
-        ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -160,52 +158,31 @@ xla_cc_test(
     ],
 )
 
-# We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
-# but Bazel does not allow nested selects. We can work around the problem using
-# an intermediate library that has the conditional NCCL pieces that is only
-# itself included as a dependency if CUDA is enabled.
 cc_library(
-    name = "nccl_id_store_cuda",
+    name = "nccl_id_store",
     srcs = ["nccl_id_store.cc"],
     hdrs = ["nccl_id_store.h"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:global_device_id",
-        "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu:nccl_api",
+        "//xla/service/gpu:nccl_clique_key",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:errors",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
-)
-
-cc_library(
-    name = "nccl_id_store_rocm",
-    srcs = ["nccl_id_store.cc"],
-    hdrs = ["nccl_id_store.h"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla:statusor",
-        "//xla:util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/service:global_device_id",
-        "//xla/service/gpu:gpu_executable_run_options",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 xla_cc_test(
@@ -268,19 +245,19 @@ cc_library(
         "//xla/service:local_service_utils",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/platform",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
     ] + if_cuda_or_rocm([
+        ":nccl_id_store",
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
-        ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
-        ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/service/gpu:amdgpu_compiler_impl",
     ]),

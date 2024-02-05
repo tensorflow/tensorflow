@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,8 +66,8 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   stream->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
   if (current.size() != expected.size()) {
-    return InternalError("Mismatched buffer size: %d bytes vs. %d bytes",
-                         current.size(), expected.size());
+    return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
+                    current.size(), expected.size());
   }
 
   se::DeviceMemory<ElementT> current_typed(current);

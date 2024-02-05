@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -267,11 +267,11 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
 
   if (xla::primitive_util::IsF8Type(lhs_layout.dtype) &&
       lhs_layout.order == gpu::MatrixLayout::Order::kColumnMajor) {
-    return xla::InternalError("The F8 LHS must be column-major");
+    return xla::Internal("The F8 LHS must be column-major");
   }
   if (xla::primitive_util::IsF8Type(rhs_layout.dtype) &&
       rhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
-    return xla::InternalError("The F8 RHS must be row-major");
+    return xla::Internal("The F8 RHS must be row-major");
   }
 
   TF_ASSIGN_OR_RETURN(auto output_dtype,
@@ -485,7 +485,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
 
 #undef TYPED_MATMUL
 
-  return xla::InternalError("Unexpected dtype");
+  return xla::Internal("Unexpected dtype");
 }
 
 }  // namespace rocm

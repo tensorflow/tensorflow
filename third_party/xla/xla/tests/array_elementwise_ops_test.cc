@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -2714,6 +2714,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   Atan2(y, x);
 
   ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ErfF32s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kNaN = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder, {-kInf, -2.5f, 3.14f, -0.0f, 0.0f, 2.25f, kInf, kNaN});
+
+  Erf(a);
+
+  ErrorSpec error_spec{1e-5f, 1e-5f};
+  ComputeAndCompare(&builder, {}, error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {

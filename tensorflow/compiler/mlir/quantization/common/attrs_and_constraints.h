@@ -143,11 +143,19 @@ FailureOr<T> TryCast(Operation *op, const StringRef name) {
   if (cast_op) {
     return cast_op;
   } else {
-    llvm::dbgs() << "Failed to match " << name << " (" << T::getOperationName()
-                 << ").\n";
+    DEBUG_WITH_TYPE("mlir-quant-attrs-and-constraints",
+                    llvm::dbgs() << "Failed to match " << name << " ("
+                                 << T::getOperationName() << ").\n");
     return failure();
   }
 }
+
+FailureOr<int32_t> CastI64ToI32(int64_t value);
+
+// Tries to cast an array of int64 to int32. If any of the element in the
+// array is not in the range of int32, returns failure().
+FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
+    ArrayRef<int64_t> int64_array);
 
 }  // namespace mlir::quant
 

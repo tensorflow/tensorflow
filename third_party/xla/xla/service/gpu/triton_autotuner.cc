@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -484,7 +484,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     if (root->opcode() == HloOpcode::kReduce) {
       HloInstruction* fusion_instruction =
           entry_computation->AddInstruction(HloInstruction::CreateFusion(
-              root->shape(), ChooseFusionKind(*root, *root), root));
+              root->shape(), ChooseFusionKind(*root), root));
       HloInstruction* init_value = root->mutable_operand(1);
       TF_CHECK_OK(
           entry_computation->ReplaceInstruction(root, fusion_instruction));
@@ -711,7 +711,7 @@ absl::StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
 
   se::StreamExecutor* stream_exec = config.GetExecutor();
   if (!stream_exec->SynchronizeAllActivity()) {
-    return InternalError("Failed to synchronize GPU for autotuning.");
+    return Internal("Failed to synchronize GPU for autotuning.");
   }
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();
   if (allocator == nullptr) {

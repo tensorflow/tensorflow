@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#define EIGEN_USE_THREADS
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 
 #include <cstdint>
@@ -21,6 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#define EIGEN_USE_THREADS
+
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -50,6 +53,7 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 
+using tensorflow::test::TensorEq;
 using tsl::testing::StatusIs;
 
 struct ReshardToTensorTestParam {
@@ -66,8 +70,17 @@ struct ShardToArrayTestParam {
   std::vector<int> device_indices;
   xla::HloSharding sharding;
 };
+
+struct TensorToArrayTestParam {
+  tensorflow::Tensor in_tensor;
+  std::vector<tensorflow::Tensor> expected_out_tensors;
+  std::vector<int> device_ids;
+  xla::HloSharding sharding;
+};
+
 using ShardToArrayTest = ::testing::TestWithParam<ShardToArrayTestParam>;
 using ReshardToTensorTest = ::testing::TestWithParam<ReshardToTensorTestParam>;
+using TensorToArrayTest = ::testing::TestWithParam<TensorToArrayTestParam>;
 
 // Wrapper functions for building sharding specs for a given shape with a
 // natural device order.
@@ -78,6 +91,9 @@ xla::HloSharding PartialTile(absl::Span<const int64_t> dims) {
   return xla::HloSharding::PartialTile(xla::TileAssignment(dims));
 }
 xla::HloSharding Replicate() { return xla::HloSharding::Replicate(); }
+xla::HloSharding Maximal(int64_t device_index = 0) {
+  return xla::HloSharding::AssignDevice(device_index);
+}
 
 TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   constexpr int kMaxParallelism = 16;
@@ -112,8 +128,10 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
+  tsl::RCReference<xla::ifrt::Array> assembled_array;
+
   TF_ASSERT_OK_AND_ASSIGN(
-      auto assembled_array,
+      assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
           ToIfrtShape(GetParam().expected_out_tensor.shape()),
           std::move(ifrt_sharding), absl::MakeSpan(split_arrays),
@@ -121,17 +139,39 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
-      MakeTensorFromArray(*client, assembled_array, GetParam().sharding,
+      MakeTensorFromArray(*client, *assembled_array, GetParam().sharding,
                           device_list, device));
 
-  EXPECT_THAT(GetParam().expected_out_tensor,
-              tensorflow::test::TensorEq(output_tensor));
+  EXPECT_THAT(GetParam().expected_out_tensor, TensorEq(output_tensor));
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    HloShardingConcatTests, ReshardToTensorTest,
+    HloShardingTests, ReshardToTensorTest,
     ::testing::ValuesIn<ReshardToTensorTestParam>(
         {
+            // Maximal
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({3}, TensorShape({})),
+                    },
+                .expected_out_tensor = test::AsTensor<int32_t>({3},
+                                                               TensorShape({})),
+                .device_indices = {0},
+                .sharding = Maximal(0),
+            },
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({3}, TensorShape({})),
+                        test::AsTensor<int32_t>({4}, TensorShape({})),
+                    },
+                .expected_out_tensor = test::AsTensor<int32_t>({4},
+                                                               TensorShape({})),
+                .device_indices = {0, 1},
+                .sharding = Maximal(1),
+            },
+
             // Full replication.
             {
                 .split_tensors =
@@ -317,7 +357,7 @@ TEST_P(ShardToArrayTest, MakeAssembledArrayFromHostBuffer) {
             ->CopyToHostBuffer(host_tensor.data(), /*byte_strides=*/{},
                                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
             .Await());
-    EXPECT_THAT(expected_out_tensor, tensorflow::test::TensorEq(host_tensor));
+    EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
   }
 }
 
@@ -482,6 +522,224 @@ INSTANTIATE_TEST_SUITE_P(
                         test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
                     },
                 .device_indices = {3, 2, 1, 0},
+                .sharding = PartialTile({2, 1, 2}),
+            },
+        }));
+
+TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
+  constexpr int kMaxParallelism = 16;
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
+
+  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
+                                 kMaxParallelism);
+
+  auto input_tensor = GetParam().in_tensor;
+
+  // Create contexts required for the compiler execution.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto assembled_array,
+      MakeArrayFromTensor(*client, input_tensor,
+                          absl::MakeSpan(GetParam().device_ids),
+                          GetParam().sharding, device));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+
+  ASSERT_EQ(disassembled_arrays.size(), GetParam().expected_out_tensors.size());
+
+  for (int i = 0; i < disassembled_arrays.size(); ++i) {
+    SCOPED_TRACE(absl::StrCat("Array ", i, " of ", disassembled_arrays.size()));
+    auto disassembled_array = disassembled_arrays[i];
+    auto expected_out_tensor = GetParam().expected_out_tensors[i];
+    ASSERT_EQ(disassembled_array->shape(),
+              xla::ifrt::Shape(expected_out_tensor.shape().dim_sizes()));
+    tensorflow::Tensor host_tensor(expected_out_tensor.dtype(),
+                                   expected_out_tensor.shape());
+    TF_ASSERT_OK(
+        disassembled_array
+            ->CopyToHostBuffer(host_tensor.data(), /*byte_strides=*/{},
+                               xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            .Await());
+    EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TensorToArrayTests, TensorToArrayTest,
+    ::testing::ValuesIn<TensorToArrayTestParam>(
+        {
+            // Single device
+            {
+                .in_tensor = test::AsTensor<int32_t>({1}, TensorShape({})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1}, TensorShape({})),
+                    },
+                .device_ids = {0},
+                .sharding = Replicate(),
+            },
+            // Full replication.
+            {
+                .in_tensor = test::AsTensor<int32_t>({1}, TensorShape({})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1}, TensorShape({})),
+                        test::AsTensor<int32_t>({1}, TensorShape({})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Replicate(),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3},
+                                                     TensorShape({3, 1})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 3}, TensorShape({3, 1})),
+                        test::AsTensor<int32_t>({1, 2, 3}, TensorShape({3, 1})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Replicate(),
+            },
+            // 1-D sharding
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({4})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2, 1}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({1, 2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({1, 2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({1, 2, 1})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({1, 1, 2}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
+                                                     TensorShape({4, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({5, 6}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({7, 8}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1, 2, 3},
+                .sharding = Tile({4, 1}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
+                                                     TensorShape({4, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 3, 5, 7},
+                                                TensorShape({4, 1})),
+                        test::AsTensor<int32_t>({2, 4, 6, 8},
+                                                TensorShape({4, 1})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({1, 2}),
+            },
+            // 2-D sharding
+            {
+                .in_tensor = test::AsTensor<int32_t>(
+                    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                    TensorShape({4, 4})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({3, 4, 7, 8},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({9, 10, 13, 14},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({11, 12, 15, 16},
+                                                TensorShape({2, 2})),
+                    },
+                .device_ids = {0, 1, 2, 3},
+                .sharding = Tile({2, 2}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>(
+                    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                    TensorShape({4, 1, 4})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({3, 4, 7, 8},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({9, 10, 13, 14},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({11, 12, 15, 16},
+                                                TensorShape({2, 1, 2})),
+                    },
+                .device_ids = {0, 1, 2, 3},
+                .sharding = Tile({2, 1, 2}),
+            },
+            // Partial replication
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({1, 3}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1})),
+                        test::AsTensor<int32_t>({2, 4}, TensorShape({2, 1})),
+                    },
+                .device_ids = {0, 1, 2, 3},
+                .sharding = PartialTile({1, 2, 2}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1, 2, 3},
+                .sharding = PartialTile({2, 1, 2}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {3, 2, 1, 0},
                 .sharding = PartialTile({2, 1, 2}),
             },
         }));

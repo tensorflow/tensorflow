@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,16 +23,89 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_sharding_util {
 namespace {
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible1) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 4, 2, 4}, {4, 4, 8}, {0, 2, 1})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible2) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 2, 4, 16}, {16, 8}, {1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 2, 4, 4}, {4, 4, 8}, {0, 2, 1})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible3) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({4, 2, 1, 16}, {16, 8}, {1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({1, 1, 4, 32}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 2, 4, 4}, {16, 8}, {1, 0})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible4) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
+  HloSharding dst =
+      HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {4, 32}, {1, 0}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 4, 2, 4}, {4, 32}, {1, 0})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible5) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
+  HloSharding dst =
+      HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {32, 4}, {1, 0}));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible6) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible7) {
+  HloSharding to_merge = HloSharding::PartialTile(
+      TileAssignment({2, 1, 2, 2}, {2, 2, 2}, {2, 1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({1, 2, 1, 4}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst,
+            HloSharding::Tile(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
+  HloSharding to_merge = HloSharding::PartialTile(TileAssignment({2, 1, 4}));
+  HloSharding dst =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2}, {2, 2, 2}, {2, 1, 0}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst,
+            HloSharding::Tile(TileAssignment({2, 4}, {2, 2, 2}, {0, 2, 1})));
+}
 
 TEST(HloShardingUtilTest, TransposeShardingReplicated) {
   EXPECT_EQ(TransposeSharding(HloSharding::Replicate(), {0, 1, 2}),
@@ -362,12 +435,11 @@ TEST(HloShardingUtilTest, GetManualSubgroupSharding_ReplicatedAndManual) {
 TEST(HloShardingUtilTest, UngroupSharding_ManualOnly) {
   HloSharding sharding = HloSharding::IotaTile({1, 2});
   std::vector<std::vector<int64_t>> device_groups = {{0, 2}, {1, 3}};
-  std::vector<int64_t> group_dims = {2};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dims = {2};
+  DimensionVector group_dim_sizes = {2};
 
   auto grouped = GroupedSharding(
-      std::move(device_groups),
-      std::vector<int64_t>(group_dims.begin(), group_dims.end()),
+      std::move(device_groups), std::move(group_dims),
       std::move(group_dim_sizes), sharding.tile_assignment().num_dimensions(),
       sharding, /*subgroup_manual=*/true);
 
@@ -381,15 +453,14 @@ TEST(HloShardingUtilTest, UngroupSharding_ReplicatedAndManual) {
   HloSharding sharding = HloSharding::PartialTile(TileAssignment({1, 2, 2}));
   std::vector<std::vector<int64_t>> device_groups = {{0, 2, 4, 6},
                                                      {1, 3, 5, 7}};
-  std::vector<int64_t> group_dims = {3};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dims = {3};
+  DimensionVector group_dim_sizes = {2};
 
-  auto grouped = GroupedSharding(
-      std::move(device_groups),
-      std::vector<int64_t>(group_dims.begin(), group_dims.end()),
-      std::move(group_dim_sizes),
-      sharding.tile_assignment().num_dimensions() - 1, sharding,
-      /*subgroup_manual=*/true);
+  auto grouped =
+      GroupedSharding(std::move(device_groups), std::move(group_dims),
+                      std::move(group_dim_sizes),
+                      sharding.tile_assignment().num_dimensions() - 1, sharding,
+                      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
@@ -403,15 +474,14 @@ TEST(HloShardingUtilTest, UngroupSharding_ManualAndReplicated) {
   HloSharding sharding = HloSharding::PartialTile(TileAssignment({1, 2, 2}));
   std::vector<std::vector<int64_t>> device_groups = {{0, 1, 4, 5},
                                                      {2, 3, 6, 7}};
-  std::vector<int64_t> group_dims = {2};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dims = {2};
+  DimensionVector group_dim_sizes = {2};
 
-  auto grouped = GroupedSharding(
-      std::move(device_groups),
-      std::vector<int64_t>(group_dims.begin(), group_dims.end()),
-      std::move(group_dim_sizes),
-      sharding.tile_assignment().num_dimensions() - 1, sharding,
-      /*subgroup_manual=*/true);
+  auto grouped =
+      GroupedSharding(std::move(device_groups), std::move(group_dims),
+                      std::move(group_dim_sizes),
+                      sharding.tile_assignment().num_dimensions() - 1, sharding,
+                      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
@@ -424,16 +494,15 @@ TEST(HloShardingUtilTest, UngroupSharding_ManualAndReplicated) {
 TEST(HloShardingUtilTest, UngroupSharding_Replicated) {
   HloSharding sharding = HloSharding::Replicate();
 
-  std::vector<int64_t> group_dims = {3};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dims = {3};
+  DimensionVector group_dim_sizes = {2};
 
   std::vector<std::vector<int64_t>> device_groups = {{0, 1}, {2, 3}};
 
-  auto grouped = GroupedSharding(
-      std::move(device_groups),
-      std::vector<int64_t>(group_dims.begin(), group_dims.end()),
-      std::move(group_dim_sizes), 2, sharding,
-      /*subgroup_manual=*/true);
+  auto grouped =
+      GroupedSharding(std::move(device_groups), std::move(group_dims),
+                      std::move(group_dim_sizes), 2, sharding,
+                      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
@@ -444,16 +513,15 @@ TEST(HloShardingUtilTest, UngroupSharding_Replicated) {
 
 TEST(HloShardingUtilTest, UngroupSharding_Replicated2) {
   HloSharding sharding = HloSharding::Replicate();
-  std::vector<int64_t> group_dims = {2};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dims = {2};
+  DimensionVector group_dim_sizes = {2};
 
   std::vector<std::vector<int64_t>> device_groups = {{0, 2}, {1, 3}};
 
-  auto grouped = GroupedSharding(
-      std::move(device_groups),
-      std::vector<int64_t>(group_dims.begin(), group_dims.end()),
-      std::move(group_dim_sizes), 2, sharding,
-      /*subgroup_manual=*/true);
+  auto grouped =
+      GroupedSharding(std::move(device_groups), std::move(group_dims),
+                      std::move(group_dim_sizes), 2, sharding,
+                      /*subgroup_manual=*/true);
 
   HloSharding ungroup_sharding = UngroupSharding(grouped);
   VLOG(1) << "ungroup_sharding: " << ungroup_sharding.ToString();
@@ -496,47 +564,44 @@ TEST(HloShardingUtilTest, UngroupShardingWithUnsortedGroupDims) {
 TEST(HloShardingUtilTest, DeviceGroupsDoesNotMatch) {
   HloSharding sharding = HloSharding::PartialTile(
       TileAssignment((absl::Span<const int64_t>){2, 2}));
-  std::vector<int64_t> group_dims = {2};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dim_sizes = {2};
 
   std::vector<std::vector<int64_t>> lhs_device_groups = {{0, 2, 4, 6},
                                                          {1, 3, 5, 7}};
-  std::vector<int64_t> lhs_group_dims = {3};
+  DimensionVector lhs_group_dims = {3};
 
-  auto lhs = GroupedSharding(
-      std::move(lhs_device_groups),
-      std::vector<int64_t>(lhs_group_dims.begin(), lhs_group_dims.end()),
-      group_dim_sizes, 2, sharding,
-      /*subgroup_manual=*/true);
+  auto lhs =
+      GroupedSharding(std::move(lhs_device_groups), std::move(lhs_group_dims),
+                      group_dim_sizes, 2, sharding,
+                      /*subgroup_manual=*/true);
 
   std::vector<std::vector<int64_t>> rhs_device_groups = {{0, 1, 4, 5},
                                                          {2, 3, 6, 7}};
-  std::vector<int64_t> rhs_group_dims = {2};
+  DimensionVector rhs_group_dims = {2};
 
-  auto rhs = GroupedSharding(
-      std::move(rhs_device_groups),
-      std::vector<int64_t>(rhs_group_dims.begin(), rhs_group_dims.end()),
-      group_dim_sizes, 2, sharding,
-      /*subgroup_manual=*/true);
+  auto rhs =
+      GroupedSharding(std::move(rhs_device_groups), std::move(rhs_group_dims),
+                      group_dim_sizes, 2, sharding,
+                      /*subgroup_manual=*/true);
 
   EXPECT_FALSE(DeviceGroupsAreMatch(lhs, rhs));
 }
 
 TEST(HloShardingUtilTest, DeviceGroupsMatch) {
   HloSharding lhs_sharding = HloSharding::Replicate();
-  std::vector<int64_t> group_dims = {2};
-  std::vector<int64_t> group_dim_sizes = {2};
+  DimensionVector group_dims = {2};
+  DimensionVector group_dim_sizes = {2};
   std::vector<std::vector<int64_t>> device_groups = {{0, 2}, {1, 3}};
 
   auto lhs = GroupedSharding(
-      device_groups, std::vector<int64_t>(group_dims.begin(), group_dims.end()),
+      device_groups, DimensionVector(group_dims.begin(), group_dims.end()),
       group_dim_sizes, 2, lhs_sharding,
       /*subgroup_manual=*/true);
 
   HloSharding rhs_sharding = HloSharding::PartialTile(
       TileAssignment((absl::Span<const int64_t>){2, 2}));
   auto rhs = GroupedSharding(
-      device_groups, std::vector<int64_t>(group_dims.begin(), group_dims.end()),
+      device_groups, DimensionVector(group_dims.begin(), group_dims.end()),
       group_dim_sizes, 2, rhs_sharding,
       /*subgroup_manual=*/true);
 
@@ -602,6 +667,118 @@ TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {128, 253});
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4});
+  std::vector<int64_t> success = {1, 3, 4, 7, 8, 11, 12, 15, 16, 19, 20};
+  std::vector<int64_t> fail = {2, 5, 6, 9, 10, 13, 14, 17, 18};
+  for (int64_t i : success) {
+    Shape shape = ShapeUtil::MakeShape(F32, {i});
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
+  for (int64_t i : fail) {
+    Shape shape = ShapeUtil::MakeShape(F32, {i});
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut1) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4});
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  Array<int64_t> lhs_array({4});
+  lhs_array.SetValues({1, 0, 2, 3});
+  HloSharding lhs_sharding = HloSharding::Tile(lhs_array);
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut3) {
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut4) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 2}, {2, 2}, {1, 0}));
+  HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut5) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 3, 5, 7}));
+  HloSharding lhs_sharding_1 =
+      HloSharding::IotaTile({2, 21, 5}, {2, 3, 5, 7}, {0, 1, 3, 2});
+  HloSharding lhs_sharding_2 =
+      HloSharding::IotaTile({2, 21, 5}, {2, 3, 5, 7}, {0, 2, 3, 1});
+  HloSharding lhs_sharding_3 = HloSharding::IotaTile({2, 21, 5});
+  std::vector<Shape> shapes = {ShapeUtil::MakeShape(F32, {10, 42, 10}),
+                               ShapeUtil::MakeShape(F32, {11, 41, 11})};
+  for (const auto& shape : shapes) {
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
+    EXPECT_FALSE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_2, rhs_sharding));
+    EXPECT_FALSE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_3, rhs_sharding));
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut6) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 3, 5, 7 * 11 * 13}));
+  HloSharding lhs_sharding_1 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 7, 11, 13}, {0, 3, 1, 2, 4, 5}));
+  HloSharding lhs_sharding_2 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 11, 7, 13}, {0, 4, 1, 2, 3, 5}));
+  HloSharding lhs_sharding_3 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 13, 7, 11}, {0, 4, 1, 2, 5, 3}));
+  HloSharding lhs_sharding_4 = HloSharding::PartialTile(TileAssignment(
+      {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 7, 13, 11}, {0, 3, 1, 2, 5, 4}));
+  HloSharding lhs_sharding_5 =
+      HloSharding::PartialTile(TileAssignment({2 * 7, 3, 5 * 11, 13}));
+  std::vector<Shape> shapes = {
+      ShapeUtil::MakeShape(F32, {2 * 7, 9, 5 * 11}),
+      ShapeUtil::MakeShape(F32, {2 * 7 - 1, 4, 5 * 11 - 1})};
+  for (const auto& shape : shapes) {
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_2, rhs_sharding));
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_3, rhs_sharding));
+    EXPECT_TRUE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_4, rhs_sharding));
+    EXPECT_FALSE(
+        IsSubTilingOrEqualSharding(shape, lhs_sharding_5, rhs_sharding));
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut7) {
+  HloSharding rhs_sharding =
+      HloSharding::PartialTile(TileAssignment({1, 2, 1, 3, 5 * 7 * 11}));
+  HloSharding lhs_sharding = HloSharding::PartialTile(
+      TileAssignment({5, 2, 7, 3, 11}, {2, 3, 5, 7, 11}, {2, 0, 3, 1, 4}));
+  std::vector<Shape> shapes = {ShapeUtil::MakeShape(F32, {5, 2, 7, 3}),
+                               ShapeUtil::MakeShape(F32, {2, 2, 9, 3})};
+  for (const auto& shape : shapes) {
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSortOperandShardingMovableRankTwoOneFreeDim) {

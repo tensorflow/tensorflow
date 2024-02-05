@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_layout_assignment.h"
+#include "xla/service/gpu/gpu_sort_rewriter.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "xla/service/gpu/reduction_dimension_grouper.h"
@@ -48,41 +49,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "tsl/platform/rocm_rocdl_path.h"
 
 namespace xla {
 namespace gpu {
-
-namespace {
-
-// Returns the directory containing ROCm-Device-Libs files. This function is
-// called in AMDGPUCompiler's constructor, so can't return an error. But
-// AMDGPUCompiler::Compile will return an error when the wanted rocdl file
-// doesn't exist in the folder this function returns.
-std::string GetROCDLDir(const HloModuleConfig& config) {
-  std::vector<std::string> potential_rocdl_dirs;
-  const std::string datadir = config.debug_options().xla_gpu_cuda_data_dir();
-  if (!datadir.empty()) {
-    potential_rocdl_dirs.push_back(datadir);
-  }
-  potential_rocdl_dirs.push_back(tsl::RocdlRoot());
-
-  // Tries all potential ROCDL directories in the order they are inserted.
-  // Returns the first directory that exists in the file system.
-  for (const std::string& potential_rocdl_dir : potential_rocdl_dirs) {
-    if (tsl::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
-      VLOG(2) << "Found ROCm-Device-Libs dir " << potential_rocdl_dir;
-      return potential_rocdl_dir;
-    }
-    VLOG(2) << "Unable to find potential ROCm-Device-Libs dir "
-            << potential_rocdl_dir;
-  }
-
-  // Last resort: maybe in the current folder.
-  return ".";
-}
-
-}  // namespace
 
 absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
@@ -107,7 +76,8 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier  We run algsimp to a fixed point.
-  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifierOptions options =
+      GetAlgebraicSimplifierOptions(hlo_module->config());
   options.set_enable_conv_operand_swap(false);
   options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
@@ -180,6 +150,14 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   return absl::OkStatus();
 }
 
+absl::Status AMDGPUCompiler::AddCustomKernelReplacementPasses(
+    HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+  if (debug_options.xla_gpu_enable_cub_radix_sort()) {
+    pipeline->AddPass<GpuSortRewriter>();
+  }
+  return absl::OkStatus();
+}
+
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
@@ -191,11 +169,6 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     bool relocatable,
                                     const HloModule* debug_module,
                                     const CompileOptions& options) {
-  if (rocdl_dir_.empty()) {
-    // Compute rocdl_dir_ just once and cache it in this member.
-    rocdl_dir_ = GetROCDLDir(module_config);
-  }
-
   if (relocatable) {
     return Unimplemented("relocatable target binary is not implemented");
   }
@@ -209,7 +182,7 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         !options.is_autotuning_compilation);
     TF_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version,
-                                      module_config.debug_options(), rocdl_dir_,
+                                      module_config.debug_options(),
                                       module_config.compilation_cache_key()));
   }
 

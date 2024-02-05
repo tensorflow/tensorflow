@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -119,7 +119,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/NVGPUToLLVM/NVGPUToLLVMPass.h"
-#include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
+#include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -740,8 +740,9 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   clusterInfo.clusterDimX = config.cluster_dims.x;
   clusterInfo.clusterDimY = config.cluster_dims.y;
   clusterInfo.clusterDimZ = config.cluster_dims.z;
+
   // Based on make_ttir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
@@ -750,8 +751,9 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
+
   // Based on make_ttgir() in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
@@ -798,7 +800,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   }
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
-  pm.addPass(mt::gpu::createDecomposeConversionsPass());
+  pm.addPass(mt::gpu::createReduceDataDuplicationPass());
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
@@ -808,16 +810,22 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   }
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mlir::createCanonicalizerPass());
-  // Based on translateTritonGPUToLLVMIR() in
-  // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
+
+  // Based on make_llir() in
+  // @triton//:third_party/nvidia/backend/compiler.py
+  pm.addPass(mlir::createTritonNvidiaGPUAddDescriptorArgs());
+  pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-
-  // TODO(b/316566238): Use TMA info collected here in XLA runtime.
+  // // TODO(b/316566238): Use TMA info collected here in XLA runtime.
   mlir::triton::gpu::TMAMetadataTy tma_infos;
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt,
-                                                  /*target=*/mt::Default,
+                                                  /*target=*/mlir::triton::NVVM,
                                                   &tma_infos));
+  if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
+    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm.addPass(mlir::createCSEPass());
+  }
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -1912,6 +1920,7 @@ absl::Status EmitSoftMax(mlir::OpBuilder builder,
     Value base_offset = batch_iterspec ? row_offset : zero_offset;
 
     // We assume that the reduced axis of this parameter has length row_len.
+    // TODO(b/316637896): Relax assumption that param reduce_dim_len == row_len.
     CHECK_EQ(reduce_dim_len, row_len);
 
     // block_size must be a power of two.
@@ -1970,7 +1979,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   std::unique_ptr<llvm::Module> llvmModule =
       mlir::translateModuleToLLVMIR(module, *llvmContext);
   if (!llvmModule) {
-    return InternalError("Failed to emit LLVM IR.");
+    return Internal("Failed to emit LLVM IR.");
   }
 
   // Link external libraries before performing optimizations.
@@ -1983,7 +1992,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
 
   if (auto err = optPipeline(llvmModule.get())) {
     llvm::errs() << err;
-    return InternalError("Failed to optimize LLVM IR.");
+    return Internal("Failed to optimize LLVM IR.");
   }
 
   return llvmModule;
@@ -2155,7 +2164,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   }
 
   if (!CreateTritonPipeline(pm, cc, config).ok()) {
-    return InternalError("Failed to create Triton pipeline.");
+    return Internal("Failed to create Triton pipeline.");
   }
   if (log_stream.has_value()) {
     pm.printAsTextualPipeline(log_stream.value());
@@ -2174,7 +2183,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   }
 
   if (!succeeded) {
-    return InternalError("Failed to compile Triton kernel.");
+    return Internal("Failed to compile Triton kernel.");
   }
 
   const int shared_mem_bytes =

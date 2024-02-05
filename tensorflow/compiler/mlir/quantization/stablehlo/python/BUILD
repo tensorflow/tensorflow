@@ -32,7 +32,6 @@ pytype_strict_library(
     deps = [
         ":pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:save_model",
@@ -57,6 +56,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/types:core",
         "//third_party/py/numpy",
@@ -74,6 +74,7 @@ tf_py_strict_test(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:tag_constants",

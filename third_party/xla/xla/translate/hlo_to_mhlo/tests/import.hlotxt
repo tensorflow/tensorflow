@@ -72,6 +72,18 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
 }
 
+// CHECK-LABEL:  func private @test_all_gather_variadic
+%test_all_gather_variadic {
+  input.0 = f32[128,8] parameter(0)
+  input.1 = f32[128,16] parameter(1)
+  // CHECK-NEXT: "mhlo.all_gather"(%arg0, %arg1)
+  // CHECK-SAME: all_gather_dim = 1 : i64
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK-SAME: use_global_device_ids
+  ROOT ag = (f32[128,32], f32[128,64]) all-gather(f32[128,8] input.0, f32[128,16] input.1), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
+}
+
 // Test all-to-all
 
 // CHECK-LABEL:  func private @test_all_to_all
@@ -1817,23 +1829,18 @@ add {
   // CHECK:  %[[START:.*]] = "mhlo.async_start"(%[[ARG0]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
    %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
-                                                    calls=%AsyncOp,
-                                                    async_group_id=1
+                                                    calls=%AsyncOp
   // CHECK: %[[UPDATE:.*]] = "mhlo.async_update"(%[[START]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
    %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
                                                          %async-start),
-                                                     calls=%AsyncOp,
-                                                     async_group_id=1
+                                                     calls=%AsyncOp
   // CHECK: "mhlo.async_done"(%[[UPDATE]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp, async_group_id=1
+   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
  }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding

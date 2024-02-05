@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ class LayoutUtil {
       absl::Span<const bool> dim_unique = {},
       absl::Span<const bool> dim_ordered = {},
       absl::Span<const Tile> tiles = {},
+      int64_t tail_padding_alignment_in_elements = 1,
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,

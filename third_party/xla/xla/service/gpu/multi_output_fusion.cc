@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -462,8 +462,7 @@ absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
               << consumer_for_fusion->name();
     } else {
       input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
-          consumer_for_fusion->shape(),
-          ChooseFusionKind(*producer, *consumer_for_fusion),
+          consumer_for_fusion->shape(), ChooseFusionKind(*consumer_for_fusion),
           consumer_for_fusion));
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "

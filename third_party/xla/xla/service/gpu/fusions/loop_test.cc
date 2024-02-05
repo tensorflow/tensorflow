@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -33,20 +35,26 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::HasSubstr;
-
 class LoopTest : public HloTestBase {
+ public:
+  void SetUp() override {
+    HloTestBase::SetUp();
+
+    printer_ = AffineMapPrinter(
+        {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"}, {"unroll_factor"});
+  }
+
  protected:
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  AffineMapPrinter printer_;
+  mlir::MLIRContext mlir_context_;
 };
 
 absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
-    const std::optional<HloFusionAnalysis>& analysis) {
-  TF_RET_CHECK(analysis != std::nullopt);
-
+    const HloFusionAnalysis& analysis) {
   TF_ASSIGN_OR_RETURN(
-      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis}));
+      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
   auto fusion = dynamic_cast<LoopFusion*>(emitter.get());
   TF_RET_CHECK(fusion != nullptr);
 
@@ -73,13 +81,24 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
-  mlir::MLIRContext mlir_context;
-  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)
-                  ->ToString(),
-              HasSubstr("(d0, d1, d2, d3, d4, d5)[s0] -> ("
-                        "(d0 * 4 + d3 * 512 + s0) floordiv 60000, "
-                        "((d0 * 4 + d3 * 512 + s0) floordiv 300) mod 200, "
-                        "(d0 * 4 + d3 * 512 + s0) mod 300)"));
+  auto thread_id_to_output_indexing =
+      loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[unroll_factor] -> (
+                (th_x * 4 + bl_x * 512 + unroll_factor) floordiv 60000,
+                ((th_x * 4 + bl_x * 512 + unroll_factor) floordiv 300) mod 200,
+                (th_x * 4 + bl_x * 512 + unroll_factor) mod 300)
+              domain:
+              th_x in [0, 127]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 1007]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              unroll_factor in [0, 3]
+             )"));
 }
 
 TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
@@ -101,10 +120,19 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
-  mlir::MLIRContext mlir_context;
-  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)
-                  ->ToString(),
-              HasSubstr("(d0, d1, d2, d3, d4, d5) -> (d0)"));
+  auto thread_id_to_output_indexing =
+      loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+                (th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (th_x)
+                domain:
+                th_x in [0, 19]
+                th_y in [0, 0]
+                th_z in [0, 0]
+                bl_x in [0, 0]
+                bl_y in [0, 0]
+                bl_z in [0, 0]
+  )"));
 }
 
 }  // namespace

@@ -428,7 +428,7 @@ Status VariantTensorDataWriter::WriteDatasetInternal(
   TF_RETURN_IF_ERROR(AsGraphDef(dataset, std::move(ctx), &graph_def));
   string output_node;
   for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       output_node = node.input(0);
       break;
     }
@@ -544,7 +544,7 @@ Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
 
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : result->node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       *dataset_node = node.input(0);
     }
   }
@@ -577,7 +577,7 @@ Status AsGraphDef(const DatasetBase* dataset,
       db.AddInputDataset(&serialization_ctx, dataset, &output_node));
   // Insert a purely symbolic _Retval node to indicate to consumers which node
   // represents `dataset`.
-  ops::UnaryOp("_Retval", output_node,
+  ops::UnaryOp(std::string(kRetvalOp), output_node,
                b.opts()
                    .WithName("dataset")
                    .WithAttr("T", DT_VARIANT)

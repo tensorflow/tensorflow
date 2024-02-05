@@ -1219,12 +1219,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
 }
 
@@ -5399,12 +5399,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let hasCanonicalizer = 1;

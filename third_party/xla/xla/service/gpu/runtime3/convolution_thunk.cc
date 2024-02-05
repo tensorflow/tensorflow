@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -76,19 +78,19 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.
   if (!params.stream->ok()) {
-    return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
+    return Internal("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }
 
 ConvolutionReorderThunk::ConvolutionReorderThunk(
     ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
-    std::vector<BufferAllocation::Slice> operand_slices,
-    std::vector<BufferAllocation::Slice> result_slices)
+    absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
+    absl::InlinedVector<BufferAllocation::Slice, 2> result_slices)
     : Thunk(Kind::kConvolutionReorder, thunk_info),
       filter_descriptor_(CreateFilterDescriptor(filter_nchw)),
-      operand_buffers_(std::move(operand_slices)),
-      result_buffers_(std::move(result_slices)) {}
+      operand_buffers_(operand_slices),
+      result_buffers_(result_slices) {}
 
 absl::Status ConvolutionReorderThunk::ExecuteOnStream(
     const ExecuteParams& params) {
@@ -115,7 +117,7 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
       std::move(bias_output)));
 
   if (!params.stream->ok()) {
-    return InternalError("ConvolutionReorderThunk::ExecuteOnStream failed.");
+    return Internal("ConvolutionReorderThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }

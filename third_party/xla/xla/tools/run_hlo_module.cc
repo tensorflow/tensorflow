@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -250,11 +250,11 @@ Status RunAndCompare(
   BufferAssignmentProto buffer_assignment_proto;
   TF_ASSIGN_OR_RETURN(
       auto test_module,
-      LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook,
-                         options.use_buffer_assignment_from_proto
-                             ? &buffer_assignment_proto
-                             : nullptr));
+      LoadModuleFromFile(
+          hlo_filename, options.input_format,
+          hlo_module_loader_details::Config(), config_modifier_hook,
+          options.use_buffer_assignment_from_proto ? &buffer_assignment_proto
+                                                   : nullptr));
   HloVerifier verifier(
       HloVerifierOpts{}.WithLayoutSensitive(false).WithAllowMixedPrecision(
           true));

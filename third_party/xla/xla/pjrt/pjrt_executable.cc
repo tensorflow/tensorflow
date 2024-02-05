@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -424,7 +424,7 @@ CompileOptions::LoadEnvOptionOverrides(
                               env_option_override.second.double_field())});
         break;
       case OptionOverrideProto::VALUE_NOT_SET:
-        return InternalError("OptionOverrideProto value not set.");
+        return Internal("OptionOverrideProto value not set.");
     }
   }
   return result;

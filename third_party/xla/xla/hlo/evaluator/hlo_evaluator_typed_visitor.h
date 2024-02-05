@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -243,6 +243,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return OkStatus();
     }
     return UnsupportedTypeError(ceil);
+  }
+
+  Status HandleErf(const HloInstruction* erf) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[erf],
+          ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
+            return std::erf(elem_operand);
+          }));
+      return OkStatus();
+    }
+    return UnsupportedTypeError(erf);
   }
 
   Status HandleExp(const HloInstruction* exp) override {

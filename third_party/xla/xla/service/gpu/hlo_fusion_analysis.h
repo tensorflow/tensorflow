@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -42,6 +41,7 @@ class HloFusionAnalysis {
     kTriton,
     kReduction,
     kTranspose,
+    kConcatenate,
     kInputSlices,
     kScatter,
   };
@@ -54,13 +54,11 @@ class HloFusionAnalysis {
     int smallest_input_dtype_bits;
   };
 
-  static absl::StatusOr<HloFusionAnalysis> Create(
-      FusionBackendConfig backend_config,
-      std::unique_ptr<HloFusionAdaptor> fusion,
-      const se::DeviceDescription* device_info);
-  static absl::StatusOr<HloFusionAnalysis> Create(
-      const HloFusionInstruction* fusion,
-      const se::DeviceDescription* device_info);
+  static HloFusionAnalysis Create(FusionBackendConfig backend_config,
+                                  std::unique_ptr<HloFusionAdaptor> fusion,
+                                  const se::DeviceDescription* device_info);
+  static HloFusionAnalysis Create(const HloFusionInstruction* fusion,
+                                  const se::DeviceDescription* device_info);
 
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
@@ -115,14 +113,14 @@ class HloFusionAnalysis {
 
 // Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
 // into consumer.
-std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+HloFusionAnalysis AnalyzeProducerConsumerFusion(
     const HloInstruction& producer, const HloInstruction& consumer,
     const se::DeviceDescription& device_info);
 
 // Creates a HloFusionAnalysis that analyzes just consumer as a standalone
 // fusion.
-std::optional<HloFusionAnalysis> AnalyzeFusion(
-    const HloInstruction& consumer, const se::DeviceDescription& device_info);
+HloFusionAnalysis AnalyzeFusion(const HloInstruction& consumer,
+                                const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

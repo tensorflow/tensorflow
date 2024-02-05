@@ -148,16 +148,6 @@ mlir::ArrayAttr GetStrArrayAttr(Builder* builder,
   return builder->getArrayAttr(strings);
 }
 
-// Given a `tf_device.cluster_func` operand value return true iff it a device
-// variable that should default to MAXIMAL sharding. Device variables that are
-// per-replica or distributed default to MAXIMAL sharding, which corresponds to
-// arguments of the `tf_device.replicate`. Otherwise the variable is broadcast,
-// which corresponds to edges that are implicitly captured by the `replicate`.
-bool IsMaximalVariable(Value value) {
-  auto read_var = value.getDefiningOp<TF::ReadVariableOp>();
-  return read_var && read_var->getParentOfType<tf_device::ReplicateOp>();
-}
-
 // Verify whether the given sharding can be applied to the given (tensor) type.
 // (A bad sharding might mean failing tf.Split ops if the graph later executes
 //  on CPU)
@@ -248,7 +238,7 @@ std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
 // Cast op may be added right after the input.
 //
 // TODO(hongjunchoi): Add logic to parse XlaSharding op inside control flow (If,
-// Case, While) ops and Caller return values.
+// Case) ops and Caller return values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
 std::optional<llvm::StringRef> GetXlaShardingFromArg(
@@ -268,6 +258,15 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
         if (auto logical_device = AssignLogicalDeviceFromTPUReplicatedCoreAttr(
                 owner, logical_device_vec)) {
           return logical_device;
+        }
+
+        if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(owner)) {
+          const int operand_number = use.getOperandNumber();
+          next_values_to_visit.push_back(
+              while_op.getCond().front().getArgument(operand_number));
+          next_values_to_visit.push_back(
+              while_op.getBody().front().getArgument(operand_number));
+          continue;
         }
 
         if (llvm::isa<TF::IdentityOp, TF::CastOp, TF::ReadVariableOp>(owner)) {
@@ -340,7 +339,7 @@ void IdentifyXlaShardingForComputationInputs(
       }
     }
 
-    if (use_spmd && !IsMaximalVariable(operand)) {
+    if (use_spmd) {
       // If XLA SPMD is enabled, host variables or non-variable per-replica
       // inputs should take on replicate sharding, so that every device gets the
       // whole tensor(s) (and can slice them up later). Exclude device

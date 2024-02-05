@@ -468,6 +468,9 @@ tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::AsyncCheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
+tensorflow::metrics::ShardingCallbackDuration
+tensorflow::metrics::NumCheckpointShardsWritten
+tensorflow::metrics::ShardingCallbackDescription
 
 [//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
 tensorflow::saved_model::fingerprinting::CreateFingerprintDef

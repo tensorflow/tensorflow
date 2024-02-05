@@ -53,11 +53,13 @@ class IfrtServingExecutable {
       absl::string_view model_name, absl::string_view signature_name,
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
+      const Eigen::ThreadPoolDevice* thread_pool_device,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
         module_(std::move(module)),
         ifrt_client_(std::move(client)),
+        thread_pool_device_(*thread_pool_device),
         shape_representation_fn_(std::move(shape_representation_fn)) {}
 
   // Movable but not copyable.
@@ -109,6 +111,7 @@ class IfrtServingExecutable {
   mlir::OwningOpRef<mlir::ModuleOp> module_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
+  const Eigen::ThreadPoolDevice& thread_pool_device_;
 
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 

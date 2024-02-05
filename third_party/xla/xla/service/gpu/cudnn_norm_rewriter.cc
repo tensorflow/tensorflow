@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -67,8 +67,7 @@ absl::StatusOr<int64_t> CConstant(
              se::CudaComputeCapability::HOPPER) {
     return 32 * 144;
   }
-  return xla::InternalError(
-      "Norm kernels require Ampere or Hopper architecture.");
+  return xla::Internal("Norm kernels require Ampere or Hopper architecture.");
 }
 
 // Returns whether the element type of instr is compatible with layer norm

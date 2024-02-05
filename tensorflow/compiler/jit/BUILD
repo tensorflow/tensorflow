@@ -362,6 +362,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tf_pjrt_client",
+        "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:executable",
     ],
     alwayslink = 1,
@@ -1813,9 +1814,6 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "device_compiler_test",
     srcs = ["device_compiler_test.cc"],
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.

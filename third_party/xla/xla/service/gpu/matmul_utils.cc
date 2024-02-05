@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -395,7 +396,7 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       TF_RET_CHECK(alpha_imag == 0);
       if (lhs_layout.dtype != PrimitiveType::S8 ||
           rhs_layout.dtype != PrimitiveType::S8) {
-        return InternalError(
+        return Internal(
             "For int32 gemm output only int8 input is supported, got input: "
             "%s, %s",
             primitive_util::LowercasePrimitiveTypeName(lhs_layout.dtype),
@@ -403,9 +404,9 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       }
       break;
     default:
-      return InternalError("Unexpected GEMM datatype: %s",
-                           primitive_util::LowercasePrimitiveTypeName(
-                               output_shape.element_type()));
+      return Internal("Unexpected GEMM datatype: %s",
+                      primitive_util::LowercasePrimitiveTypeName(
+                          output_shape.element_type()));
   }
 
   return GemmConfig{lhs_layout,
@@ -506,7 +507,7 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
              ? se::blas::Transpose::kNoTranspose
              : se::blas::Transpose::kTranspose)};
   };
-  // make a local copy to prevent modification of layouts,
+  // TODO: make a local copy to prevent modification of layouts,
   // but maybe we can modify them once instead during creation ?
   se::gpu::MatrixLayout lhs = lhs_layout, rhs = rhs_layout, out = output_layout;
 
@@ -594,14 +595,11 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
   se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
       stream->parent()->AsBlas(), &workspace);
 
-// TODO: enable DoGemmWithAlgorithm for ROCm !
-#if GOOGLE_CUDA
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         lhs, rhs, output, workspace, alpha, beta, stream, *algorithm,
         compute_precision, numeric_options, profile_result, context);
   }
-#endif
 
   if (output.batch_size != 1) {
     return stream->ThenBlasGemmStridedBatched(
@@ -712,7 +710,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
 #undef TYPED_GEMM
 #undef TYPED_GEMM_COMPLEX
-  return InternalError(
+  return Internal(
       "Unexpected GEMM dtype: %s %s %s",
       primitive_util::LowercasePrimitiveTypeName(config.lhs_layout.dtype),
       primitive_util::LowercasePrimitiveTypeName(config.rhs_layout.dtype),
@@ -735,7 +733,7 @@ absl::StatusOr<bool> EpilogueAddsVectorBias(
     case GemmBackendConfig::BIAS_GELU_AUX:
       return true;
     default:
-      return InternalError("Unknown Epilogue.");
+      return Internal("Unknown Epilogue.");
   }
 }
 
@@ -753,7 +751,7 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
     case GemmBackendConfig::BIAS_GELU_AUX:
       return true;
     default:
-      return InternalError("Unknown Epilogue.");
+      return Internal("Unknown Epilogue.");
   }
 }
 
@@ -778,7 +776,31 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     case CublasLtMatmulEpilogue::BiasGeluAux:
       return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
   }
-  return InternalError("unexpected epilogue value");
+  return Internal("unexpected epilogue value");
+}
+
+absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case GemmBackendConfig::DEFAULT:
+      return se::gpu::BlasLt::Epilogue::kDefault;
+    case GemmBackendConfig::RELU:
+      return se::gpu::BlasLt::Epilogue::kReLU;
+    case GemmBackendConfig::GELU:
+      return se::gpu::BlasLt::Epilogue::kGELU;
+    case GemmBackendConfig::GELU_AUX:
+      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
+    case GemmBackendConfig::BIAS:
+      return se::gpu::BlasLt::Epilogue::kBias;
+    case GemmBackendConfig::BIAS_RELU:
+      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
+    case GemmBackendConfig::BIAS_GELU:
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
+    case GemmBackendConfig::BIAS_GELU_AUX:
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
+    default:
+      return Internal("unexpected epilogue value");
+  }
 }
 
 }  // namespace gpublas_lt

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +60,16 @@ class GpuTimer {
         start_event_(std::exchange(other.start_event_, nullptr)),
         stop_event_(std::exchange(other.stop_event_, nullptr)),
         stream_(other.stream_) {}
+
+  GpuTimer& operator=(GpuTimer&& other) {
+    if (this != &other) {
+      parent_ = other.parent_;
+      start_event_ = std::exchange(other.start_event_, nullptr);
+      stop_event_ = std::exchange(other.stop_event_, nullptr);
+      stream_ = other.stream_;
+    }
+    return *this;
+  }
 
   ~GpuTimer();
 

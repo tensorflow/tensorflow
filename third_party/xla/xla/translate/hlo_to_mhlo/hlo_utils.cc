@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -309,6 +309,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClz;
   } else if (isa<mlir::mhlo::CosineOp, mlir::lmhlo::CosineOp>(op)) {
     return xla::HloOpcode::kCos;
+  } else if (isa<mlir::mhlo::ErfOp>(op)) {
+    return xla::HloOpcode::kErf;
   } else if (isa<mlir::mhlo::ExpOp, mlir::lmhlo::ExpOp>(op)) {
     return xla::HloOpcode::kExp;
   } else if (isa<mlir::mhlo::Expm1Op, mlir::lmhlo::Expm1Op>(op)) {

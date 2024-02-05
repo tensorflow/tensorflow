@@ -32,16 +32,16 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -64,48 +64,18 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
+using ::mlir::quant::stablehlo::AddExportPasses;
+using ::mlir::quant::stablehlo::ConvertMlirModuleToExportedModel;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
+using ::mlir::quant::stablehlo::ExportOptions;
+using ::mlir::quant::stablehlo::FunctionAlias;
+using ::mlir::quant::stablehlo::FunctionName;
+using ::mlir::quant::stablehlo::kExportStepSuffix;
 using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
-using ::stablehlo::quantization::AddExportPasses;
-using ::stablehlo::quantization::ConvertMlirModuleToExportedModel;
-using ::stablehlo::quantization::ExportOptions;
-using ::stablehlo::quantization::kExportStepSuffix;
+using ::mlir::quant::stablehlo::UpdateFunctionAliases;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
-
-// Returns the updated function aliases. `module_op` may have different function
-// names from the original model, so it re-associates the aliases with the new
-// function names. Both the input `function_aliases` and the returned value
-// are function name -> alias mappings. `function_aliases` is the function alias
-// mapping of the original function.
-absl::flat_hash_map<std::string, std::string> UpdateFunctionAliases(
-    const absl::flat_hash_map<std::string, std::string> function_aliases,
-    mlir::ModuleOp module_op) {
-  absl::flat_hash_map<std::string, std::string> updated_function_aliases;
-
-  module_op->walk([&](mlir::func::FuncOp func_op) {
-    // We may retrieve the original function's name from the attribute.
-    // Functions without this attribute are ignored.
-    auto original_func_name =
-        func_op->getAttrOfType<mlir::StringAttr>("tf._original_func_name");
-    if (original_func_name) {
-      if (auto alias_itr = function_aliases.find(original_func_name.str());
-          alias_itr != function_aliases.end()) {
-        const std::string alias = alias_itr->second;
-        const std::string new_func_name = func_op.getSymName().str();
-
-        updated_function_aliases[new_func_name] = alias;
-
-        VLOG(1) << "Updated function alias. Alias: " << alias
-                << ", New function name: " << new_func_name
-                << ", Old function name: " << original_func_name.str();
-      }
-    }
-  });
-
-  return updated_function_aliases;
-}
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
@@ -123,7 +93,8 @@ absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
   }
 
   if (absl::Status pass_run_status = RunPasses(
-          /*name=*/export_opts.debug_name,
+          /*name=*/
+          export_opts.debug_name,
           /*add_passes_func=*/
           [dup_constants = export_opts.duplicate_shape_determining_constants](
               mlir::PassManager &pm) { AddExportPasses(pm, dup_constants); },
@@ -173,8 +144,9 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, *module_ref);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, *module_ref);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
@@ -192,7 +164,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantQatStepName, /*add_passes_func=*/
+      /*name=*/
+      kTfQuantQatStepName, /*add_passes_func=*/
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizeQatPasses(pm, quantization_options, kTfQuantQatStepName);
       },
@@ -245,8 +218,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, *module_ref);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, *module_ref);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
@@ -271,7 +245,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
                                          *module_ref, QuantizationConfig()));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/
+        /*name=*/
+        kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
         },
@@ -328,8 +303,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, *module_ref);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, *module_ref);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
@@ -352,12 +328,19 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
 
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
+    QuantizationConfig quantization_config{};
+    // When targeting server TPUs quantized types should be unpacked into
+    // integer ops.
+    quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(
+        true);
+
     PostCalibrationComponent post_calibration_component(context.get());
     TF_ASSIGN_OR_RETURN(*module_ref, post_calibration_component.Run(
-                                         *module_ref, QuantizationConfig()));
+                                         *module_ref, quantization_config));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
-        /*name=*/kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
+        /*name=*/
+        kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPostCalibrationPasses(
               pm, quantization_options, kTfQuantPtqPostCalibrationStepName);
@@ -413,8 +396,9 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, *module_ref);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, *module_ref);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined. The mapping is mlir function name - user defined function
@@ -431,7 +415,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
+      /*name=*/
+      kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizePtqDynamicRangePasses(pm, quantization_options,
                                          kTfQuantPtqDynamicRangeStepName);
@@ -490,8 +475,9 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, *module_ref);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, *module_ref);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined. The mapping is mlir function name - user defined function
@@ -509,13 +495,14 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       /*run_tf_to_stablehlo=*/false,
       /*deserialize_xla_call_module=*/false));
 
-  TF_RETURN_IF_ERROR(
-      RunPasses(/*name=*/kTfQuantWeightOnlyStepName, /*add_passes_func=*/
-                [&quantization_options](mlir::PassManager &pm) {
-                  AddQuantizeWeightOnlyPasses(pm, quantization_options,
-                                              kTfQuantWeightOnlyStepName);
-                },
-                *context, *module_ref));
+  TF_RETURN_IF_ERROR(RunPasses(
+      kTfQuantWeightOnlyStepName,
+      /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizeWeightOnlyPasses(pm, quantization_options,
+                                    kTfQuantWeightOnlyStepName);
+      },
+      *context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());

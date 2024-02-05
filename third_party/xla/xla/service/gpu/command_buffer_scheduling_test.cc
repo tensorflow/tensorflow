@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,8 +49,8 @@ class CommandBufferSchedulingTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::NCCL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONALS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.set_xla_gpu_graph_min_graph_size(2);
     return debug_options;
   }
@@ -200,7 +200,7 @@ TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByDone) {
       %a = s32[4] parameter(0)
       %start = s32[4]{0} all-reduce-start(s32[4]{0} %a),
         replica_groups={{0,1}}, to_apply=%add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
       ROOT %done = s32[4]{0} all-reduce-done(s32[4]{0} %start)
     })";
 
@@ -234,7 +234,7 @@ TEST_F(CommandBufferSchedulingTest, AllGatherStartFollowedByDone) {
 
       %start = (s32[2]{0}, s32[4]{0}) all-gather-start(%a),
         channel_id=555, replica_groups={{0,1}}, dimensions={0},
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
 
       ROOT %done = s32[4]{0} all-gather-done(%start)
     })";
@@ -275,11 +275,9 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
 
       %start = ((s32[4]{0}), s32[2]{0}) reduce-scatter-start(%a),
         channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
 
-      ROOT %done = s32[2]{0} reduce-scatter-done(%start),
-        channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+      ROOT %done = s32[2]{0} reduce-scatter-done(%start)
     })";
 
   const char* expected = R"(
@@ -721,6 +719,82 @@ TEST_F(CommandBufferSchedulingTest, While) {
     CHECK:   %[[ARG0]] = f32[1]{0} parameter(0)
     CHECK:   %call = f32[1]{0} call(%[[ARG0]]), to_apply=%command_buffer
     CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%call)
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, Conditional) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %fused_computation.1 (param_0.2: s32[5]) -> s32[5] {
+      %param_0.2 = s32[5]{0} parameter(0)
+      ROOT %negate.2 = s32[5]{0} negate(s32[5]{0} %param_0.2)
+    }
+
+    %region_0.7 (Arg_.8: s32[5]) -> (s32[5]) {
+      %Arg_.8 = s32[5]{0} parameter(0)
+      %wrapped_negate.1 = s32[5]{0} fusion(s32[5]{0} %Arg_.8), kind=kLoop, calls=%fused_computation.1
+      ROOT %tuple.3 = (s32[5]{0}) tuple(s32[5]{0} %wrapped_negate.1)
+    }
+
+    %fused_computation.2 (param_0.3: s32[5]) -> s32[5] {
+      %param_0.3 = s32[5]{0} parameter(0)
+      ROOT %not.2 = s32[5]{0} not(s32[5]{0} %param_0.3)
+    }
+
+    %region_1.10 (Arg_.11: s32[5]) -> (s32[5]) {
+      %Arg_.11 = s32[5]{0} parameter(0)
+      %wrapped_not.1 = s32[5]{0} fusion(s32[5]{0} %Arg_.11), kind=kLoop, calls=%fused_computation.2
+      ROOT %tuple.4 = (s32[5]{0}) tuple(s32[5]{0} %wrapped_not.1)
+    }
+
+    %fused_computation.3 (param_0.4: s32[5]) -> s32[5] {
+      %param_0.4 = s32[5]{0} parameter(0)
+      ROOT %multiply.2 = s32[5]{0} multiply(s32[5]{0} %param_0.4, s32[5]{0} %param_0.4)
+    }
+
+    %region_2.13 (Arg_.14: s32[5]) -> (s32[5]) {
+      %Arg_.14 = s32[5]{0} parameter(0)
+      %wrapped_multiply.1 = s32[5]{0} fusion(s32[5]{0} %Arg_.14), kind=kLoop, calls=%fused_computation.3
+      ROOT %tuple.5 = (s32[5]{0}) tuple(s32[5]{0} %wrapped_multiply.1)
+    }
+
+    %fused_computation (param_0.1: s64[]) -> s32[] {
+      %constant_1 = s32[] constant(0)
+      %param_0.1 = s64[] parameter(0)
+      %convert.2 = s32[] convert(s64[] %param_0.1)
+      %constant_0 = s32[] constant(2)
+      ROOT %clamp.2 = s32[] clamp(s32[] %constant_1, s32[] %convert.2, s32[] %constant_0)
+    }
+
+    ENTRY %main.17 (Arg_0.1: s64[], Arg_1.2: s32[5]) -> s32[5] {
+      %Arg_0.1 = s64[] parameter(0), sharding={replicated}
+      %fusion = s32[] fusion(s64[] %Arg_0.1), kind=kLoop, calls=%fused_computation
+      %Arg_1.2 = s32[5]{0} parameter(1), sharding={replicated}
+      %conditional.16.clone = (s32[5]{0}) conditional(s32[] %fusion, s32[5]{0} %Arg_1.2, s32[5]{0} %Arg_1.2, s32[5]{0} %Arg_1.2), branch_computations={%region_0.7, %region_1.10, %region_2.13}
+      ROOT %get-tuple-element = s32[5]{0} get-tuple-element((s32[5]{0}) %conditional.16.clone), index=0
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s64[], [[P1:.+]]: s32[5]) -> (s32[5]) {
+    CHECK:   %[[P0]] = s64[] parameter(0)
+    CHECK:   %[[P1]] = s32[5]{0} parameter(1)
+    CHECK:   %[[FUSION:.*]] = s32[] fusion(%[[P0]]), kind=kLoop
+    CHECK:   ROOT {{.*}} = (s32[5]{0}) conditional(%[[FUSION]], %[[P1]], %[[P1]], %[[P1]]), branch_computations={%[[B1:[a-z_0-9.]+]], %[[B2:[a-z_0-9.]+]], %[[B3:[a-z_0-9.]+]]}
+    CHECK: }
+
+    CHECK: ENTRY %[[MAIN:.+]] ([[ARG0:.+]]: s64[], [[ARG1:.+]]: s32[5]) -> s32[5] {
+    CHECK:   %[[ARG0]] = s64[] parameter(0)
+    CHECK:   %[[ARG1]] = s32[5]{0} parameter(1)
+    CHECK:   %call = (s32[5]{0}) call(%[[ARG0]], %[[ARG1]]), to_apply=%command_buffer
+    CHECK:   ROOT %[[GEP:.+]] = s32[5]{0} get-tuple-element(%call)
     CHECK: })";
 
   RunAndFilecheckHloRewrite(

@@ -270,6 +270,11 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
   return !node->IsAsync();
 }
 
+// Helper function for node traversal that returns only `DataService` nodes.
+inline bool IsDataServiceNode(const std::shared_ptr<Node> node) {
+  return absl::StartsWith(node->name(), kDataService);
+}
+
 // Helper function for node traversal that returns only asynchronous interleave
 // many nodes.
 inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
@@ -1938,6 +1943,26 @@ void Node::CollectBufferParametersToUpsize(
   }
 }
 
+void Node::SyncStateValuesToParameterValues(const std::string& parameter_name) {
+  // We need to first collect the parameters because `parameter->state->mu` must
+  // be locked before the node mutex `mu_`;
+  std::vector<Parameter*> parameters;
+  {
+    tf_shared_lock l(mu_);
+    for (auto& [node_name, parameter] : parameters_) {
+      if ((parameter->state == nullptr) ||
+          (parameter->name != parameter_name)) {
+        continue;
+      }
+      parameters.push_back(parameter.get());
+    }
+  }
+  for (auto& parameter : parameters) {
+    tf_shared_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
+}
+
 Node::NodeVector Node::CollectNodesLocked(
     TraversalOrder order, bool collect_node(const std::shared_ptr<Node>)) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -2300,6 +2325,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
+  MaybeSyncStateValuesToValues(snapshot);
   int64_t total_ram_budget;
   if (fixed_ram_budget.has_value()) {
     total_ram_budget = fixed_ram_budget.value();
@@ -2418,18 +2444,11 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
-void Model::MaybeSyncStateValuesToValues(Model::ModelParameters* parameters) {
-  for (auto& [node_name, parameter] : *parameters) {
-    // We only sync state values to values for `DataService` nodes because the
-    // `buffer_size` parameter is set by the `DataServiceClient` directly.
-    if (!absl::StartsWith(node_name, kDataService)) {
-      continue;
-    }
-    if (parameter->name != kBufferSize) {
-      continue;
-    }
-    mutex_lock l(*parameter->state->mu);
-    parameter->value = parameter->state->value;
+void Model::MaybeSyncStateValuesToValues(std::shared_ptr<Node> snapshot) {
+  auto subtree_nodes =
+      snapshot->CollectNodes(TraversalOrder::BFS, IsDataServiceNode);
+  for (const auto& node : subtree_nodes) {
+    node->SyncStateValuesToParameterValues(kBufferSize);
   }
 }
 
@@ -2626,7 +2645,6 @@ void Model::OptimizeHillClimbHelper(
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  MaybeSyncStateValuesToValues(&parameters);
   if (parameters.empty()) {
     VLOG(2) << "There are no tunable parameters.";
     return;

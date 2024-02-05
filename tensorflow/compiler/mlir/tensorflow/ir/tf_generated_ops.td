@@ -12463,6 +12463,18 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   let hasFolder = 1;
 }
 
+def TF_ReadFileOp : TF_Op<"ReadFile", [Pure, TF_NoConstantFold]> {
+  let summary = "Reads and outputs the entire contents of the input filename.";
+
+  let arguments = (ins
+    TF_StrTensor:$filename
+  );
+
+  let results = (outs
+    TF_StrTensor:$contents
+  );
+}
+
 def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {
   let summary = "Reads the value of a variable.";
 

@@ -1,27 +1,20 @@
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
-glob_lit_tests(
+lit_test_suite(
     name = "all_tests",
-    data = [":test_utilities"],
-    driver = "//xla:run_lit.sh",
-    test_file_exts = [
-        "mlir",
-    ],
-)
-
-# Bundle together all of the test utilities that are used by tests.
-# This intentionally does not pull-in the top-level tf-opt to reduce the
-# dependencies.
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
+    srcs = enforce_glob(
+        [
+            "bufferize.mlir",
+            "invalid.mlir",
+            "ops.mlir",
+        ],
+        include = ["*.mlir"],
+    ),
+    cfg = "//xla:lit.cfg.py",
+    tools = [
         "//xla/mlir/backends/cpu:xla-cpu-opt",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
-    visibility = ["//visibility:public"],
 )

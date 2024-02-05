@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -95,6 +95,7 @@ class HloPrintOptions {
         print_large_constants_(false),
         print_only_essential_constants_(false),
         print_metadata_(true),
+        print_metadata_only_op_name_(false),
         print_backend_config_(true),
         print_infeed_outfeed_config_(true),
         compact_operands_(false),
@@ -200,6 +201,13 @@ class HloPrintOptions {
   // If true, metadata will be printed.
   HloPrintOptions& set_print_metadata(bool value) {
     print_metadata_ = value;
+    return *this;
+  }
+
+  // If true and print_metadata is true, metadata op name will be printed. Other
+  // metadata values will be omitted.
+  HloPrintOptions& set_print_metadata_only_op_name(bool value) {
+    print_metadata_only_op_name_ = value;
     return *this;
   }
 
@@ -369,6 +377,9 @@ class HloPrintOptions {
     return print_subcomputation_mode_;
   }
   bool print_metadata() const { return print_metadata_; }
+  bool print_metadata_only_op_name() const {
+    return print_metadata_only_op_name_;
+  }
   bool print_backend_config() const { return print_backend_config_; }
   bool print_infeed_outfeed_config() const {
     return print_infeed_outfeed_config_;
@@ -408,6 +419,7 @@ class HloPrintOptions {
   bool print_large_constants_;
   bool print_only_essential_constants_;
   bool print_metadata_;
+  bool print_metadata_only_op_name_;
   bool print_backend_config_;
   bool print_infeed_outfeed_config_;
   bool compact_operands_;
@@ -445,6 +457,132 @@ class CanonicalNameMap {
  private:
   absl::flat_hash_map<int, std::string> canonical_name_map_;
 };
+
+class HloInstruction;
+
+// A small holder that is used to keep some immutable info alongside an
+// instruction pointer in an HloComputation's list of instructions
+class HloInstructionInfo {
+ public:
+  HloInstruction* get() const { return inst_; }
+  HloInstruction& operator*() { return *inst_; }
+  HloInstruction* operator->() { return inst_; }
+  const HloInstruction& operator*() const { return *inst_; }
+  const HloInstruction* operator->() const { return inst_; }
+
+  HloOpcode opcode() const { return opcode_; }
+  HloInstruction* inst() const { return inst_; }
+
+ private:  // TODO: Make private and provide accessors?
+  friend class HloComputation;
+  HloOpcode opcode_;
+  HloInstruction* inst_;
+};
+
+namespace mapped_ptr_container_sorter_internal {
+
+template <typename T>
+struct PtrGetter<const HloInstructionInfo&, const T*> {
+  static const T* Get(const HloInstructionInfo& p) { return p.get(); }
+};
+
+}  // namespace mapped_ptr_container_sorter_internal
+
+using HloInstructionList = std::vector<HloInstructionInfo>;
+
+template <typename UnderlyingList>
+class HloInstructionIteratorBase {
+ public:
+  using iterator_category = std::input_iterator_tag;
+  using value_type = HloInstructionInfo;
+  using difference_type = ptrdiff_t;
+  using pointer = value_type*;
+  using reference = value_type&;
+
+  HloInstructionIteratorBase(UnderlyingList* list, int begin_index,
+                             int end_index)
+      : list_(list), current_(begin_index), end_index_(end_index) {
+    if (current_ < end_index_ && (*list_)[current_].inst() == nullptr) {
+      ++*this;
+    }
+  }
+
+  HloInstruction* get() const { return (*list_)[current_].inst(); }
+
+  auto operator*() -> HloInstructionInfo { return (*list_)[current_]; }
+  HloInstructionIteratorBase& operator++() {
+    int next = current_;
+    do {
+      ++next;
+    } while (next < end_index_ && (*list_)[next].inst() == nullptr);
+    current_ = next;
+    return *this;
+  }
+  HloInstructionIteratorBase operator++(int) {
+    HloInstructionIteratorBase temp(list_, current_, end_index_);
+    operator++();
+    return temp;
+  }
+
+  friend bool operator==(const HloInstructionIteratorBase& a,
+                         const HloInstructionIteratorBase& b) {
+    return a.current_ == b.current_;
+  }
+
+  friend bool operator!=(const HloInstructionIteratorBase& a,
+                         const HloInstructionIteratorBase& b) {
+    return !(a == b);
+  }
+
+ private:
+  UnderlyingList* list_;
+  int current_;
+  int end_index_;
+};
+using HloInstructionIterator = HloInstructionIteratorBase<HloInstructionList>;
+using HloInstructionConstIterator =
+    HloInstructionIteratorBase<const HloInstructionList>;
+
+template <typename WrappedIter>
+class HloInstructionUnwrappingIteratorBase {
+ public:
+  using iterator_category = std::input_iterator_tag;
+  using value_type = HloInstruction*;
+  using difference_type = ptrdiff_t;
+  using pointer = value_type*;
+  using reference = value_type&;
+
+  explicit HloInstructionUnwrappingIteratorBase(WrappedIter iter)
+      : iter_(std::move(iter)) {}
+
+  auto operator*() -> value_type { return iter_.get(); }
+  HloInstructionUnwrappingIteratorBase& operator++() {
+    ++iter_;
+    return *this;
+  }
+  HloInstructionUnwrappingIteratorBase operator++(int) {
+    HloInstructionUnwrappingIteratorBase temp(iter_);
+    operator++();
+    return temp;
+  }
+
+  friend bool operator==(const HloInstructionUnwrappingIteratorBase& a,
+                         const HloInstructionUnwrappingIteratorBase& b) {
+    return a.iter_ == b.iter_;
+  }
+
+  friend bool operator!=(const HloInstructionUnwrappingIteratorBase& a,
+                         const HloInstructionUnwrappingIteratorBase& b) {
+    return !(a == b);
+  }
+
+ private:
+  WrappedIter iter_;
+};
+using HloInstructionUnwrappingIterator =
+    HloInstructionUnwrappingIteratorBase<HloInstructionIterator>;
+using HloInstructionUnwrappingConstIterator =
+    HloInstructionUnwrappingIteratorBase<HloInstructionConstIterator>;
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
 //
@@ -666,18 +804,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAsyncStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt,
       absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
-      const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_execution_thread = kMainExecutionThread);
+      const Shape& shape, HloInstruction* operand);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
-      const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_execution_thread = kMainExecutionThread);
+      const Shape& shape, HloInstruction* operand);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -1317,7 +1448,15 @@ class HloInstruction {
   // Depending on the use cases we see in practice, in the future we may
   // consider folding the logic here into Clone, CloneWithNewOperands and
   // ReplaceAllUsesWith by treating control dependencies like data dependencies.
-  Status CopyAllControlDepsFrom(const HloInstruction* inst);
+  Status CopyAllControlDepsFrom(const HloInstruction* inst) {
+    return inst->CopyAllControlDepsTo(this, this);
+  }
+
+  // Copies all control dependencies of this instruction to start/end. Copies
+  // all control predecessors of this instruction to control predecessors of
+  // `start` and copies all control successors of this instruction to control
+  // successors of `end`.
+  Status CopyAllControlDepsTo(HloInstruction* start, HloInstruction* end) const;
 
   // Returns the set of control predecessors (successors) of this
   // instruction. Control predecessors (successors) must execute before (after)
@@ -1737,6 +1876,10 @@ class HloInstruction {
     return has_rare() && !called_computations().empty();
   }
 
+  // Returns true iff an instruction of type "opcode" might have non-empty
+  // called_computations.
+  static bool MightHaveCalledComputations(HloOpcode opcode);
+
   // Replaces all called computations based on a map function. This is needed
   // when we clone hlo_computations and want to let the instructions to point
   // to the newly cloned nodes.
@@ -1929,15 +2072,6 @@ class HloInstruction {
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
 
-  void set_operation_queue_id(int64_t operation_queue_id) {
-    operation_queue_id_ = operation_queue_id;
-  }
-
-  std::optional<int64_t> operation_queue_id() const {
-    if (operation_queue_id_ == -1) return std::nullopt;
-    return operation_queue_id_;
-  }
-
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
   //
@@ -2109,12 +2243,10 @@ class HloInstruction {
   HloInstruction* fused_expression_root() const;
 
   // Delegates to HloFusionInstruction::fused_instructions.
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  tsl::gtl::iterator_range<HloInstructionUnwrappingConstIterator>
   fused_instructions() const;
 
-  tsl::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  tsl::gtl::iterator_range<HloInstructionUnwrappingIterator>
   fused_instructions();
 
   // Delegates to HloFusionInstruction::fused_instruction_count.
@@ -2278,6 +2410,12 @@ class HloInstruction {
   // async-done.
   bool IsAsynchronous() const;
 
+  // Delagates to HloAsyncInstruction::async_chain_start().
+  HloInstruction* async_chain_start() const;
+
+  // Delagates to HloAsyncInstruction::async_done().
+  HloInstruction* async_chain_done() const;
+
   // Returns the computation that will executed asynchronously.
   HloComputation* async_wrapped_computation() const;
 
@@ -2286,12 +2424,6 @@ class HloInstruction {
 
   // Delagates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
-
-  // Delegates to HloAsyncInstruction::async_group_id().
-  std::optional<int64_t> async_group_id() const;
-
-  // Delegates to HloAsyncInstruction::set_async_group_id().
-  void set_async_group_id(std::optional<int64_t> async_group_id);
 
   // Delegates to HloAsyncInstruction::async_execution_thread().
   absl::string_view async_execution_thread() const;
@@ -2472,6 +2604,9 @@ class HloInstruction {
   // Rare is allocated lazily, only when any of its constituent fields are
   // non-empty.  This reduces the memory footprint of HloInstruction objects.
   struct Rare {
+    // Computations called by this instruction.
+    PtrVec<HloComputation*> called_computations;
+
     // The set of control predecessors of this instruction.
     // Note that the order of the instructions in the vector influences the
     // order computed in HloComputation::ComputeInstructionPostOrder, which may
@@ -2481,9 +2616,6 @@ class HloInstruction {
 
     // The set of control successors of this instruction.
     PtrVec<HloInstruction*> control_successors;
-
-    // Computations called by this instruction.
-    PtrVec<HloComputation*> called_computations;
 
     // Attributes passed from the frontend to give hints to the backend about
     // how to compile this HLO.
@@ -2562,6 +2694,7 @@ class HloInstruction {
   };
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
+  uint32_t index_in_parent_;  // Index that identifies inst in HloComputation
 
   // Opcode for this instruction.
   HloOpcode opcode_;
@@ -2607,9 +2740,6 @@ class HloInstruction {
 
   // String identifier for instruction.
   std::string name_;
-
-  // ID of the operation queue to run this instruction.
-  int64_t operation_queue_id_ = -1;
 
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.
@@ -2680,6 +2810,40 @@ bool HloPredicateIsOp(const HloInstruction* instruction) {
     return false;
   } else {
     return HloPredicateIsOp<rest...>(instruction);
+  }
+}
+
+/* static */ inline bool HloInstruction::MightHaveCalledComputations(
+    HloOpcode opcode) {
+  switch (opcode) {
+    // Control flow opcodes
+    case HloOpcode::kWhile:
+    case HloOpcode::kConditional:
+
+    // Fusion contains a sub-computation
+    case HloOpcode::kFusion:
+
+    // Async
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+
+    // Opcodes for which has_to_apply can return true
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCall:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
+    case HloOpcode::kTopK:
+    case HloOpcode::kCustomCall:
+      return true;
+    default:
+      return false;
   }
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ namespace amdgpu {
 // The contents of the module may be changed.
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
 

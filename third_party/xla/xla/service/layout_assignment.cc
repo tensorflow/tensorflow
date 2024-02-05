@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1063,7 +1063,7 @@ Status CheckParameterLayout(HloInstruction* parameter,
         if (!Shape::Equal().MinorToMajorOnlyInLayout().IgnoreDynamicDimension()(
                 subshape,
                 ShapeUtil::GetSubshape(parameter->shape(), shape_index))) {
-          return InternalError(
+          return Internal(
               "parameter instruction %s does not match layout of computation "
               "shape: %s",
               parameter->ToString(), parameter_layout.ToString());
@@ -1075,7 +1075,7 @@ Status CheckParameterLayout(HloInstruction* parameter,
 // The layout of a constant instruction must match the layout of its literal.
 Status CheckConstantLayout(HloInstruction* constant) {
   if (!LayoutsInShapesEqual(constant->literal().shape(), constant->shape())) {
-    return InternalError(
+    return Internal(
         "constant instruction %s does not match the layout of its literal %s",
         constant->ToString(),
         ShapeUtil::HumanStringWithLayout(constant->literal().shape()));
@@ -1104,7 +1104,7 @@ Status CheckBroadcastLayout(HloInstruction* broadcast) {
       },
       broadcast->shape());
   if (!LayoutsInShapesEqual(shape, broadcast->operand(0)->shape())) {
-    return InternalError(
+    return Internal(
         "broadcast instruction %s does not match the layout of its operand %s",
         broadcast->ToString(), broadcast->operand(0)->ToString());
   }
@@ -1282,7 +1282,7 @@ Status LayoutAssignment::CheckLayouts(
                          .IgnoreDynamicDimension()
                          .MinorToMajorOnlyInLayout()(instruction_subshape,
                                                      buffer->shape())) {
-                  return InternalError(
+                  return Internal(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
                       instruction->name(), absl::StrJoin(index, ","),
@@ -2045,7 +2045,7 @@ StatusOr<Layout> LayoutAssignment::InferArrayLayout(
     if (source_buffer_constraint == nullptr) {
       // This should not happen because we've assigned layouts to all
       // instructions preceding this one.
-      return InternalError("LogicalBuffer %s does not have a layout",
+      return Internal("LogicalBuffer %s does not have a layout",
                            source_buffer->ToString());
     }
 
@@ -2129,7 +2129,7 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
     if (instruction->opcode() == HloOpcode::kBitcast) {
       // bitcasts are inherently layout sensitive and so a bitcast instruction
       // present in the IR before layout assignment is a bug.
-      return InternalError(
+      return Internal(
           "Unexpected bitcast operation seen during layout assignment: %s.",
           instruction->ToString());
     }
@@ -2218,7 +2218,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
                                   computation->root_instruction()));
       computation->set_root_instruction(new_root);
     } else {
-      // Copy the tiling info specified in result layout.
+      // Copy the tiling info/tail_padding_alignment_in_elements specified in
+      // result layout.
       auto copy_tiling = [&constraints](xla::Shape* subshape,
                                         const xla::ShapeIndex& index) {
         if (subshape->IsArray()) {
@@ -2231,6 +2232,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
           }
           subshape->mutable_layout()->set_element_size_in_bits(
               result_shape.layout().element_size_in_bits());
+          subshape->mutable_layout()->set_tail_padding_alignment_in_elements(
+              result_shape.layout().tail_padding_alignment_in_elements());
         }
       };
       xla::ShapeUtil::ForEachMutableSubshape(
@@ -2379,7 +2382,7 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     if (instruction->opcode() == HloOpcode::kBitcast) {
       // bitcasts are inherently layout sensitive and so a bitcast instruction
       // present in the IR before layout assignment is a bug.
-      return InternalError(
+      return Internal(
           "Unexpected bitcast operation seen during layout assignment: %s.",
           instruction->ToString());
     }
@@ -2512,7 +2515,7 @@ Status LayoutAssignment::PropagateComputationLayouts(
           const auto& computed_subshape = ShapeUtil::GetSubshape(
               computed_computation_layout.parameter_shape(i), shape_index);
           if (subshape.layout() != computed_subshape.layout()) {
-            return InternalError(
+            return Internal(
                 "Assigned parameter shape %s does not match layout of "
                 "computation shape: %s",
                 computed_computation_layout.ToString(),
@@ -2727,6 +2730,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:

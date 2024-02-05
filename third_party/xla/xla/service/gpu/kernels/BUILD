@@ -1,5 +1,6 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -14,9 +15,9 @@ package_group(
 )
 
 cc_library(
-    name = "custom_fusion",
-    srcs = ["custom_fusion.cc"],
-    hdrs = ["custom_fusion.h"],
+    name = "custom_kernel_fusion",
+    srcs = ["custom_kernel_fusion.cc"],
+    hdrs = ["custom_kernel_fusion.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":custom_kernel",
@@ -34,9 +35,9 @@ cc_library(
 )
 
 cc_library(
-    name = "custom_fusion_pattern",
-    srcs = ["custom_fusion_pattern.cc"],
-    hdrs = ["custom_fusion_pattern.h"],
+    name = "custom_kernel_fusion_pattern",
+    srcs = ["custom_kernel_fusion_pattern.cc"],
+    hdrs = ["custom_kernel_fusion_pattern.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
@@ -46,6 +47,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -76,9 +78,9 @@ cc_library(
     hdrs = ["cutlass_gemm_fusion.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":custom_fusion",
-        ":custom_fusion_pattern",
         ":custom_kernel",
+        ":custom_kernel_fusion",
+        ":custom_kernel_fusion_pattern",
         ":cutlass_gemm",
         ":cutlass_gemm_custom_kernel",
         "//xla:shape_util",
@@ -102,7 +104,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["no_rocm"],
     deps = [
-        ":custom_fusion_pattern",
+        ":custom_kernel_fusion_pattern",
         ":cutlass_gemm_fusion",
         "//xla:array",
         "//xla:array2d",
@@ -110,7 +112,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal_util",
         "//xla:types",
-        "//xla/service/gpu:custom_fusion_rewriter",
+        "//xla/service/gpu:custom_kernel_fusion_rewriter",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:hlo_test_base",
         "@local_tsl//tsl/platform:test",
@@ -120,11 +122,11 @@ xla_test(
 
 cc_library(
     name = "topk_custom_kernel",
-    srcs = if_cuda_is_configured(
-        ["topk_custom_kernel.cc"],
-        ["topk_custom_kernel_stub.cc"],
-    ),
+    srcs = ["topk_custom_kernel.cc"],
     hdrs = ["topk_custom_kernel.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":custom_kernel",
@@ -136,7 +138,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
+        "//xla/service/gpu/runtime:gpu_kernel_helper",
+    ]) + if_cuda_is_configured([
         "//xla/service/gpu/runtime:topk_kernel_cuda",
     ]) + if_rocm_is_configured([
         "//xla/service/gpu/runtime:topk_kernel_rocm",
@@ -145,11 +149,12 @@ cc_library(
 
 xla_test(
     name = "topk_custom_kernel_test",
-    srcs = if_cuda_is_configured(["topk_custom_kernel_test.cc"]),
+    srcs = if_gpu_is_configured(["topk_custom_kernel_test.cc"]),
     backends = ["gpu"],
     deps = [
         ":topk_custom_kernel",
         "//xla:xla_data_proto_cc",
+        "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",

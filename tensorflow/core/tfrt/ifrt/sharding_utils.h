@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
@@ -30,6 +30,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+// Create a tensor from the given host tensor based on given device ids and
+// sharding information. This is different from
+// `MakeAssembledArrayFromHostBuffer` in that this function is a generic version
+// that supports single device.
+StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+    xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
+    absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
+    const Eigen::ThreadPoolDevice& thread_pool_device);
 
 // Sharded the given `data` by the `sharding` specification.
 // It currently supports even sharding, replication and partial replication.
@@ -51,8 +60,7 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
 // in the `input_array`.
 //
 absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
-    xla::ifrt::Client& ifrt_client,
-    tsl::RCReference<xla::ifrt::Array> input_array,
+    xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceList& device_list,
     const Eigen::ThreadPoolDevice& thread_pool_device);

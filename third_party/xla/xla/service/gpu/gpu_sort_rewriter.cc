@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/cub_sort_thunk.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/runtime3/cub_sort_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"

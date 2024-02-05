@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -44,9 +46,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -58,6 +62,7 @@ namespace {
 
 using ::mlir::quant::TryCast;
 using ::mlir::stablehlo::AddOp;
+using ::mlir::stablehlo::BroadcastInDimOp;
 using ::mlir::stablehlo::ConcatenateOp;
 using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
@@ -76,13 +81,16 @@ bool IsQuantizedTensorType(const Type type) {
          type.cast<TensorType>().getElementType().isa<QuantizedType>();
 }
 
-// Returns dynamically broadcasted user op of an input op. Returns null if
-// the op is not dynamically broadcasted or not the intended type.
-// Dynamic shapes usually has the following pattern. In the example below,
-// the input operand would be stablehlo.convolution op, and return value would
-// be stablehlo.add op.
+// Returns broadcasted user op of an input op. Returns null if
+// the op is not broadcasted or not the intended type.
+// Supports both static broadcast and dynamic broadcast.
 // Note that the patterns below differ from lifted patterns as
 // ShapeLegalizeToHloPass is ran prior to running this pass.
+//
+// Dynamically broadcasted bias due to unknown input batch size
+// usually has the following pattern. In the example below,
+// the input operand would be stablehlo.convolution op, and return value would
+// be stablehlo.add op.
 //
 // ```
 // %0 = stablehlo.constant dense<3>
@@ -100,8 +108,28 @@ bool IsQuantizedTensorType(const Type type) {
 // %7 = stablehlo.dynamic_broadcast_in_dims %arg2, %6
 // %8 = stablehlo.add %3, %7
 // ```
+//
+// Statically broadcasted bias will be broadcasted to match the accumulation.
+// ```
+// %3 = stablehlo.convolution(%%arg0, %%arg1) :
+//          (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<?x3x4x2xf32>
+// %4 = stablehlo.broadcast_in_dims %arg2, %3
+// %5 = stablehlo.add %3, %4
+// ```
 template <typename T>
-Operation* GetDynamicallyBroadcastedUserOp(Operation* op) {
+Operation* GetBroadcastedUserOp(Operation* op) {
+  // Broadcast bias for known input shape.
+  auto broadcast_in_dims_op =
+      TryCast<BroadcastInDimOp>(op->getNextNode(),
+                                /*name=*/"broadcast_in_dims_op");
+  if (succeeded(broadcast_in_dims_op)) {
+    auto target_op = TryCast<T>((*broadcast_in_dims_op)->getNextNode(),
+                                /*name=*/"target_op");
+    if (succeeded(target_op)) {
+      return *target_op;
+    }
+  }
+  // Broadcast bias for unknown input shape.
   FailureOr<GetDimensionSizeOp> get_dimension_size_op =
       TryCast<GetDimensionSizeOp>(op->getNextNode(),
                                   /*name=*/"get_dimension_size_op");
@@ -208,6 +236,9 @@ void SetQuantizedFunctionType(PatternRewriter& rewriter,
 }
 
 // Creates a UniformQuantize op and sets it as return op.
+// The requantize scale and zero point should be determined from the
+// entry_func_op's output, containing information on layerStats of the
+// entire function.
 void CreateAndReturnUniformQuantizeOp(PatternRewriter& rewriter, Operation& op,
                                       func::FuncOp entry_func_op,
                                       const Type func_result_type) {
@@ -223,35 +254,37 @@ template <typename GemmStyleOp>
 // and sets the quantized bias as the return op.
 void CreateAndReturnQuantizedBiasPattern(
     Operation* op, PatternRewriter& rewriter, func::FuncOp entry_func_op,
-    const Type func_result_type, const Type gemm_style_quantized_element_type,
-    GemmStyleOp gemm_style_op, double result_scale) {
+    const Type func_result_type, const Type accumulation_quantized_element_type,
+    GemmStyleOp gemm_style_op) {
   Value bias_op = op->getOperand(1);
   Value add_op_result = op->getResult(0);
-  // For bias add with dynamic shape, quantize the broadcasted bias.
-  if (auto dynamic_bcast_op =
-          cast_or_null<DynamicBroadcastInDimOp>(bias_op.getDefiningOp())) {
-    const UniformQuantizedType dynamic_bcast_quantized_element_type =
-        CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
-                                         *rewriter.getContext(), result_scale,
-                                         /*zero_point=*/0);
 
-    Value dynamic_bcast_op_result = dynamic_bcast_op->getResult(0);
-    auto dynamic_bcast_op_result_type =
-        dynamic_bcast_op_result.getType().cast<RankedTensorType>();
-    const ArrayRef<int64_t> dynamic_bcast_shape =
-        dynamic_bcast_op_result_type.getShape();
+  // Broadcast bias value if unmatched with output shape.
+  auto bcast_op = TryCast<BroadcastInDimOp>(bias_op.getDefiningOp(),
+                                            /*name=*/"broadcast_in_dims_op");
 
-    const TensorType new_dynamic_bcast_op_result_type =
-        dynamic_bcast_op_result_type.cloneWith(
-            dynamic_bcast_shape, gemm_style_quantized_element_type);
-    dynamic_bcast_op_result.setType(new_dynamic_bcast_op_result_type);
+  if (failed(bcast_op)) {
+    bcast_op = TryCast<DynamicBroadcastInDimOp>(
+        bias_op.getDefiningOp(),
+        /*name=*/"dynamic_broadcast_in_dims_op");
   }
+  // Update the bias type for both static and dynamic broadcasts.
+  if (succeeded(bcast_op)) {
+    Value bcast_op_result = (*bcast_op)->getResult(0);
+    auto bcast_op_result_type =
+        bcast_op_result.getType().cast<RankedTensorType>();
+    const ArrayRef<int64_t> bcast_shape = bcast_op_result_type.getShape();
+    const TensorType new_bcast_op_result_type = bcast_op_result_type.cloneWith(
+        bcast_shape, accumulation_quantized_element_type);
+    bcast_op_result.setType(new_bcast_op_result_type);
+  }
+
   const auto add_op_result_type =
       add_op_result.getType().cast<RankedTensorType>();
   const ArrayRef<int64_t> add_op_shape = add_op_result_type.getShape();
   // For quantized bias add case, lhs, rhs, and result have the same types.
   const TensorType new_add_op_result_type = add_op_result_type.cloneWith(
-      add_op_shape, gemm_style_quantized_element_type);
+      add_op_shape, accumulation_quantized_element_type);
   add_op_result.setType(new_add_op_result_type);
 
   AddOp bias_add_op =
@@ -306,59 +339,91 @@ LogicalResult MatchGemmStyleOp(func::FuncOp entry_func_op) {
 
 // Gemm Style Op: glossary/gemm.
 template <typename GemmStyleOp>
-void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
-  // Update the output type of the gemm_style op.
-  GemmStyleOp gemm_style_op = *entry_func_op.getOps<GemmStyleOp>().begin();
+void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
+                        bool enable_per_channel_quantized_weight) {
+  const GemmStyleOp gemm_style_op =
+      *entry_func_op.getOps<GemmStyleOp>().begin();
 
   const Type input_type = entry_func_op.getArgumentTypes()[0];
   const Type filter_type = entry_func_op.getArgumentTypes()[1];
   const Type func_result_type = entry_func_op.getResultTypes()[0];
 
-  const double input_scale =
-      getElementTypeOrSelf(input_type).cast<UniformQuantizedType>().getScale();
-  const double filter_scale =
-      getElementTypeOrSelf(filter_type).cast<UniformQuantizedType>().getScale();
-  const double result_scale = input_scale * filter_scale;
-
-  // Define the intermediate output type, which is an i32 quantized type.
-  // This is intermediate because the final output type of the entry_func_op
-  // should be an i8 quantized type.
-  const UniformQuantizedType gemm_style_quantized_element_type =
-      CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
-                                       *rewriter.getContext(), result_scale,
-                                       /*zero_point=*/0);
-
   Value gemm_style_op_result = gemm_style_op->getResult(0);
-  auto gemm_style_op_result_type =
+  const auto gemm_style_op_result_type =
       gemm_style_op_result.getType().cast<RankedTensorType>();
   const ArrayRef<int64_t> gemm_style_shape =
       gemm_style_op_result_type.getShape();
 
-  const TensorType new_gemm_style_op_result_type =
-      gemm_style_op_result_type.cloneWith(gemm_style_shape,
-                                          gemm_style_quantized_element_type);
+  Type accumulation_quantized_element_type;
+  TensorType new_gemm_style_op_result_type;
+
+  const double input_scale =
+      getElementTypeOrSelf(input_type).cast<UniformQuantizedType>().getScale();
+
+  if (enable_per_channel_quantized_weight) {
+    ArrayRef<double> filter_scales = getElementTypeOrSelf(filter_type)
+                                         .cast<UniformQuantizedPerAxisType>()
+                                         .getScales();
+    std::vector<double> result_scales;
+    result_scales.reserve(filter_scales.size());
+
+    for (double filter_scale : filter_scales) {
+      result_scales.push_back(input_scale * filter_scale);
+    }
+
+    const ArrayRef<int64_t> zero_points =
+        getElementTypeOrSelf(filter_type)
+            .cast<UniformQuantizedPerAxisType>()
+            .getZeroPoints();
+
+    // [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+    accumulation_quantized_element_type =
+        CreateI32F32UniformQuantizedPerAxisType(
+            gemm_style_op->getLoc(), *rewriter.getContext(), result_scales,
+            zero_points, /*quantization_dimension=*/3);
+
+    new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
+        gemm_style_shape, accumulation_quantized_element_type);
+  } else {
+    const double filter_scale = getElementTypeOrSelf(filter_type)
+                                    .cast<UniformQuantizedType>()
+                                    .getScale();
+    double result_scale = input_scale * filter_scale;
+
+    accumulation_quantized_element_type = CreateI32F32UniformQuantizedType(
+        gemm_style_op->getLoc(), *rewriter.getContext(), result_scale,
+        /*zero_point=*/0);
+
+    new_gemm_style_op_result_type = gemm_style_op_result_type.cloneWith(
+        gemm_style_shape, accumulation_quantized_element_type);
+  }
+
   gemm_style_op_result.setType(new_gemm_style_op_result_type);
 
   rewriter.setInsertionPointAfter(gemm_style_op);
 
   Operation* next_op = gemm_style_op->getNextNode();
 
+  // If activation exists, omit clipping op.
+  // Since out_scale and out_zp are computed based on clipped range,
+  // explicit activation clipping op is not required.
   if (isa<AddOp>(next_op) && gemm_style_op->hasOneUse()) {
     // bias fusion
     CreateAndReturnQuantizedBiasPattern(
         next_op, rewriter, entry_func_op, func_result_type,
-        gemm_style_quantized_element_type, gemm_style_op, result_scale);
+        accumulation_quantized_element_type, gemm_style_op);
   } else if (auto add_op = cast_or_null<AddOp>(
-                 GetDynamicallyBroadcastedUserOp<AddOp>(gemm_style_op))) {
-    // dynamic bias fusion
+                 GetBroadcastedUserOp<AddOp>(gemm_style_op))) {
+    // broadcasted bias fusion
     rewriter.setInsertionPointAfter(add_op);
     CreateAndReturnQuantizedBiasPattern(
         add_op, rewriter, entry_func_op, func_result_type,
-        gemm_style_quantized_element_type, gemm_style_op, result_scale);
+        accumulation_quantized_element_type, gemm_style_op);
   } else {
     // Non fusible op
-    // If an op is used multiple times and is not a dynamic shape case, do not
-    // apply quantization of fused patterns to prevent removal of dependee ops.
+    // If an op is used multiple times and is not a broadcasted shape case,
+    // do not apply quantization of fused patterns to prevent removal of
+    // dependee ops.
     CreateAndReturnUniformQuantizeOp(rewriter, *gemm_style_op, entry_func_op,
                                      func_result_type);
   }
@@ -367,7 +432,8 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 // Quantizes the entry function's body containing a `DotGeneralOp`.
 class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeDotGeneralOpPattern() = default;
+  explicit QuantizeDotGeneralOpPattern(
+      bool enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<DotGeneralOp>(entry_func_op);
@@ -375,14 +441,19 @@ class QuantizeDotGeneralOpPattern : public EntryFuncBodyQuantizationPattern {
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<DotGeneralOp>(entry_func_op, rewriter);
+    RewriteGemmStyleOp<DotGeneralOp>(
+        entry_func_op, rewriter,
+        /*enable_per_channel_quantized_weight=*/false);
   }
 };
 
 // Quantizes the entry function's body containing a `ConvolutionOp`.
 class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
  public:
-  explicit QuantizeConvolutionOpPattern() = default;
+  explicit QuantizeConvolutionOpPattern(
+      bool enable_per_channel_quantized_weight)
+      : enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
   LogicalResult match(func::FuncOp entry_func_op) const override {
     return MatchGemmStyleOp<ConvolutionOp>(entry_func_op);
@@ -390,8 +461,12 @@ class QuantizeConvolutionOpPattern : public EntryFuncBodyQuantizationPattern {
 
   void rewrite(func::FuncOp entry_func_op,
                PatternRewriter& rewriter) const override {
-    RewriteGemmStyleOp<ConvolutionOp>(entry_func_op, rewriter);
+    RewriteGemmStyleOp<ConvolutionOp>(entry_func_op, rewriter,
+                                      enable_per_channel_quantized_weight_);
   }
+
+ private:
+  bool enable_per_channel_quantized_weight_;
 };
 
 // Converts `entry_func_op` to be quantized according to the respective
@@ -450,8 +525,11 @@ template <typename FuncBodyRewritePatternT,
               EntryFuncBodyQuantizationPattern, FuncBodyRewritePatternT>>>
 class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
  public:
-  explicit XlaCallModuleOpToCallOp(MLIRContext& ctx)
-      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx) {}
+  explicit XlaCallModuleOpToCallOp(MLIRContext& ctx,
+                                   bool enable_per_channel_quantized_weight)
+      : OpRewritePattern<TF::XlaCallModuleOp>(&ctx),
+        enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
   LogicalResult match(TF::XlaCallModuleOp op) const override {
     ModuleOp module_op = op->getParentOfType<ModuleOp>();
@@ -465,24 +543,309 @@ class XlaCallModuleOpToCallOp : public OpRewritePattern<TF::XlaCallModuleOp> {
       op->emitError("Failed to find a valid entry function.");
       return failure();
     }
-    return FuncBodyRewritePatternT().match(entry_func_op);
+    return FuncBodyRewritePatternT(enable_per_channel_quantized_weight_)
+        .match(entry_func_op);
   }
 
   void rewrite(TF::XlaCallModuleOp xla_call_module_op,
                PatternRewriter& rewriter) const override {
     ReplaceQuantizedXlaCallModuleOpWithQuantizedCallOp(
         *rewriter.getContext(), rewriter, xla_call_module_op,
-        FuncBodyRewritePatternT());
+        FuncBodyRewritePatternT(enable_per_channel_quantized_weight_));
+  }
+
+ private:
+  bool enable_per_channel_quantized_weight_;
+};
+
+// Quantizes op with regions such as stablehlo.reduce_window op.
+// Quantizes only when the nested region consists of ops whose quantization
+// parameters can be propagated from outside.
+class QuantizeOpWithRegionPattern
+    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+ public:
+  explicit QuantizeOpWithRegionPattern(MLIRContext& ctx)
+      : OpRewritePattern<quantfork::DequantizeCastOp>(&ctx){};
+
+  LogicalResult match(quantfork::DequantizeCastOp op) const final {
+    // Match only when there is one user of the dequantize op.
+    if (!op.getResult().hasOneUse()) {
+      return failure();
+    }
+
+    for (Operation* op_with_region : op.getResult().getUsers()) {
+      // Among the ops with regions, only reduce_window op is supported for now.
+      if (!isa<mlir::stablehlo::ReduceWindowOp>(op_with_region)) {
+        return failure();
+      }
+
+      if (!IsNestedRegionQuantizable(op_with_region)) {
+        return failure();
+      }
+
+      // Quantization parameters can be propagated only for same-scale ops and
+      // same-scale ops are quantized only when they are connected to quantized
+      // composite functions.
+      if (!GetStableHloQuantScaleSpec(op_with_region)
+               ->has_same_scale_requirement ||
+          !IsConnectedWithQuantizedCompsiteFunction(op_with_region)) {
+        return failure();
+      }
+    }
+    return success();
+  }
+
+  void rewrite(quantfork::DequantizeCastOp op,
+               PatternRewriter& rewriter) const final {
+    // Rewrite the floating-point ops to the quantized version, by fusing
+    // preceding dequantize ops and succeding quantize ops.
+    for (Operation* op_with_region : op.getResult().getUsers()) {
+      // Collect all the quantized inputs and "clone" the matched op by these
+      // inputs.
+      SmallVector<Value, 4> inputs;
+      inputs.reserve(op_with_region->getNumOperands());
+      for (Value operand : op_with_region->getOperands()) {
+        Type operand_type = operand.getType();
+        if (operand_type.isa<NoneType>()) {
+          inputs.push_back(operand);
+          continue;
+        }
+
+        Type element_type =
+            operand.getType().cast<TensorType>().getElementType();
+        if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+                operand.getDefiningOp())) {
+          inputs.push_back(dq_op.getOperand());
+        } else if (isa<IntegerType>(element_type)) {
+          // If the operand is an integer tensor, then it doesn't require the
+          // DequantizeOp in the pattern.
+          inputs.push_back(operand);
+        } else {
+          return;
+        }
+      }
+
+      // Collect all the quantized outputs and replace them by the results of
+      // the new quantized op.
+      SmallVector<Value, 4> outputs_replaced;
+      SmallVector<Type, 4> output_types;
+      output_types.reserve(op_with_region->getNumResults());
+      for (Value result : op_with_region->getResults()) {
+        Type result_type = result.getType();
+        if (result_type.isa<NoneType>()) {
+          outputs_replaced.push_back(result);
+          output_types.push_back(result_type);
+          continue;
+        }
+        Type result_element_type =
+            result.getType().cast<TensorType>().getElementType();
+        // If the user is the QuantizeOp, it must be the only user.
+        if (result.hasOneUse() &&
+            isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
+          auto user = cast<quantfork::QuantizeCastOp>(*result.user_begin());
+          outputs_replaced.push_back(user.getResult());
+          output_types.push_back(user.getType());
+        } else if (isa<IntegerType>(result_element_type)) {
+          // If the result is an integer tensor, then it doesn't require the
+          // dequantize op in the pattern.
+          outputs_replaced.push_back(result);
+          output_types.push_back(result.getType());
+        } else {
+          return;
+        }
+      }
+
+      rewriter.setInsertionPointAfter(op_with_region);
+      OperationState new_state(op_with_region->getLoc(),
+                               op_with_region->getName().getStringRef(), inputs,
+                               output_types, op_with_region->getAttrs());
+      for (int i = 0; i < op_with_region->getNumRegions(); ++i) {
+        new_state.addRegion();
+      }
+      Operation* quantized_op = rewriter.create(new_state);
+      for (const auto& [index, region] :
+           llvm::enumerate(op_with_region->getRegions())) {
+        Region& target_region = quantized_op->getRegion(index);
+        IRMapping mapping;
+        region.cloneInto(&target_region, mapping);
+      }
+
+      Type operand_type = quantized_op->getOperandTypes()[0];
+      Type element_type = operand_type.cast<TensorType>().getElementType();
+      for (Region& region : quantized_op->getRegions()) {
+        ReplaceTypesInNestedRegion(region, element_type);
+      }
+
+      for (auto [index, output] : llvm::enumerate(outputs_replaced)) {
+        output.replaceAllUsesWith(quantized_op->getResult(index));
+      }
+    }
+  }
+
+ private:
+  // Checks if an op is quantizable in a nested region.
+  bool IsOpQuantizableInNestedRegion(Operation& op) const {
+    return isa<mlir::stablehlo::MaxOp, mlir::stablehlo::ReturnOp>(op);
+  }
+
+  // Checks if a region only consists of ops that are quantizable in a nested
+  // region.
+  // tf.CustomAggregator op cannot be inserted into region of a StableHLO op,
+  // thus calibration is impossible within a nested region. Therefore, when an
+  // op involves a region, the op is only quantizable when the region only
+  // consists of ops whose quantization parameters can be propagated from
+  // outside.
+  bool IsNestedRegionQuantizable(Operation* op) const {
+    for (Region& region : op->getRegions()) {
+      for (Operation& op : region.getOps()) {
+        if (!IsOpQuantizableInNestedRegion(op)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Replaces all types in nested regions under the assumption that the body
+  // consists of same-scale ops only.
+  void ReplaceTypesInNestedRegion(Region& region, Type element_type) const {
+    for (BlockArgument arg : region.getArguments()) {
+      arg.setType(ReplaceElementType(arg.getType(), element_type));
+    }
+
+    for (Operation& op : region.getOps()) {
+      for (Value operand : op.getOperands()) {
+        operand.setType(ReplaceElementType(operand.getType(), element_type));
+      }
+
+      for (Value result : op.getResults()) {
+        result.setType(ReplaceElementType(result.getType(), element_type));
+      }
+    }
+  }
+
+  // Replaces element type of the given tensor type while preserving shape of
+  // the given type. If the given type is not tensor type, just return itself.
+  Type ReplaceElementType(Type type, Type element_type) const {
+    if (TensorType tensor_type = type.dyn_cast<TensorType>()) {
+      return tensor_type.clone(element_type);
+    }
+    return type;
   }
 };
 
 }  // namespace
 
+// Checks if an op calls a composite function and all the inputs and outputs are
+// quantized.
+bool IsQuantizedCompositeFunction(func::CallOp call_op) {
+  if (!call_op.getCallee().starts_with("quantized_")) {
+    return false;
+  }
+
+  bool has_quantized_types = false;
+  for (Value operand : call_op.getOperands()) {
+    if (TensorType type = operand.getType().dyn_cast<TensorType>()) {
+      if (type.getElementType().isa<FloatType>()) {
+        return false;
+      }
+      if (type.getElementType()
+              .isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
+        has_quantized_types = true;
+      }
+    }
+  }
+  for (Value result : call_op.getResults()) {
+    if (auto type = result.getType().dyn_cast<TensorType>()) {
+      if (type.getElementType().isa<FloatType>()) {
+        return false;
+      }
+      if (type.getElementType()
+              .isa<UniformQuantizedType, UniformQuantizedPerAxisType>()) {
+        has_quantized_types = true;
+      }
+    }
+  }
+  return has_quantized_types;
+}
+
+bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op) {
+  for (const Value operand : same_scale_op->getOperands()) {
+    auto dq_op =
+        dyn_cast_or_null<quantfork::DequantizeCastOp>(operand.getDefiningOp());
+    if (!dq_op) continue;
+
+    Operation* preceding_op = dq_op.getArg().getDefiningOp();
+    if (!preceding_op) continue;
+
+    // Check whether the preceding op is a quantized composite function.
+    if (isa<func::CallOp>(preceding_op)) {
+      auto call_op = cast<func::CallOp>(preceding_op);
+      if (!IsQuantizedCompositeFunction(call_op)) continue;
+      return true;
+    }
+
+    // Check whether the preceding op is a quantized same-scale op.
+    if (GetStableHloQuantScaleSpec(preceding_op)->has_same_scale_requirement) {
+      for (OpResult result : preceding_op->getResults()) {
+        Type element_type = getElementTypeOrSelf(result.getType());
+        if (element_type.isa<UniformQuantizedType>()) {
+          return true;
+        }
+      }
+    }
+  }
+
+  for (const Value result : same_scale_op->getResults()) {
+    // If the user is the Quantize op, it must be the only user.
+    if (!result.hasOneUse() ||
+        !isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
+      continue;
+    }
+
+    auto q_op = cast<quantfork::QuantizeCastOp>(*result.user_begin());
+    for (Operation* following_op : q_op->getUsers()) {
+      // Check whether the following op is a quantized composite function.
+      if (isa<func::CallOp>(following_op)) {
+        auto call_op = cast<func::CallOp>(following_op);
+        if (!IsQuantizedCompositeFunction(call_op)) continue;
+        return true;
+      }
+
+      // Check whether the following op is a quantized same-scale op.
+      if (GetStableHloQuantScaleSpec(following_op)
+              ->has_same_scale_requirement) {
+        for (Value operand : following_op->getOperands()) {
+          Type element_type = getElementTypeOrSelf(operand.getType());
+          if (element_type.isa<UniformQuantizedType>()) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 // TODO: b/307620428 - Increase fused op coverage for static range quantization.
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns) {
-  patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>,
-               XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(ctx);
+                                    RewritePatternSet& patterns,
+                                    bool enable_per_channel_quantized_weight) {
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeConvolutionOpPattern>>(
+      ctx, enable_per_channel_quantized_weight);
+  // By default, we set `enable_per_channel_quantized_weight` to true for
+  // passes to ensure per-channel quantization for all supported ops.
+  // For ops that do not yet support per-channel quantization, explicitly
+  // mark as false like below. We will soon add support for per-channel
+  // quantization of the following ops.
+  patterns.add<XlaCallModuleOpToCallOp<QuantizeDotGeneralOpPattern>>(
+      ctx, /*enable_per_channel_quantized_weight=*/false);
+}
+
+void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
+                                         RewritePatternSet& patterns) {
+  patterns.add<QuantizeOpWithRegionPattern>(ctx);
 }
 
 }  // namespace mlir::quant::stablehlo

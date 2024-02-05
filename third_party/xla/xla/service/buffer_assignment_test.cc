@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/literal.h"
-#include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/copy_insertion.h"
@@ -842,7 +841,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   Shape f32vec100_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {100}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      F32, {100}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+      /*element_size_in_bits=*/0,
       /*memory_space=*/1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
@@ -904,7 +904,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {10}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      F32, {10}, {0}, /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
+      /*element_size_in_bits=*/0,
       /*memory_space=*/1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
@@ -2752,16 +2753,12 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %negate_6 = f32[4096]{0} negate(f32[4096]{0} %negate_5)
   %negate_7 = f32[4096]{0} negate(f32[4096]{0} %negate_6)
   %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_7)
-  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), to_apply=%called_computation
+  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-  AsyncOpCanonicalizer async_op_canonicalizer;
-  EXPECT_TRUE(async_op_canonicalizer.Run(m.get()).ok());
-  HloDCE dce;
-  EXPECT_TRUE(dce.Run(m.get()).ok());
 
   auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
 
@@ -2813,16 +2810,12 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %negate_6 = f32[4096]{0} negate(f32[4096]{0} %negate_5)
   %negate_7 = f32[4096]{0} negate(f32[4096]{0} %negate_6)
   %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_4, f32[4096]{0} %negate_7)
-  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), async_execution_thread="foobar", to_apply=%called_computation
+  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-  AsyncOpCanonicalizer async_op_canonicalizer;
-  EXPECT_TRUE(async_op_canonicalizer.Run(m.get()).ok());
-  HloDCE dce;
-  EXPECT_TRUE(dce.Run(m.get()).ok());
 
   auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     for (const HloBuffer& buffer : alias_analysis->buffers()) {
@@ -2925,18 +2918,14 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %negate_8 = f32[4096]{0} negate(f32[4096]{0} %negate_7)
   %negate_9 = f32[4096]{0} negate(f32[4096]{0} %negate_8)
   %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_6, f32[4096]{0} %negate_9)
-  %async-done.1 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.1), async_execution_thread="foobar", to_apply=%called_computation1
-  %async-done.2 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.2), async_execution_thread="foobar", to_apply=%called_computation2
+  %async-done.1 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.1)
+  %async-done.2 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.2)
   %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done.1)
   ROOT %add_2 = f32[4096]{0} add(f32[4096]{0} %add_1, f32[4096]{0} %async-done.2)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
-  AsyncOpCanonicalizer async_op_canonicalizer;
-  EXPECT_TRUE(async_op_canonicalizer.Run(m.get()).ok());
-  HloDCE dce;
-  EXPECT_TRUE(dce.Run(m.get()).ok());
 
   auto colorer = [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
     for (const HloBuffer& buffer : alias_analysis->buffers()) {
@@ -3032,16 +3021,12 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
   ENTRY entry {
     p0 = f32[8] parameter(0)
     call-start = ((f32[8]), f32[8], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
-    ROOT call-done = f32[8] call-done(call-start), async_execution_thread="foo", to_apply=called_computation
+    ROOT call-done = f32[8] call-done(call-start)
   }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  AsyncOpCanonicalizer canonicalizer;
-  TF_ASSERT_OK(canonicalizer.Run(module.get()).status());
-  HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
 
   auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
 

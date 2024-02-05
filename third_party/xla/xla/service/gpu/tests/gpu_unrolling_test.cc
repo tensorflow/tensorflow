@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @fusion
+; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK: fadd
@@ -243,7 +243,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @fusion
+; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK-NOT: load float

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -226,7 +226,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
     if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
       return textproto;
     } else {
-      return InternalError("Failed to serialize autotune results.");
+      return Internal("Failed to serialize autotune results.");
     }
   }
   return results.SerializeAsString();

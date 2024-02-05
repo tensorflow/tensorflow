@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -42,8 +43,9 @@ limitations under the License.
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
+#include "xla/service/rendezvous.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -283,6 +285,14 @@ class GpuExecutable : public Executable {
   // IrEmitter (null if XLA:GPU runtime is enabled).
   OwnedThunkSequence thunks_;
 
+  // A flag that signals if `thunks_` initialization is completed. Thunks
+  // initialization might allocate new control data structures on device, which
+  // can lead to deadlocks if executed concurrently with other replicas.
+  //
+  // We use rendezvous to guarantee that all participating threads complete
+  // thunk initialization before we start executing any of them.
+  RendezvousSingleFlag thunks_initialized_flag_;
+
   // Gpu runtime executable that encapsulates all the state for running Gpu
   // runtime custom calls implementing gpu abstraction layer (available only if
   // Xla runtime is enabled).
@@ -304,7 +314,12 @@ class GpuExecutable : public Executable {
   // This object is also used for dumping debug info.
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
 
-  std::optional<ModuleAnnotations> annotation_info_;
+  ModuleAnnotations module_annotations_ = [this] {
+    if (has_module()) {
+      return ModuleAnnotations(module());
+    }
+    return ModuleAnnotations(module_name_);
+  }();
 
   int64_t debug_buffer_assignment_show_max_;
 

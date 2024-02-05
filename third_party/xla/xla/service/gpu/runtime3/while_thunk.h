@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
 
-#include <vector>
+#include <cstdint>
+#include <memory>
+#include <optional>
 
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/buffer_allocations.h"
+#include "absl/status/status.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -33,24 +34,34 @@ namespace gpu {
 // buffers for the following set of while-related instructions share the same
 // allocation:
 //   init, condition.parameter, body.parameter, body.root, while.result
+//
 // WhileThunk synchronizes the stream to test the result of the 'condition'
 // computation.
+//
+// If `trip_count` is available it means that the while loop trip count is known
+// statically and while loop is actually a for loop, and in this case at run
+// time condition thunk might not be executed and instead body thunk will be
+// executed for `trip_count` times.
 class WhileThunk : public Thunk {
  public:
   // Constructs a WhileThunk to compute while instruction 'hlo'.
   WhileThunk(ThunkInfo thunk_info,
              const BufferAllocation::Slice& condition_result_buffer_index,
              std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-             std::unique_ptr<ThunkSequence> body_thunk_sequence);
+             std::unique_ptr<ThunkSequence> body_thunk_sequence,
+             std::optional<int64_t> trip_count = std::nullopt);
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   SequentialThunk* condition_thunk_sequence() const {
     return condition_thunk_sequence_.get();
   }
+
   SequentialThunk* body_thunk_sequence() const {
     return body_thunk_sequence_.get();
   }
@@ -63,6 +74,7 @@ class WhileThunk : public Thunk {
   const BufferAllocation::Slice condition_result_buffer_index_;
   std::unique_ptr<SequentialThunk> condition_thunk_sequence_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;
+  std::optional<int64_t> trip_count_;
 };
 
 }  // namespace gpu

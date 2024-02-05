@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -4504,6 +4504,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::CopyOp>,
       PointwiseToLinalgMapConverter<mhlo::CosineOp>,
       PointwiseToLinalgMapConverter<mhlo::DivOp>,
+      PointwiseToLinalgMapConverter<mhlo::ErfOp>,
       PointwiseToLinalgMapConverter<mhlo::ExpOp>,
       PointwiseToLinalgMapConverter<mhlo::Expm1Op>,
       PointwiseToLinalgMapConverter<mhlo::FloorOp>,
@@ -4563,6 +4564,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::CopyOp>,
       PointwiseToLinalgConverter<mhlo::CosineOp>,
       PointwiseToLinalgConverter<mhlo::DivOp>,
+      PointwiseToLinalgConverter<mhlo::ErfOp>,
       PointwiseToLinalgConverter<mhlo::ExpOp>,
       PointwiseToLinalgConverter<mhlo::Expm1Op>,
       PointwiseToLinalgConverter<mhlo::FloorOp>,

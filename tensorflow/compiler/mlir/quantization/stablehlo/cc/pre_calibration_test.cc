@@ -68,7 +68,7 @@ class PreCalibrationComponentTest : public QuantizationTestBase {};
 
 TEST_F(PreCalibrationComponentTest,
        HasCustomAggregatorOpAndQuantizableFuncForSimpleDotGeneral) {
-  PreCalibrationComponent component(&ctx_, CalibrationOptions());
+  PreCalibrationComponent component(ctx_.get(), CalibrationOptions());
   OwningOpRef<ModuleOp> module_op = ParseModuleOpString(R"mlir(
     module attributes {} {
       func.func @main(%arg0: tensor<1x4xf32>) -> tensor<1x3xf32> attributes {} {

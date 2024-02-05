@@ -89,7 +89,7 @@ UniformQuantizedPerAxisType GetPerChannelType(QuantType quant_type) {
 void GetQuantizationParams(OpBuilder &builder, Location loc,
                            QuantType quant_type, Value &scales,
                            Value &zero_points, bool output_zero_point_in_fp,
-                           DenseIntElementsAttr &broadcast_dims) {
+                           DenseI64ArrayAttr &broadcast_dims) {
   // Get scales/zero points for per-tensor and per-axis quantization cases.
   if (auto *quant_per_tensor_type =
           std::get_if<UniformQuantizedType>(&quant_type)) {
@@ -140,8 +140,8 @@ void GetQuantizationParams(OpBuilder &builder, Location loc,
                        builder.getI32Type()),
                    zero_points_vec));
     }
-    broadcast_dims = DenseIntElementsAttr::get(
-        RankedTensorType::get({1}, builder.getI64Type()),
+    broadcast_dims = DenseI64ArrayAttr::get(
+        builder.getContext(),
         {static_cast<int64_t>(quant_per_channel_type.getQuantizedDimension())});
   }
 }
@@ -256,9 +256,8 @@ Value ApplyMergedScalesAndZps(OpBuilder &builder, Location loc,
                                           merged_scale_double.end()),
         merged_zp_float(merged_zp_double.begin(), merged_zp_double.end());
 
-    auto broadcast_dims = DenseIntElementsAttr::get(
-        RankedTensorType::get({1}, builder.getI64Type()),
-        {quantized_dimension});
+    auto broadcast_dims =
+        DenseI64ArrayAttr::get(builder.getContext(), {quantized_dimension});
     Value merged_scale = builder.create<mhlo::ConstantOp>(
         loc, DenseFPElementsAttr::get(
                  RankedTensorType::get({channel_size}, builder.getF32Type()),
@@ -367,7 +366,7 @@ class ConvertUniformQuantizeOp
                                         ConversionPatternRewriter &rewriter,
                                         QuantType quant_type) const {
     Value scales, zero_points;
-    DenseIntElementsAttr broadcast_dims;
+    DenseI64ArrayAttr broadcast_dims;
     GetQuantizationParams(rewriter, op->getLoc(), quant_type, scales,
                           zero_points, /*output_zero_point_in_fp=*/true,
                           broadcast_dims);
@@ -425,7 +424,7 @@ class ConvertUniformDequantizeOp
       return failure();
     }
     Value scales, zero_points;
-    DenseIntElementsAttr broadcast_dims;
+    DenseI64ArrayAttr broadcast_dims;
     GetQuantizationParams(rewriter, op->getLoc(), *quant_type, scales,
                           zero_points,
                           /*output_zero_point_in_fp=*/false, broadcast_dims);
@@ -465,13 +464,39 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
 
     // We only handle cases where lhs, rhs and results all have quantized
     // element type.
-    if (failed(lhs_quant_type) || IsPerChannelType(*lhs_quant_type) ||
-        failed(rhs_quant_type) || IsPerChannelType(*rhs_quant_type) ||
-        failed(res_quant_type) || IsPerChannelType(*res_quant_type)) {
+    if (failed(lhs_quant_type) || failed(rhs_quant_type) ||
+        failed(res_quant_type)) {
       op->emitError(
-          "AddOp requires the same quantized element type for all operands and "
+          "AddOp requires the quantized element type for all operands and "
           "results");
       return failure();
+    }
+
+    if (IsPerChannelType(*lhs_quant_type) ||
+        IsPerChannelType(*rhs_quant_type) ||
+        IsPerChannelType(*res_quant_type)) {
+      // Handle Per-Channel Quantized Types. We only support lhs/rhs/result with
+      // exact same per-channel quantized types with I32 storage type.
+      if (!IsPerChannelType(*lhs_quant_type) ||
+          !IsPerChannelType(*rhs_quant_type) ||
+          !IsPerChannelType(*res_quant_type) ||
+          GetPerChannelType(*lhs_quant_type) !=
+              GetPerChannelType(*rhs_quant_type) ||
+          GetPerChannelType(*lhs_quant_type) !=
+              GetPerChannelType(*res_quant_type)) {
+        op->emitError(
+            "Per-channel quantized AddOp requires the same quantized element "
+            "type for all operands and results");
+        return failure();
+      }
+      if (!GetPerChannelType(*lhs_quant_type).getStorageType().isInteger(32)) {
+        // For server-side StableHLO Quantization, add is quantized only when
+        // fused with conv/dot ops, whose output must be i32.
+        op->emitError("Per-channel quantized AddOp requires i32 storage type");
+        return failure();
+      }
+      return matchAndRewritePerChannel(op, adaptor, rewriter,
+                                       GetPerChannelType(*lhs_quant_type));
     }
 
     // TODO: b/260280919 - Consider avoiding conversion to int32.
@@ -534,6 +559,33 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
                                                    res_int32);
     }
 
+    return success();
+  }
+
+  LogicalResult matchAndRewritePerChannel(
+      mhlo::AddOp op, mhlo::AddOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter,
+      UniformQuantizedPerAxisType quant_type) const {
+    // We assume lhs/rhs/result have the same quantized type with i32 storage.
+    Value add_result = rewriter.create<mhlo::AddOp>(
+        op->getLoc(), adaptor.getLhs(), adaptor.getRhs());
+    // Add zp contribution if it is non-zero for any channel.
+    if (llvm::any_of(quant_type.getZeroPoints(),
+                     [](int64_t zp) { return zp != 0; })) {
+      SmallVector<int32_t> zps_vec(quant_type.getZeroPoints().begin(),
+                                   quant_type.getZeroPoints().end());
+      Value zps = rewriter.create<mhlo::ConstantOp>(
+          op->getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get({static_cast<int64_t>(zps_vec.size())},
+                                    rewriter.getI32Type()),
+              zps_vec));
+      add_result = rewriter.create<chlo::BroadcastSubOp>(
+          op->getLoc(), add_result, zps,
+          rewriter.getDenseI64ArrayAttr(
+              {static_cast<int64_t>(quant_type.getQuantizedDimension())}));
+    }
+    rewriter.replaceOp(op, add_result);
     return success();
   }
 };
@@ -1244,8 +1296,8 @@ class ConvertUniformQuantizedConvolutionOp
 // TODO: b/310685906 - Add operand/result type validations.
 class ConvertGenericOp : public ConversionPattern {
  public:
-  explicit ConvertGenericOp(MLIRContext *ctx)
-      : ConversionPattern(MatchAnyOpTypeTag(), 1, ctx) {}
+  explicit ConvertGenericOp(MLIRContext *ctx, TypeConverter &converter)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
 
   LogicalResult matchAndRewrite(
       Operation *op, ArrayRef<Value> operands,
@@ -1253,9 +1305,9 @@ class ConvertGenericOp : public ConversionPattern {
     // This pattern only handle selected ops.
     if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
              mhlo::ConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
-             mhlo::PadOp, mhlo::ReshapeOp, mhlo::SelectOp, mhlo::SliceOp,
-             mhlo::TransposeOp, mhlo::GetDimensionSizeOp,
-             mhlo::DynamicBroadcastInDimOp>(op)) {
+             mhlo::PadOp, mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
+             mhlo::SelectOp, mhlo::SliceOp, mhlo::TransposeOp,
+             mhlo::GetDimensionSizeOp, mhlo::DynamicBroadcastInDimOp>(op)) {
       return failure();
     }
 
@@ -1268,6 +1320,14 @@ class ConvertGenericOp : public ConversionPattern {
 
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                          new_result_types, op->getAttrs(), op->getSuccessors());
+    for (Region &region : op->getRegions()) {
+      Region &new_region = *state.addRegion();
+      rewriter.inlineRegionBefore(region, new_region, new_region.begin());
+      if (failed(
+              rewriter.convertRegionTypes(&new_region, *getTypeConverter()))) {
+        return failure();
+      }
+    }
     Operation *new_op = rewriter.create(state);
     rewriter.replaceOp(op, new_op);
     return success();
@@ -1305,11 +1365,11 @@ class ConvertMHLOQuantToInt
     patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                  ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
                  ConvertUniformQuantizedDotGeneralOp,
-                 ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(
-        context);
+                 ConvertUniformQuantizedConvolutionOp>(context);
 
-    // uq->int convert patterns for func.func and func.return.
+    // uq->int convert patterns for func.func, func.return and generic ops.
     UQTypeConverter converter;
+    patterns.add<ConvertGenericOp>(context, converter);
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                    converter);
     populateReturnOpTypeConversionPattern(patterns, converter);

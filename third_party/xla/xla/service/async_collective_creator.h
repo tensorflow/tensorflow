@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,6 +50,12 @@ class AsyncCollectiveCreator : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  std::vector<HloInstruction *> MatchCollectives(HloComputation *computation);
+  StatusOr<bool> ReplaceCollectives(
+      HloComputation *computation,
+      std::vector<HloInstruction *> &supported_collectives);
+  const CollectiveCreatorConfig *config() const { return &config_; }
 
  private:
   CollectiveCreatorConfig config_;

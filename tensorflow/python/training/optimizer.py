@@ -314,11 +314,10 @@ class Optimizer(
   (https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch)
   for examples.
 
-  If your TF1 code contains a `tf.compat.v1.train.Optimizer` symbol, whether it
-  is used with or without a `tf.estimator.Estimator`, you cannot simply replace
-  that with the corresponding `tf.keras.optimizers.Optimizer`s. To migrate to
-  TF2, it is advised the whole training program used with `Estimator` to be
-  migrated to Keras `Model.fit` based or TF2 custom training loops.
+  If your TF1 code contains a `tf.compat.v1.train.Optimizer` symbol, you cannot
+  simply replace that with the corresponding `tf.keras.optimizers.Optimizer`s.
+  To migrate to TF2, it is advised the whole training program to be migrated to
+  Keras `Model.fit` based, or TF2 custom training loops.
 
   #### Structural Mapping to Native TF2
 

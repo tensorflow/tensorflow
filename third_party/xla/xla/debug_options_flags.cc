@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_division(true);
 
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  opts.set_xla_gpu_enable_cudnn_fmha(true);
+  opts.set_xla_gpu_enable_cudnn_fmha(false);
 
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
@@ -100,6 +100,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_graph_enable_concurrent_region(false);
@@ -138,6 +139,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_custom_fusions(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
+  opts.set_xla_gpu_enable_nccl_user_buffers(false);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -209,6 +211,15 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
 
   opts.set_xla_gpu_enable_triton_hopper(false);
+
+  // We disable this until b/319271534 is fixed due to errors during linking.
+  //
+  // TODO(b/319271534): Re-enable once we use libnvjitlink.
+  opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
+
+  opts.set_xla_gpu_enable_libnvptxcompiler(false);
+
+  opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
   return opts;
 }
@@ -856,6 +867,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_llvm_module_compilation_parallelism",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_llvm_module_compilation_parallelism),
+      debug_options->xla_gpu_enable_llvm_module_compilation_parallelism(),
+      "Decides whether we can do LLVM module compilation in a parallelised "
+      "way. If set to false, then it will be single threaded, otherwise the "
+      "number of threads depends on the "
+      "--xla_gpu_force_compilation_parallelism flag and the thread pool "
+      "supplied to GpuCompiler."));
+
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",
                 bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
@@ -1080,6 +1103,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_shared_constants),
       debug_options->xla_gpu_enable_shared_constants(),
       "Enable constant sharing between GPU executables"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_nccl_user_buffers",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_user_buffers),
+      debug_options->xla_gpu_enable_nccl_user_buffers(),
+      "Enables NCCL User Buffer Registration. collective_memory_size in the "
+      "allocator config must also be set to a non-zero value that is large "
+      "enough to meet peak collective memory usage."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_redzone_scratch_max_megabytes",
       int64_setter_for(
@@ -1415,6 +1445,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_hopper),
       debug_options->xla_gpu_enable_triton_hopper(),
       "Enable Hopper-specific optimizations such as MMA_V3 and pipelining."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_libnvptxcompiler",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_libnvptxcompiler),
+      debug_options->xla_gpu_enable_libnvptxcompiler(),
+      "Use libnvptxcompiler for PTX-to-GPU-assembly compilation instead of "
+      "calling ptxas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_dot_strength_reduction",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
+      debug_options->xla_gpu_enable_dot_strength_reduction(),
+      "Enable rewriting matmuls with a vector into reductions."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

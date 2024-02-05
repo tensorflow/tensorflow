@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -334,26 +334,6 @@ static XlaOp ErfImpl32(XlaOp x) {
   auto x2 = x * x;
   return (x * EvaluatePolynomial<float>(x2, kAlpha)) /
          EvaluatePolynomial<float>(x2, kBeta);
-}
-
-XlaOp Erf(XlaOp x) {
-  auto& b = *x.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erf", x));
-    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
-    // erf(x) =
-    //   erf_impl(x)            if x < 1
-    //   1 - erfc_impl(x)       otherwise
-    if (shape.element_type() == F64) {
-      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl64(x),
-                    ScalarLike(x, 1) - ErfcImpl64(x));
-    }
-    // Erf(c)Impl don't have enough precision when run with bf16 intermediates
-    // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(
-        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
-        [](XlaOp x) { return ErfImpl32(x); });
-  });
 }
 
 namespace {

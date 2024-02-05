@@ -355,7 +355,6 @@ pytype_strict_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
-        "//tensorflow_estimator:__subpackages__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -493,6 +492,7 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -924,19 +924,6 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
-    ],
-)
-
-py_strict_library(
-    name = "deprecation_wrapper",
-    srcs = ["deprecation_wrapper.py"],
-    visibility = util_subpackage_visibility,
-    deps = [
-        ":module_wrapper",
-        # global_test_configuration is added here because all major tests depend on this
-        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
-        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
-        "//tensorflow/python:global_test_configuration",
     ],
 )
 

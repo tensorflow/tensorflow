@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -223,8 +223,9 @@ def TestFactory(xla_backend,
       executable = self.backend.compile(
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
-      if self.backend.platform == "tpu" and not (cloud_tpu or pathways or
-                                                 pathways_ifrt):
+      if (
+          self.backend.platform == "tpu" or self.backend.platform == "gpu"
+      ) and not (cloud_tpu or pathways or pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
       else:

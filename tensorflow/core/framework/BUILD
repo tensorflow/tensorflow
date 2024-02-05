@@ -1,10 +1,5 @@
 # Placeholder: load py_proto_library
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-    "tf_pyclif_proto_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
@@ -12,6 +7,11 @@ load(
     "tf_cuda_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_generate_proto_text_sources")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+    "tf_pyclif_proto_library",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -35,6 +35,7 @@ default_visibility = [
     # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
     "//tensorflow/cc/saved_model:__subpackages__",
+    #internal starburst clustering service,
 ]
 
 package(

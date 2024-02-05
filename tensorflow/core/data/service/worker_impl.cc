@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -114,7 +115,8 @@ WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
         absl::ToInt64Milliseconds(kDefaultDispatcherTimeout));
   }
   if (new_config.snapshot_max_chunk_size_bytes() == 0) {
-    new_config.set_snapshot_max_chunk_size_bytes(kDefaultMaxChunkSizeBytes);
+    new_config.set_snapshot_max_chunk_size_bytes(
+        kDefaultMaxChunkSize.ToUnsignedBytes());
   }
   return new_config;
 }
@@ -517,7 +519,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
       while (!cancelled_ && pending_completed_tasks_.empty()) {
         task_completion_cv_.wait(l);
       }
-      if (cancelled_) {
+      if (cancelled_ && pending_completed_tasks_.empty()) {
         VLOG(3) << "Task completion thread shutting down";
         return;
       }
@@ -526,7 +528,10 @@ void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
       mutex_lock l(mu_);
-      if (!cancelled_) {
+      if (cancelled_) {
+        VLOG(3) << "Task completion thread shutting down";
+        return;
+      } else {
         task_completion_cv_.wait_for(
             l, absl::ToChronoMicroseconds(kRetryInterval));
       }
@@ -744,7 +749,7 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
             SnapshotWriterParams{
                 snapshot_task.base_path(), snapshot_task.stream_index(),
                 snapshot_task.metadata().compression(), Env::Default(),
-                config_.snapshot_max_chunk_size_bytes()},
+                ByteSize::Bytes(config_.snapshot_max_chunk_size_bytes())},
             std::move(iterator)));
   }
 

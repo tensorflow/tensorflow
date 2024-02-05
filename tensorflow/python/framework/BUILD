@@ -1054,6 +1054,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )
@@ -1183,7 +1184,6 @@ pytype_strict_library(
         ":c_api_util",
         ":composite_tensor",
         ":device",
-        ":device_spec",
         ":dtypes",
         ":errors",
         ":op_callbacks",
@@ -2088,7 +2088,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:internal",
-        "//tensorflow_estimator/python/estimator:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",

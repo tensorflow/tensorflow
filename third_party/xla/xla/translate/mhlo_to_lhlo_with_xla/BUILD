@@ -27,6 +27,7 @@ cc_library(
         "//xla/mlir_hlo:lhlo_gpu",
         "//xla/service:backend",
         "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
         "//xla/service:hlo_parser",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",

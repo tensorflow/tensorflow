@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ namespace xla::gpu {
 // Prepared information for the top level NVTX/profiler range covering an
 // HloModule
 struct ModuleAnnotation {
-  ModuleAnnotation(std::string module_name, int module_id);
-  ModuleAnnotation(const HloModule& mod);
+  explicit ModuleAnnotation(const std::string& module_name);
+  explicit ModuleAnnotation(const HloModule& mod);
   std::string_view longest_op_name_prefix() const;
   nvtxStringHandle_t NvtxRegisteredTitle() const;
   std::string_view Title() const;
@@ -33,7 +33,7 @@ struct ModuleAnnotation {
  private:
   std::string longest_prefix;
   std::string title_str;
-  nvtxStringHandle_t title{};
+  nvtxStringHandle_t title;
 };
 
 // Prepared information for a kernel/thunk/fusion/... within an HloModule
@@ -50,7 +50,8 @@ struct KernelAnnotation {
 // Parsed/prepared information for an HloModule that gets propagated to NVTX
 // ranges/profilers/... at execution time.
 struct ModuleAnnotations {
-  ModuleAnnotations(const HloModule&);
+  explicit ModuleAnnotations(const std::string& module_name);
+  explicit ModuleAnnotations(const HloModule&);
   ModuleAnnotation top_level;
   absl::flat_hash_map<std::string_view, KernelAnnotation> kernels{};
 };

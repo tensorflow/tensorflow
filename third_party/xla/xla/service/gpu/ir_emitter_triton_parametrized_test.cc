@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,6 +57,13 @@ class MixedTypeTest : public GpuCodegenTest,
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
+  }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // We are testing Triton, remove cuBLAS fallback for these tests.
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
   }
 };
 

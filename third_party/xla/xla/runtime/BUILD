@@ -83,6 +83,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -160,6 +161,7 @@ xla_cc_test(
         "//xla/mlir/runtime/ir/tests:testlib",
         "//xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//xla/mlir/runtime/transforms:custom_call_encoding",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -819,6 +819,18 @@ class FusedAttentionBackwardLowering
         break;
 
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardSoftmaxDropout:
+        if (is_flash_attention) {
+          if (num_operands == 12) {
+            fused_attention += "scale.softmax.dropout";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Softmax_Dropout_BMM");
+          }
+        }
+        break;
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasSoftmax:
         if (is_flash_attention) {
           if (num_operands == 13) {
@@ -843,6 +855,16 @@ class FusedAttentionBackwardLowering
 
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasSoftmaxDropout:
+        if (is_flash_attention) {
+          if (num_operands == 13) {
+            fused_attention += "scale.bias.softmax.dropout";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Bias_Softmax_Dropout_BMM");
+          }
+          break;
+        }
         if (num_operands == 10) {
           fused_attention += "scale.softmax.dropout";
         } else if (num_operands == 11) {
@@ -856,6 +878,16 @@ class FusedAttentionBackwardLowering
 
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasMaskSoftmax:
+        if (is_flash_attention) {
+          if (num_operands == 14) {
+            fused_attention += "scale.bias.mask.softmax";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Bias_Mask_Softmax_BMM");
+          }
+          break;
+        }
         if (num_operands == 11) {
           fused_attention += "scale.mask.softmax";
         } else if (num_operands == 12) {
@@ -869,6 +901,16 @@ class FusedAttentionBackwardLowering
 
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasMaskSoftmaxDropout:
+        if (is_flash_attention) {
+          if (num_operands == 14) {
+            fused_attention += "scale.bias.mask.softmax.dropout";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Bias_Mask_Softmax_Dropout_BMM");
+          }
+          break;
+        }
         if (num_operands == 11) {
           fused_attention += "scale.mask.softmax.dropout";
         } else if (num_operands == 12) {
@@ -880,6 +922,33 @@ class FusedAttentionBackwardLowering
         }
         break;
 
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleMaskSoftmax:
+        if (is_flash_attention) {
+          if (num_operands == 13) {
+            fused_attention += "scale.mask.softmax";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Mask_Softmax_BMM");
+          }
+          break;
+        }
+        break;
+
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleMaskSoftmaxDropout:
+        if (is_flash_attention) {
+          if (num_operands == 13) {
+            fused_attention += "scale.mask.softmax.dropout";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Mask_Softmax_Dropout_BMM");
+          }
+          break;
+        }
+        break;
       default:
         return op.emitOpError("Undefined fused attention DAG signature");
     }

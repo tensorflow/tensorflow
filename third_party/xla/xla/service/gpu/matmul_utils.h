@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,6 +188,8 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
 
 absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
+absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue);
 
 }  // namespace gpublas_lt
 

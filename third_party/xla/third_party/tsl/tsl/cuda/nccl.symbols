@@ -11,6 +11,8 @@ ncclCommGetAsyncError
 ncclCommInitAll
 ncclCommInitRank
 ncclCommInitRankConfig
+ncclCommDeregister
+ncclCommRegister
 ncclCommSplit
 ncclCommUserRank
 ncclGetErrorString
@@ -40,6 +42,8 @@ pncclCommGetAsyncError
 pncclCommInitAll
 pncclCommInitRank
 pncclCommInitRankConfig
+pncclCommDeregister
+pncclCommRegister
 pncclCommSplit
 pncclCommUserRank
 pncclGetErrorString

@@ -76,7 +76,6 @@ PACKAGES=(
   "tb-nightly"
   "tblib"
   "termcolor"
-  "tf-estimator-nightly"
   "werkzeug"
   "wheel"
 )

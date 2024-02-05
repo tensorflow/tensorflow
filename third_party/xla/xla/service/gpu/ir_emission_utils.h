@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -90,16 +90,12 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns whether unnested_hlo is an input fusion whose root is either a slice
-// or a tuple of slices. If verify_no_strides is true, returns false unless all
-// ROOT slices have no strides.
-bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
-                          bool verify_no_strides);
+// Returns true if `instr` is a non-strided slice.
+bool IsSliceWithUnitStrides(const HloInstruction* instr);
 
-// Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(absl::string_view fmt,
-                        absl::Span<llvm::Value* const> arguments,
-                        llvm::IRBuilder<>* builder);
+// Returns true if `instr` is a slice instruction and produces a contiguous
+// slice.
+bool IsContiguousSlice(const HloInstruction& instr);
 
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
@@ -124,14 +120,13 @@ llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
-template <typename T>
-std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
-  return std::vector<T>(v.begin(), v.end());
-}
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
+
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    const BufferAssignment& buffer_assignment, const HloInstruction* instr,
+    const ShapeIndex& index);
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
@@ -190,11 +185,6 @@ struct TransposeDescription {
                        Vector3 permutation)
       : instr(instr), dimensions(dimensions), permutation(permutation) {}
 
-  std::string ToString() const {
-    return absl::StrCat("dimensions=", VectorString(dimensions),
-                        ", permutation=", VectorString(permutation));
-  }
-
   // Transpose instruction input shape.
   const Shape& input_shape() const { return instr->operand(0)->shape(); }
 
@@ -205,19 +195,16 @@ struct TransposeDescription {
   }
 };
 
-std::optional<TransposeDescription> FindTiledTranspose(
-    const HloInstruction& instr);
-
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
-    const HloInstruction& instr);
-
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
 // Checks if the instruction is elementwise and only has a single user. If
-// a fusion adaptor is provided, only checks for users within the fusion.
+// a fusion adaptor is provided, only checks for users within the fusion. If
+// `add_single_user_check` is true, then it is also checked whether `instr` has
+// at most 1 user.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
-                    const HloFusionAdaptor* fusion = nullptr);
+                    const HloFusionAdaptor* fusion = nullptr,
+                    bool add_single_user_check = false);
 
 // Log the given module if the VLOG level is >= level.
 void VLogModule(int level, const llvm::Module& module);
@@ -245,6 +232,9 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
+
+// Whether the module's target is a SPIR.
+bool IsSPIR(const llvm::Module* module);
 
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR

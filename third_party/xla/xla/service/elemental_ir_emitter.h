@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -174,6 +174,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
                                          llvm::Value* lhs, llvm::Value* rhs,
                                          absl::string_view name);
+
+  virtual StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
+                                         llvm::Value* value);
 
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -187,8 +187,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
             result.Result().on_device_shape(), result_index));
 
     if (!ShapeUtil::IndexIsValid(alias_config.shape(), result_index)) {
-      return InternalError("result_index is invalid: %s",
-                           result_index.ToString());
+      return Internal("result_index is invalid: %s", result_index.ToString());
     }
 
     std::optional<HloInputOutputAliasConfig::Alias> alias =

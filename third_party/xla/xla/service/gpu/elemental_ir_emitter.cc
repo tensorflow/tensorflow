@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -328,6 +328,22 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
                                                     {one, input}, {type}, b());
   return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
                 value->getType(), "tanh");
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  if (prim_type == F64) {
+    return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
+                              {prim_type}, prim_type);
+  }
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
+  if (type == b()->getFloatTy()) {
+    llvm::Value* x = FPCast(value, type);
+    auto* result = llvm_ir::EmitErfF32(b(), x);
+    return FPCast(result, value->getType());
+  }
+  return Unimplemented("erf");
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(

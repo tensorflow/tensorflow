@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_PRE_CALIBRATION_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_PRE_CALIBRATION_H_
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -38,7 +39,7 @@ class PreCalibrationComponent : public Component {
   static constexpr absl::string_view kName = "quant_ptq_pre_calibration";
 
   PreCalibrationComponent(
-      MLIRContext* ctx,
+      absl::Nonnull<MLIRContext*> ctx,
       tensorflow::quantization::CalibrationOptions calibration_options);
 
   absl::StatusOr<ModuleOp> Run(
@@ -46,7 +47,7 @@ class PreCalibrationComponent : public Component {
       const ::stablehlo::quantization::QuantizationConfig& config) override;
 
  private:
-  MLIRContext& ctx_;
+  absl::Nonnull<MLIRContext*> ctx_;
   // TODO: b/315747711 - Allow `QuantizationConfig` to express calibration
   // options and remove this field.
   tensorflow::quantization::CalibrationOptions calibration_options_;

@@ -6,7 +6,6 @@ load(
 )
 load(
     "@local_tsl//tsl:tsl.bzl",
-    "if_oss",
     "tsl_copts",
 )
 load(
@@ -34,12 +33,7 @@ def xla_py_test_deps():
 # `framework_shared_object` in the bazelrc all of this should be able to go
 # away. The problem is making sure that all these impl deps are `if_static`'d
 # appropriately throughout XLA.
-_XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
-    "@local_tsl//tsl/framework:allocator",
-    "@local_tsl//tsl/util:determinism",
-] + if_oss([
-    "@com_google_protobuf//:protobuf",
-]) + if_static(extra_deps = [], otherwise = [
+_XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla:autotune_results_proto_cc_impl"),
     Label("//xla:autotuning_proto_cc_impl"),
     Label("//xla:xla_data_proto_cc_impl"),
@@ -52,7 +46,9 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/stream_executor:device_description_proto_cc_impl"),
     Label("//xla/stream_executor:stream_executor_impl"),
     Label("//xla/stream_executor/gpu:gpu_init_impl"),
+    "@com_google_protobuf//:protobuf",
     "@local_tsl//tsl/framework:allocator_registry_impl",
+    "@local_tsl//tsl/framework:allocator",
     "@local_tsl//tsl/platform:env_impl",
     "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
     "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",
@@ -69,6 +65,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/stream_executor/gpu:gpu_stream"),
     Label("//xla/stream_executor/rocm:all_runtime"),
     Label("//xla/stream_executor/rocm:stream_executor_rocm"),
+    "@local_tsl//tsl/util:determinism",
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -195,8 +195,7 @@ class GpuPerformanceModel {
   static absl::Duration ProducerInputAccessTime(
       const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-      const HloInstruction* producer,
-      const std::optional<HloFusionAnalysis>& fusion_analysis,
+      const HloInstruction* producer, const HloFusionAnalysis& fusion_analysis,
       const GpuPerformanceModelOptions& config,
       const HloInstruction* fused_consumer = nullptr);
 };

@@ -62,6 +62,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/platform:rocm_rocdl_path",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/util:env_var",
     ] + if_rocm_is_configured([

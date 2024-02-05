@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -170,8 +170,7 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
 // Determines the fusion kind to be used when fusing into `consumer`.
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
-                                            const HloInstruction& consumer);
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer);
 
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,

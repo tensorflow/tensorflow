@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,7 +109,14 @@ class ReductionFusion : public KernelFusionEmitterBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t output_id, mlir::MLIRContext* ctx) const override {
+      int64_t root_index, mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const override {
     // TODO(b/319081342): Implement this.
     return std::nullopt;
   }
@@ -134,35 +141,26 @@ class ReductionFusion : public KernelFusionEmitterBase {
    public:
     using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
-    ReductionCodegenInfo(TilingScheme mapping_scheme, int num_partial_results,
-                         bool is_row_reduction, bool is_race_free,
-                         IndexGroups index_groups,
+    ReductionCodegenInfo(Tiling tiling, bool is_row_reduction,
+                         bool is_race_free, IndexGroups index_groups,
                          const HloInstruction* first_reduce)
-        : tiling_scheme_(mapping_scheme),
-          num_partial_results_(num_partial_results),
+        : tiling_(tiling),
           is_row_reduction_(is_row_reduction),
           is_race_free_(is_race_free),
           index_groups_(std::move(index_groups)),
-          first_reduce_(first_reduce) {
-      if (!is_row_reduction && num_partial_results > 1) {
-        CHECK_EQ(num_partial_results,
-                 mapping_scheme.GetThreadTileSize()[TilingScheme::DimX]);
-      }
-    }
+          first_reduce_(first_reduce) {}
 
-    const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
+    const Tiling& GetTiling() const { return tiling_; }
     const IndexGroups& GetIndexGroups() const { return index_groups_; }
     Shape GetReduceOperandShape() const {
       return first_reduce_->operand(0)->shape();
     }
 
-    int GetNumPartialResults() const { return num_partial_results_; }
     bool IsRowReduction() const { return is_row_reduction_; }
     bool IsRaceFree() const { return is_race_free_; }
 
    private:
-    TilingScheme tiling_scheme_;
-    int num_partial_results_;
+    Tiling tiling_;
     bool is_row_reduction_;
     bool is_race_free_;
     IndexGroups index_groups_;

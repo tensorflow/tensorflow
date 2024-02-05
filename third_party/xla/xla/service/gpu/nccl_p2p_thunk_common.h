@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,6 +129,12 @@ GetNcclP2PConfigForSendRecv(OpT op, int64_t replica_count,
 
   return p2p_config;
 }
+
+// Constructs the NcclP2PConfig for an HLO Send or Recv instruction.
+NcclP2PConfig GetNcclP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
+                                          const Shape& shape,
+                                          int64_t replica_count,
+                                          int64_t partition_count);
 
 }  // namespace gpu
 }  // namespace xla

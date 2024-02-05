@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@ namespace gpu {
 // Returns true if all input reads are coalesced. If consumer is not nullptr,
 // producer and consumer are considered as one fusion, otherwise it's only the
 // producer.
-bool IsReadCoalescedHeuristic(
-    const std::optional<HloFusionAnalysis>& fusion_analysis,
-    const HloInstruction* producer, const HloInstruction* consumer = nullptr);
+bool IsReadCoalescedHeuristic(const HloFusionAnalysis& fusion_analysis,
+                              const HloInstruction* producer,
+                              const HloInstruction* consumer = nullptr);
 
 // Returns true, if operand's read is coalesced.
 bool IsReadCoalesced(const HloInstruction* operand, const HloInstruction* instr,

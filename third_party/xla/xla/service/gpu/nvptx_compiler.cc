@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -156,7 +157,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
 
-  // Convert upsupported bf16 convolutions to f32.
+  // Convert unsupported bf16 convolutions to f32.
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
@@ -173,7 +174,8 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
-  AlgebraicSimplifierOptions algsimp_options;
+  AlgebraicSimplifierOptions algsimp_options =
+      GetAlgebraicSimplifierOptions(hlo_module->config());
   algsimp_options.set_enable_conv_operand_swap(false);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
@@ -233,7 +235,8 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     const DebugOptions& debug_options = hlo_module->config().debug_options();
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    AlgebraicSimplifierOptions alg_sim_options;
+    AlgebraicSimplifierOptions alg_sim_options =
+        GetAlgebraicSimplifierOptions(hlo_module->config());
     alg_sim_options.set_supports_non_canonical_dots(false);
     alg_sim_options.set_is_layout_sensitive(true);
     alg_sim_options.set_enable_conv_operand_swap(false);
@@ -520,6 +523,110 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
 }
 
+static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
+    const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config,
+    GpuCompiler::CompileOptions options, bool relocatable) {
+  if (ptx.empty()) {
+    return std::vector<uint8_t>();
+  }
+
+  se::GpuAsmOpts ptxas_config =
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
+  if (relocatable) {
+    ptxas_config.extra_flags.push_back("-c");
+  }
+  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
+  bool cancel_if_reg_spill =
+      hlo_module_config.debug_options()
+          .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
+      options.is_autotuning_compilation;
+
+  absl::StatusOr<std::vector<uint8_t>> maybe_cubin = [&] {
+    if (hlo_module_config.debug_options().xla_gpu_enable_libnvptxcompiler()) {
+#ifdef ENABLE_LIBNVPTXCOMPILER_SUPPORT
+      return se::CompileGpuAsmUsingLibNvPtxCompiler(
+          cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
+#else
+      LOG(FATAL) << "Libnvptxcompiler is not supported in this build.";
+#endif
+    }
+
+    return se::CompileGpuAsm(cc.major, cc.minor, ptx.c_str(), ptxas_config,
+                             cancel_if_reg_spill);
+  }();
+
+  if (maybe_cubin.ok()) {
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
+    // This won't record values for calls that error out (because if they
+    // error out we have no way of telling how far through the process we
+    // got).
+    RecordPtxToCubinDuration(end_usecs - start_usecs);
+
+    VLOG(1) << "Compiled PTX size: " << ptx.size()
+            << "bytes. CUBIN size: " << maybe_cubin.value().size() << "bytes.";
+
+    return maybe_cubin;
+  }
+
+  if (maybe_cubin.status().code() == absl::StatusCode::kNotFound) {
+    if (!hlo_module_config.debug_options()
+             .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
+      LOG(WARNING) << nvptx::CantFindCudaMessage(
+          "Can't find ptxas binary in ${CUDA_DIR}/bin.  Custom ptxas "
+          "location can be specified using $PATH.",
+          hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
+      LOG(FATAL) << "Can't find ptxas binary.  You can pass the flag "
+                    "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
+                    "to use the GPU driver for compiling ptx instead. However "
+                    "this option is discouraged and can lead to increased "
+                    "memory consumptions and other subtle runtime issues.";
+    }
+
+    // Missing ptxas is expected in some environments where CUDA SDK
+    // binaries are not available. We don't want to spam logs with
+    // identical warnings in this case.
+    LOG_FIRST_N(WARNING, 1) << nvptx::CantFindCudaMessage(
+        "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to "
+        "the GPU driver for PTX -> sass compilation.  This is OK so "
+        "long as you don't see a warning below about an out-of-date "
+        "driver version. Custom ptxas location can be specified "
+        "using $PATH.",
+        hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
+
+    // We're going to use the driver to JIT our PTX->SASS, so warn if
+    // the JIT in the driver has known bugs.
+    WarnIfBadDriverJITVersion();
+    return maybe_cubin;
+  }
+
+  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled) {
+    // Register spilling has occurred during autotuning.
+    CHECK(options.is_autotuning_compilation);
+    return maybe_cubin;
+  }
+
+  if (maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
+    // Exhausting the register limit during autotuning is not a fatal
+    // error, we should just skip the problematic tiling.
+    CHECK(options.is_autotuning_compilation);
+    return maybe_cubin;
+  }
+
+  if (maybe_cubin.status().code() != absl::StatusCode::kUnimplemented) {
+    // If unimplemented is returned, we fallback to the driver.
+    LOG(FATAL) << "ptxas returned an error during compilation of ptx "
+                  "to sass: '"
+               << maybe_cubin.status() << "'  "
+               << "If the error message indicates that a file could "
+                  "not be written, please verify that sufficient "
+                  "filesystem space is provided.";
+  }
+
+  return maybe_cubin;
+}
+
 absl::StatusOr<std::vector<uint8_t>>
 NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     const std::string& ptx, se::CudaComputeCapability cc,
@@ -533,124 +640,44 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       !options.is_autotuning_compilation);
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
-  bool inserted;
-  decltype(compilation_cache_.begin()) iter;
-  // Pointers into compilation_cache_ where the ptx and (optional) cubin are
+  // Pointers into compilation_cache_ where the ptx and (optional) cuBIN are
   // stored.
-  const std::string* cache_ptx = nullptr;
   CompilationCacheValue* cache_value = nullptr;
-
-  {
+  bool inserted = [&] {
     absl::MutexLock lock(&mutex_);
-    std::tie(iter, inserted) = compilation_cache_.emplace(
+    auto [iter, inserted] = compilation_cache_.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
         std::forward_as_tuple());
-    cache_ptx = &iter->first.ptx;
+    // Do not move this assignment outside of the critical section. There is
+    // a TOCTOU if `compilation_cache_` is rehashed before the iterator is used.
     cache_value = &iter->second;
-  }
+    return inserted;
+  }();
 
   // Compile the ptx if it wasn't in the cache before we called this function.
   // Other threads asking for the same compilation key will block on
   // cache_value->mutex_ until compilation is done.
-  {
-    absl::MutexLock lock(&cache_value->mutex);
-    if (inserted) {
-      CHECK(!cache_value->compilation_done);
-      if (!ptx.empty()) {
-        se::GpuAsmOpts ptxas_config =
-            PtxOptsFromDebugOptions(hlo_module_config.debug_options());
-        if (relocatable) {
-          ptxas_config.extra_flags.push_back("-c");
-        }
-        uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-
-        bool cancel_if_reg_spill =
-            hlo_module_config.debug_options()
-                .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
-            options.is_autotuning_compilation;
-        absl::StatusOr<std::vector<uint8_t>> maybe_cubin =
-            se::CompileGpuAsm(cc.major, cc.minor, cache_ptx->c_str(),
-                              ptxas_config, cancel_if_reg_spill);
-
-        if (maybe_cubin.ok()) {
-          uint64_t end_usecs = tsl::Env::Default()->NowMicros();
-          // This won't record values for calls that error out (because if they
-          // error out we have no way of telling how far through the process we
-          // got).
-          RecordPtxToCubinDuration(end_usecs - start_usecs);
-          cache_value->cubin_data = std::move(maybe_cubin).value();
-          VLOG(1) << "Compiled PTX size:" << ptx.size()
-                  << " CUBIN size: " << cache_value->cubin_data.size();
-        } else {
-          if (maybe_cubin.status().code() == absl::StatusCode::kNotFound) {
-            if (!hlo_module_config.debug_options()
-                     .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
-              LOG(WARNING) << nvptx::CantFindCudaMessage(
-                  "Can't find ptxas binary in ${CUDA_DIR}/bin.  Custom ptxas "
-                  "location can be specified using $PATH.",
-                  hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
-              LOG(FATAL)
-                  << "Can't find ptxas binary.  You can pass the flag "
-                     "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
-                     "to use the GPU driver for compiling ptx instead. However "
-                     "this option is discouraged and can lead to increased "
-                     "memory consumptions and other subtle runtime issues.";
-            }
-            // Missing ptxas is expected in some environments where CUDA SDK
-            // binaries are not available. We don't want to spam logs with
-            // identical warnings in this case.
-
-            LOG_FIRST_N(WARNING, 1) << nvptx::CantFindCudaMessage(
-                "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to "
-                "the GPU driver for PTX -> sass compilation.  This is OK so "
-                "long as you don't see a warning below about an out-of-date "
-                "driver version. Custom ptxas location can be specified "
-                "using $PATH.",
-                hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
-          } else if (maybe_cubin.status().code() ==
-                     absl::StatusCode::kCancelled) {
-            // Register spilling has occurred during autotuning, this config
-            // should not be tried further.
-            CHECK(options.is_autotuning_compilation);
-            cache_value->compilation_done = true;
-            cache_value->compilation_done_cv.SignalAll();
-            return maybe_cubin;
-          } else if (maybe_cubin.status().code() ==
-                     absl::StatusCode::kResourceExhausted) {
-            // Exhausting the register limit during autotuning is not a fatal
-            // error, we should just skip the problematic tiling.
-            CHECK(options.is_autotuning_compilation);
-            cache_value->compilation_done = true;
-            cache_value->compilation_done_cv.SignalAll();
-            return maybe_cubin;
-          } else if (maybe_cubin.status().code() !=
-                     absl::StatusCode::kUnimplemented) {
-            // If unimplemented is returned, we fallback to the driver.
-            LOG(FATAL) << "ptxas returned an error during compilation of ptx "
-                          "to sass: '"
-                       << maybe_cubin.status() << "'  "
-                       << "If the error message indicates that a file could "
-                          "not be written, please verify that sufficient "
-                          "filesystem space is provided.";
-          }
-
-          // We're going to use the driver to JIT our PTX->SASS, so warn if
-          // the JIT in the driver has known bugs.
-          WarnIfBadDriverJITVersion();
-        }
-      }
+  absl::MutexLock lock(&cache_value->mutex);
+  if (inserted) {
+    CHECK(!cache_value->compilation_done);
+    absl::Cleanup mark_compilation_as_done = [cache_value] {
+      // Note that we will set this to true also in the error case, so that we
+      // don't retry this compilation.
       cache_value->compilation_done = true;
       cache_value->compilation_done_cv.SignalAll();
-    } else {
-      while (!cache_value->compilation_done) {
-        cache_value->compilation_done_cv.Wait(&cache_value->mutex);
-      }
-    }
+    };
+
+    TF_ASSIGN_OR_RETURN(cache_value->cubin_data,
+                        AssembleOptionsAndCompile(ptx, cc, hlo_module_config,
+                                                  options, relocatable));
+    return cache_value->cubin_data;
   }
 
-  CHECK(cache_value != nullptr);
-  CHECK(cache_value->compilation_done);
+  while (!cache_value->compilation_done) {
+    cache_value->compilation_done_cv.Wait(&cache_value->mutex);
+  }
+
   return cache_value->cubin_data;
 }
 
@@ -672,26 +699,23 @@ static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
   }
 
   // Make sure nvlink exists and is executable.
-  const std::string bin_path =
+  absl::StatusOr<std::string> bin_path =
       se::FindCudaExecutable("nvlink", preferred_cuda_dir);
-  auto version = se::GetToolVersion(bin_path);
+
+  if (!bin_path.ok()) {
+    return std::nullopt;
+  }
+
+  auto version = se::GetToolVersion(bin_path.value());
   if (!version.ok()) {
     return std::nullopt;
   }
   return *version;
 }
 
-absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
-    const std::string& preferred_cuda_dir) {
-  {
-    absl::MutexLock lock(&mutex_);
-    auto it = linking_methods_.find(preferred_cuda_dir);
-    if (it != linking_methods_.end()) {
-      return it->second;
-    }
-  }
-
-  LinkingMethod linking_method = LinkingMethod::kNone;
+absl::StatusOr<NVPTXCompiler::LinkingMethod> ChooseLinkingMethodImpl(
+    const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
+  using LinkingMethod = NVPTXCompiler::LinkingMethod;
   TF_ASSIGN_OR_RETURN(auto ptxas_version_tuple,
                       se::GetAsmCompilerVersion(preferred_cuda_dir));
 
@@ -702,33 +726,57 @@ absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     return absl::InternalError("XLA requires ptxas version 11.8 or higher");
   }
 
-  static const std::optional<std::array<int64_t, 3>> nvlink_version =
+  std::optional<std::array<int64_t, 3>> nvlink_version =
       GetNvLinkVersion(preferred_cuda_dir);
   if (nvlink_version && *nvlink_version >= ptxas_version_tuple) {
-    linking_method = LinkingMethod::kNvLink;
-  } else {
-    int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
-                        std::get<1>(ptxas_version_tuple) * 10;
-    TF_ASSIGN_OR_RETURN(int driver_version,
-                        se::gpu::GpuDriver::GetDriverVersion());
+    return LinkingMethod::kNvLink;
+  }
 
-    if (driver_version >= ptxas_version) {
-      linking_method = LinkingMethod::kDriver;
-    } else {
-      LOG_FIRST_N(WARNING, 1)
-          << "The NVIDIA driver's CUDA version is "
-          << absl::StrFormat("%d.%d", driver_version / 1000,
-                             (driver_version % 1000) / 10)
-          << " which is older than the ptxas CUDA version "
-          << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
-                             std::get<1>(ptxas_version_tuple),
-                             std::get<2>(ptxas_version_tuple))
-          << ". Because the driver is older than the ptxas version, XLA is "
-             "disabling parallel compilation, which may slow down compilation. "
-             "You should update your NVIDIA driver or use the NVIDIA-provided "
-             "CUDA forward compatibility packages.";
+  int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
+                      std::get<1>(ptxas_version_tuple) * 10;
+  TF_ASSIGN_OR_RETURN(int driver_version,
+                      se::gpu::GpuDriver::GetDriverVersion());
+
+  if (driver_version >= ptxas_version) {
+    return LinkingMethod::kDriver;
+  }
+
+  LOG_FIRST_N(WARNING, 1)
+      << "The NVIDIA driver's CUDA version is "
+      << absl::StrFormat("%d.%d", driver_version / 1000,
+                         (driver_version % 1000) / 10)
+      << " which is older than the ptxas CUDA version "
+      << absl::StrFormat("(%d.%d.%d)", std::get<0>(ptxas_version_tuple),
+                         std::get<1>(ptxas_version_tuple),
+                         std::get<2>(ptxas_version_tuple))
+      << ". Because the driver is older than the ptxas version, XLA is "
+         "disabling parallel compilation, which may slow down "
+         "compilation. "
+         "You should update your NVIDIA driver or use the "
+         "NVIDIA-provided "
+         "CUDA forward compatibility packages.";
+
+  return LinkingMethod::kNone;
+}
+
+absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
+    const DebugOptions& debug_options) {
+  se::GpuAsmOpts ptxas_config = PtxOptsFromDebugOptions(debug_options);
+  std::string& preferred_cuda_dir = ptxas_config.preferred_cuda_dir;
+
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = linking_methods_.find(preferred_cuda_dir);
+    if (it != linking_methods_.end()) {
+      return it->second;
     }
   }
+
+  // This wrapper only handles caching. The actual choice happens in this call:
+  TF_ASSIGN_OR_RETURN(
+      LinkingMethod linking_method,
+      ChooseLinkingMethodImpl(debug_options, preferred_cuda_dir));
+
   {
     absl::MutexLock lock(&mutex_);
     linking_methods_[preferred_cuda_dir] = linking_method;
@@ -740,10 +788,8 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
-  auto ptxas_config =
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options());
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
-                      ChooseLinkingMethod(ptxas_config.preferred_cuda_dir));
+                      ChooseLinkingMethod(hlo_module_config.debug_options()));
   return linking_method != LinkingMethod::kNone;
 }
 
@@ -761,7 +807,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
       stream_exec->platform_specific_handle().context);
 
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
-                      ChooseLinkingMethod(ptxas_config.preferred_cuda_dir));
+                      ChooseLinkingMethod(debug_options));
   if (linking_method == LinkingMethod::kNvLink) {
     return LinkUsingNvlink(debug_options.xla_gpu_cuda_data_dir(), context,
                            images);

@@ -427,4 +427,30 @@ def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
   }];
 }
 
+def IfrtLoadVariableOp: TensorflowMlrt_Op<"ifrt_load_variable", []> {
+  let summary = "Loads a variable tensor as an IFRT array for mlrt";
+
+  let description = [{
+    This is the MLRT version of tf.IfrtLoadVariableOp.
+
+    This op loads a variable tensor as an IFRT array and binds it with the specified name.
+
+    This op is an replacement of `tf.ReadVariableOp` in the case that a constant
+    variable tensor is an input to the tpu program invoked by `tf.IfrtCall`.
+
+    After a `tf.ReadVariableOp` is lowered into `tf.IfrtLoadVariableOp`, the `tf.IfrtCall` kernel
+    will bind the loaded IFRT array by name with the tpu program's input.
+
+    `tf.IfrtLoadVariableOp` converts the tensor into an IFRT array based on device and sharding
+    configuration specified in `VariableDeviceShardingConfigProto`.
+  }];
+
+  let arguments = (ins
+    TFTensorType:$variable,
+    StrAttr:$device_sharding_config_proto_text,
+    StrAttr:$name
+  );
+}
+
+
 #endif

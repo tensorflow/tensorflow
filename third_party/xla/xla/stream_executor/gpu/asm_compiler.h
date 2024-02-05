@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,6 +61,10 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill = false);
 
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
+    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    bool cancel_if_reg_spill = false);
+
 // Same as CompileGpuAsm, but caches the result, and returns unowned view of
 // the compiled binary.
 //
@@ -97,8 +101,8 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images);
 
-std::string FindCudaExecutable(const std::string& binary_name,
-                               const std::string& preferred_cuda_dir);
+absl::StatusOr<std::string> FindCudaExecutable(
+    const std::string& binary_name, const std::string& preferred_cuda_dir);
 
 // Runs tool --version and parses its version string.
 absl::StatusOr<std::array<int64_t, 3>> GetToolVersion(

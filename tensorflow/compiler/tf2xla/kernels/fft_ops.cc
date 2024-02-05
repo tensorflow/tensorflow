@@ -135,11 +135,14 @@ class IFFTOp : public GenericFftOp {
   explicit IFFTOp(OpKernelConstruction* ctx)
       : GenericFftOp(ctx, /*fft_type=*/FftType::IFFT, /*fft_rank=*/FFTRank) {}
 };
-REGISTER_XLA_OP(Name("IFFT").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("IFFT").TypeConstraint("Tcomplex",
+                                            {DT_COMPLEX64, DT_COMPLEX128}),
                 MlirXlaOpKernel);
-REGISTER_XLA_OP(Name("IFFT2D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("IFFT2D").TypeConstraint("Tcomplex",
+                                              {DT_COMPLEX64, DT_COMPLEX128}),
                 IFFTOp<2>);
-REGISTER_XLA_OP(Name("IFFT3D").TypeConstraint("Tcomplex", DT_COMPLEX64),
+REGISTER_XLA_OP(Name("IFFT3D").TypeConstraint("Tcomplex",
+                                              {DT_COMPLEX64, DT_COMPLEX128}),
                 IFFTOp<3>);
 
 template <int FFTRank>

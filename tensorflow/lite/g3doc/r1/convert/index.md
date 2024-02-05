@@ -33,7 +33,7 @@ FlatBuffers is an order of magnitude smaller than protocol buffers.
 
 The converter supports the following input formats:
 
-*   [SavedModels](https://www.tensorflow.org/guide/saved_model#using_savedmodel_with_estimators)
+*   [SavedModels](https://www.tensorflow.org/guide/saved_model)
 *   `tf.keras` H5 models.
 *   Frozen `GraphDef` models generated using
     [freeze_graph.py](https://www.tensorflow.org/code/tensorflow/python/tools/freeze_graph.py).

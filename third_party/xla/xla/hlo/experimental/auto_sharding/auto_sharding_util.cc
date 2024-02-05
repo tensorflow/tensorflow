@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,9 +49,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/sharding_propagation.h"
+#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -354,6 +356,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -613,6 +616,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kBitcastConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:
+      case HloOpcode::kErf:
       case HloOpcode::kExp:
       case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
@@ -1731,18 +1735,13 @@ AliasSet BuildAliasSet(const HloModule* module,
   for (const HloComputation* computation : module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
+        // Aliasing between the while op, and the parameters of its body and
+        // conditional computations is handled by making the latter follow the
+        // input tuple to thew while loop in the function
+        // BuildStrategyAndCost().
         traverse_tuple_alias(
             strategy_map.at(instruction).get(),
             strategy_map.at(instruction->while_body()->root_instruction())
-                .get());
-        traverse_tuple_alias(
-            strategy_map.at(instruction).get(),
-            strategy_map.at(instruction->while_body()->parameter_instruction(0))
-                .get());
-        traverse_tuple_alias(
-            strategy_map.at(instruction).get(),
-            strategy_map
-                .at(instruction->while_condition()->parameter_instruction(0))
                 .get());
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         auto branch_computations = instruction->branch_computations();
@@ -2138,50 +2137,56 @@ bool IsEntryComputationInputOrOutput(const HloModule* module,
 
 void ComputeInstructionExecutionCountsHelper(
     const HloComputation* computation, int64_t computation_execution_count,
-    int64_t loop_iteration_count_estimate,
-    absl::flat_hash_map<const HloInstruction*, int64_t>*
+    int64_t static_loop_iteration_count_estimate,
+    absl::flat_hash_map<const HloInstruction*, int64_t>&
         instruction_execution_counts) {
-  for (auto instruction : computation->instructions()) {
-    (*instruction_execution_counts)[instruction] = computation_execution_count;
+  for (const HloInstruction* instruction : computation->instructions()) {
+    (instruction_execution_counts)[instruction] = computation_execution_count;
     if (instruction->opcode() == HloOpcode::kWhile) {
+      int64_t loop_iteration_count = static_loop_iteration_count_estimate;
+      if (std::optional<int64_t> upper_bound =
+              ComputeWhileLoopTripCountUpperBound(instruction)) {
+        loop_iteration_count = *upper_bound;
+      }
       int64_t while_body_condition_execution_count =
-          computation_execution_count * loop_iteration_count_estimate;
+          computation_execution_count * loop_iteration_count;
       ComputeInstructionExecutionCountsHelper(
           instruction->while_body(),
-          /*computation_execution_count */
+          /* computation_execution_count */
           while_body_condition_execution_count,
-          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
-          instruction_execution_counts);
+          /* loop_iteration_count_estimate */
+          static_loop_iteration_count_estimate, instruction_execution_counts);
       ComputeInstructionExecutionCountsHelper(
           instruction->while_condition(),
-          /*computation_execution_count */
+          /* computation_execution_count */
           while_body_condition_execution_count,
-          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
-          instruction_execution_counts);
+          /* loop_iteration_count_estimate */
+          static_loop_iteration_count_estimate, instruction_execution_counts);
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       // TODO(pratikf): For now, we do not scale down the execution counts of
       // branch statements, though we should at some point.
-      auto branch_computations = instruction->branch_computations();
+      PtrVec<HloComputation*> branch_computations =
+          instruction->branch_computations();
       for (size_t i = 0; i < branch_computations.size(); ++i) {
         ComputeInstructionExecutionCountsHelper(
             branch_computations[i],
-            /*computation_execution_count */
+            /* computation_execution_count */
             computation_execution_count,
-            /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
-            instruction_execution_counts);
+            /* loop_iteration_count_estimate */
+            static_loop_iteration_count_estimate, instruction_execution_counts);
       }
     }
   }
 }
 
 absl::flat_hash_map<const HloInstruction*, int64_t>
-ComputeInstructionExecutionCounts(const HloModule* module,
-                                  int64_t loop_iteration_count_estimate) {
+ComputeInstructionExecutionCounts(
+    const HloModule* module, int64_t static_loop_iteration_count_estimate) {
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_execution_counts;
   ComputeInstructionExecutionCountsHelper(module->entry_computation(), 1,
-                                          loop_iteration_count_estimate,
-                                          &instruction_execution_counts);
+                                          static_loop_iteration_count_estimate,
+                                          instruction_execution_counts);
   return instruction_execution_counts;
 }
 

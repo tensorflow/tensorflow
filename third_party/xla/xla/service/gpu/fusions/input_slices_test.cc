@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/input_slices.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -28,9 +32,18 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::HasSubstr;
+class InputSlicesTest : public HloTestBase {
+ public:
+  void SetUp() override {
+    HloTestBase::SetUp();
+    printer_ =
+        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"}, {});
+  }
 
-class InputSlicesTest : public HloTestBase {};
+ protected:
+  AffineMapPrinter printer_;
+  mlir::MLIRContext mlir_context_;
+};
 
 TEST_F(InputSlicesTest, ThreadIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -54,20 +67,29 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis_fused}));
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
   auto fusion = dynamic_cast<InputSlicesFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
-  mlir::MLIRContext mlir_context;
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
-      HasSubstr(
-          "(d0, d1, d2, d3, d4, d5) -> (0, ((d0 + d3 * 128) floordiv 3) mod 2, "
-          "(d0 + d3 * 128) mod 3, ((d0 + d3 * 128) floordiv 6) mod 5)"));
+  auto thread_id_to_output_indexing =
+      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (0,
+      ((th_x + bl_x * 128) floordiv 3) mod 2,
+       (th_x + bl_x * 128) mod 3, 
+       ((th_x + bl_x * 128) floordiv 6) mod 5)
+    domain:
+    th_x in [0, 127]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 1]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+  )"));
 }
 
 }  // namespace

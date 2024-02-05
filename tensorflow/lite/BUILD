@@ -8,7 +8,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tfli
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -1369,6 +1369,9 @@ tflite_cc_shared_object(
     features = ["windows_export_all_symbols"],
     linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+        ],
+        "//tensorflow:ios": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],

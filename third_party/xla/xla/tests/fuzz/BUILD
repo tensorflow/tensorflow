@@ -17,6 +17,7 @@ cc_library(
 [hlo_test(
     name = hlo + "_test",
     hlo = hlo,
+    tags = (["no_rocm"] if hlo == "rand_000079.hlo" else []),  # No int8
 ) for hlo in glob(
     include = ["rand_*.hlo"],
     exclude = [

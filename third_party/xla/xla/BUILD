@@ -48,7 +48,9 @@ package_group(
 )
 
 exports_files(
-    ["run_lit.sh"],
+    [
+        "lit.cfg.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -306,7 +308,9 @@ cc_library(
     hdrs = ["status.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@local_tsl//tsl/platform:status",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -1222,15 +1226,6 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@local_tsl//tsl/platform:logging",
     ],
-)
-
-filegroup(
-    name = "litfiles",
-    srcs = [
-        "runlit.cfg.py",
-        "runlit.site.cfg.py",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "llvm/Support/InitLLVM.h"
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
@@ -21,13 +20,9 @@ limitations under the License.
 #include "xla/mlir/framework/ir/xla_framework.h"
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
-#include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "tsl/platform/init_main.h"
 
 int main(int argc, char **argv) {
-  // TODO(jreiffers): Move this to a more appropriate place. It is used by both
-  // translate/mhlo_to_lhlo_with_xla and mlir/framework for testing.
-  llvm::InitLLVM y(argc, argv);
   int dummyArgc = 1;
   tsl::port::InitMain(argv[0], &dummyArgc, &argv);
 

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/service/platform_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -174,10 +176,10 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
   TF_ASSERT_OK(commands.Record({executor, &stream, &stream, &allocations},
-                               &command_buffer));
+                               command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(&stream, command_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -220,31 +222,53 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
                               /*shmem_bytes=*/0);
 
   // Initialize command sequence and load device kernels.
-  CommandBufferCmd::ExecutableSource source = {
+  Thunk::ExecutableSource source = {
 #if defined(GOOGLE_CUDA)
-    /*text=*/se::gpu::internal::kAddI32Kernel,
-    /*binary=*/{}
+      /*text=*/se::gpu::internal::kAddI32Kernel,
+      /*binary=*/{}
 #elif defined(TENSORFLOW_USE_ROCM)
-    /*text=*/{},
-    /*binary=*/se::gpu::internal::kAddI32KernelModule
+      /*text=*/{},
+      /*binary=*/se::gpu::internal::kAddI32KernelModule
 #endif
   };
-  TF_ASSERT_OK(commands.Initialize(executor, source));
+  TF_ASSERT_OK(commands.Initialize({executor, source}));
 
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
   TF_ASSERT_OK(commands.Record({executor, &stream, &stream, &allocations},
-                               &command_buffer));
+                               command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(&stream, command_buffer));
+  TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
   stream.ThenMemcpy(dst.data(), b, byte_length);
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+}
+
+TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
+  struct TestState : public CommandBufferCmd::State {
+    int32_t value = 0;
+  };
+
+  // We need a fake command buffer pointer to use as a key.
+  CommandBufferCmd* cmd = reinterpret_cast<CommandBufferCmd*>(0x1234567);
+
+  CommandBufferCmd::StateManager state_manager;
+
+  auto* state0 = state_manager.GetOrNull<TestState>(cmd);
+  ASSERT_EQ(state0, nullptr);
+
+  auto* state1 = state_manager.GetOrCreate<TestState>(cmd);
+  ASSERT_EQ(state1->value, 0);
+  state1->value += 42;
+
+  auto* state2 = state_manager.GetOrCreate<TestState>(cmd);
+  ASSERT_EQ(state2->value, 42);
+  ASSERT_EQ(state1, state2);
 }
 
 }  // namespace xla::gpu

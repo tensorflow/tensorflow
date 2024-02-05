@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,19 +39,38 @@ class MatmulTest : public HloTestBase {
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
+  const char* fused_matmul_binary_add_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":["BINARY_ADD"]
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
+  const char* matmul_rewrite_str_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":[]
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
 };
 
 TEST_F(MatmulTest, SimpleTestF32) {
   const char* matmul_module_str = R"(
-  HloModule matmul.test.f32, entry_computation_layout={(f32[2,8,4,16]{3,2,1,0},f32[2,8,16,32]{3,2,1,0})->f32[2,8,4,32]{3,2,1,0}}
+  HloModule matmul.test.f32, entry_computation_layout={(f32[32,8,128,64]{3,2,1,0},f32[32,8,64,128]{3,2,1,0})->f32[32,8,128,128]{3,2,1,0}}
 
   ENTRY matmul.test.f32 {
-    arg.0 = f32[2,8,4,16]{3,2,1,0} parameter(0), parameter_replication={false}
-    arg.1 = f32[2,8,16,32]{3,2,1,0} parameter(1), parameter_replication={false}
-    ROOT onednn.matmul.0 = f32[2,8,4,32]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    arg.0 = f32[32,8,128,64]{3,2,1,0} parameter(0), parameter_replication={false}
+    arg.1 = f32[32,8,64,128]{3,2,1,0} parameter(1), parameter_replication={false}
+    ROOT onednn.matmul.0 = f32[32,8,128,128]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
 }
 
 TEST_F(MatmulTest, SimpleTestBF16) {
@@ -64,38 +83,30 @@ TEST_F(MatmulTest, SimpleTestBF16) {
   }
 
   const char* matmul_module_str = R"(
-  HloModule matmul.test.bf16, entry_computation_layout={(bf16[2,8,4,16]{3,2,1,0},bf16[2,8,16,32]{3,2,1,0})->bf16[2,8,4,32]{3,2,1,0}}
+  HloModule matmul.test.bf16, entry_computation_layout={(bf16[32,8,128,64]{3,2,1,0},bf16[32,8,64,128]{3,2,1,0})->bf16[32,8,128,128]{3,2,1,0}}
 
   ENTRY matmul.test.bf16 {
-    arg.0 = bf16[2,8,4,16]{3,2,1,0} parameter(0), parameter_replication={false}
-    arg.1 = bf16[2,8,16,32]{3,2,1,0} parameter(1), parameter_replication={false}
-    ROOT onednn.matmul.0 = bf16[2,8,4,32]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    arg.0 = bf16[32,8,128,64]{3,2,1,0} parameter(0), parameter_replication={false}
+    arg.1 = bf16[32,8,64,128]{3,2,1,0} parameter(1), parameter_replication={false}
+    ROOT onednn.matmul.0 = bf16[32,8,128,128]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
   })";
 
-  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str,
-                    R"(
-  ; CHECK:     custom_call_target="__onednn$matmul",
-  ; CHECK:       backend_config={
-  ; CHECK-DAG:     "outer_dimension_partitions":[],
-  ; CHECK-DAG:     "onednn_matmul_config":{
-  ; CHECK-DAG:       "fused_ops":[]
-  ; CHECK-DAG:   }
-  ; CHECK:     }
-  )");
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32TransposeB) {
   const char* matmul_module_str = R"(
-  HloModule matmul.test.1, entry_computation_layout={(f32[2,8,4,16]{3,1,2,0},f32[2,8,4,16]{3,1,2,0})->f32[2,8,4,4]{3,2,1,0}}
+  HloModule matmul.test.1, entry_computation_layout={(f32[32,8,128,64]{3,1,2,0},f32[32,8,128,64]{3,1,2,0})->f32[32,8,128,128]{3,2,1,0}}
 
   ENTRY matmul.test.1 {
-    arg.0 = f32[2,8,4,16]{3,1,2,0} parameter(0), parameter_replication={false}
-    arg.1 = f32[2,8,4,16]{3,1,2,0} parameter(1), parameter_replication={false}
-    ROOT onednn.matmul.0 = f32[2,8,4,4]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+    arg.0 = f32[32,8,128,64]{3,1,2,0} parameter(0), parameter_replication={false}
+    arg.1 = f32[32,8,128,64]{3,1,2,0} parameter(1), parameter_replication={false}
+    ROOT onednn.matmul.0 = f32[32,8,128,128]{3,2,1,0} dot(arg.0, arg.1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion1) {
@@ -118,7 +129,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion1) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion2) {
@@ -141,7 +152,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion2) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter1) {
@@ -160,7 +171,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter1) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter2) {
@@ -197,6 +208,26 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter2D) {
     reshape.11 = f32[2,2,400,400]{3,2,1,0} reshape(add.10)
     tuple.12 = (f32[2,2,400,400]{3,2,1,0}) tuple(reshape.11)
     ROOT get-tuple-element.13 = f32[2,2,400,400]{3,2,1,0} get-tuple-element(tuple.12), index=0
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
+}
+
+TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter2D1B) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.test.f32, entry_computation_layout={(f32[1,2,400,30]{3,2,1,0}, f32[1,2,30,400]{3,2,1,0}, f32[1,400]{1,0})->f32[1,2,400,400]{3,2,1,0}}
+  
+  ENTRY matmul.biasadd.test.f32 {
+    arg0.1 = f32[1,2,400,30]{3,2,1,0} parameter(0), parameter_replication={false}
+    arg0.2 = f32[1,2,30,400]{3,2,1,0} parameter(1), parameter_replication={false}
+    arg0.3 = f32[1,400]{1,0} parameter(2), parameter_replication={false}
+    dot.7 = f32[1,2,400,400]{3,2,1,0} dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    broad.1 = f32[1,2,400,400]{3,2,1,0} broadcast(arg0.3), dimensions={0,3}
+    add.10 = f32[1,2,400,400]{3,2,1,0} add(dot.7, broad.1)
+    reshape.11 = f32[1,2,400,400]{3,2,1,0} reshape(add.10)
+    tuple.12 = (f32[1,2,400,400]{3,2,1,0}) tuple(reshape.11)
+    ROOT get-tuple-element.13 = f32[1,2,400,400]{3,2,1,0} get-tuple-element(tuple.12), index=0
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
@@ -241,7 +272,28 @@ TEST_F(MatmulTest, SimpleTestF32TransposeBWithBiasAddFusion) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
+}
+
+TEST_F(MatmulTest, F32BiasAddFusionNonCompatibleBias) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32, entry_computation_layout={(f32[12288,2]{1,0},f32[2,1024]{1,0})->f32[32,384,1024]{2,1,0}}
+
+  ENTRY matmul.test.1 {
+    arg.0 = f32[12288,2]{1,0} parameter(0), parameter_replication={false}
+    arg.1 = f32[2,1024]{1,0} parameter(1), parameter_replication={false}
+    dot.0 = f32[12288,1024]{1,0} dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.0 = f32[32,384,1024]{2,1,0} reshape(dot.0)
+    constant.0 = f32[1,384,1024]{2,1,0} constant(15)
+    reshape.1 = f32[384,1024]{1,0} reshape(constant.0)
+    broadcast.0 = f32[32,384,1024]{2,1,0} broadcast(reshape.1), dimensions={1,2}
+    add.0 = f32[32,384,1024]{2,1,0} add(reshape.0, broadcast.0)
+    tuple.0 = (f32[32,384,1024]{2,1,0}) tuple(add.0)
+    ROOT get-tuple-element.0 = f32[32,384,1024]{2,1,0} get-tuple-element(tuple.0), index=0
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
 }
 
 TEST_F(MatmulTest, ApproxGELUTestF32) {
@@ -358,6 +410,73 @@ TEST_F(MatmulTest, ReLUTestF32) {
   ; CHECK-DAG:     "outer_dimension_partitions":[],
   ; CHECK-DAG:     "onednn_matmul_config":{
   ; CHECK-DAG:       "fused_ops":["RELU"]
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
+}
+
+TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_F32) {
+  const char* matmul_module_str = R"(
+  HloModule jit_apply, entry_computation_layout={(f32[3072]{0}, f32[768,3072]{1,0}, f32[16,128,768]{2,1,0})->bf16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+  ENTRY matmul.test.bf16 {
+    Arg_2.3 = f32[16,128,768]{2,1,0} parameter(2), sharding={replicated}
+    convert.4 = bf16[16,128,768]{2,1,0} convert(Arg_2.3)
+    Arg_1.2 = f32[768,3072]{1,0} parameter(1), sharding={replicated}
+    convert.5 = bf16[768,3072]{1,0} convert(Arg_1.2)
+    dot.7 = bf16[16,128,3072]{2,1,0} dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f32[3072]{0} parameter(0), sharding={replicated}
+    convert.6 = bf16[3072]{0} convert(Arg_0.1)
+    reshape.8 = bf16[1,1,3072]{2,1,0} reshape(convert.6)
+    broadcast.9 = bf16[1,1,3072]{2,1,0} broadcast(reshape.8), dimensions={0,1,2}
+    reshape.10 = bf16[3072]{0} reshape(broadcast.9)
+    broadcast.11 = bf16[16,128,3072]{2,1,0} broadcast(reshape.10), dimensions={2}
+    ROOT add.12 = bf16[16,128,3072]{2,1,0} add(dot.7, broadcast.11)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
+TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_BF16) {
+  const char* matmul_module_str = R"(
+  HloModule jit_apply, entry_computation_layout={(bf16[3072]{0}, bf16[768,3072]{1,0}, f32[16,128,768]{2,1,0})->bf16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+  ENTRY matmul.test.bf16 {
+    Arg_2.3 = f32[16,128,768]{2,1,0} parameter(2), sharding={replicated}
+    convert.4 = bf16[16,128,768]{2,1,0} convert(Arg_2.3)
+    Arg_1.2 = bf16[768,3072]{1,0} parameter(1), sharding={replicated}
+    dot.5 = bf16[16,128,3072]{2,1,0} dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = bf16[3072]{0} parameter(0), sharding={replicated}
+    reshape.6 = bf16[1,1,3072]{2,1,0} reshape(Arg_0.1)
+    broadcast.7 = bf16[1,1,3072]{2,1,0} broadcast(reshape.6), dimensions={0,1,2}
+    reshape.8 = bf16[3072]{0} reshape(broadcast.7)
+    broadcast.9 = bf16[16,128,3072]{2,1,0} broadcast(reshape.8), dimensions={2}
+    ROOT add.10 = bf16[16,128,3072]{2,1,0} add(dot.5, broadcast.9)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
+TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.divide.test.1, entry_computation_layout={(f32[16,128,768]{2,1,0}, f32[768,12,64]{2,1,0})->f32[16,128,12,64]{3,2,1,0}}
+  ENTRY matmul.divide.test.f32 {
+    Arg_4.5 = f32[16,128,768]{2,1,0} parameter(0), sharding={replicated}
+    Arg_2.3 = f32[768,12,64]{2,1,0} parameter(1), sharding={replicated}
+    onednn.matmul.0 = f32[16,128,12,64]{3,2,1,0} dot(Arg_4.5, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    constant.8 = f32[] constant(8)
+    broadcast.9 = f32[16,128,12,64]{3,2,1,0} broadcast(constant.8), dimensions={}
+    ROOT divide.16 = f32[16,128,12,64]{3,2,1,0} divide(onednn.matmul.0, broadcast.9)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec(1e-4, 1e-4)));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$matmul",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "outer_dimension_partitions":[],
+  ; CHECK-DAG:     "onednn_matmul_config":{
+  ; CHECK-DAG:       "fused_ops":["LINEAR"]
   ; CHECK-DAG:   }
   ; CHECK:     }
   )");

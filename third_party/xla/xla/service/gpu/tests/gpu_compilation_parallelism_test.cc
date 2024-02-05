@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ class CompilationParallelismTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // Use multiple threads for compilation
     debug_options.set_xla_gpu_force_compilation_parallelism(4);
+    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
     return debug_options;
   }
 };

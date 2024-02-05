@@ -100,6 +100,7 @@ cc_library(
     hdrs = ["compile_tf_graph.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -108,6 +109,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tensorflow/transforms:set_tpu_infeed_layout",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
@@ -142,6 +144,9 @@ tf_cc_test(
     name = "compile_tf_graph_test",
     testonly = 1,
     srcs = ["compile_tf_graph_test.cc"],
+    data = [
+        "testdata/prepare_to_library.mlir",
+    ],
     linkstatic = 1,
     deps = [
         ":compile_tf_graph",
@@ -161,6 +166,7 @@ tf_cc_test(
         "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "//tensorflow/core/tpu/kernels/xla:host_compute_ops",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
@@ -171,7 +177,6 @@ tf_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/stream_executor",
         "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
     ],
 )

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -246,7 +246,8 @@ class ShapeVerifier : public DfsHloVisitor {
   // Helpers that switch on layout_sensitive_.
   bool ShapesSame(const Shape& a, const Shape& b,
                   bool minor_to_major_only = false,
-                  bool ignore_memory_space = false, bool ignore_tiles = false);
+                  bool ignore_memory_space = false, bool ignore_tiles = false,
+                  bool ignore_trailing_padding_alignment_in_elements = false);
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.

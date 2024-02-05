@@ -21,6 +21,7 @@ limitations under the License.
 #include <cerrno>
 #include <string>
 
+#include "absl/strings/numbers.h"
 #include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/tools/logging.h"

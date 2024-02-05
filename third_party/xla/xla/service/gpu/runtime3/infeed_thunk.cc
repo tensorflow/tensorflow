@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,7 +45,8 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), shape_index);
-    TF_RET_CHECK(ShapeUtil::Equal(dest_slices_[index].shape, source_shape))
+    TF_RET_CHECK(
+        ShapeUtil::ReshapeIsBitcast(dest_slices_[index].shape, source_shape))
         << "Mismatch between infeed source buffer shape "
         << ShapeUtil::HumanStringWithLayout(source_shape)
         << " and infeed dest buffer shape "
@@ -61,8 +62,8 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
-    return InternalError("Failed to complete data transfer on stream %p: %s",
-                         &stream, block_status.message());
+    return Internal("Failed to complete data transfer on stream %p: %s",
+                    &stream, block_status.message());
   }
 
   VLOG(2) << "Infeeding to GPU complete";

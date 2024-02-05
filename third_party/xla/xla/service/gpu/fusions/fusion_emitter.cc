@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -113,7 +113,7 @@ absl::Status AnnotateKernelLaunchDimensions(
 
 }  // namespace
 
-mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
+IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor,
     const Shape& output_shape, mlir::MLIRContext* ctx) {
   std::vector<mlir::AffineExpr> output_dims(output_shape.rank());
@@ -164,26 +164,25 @@ mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     divisor *= output_shape.dimensions(dimension);
   }
 
-  return mlir::AffineMap::get(/*dimCount=*/6,
-                              /*symbolCount=*/unroll_factor > 1 ? 1 : 0,
-                              output_dims, ctx);
-}
-
-Domain KernelFusionInterface::GetThreadIdDomain(
-    const LaunchDimensions& launch_dims, int unroll_factor) {
-  Domain result;
-  result.dimension_ranges = {
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x)},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y)},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().x)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().y)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().z)},
+  std::vector<Range> dimension_ranges = {
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().x) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
   };
+  std::vector<Range> symbol_ranges;
   if (unroll_factor > 1) {
-    result.symbol_ranges.push_back({0, unroll_factor});
+    symbol_ranges.push_back({0, unroll_factor - 1});
   }
-  return result;
+  IndexingMap indexing_map(
+      mlir::AffineMap::get(/*dimCount=*/6,
+                           /*symbolCount=*/unroll_factor > 1 ? 1 : 0,
+                           output_dims, ctx),
+      dimension_ranges, symbol_ranges);
+  indexing_map.Simplify();
+  return indexing_map;
 }
 
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
@@ -302,28 +301,31 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
                       EmitInitializers(ir_emitter_context, fusion_op, fusion));
   auto launch_dims = launch_dimensions();
   std::vector<llvm_ir::IrArray> inputs, outputs;
-  auto [entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      fused_computation, kernel_arguments.args(), /*discriminator=*/"",
-      [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
-        llvm::Function* kernel;
-        TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
-                            BuildKernelPrototype(
-                                ir_emitter_context, suggested_kernel_name,
-                                kernel_arguments.args(), fusion.operand_count(),
-                                launch_dims, &builder));
-        if (ir_emitter_context.emit_kernels()) {
-          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion, launch_dims,
-                                        std::move(inputs), std::move(outputs),
-                                        &builder));
-        } else {
-          VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
-        }
-        // TODO(jreiffers): Return shmem_bytes from EmitKernel when
-        // converting the Triton emitters to this infrastructure.
-        return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
-                                       /*shmem_bytes=*/0};
-      });
-  TF_RETURN_IF_ERROR(entry.status());
+  auto [status_or_entry, cached] =
+      ir_emitter_context.kernel_cache().GetWithStatus(
+          fused_computation, kernel_arguments.args(), /*discriminator=*/"",
+          [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
+            llvm::Function* kernel;
+            TF_ASSIGN_OR_RETURN(
+                std::tie(kernel, inputs, outputs),
+                BuildKernelPrototype(ir_emitter_context, suggested_kernel_name,
+                                     kernel_arguments.args(),
+                                     fusion.operand_count(), launch_dims,
+                                     &builder));
+            if (ir_emitter_context.emit_kernels()) {
+              TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion,
+                                            launch_dims, std::move(inputs),
+                                            std::move(outputs), &builder));
+            } else {
+              VLOG(3) << "Skipped kernel compilation: "
+                      << suggested_kernel_name;
+            }
+            // TODO(jreiffers): Return shmem_bytes from EmitKernel when
+            // converting the Triton emitters to this infrastructure.
+            return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
+                                           /*shmem_bytes=*/0};
+          });
+  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   if (cached) {
     VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "

@@ -1,0 +1,14 @@
+==== triton/python/src/ir.cc#3 - /google/src/cloud/joelwee/mlir_da784a25557e29996bd33638d51d569ddf989faf_1706700588/triton/python/src/ir.cc ====
+# action=edit type=text
+--- triton/python/src/ir.cc	2024-01-30 04:43:56.000000000 -0800
++++ triton/python/src/ir.cc	2024-01-31 04:40:21.000000000 -0800
+@@ -271,7 +271,8 @@
+            })
+       .def("get_num_arguments", &mlir::Block::getNumArguments)
+       .def("dump", &mlir::Block::dump)
+-      .def("move_before", &mlir::Block::moveBefore)
++      .def("move_before",
++           [](mlir::Block &self, mlir::Block *tgt) { self.moveBefore(tgt); })
+       .def("insert_before", &mlir::Block::insertBefore)
+       .def("get_parent", &mlir::Block::getParent, ret::reference)
+       .def("merge_block_before",

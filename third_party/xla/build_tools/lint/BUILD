@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,9 +46,9 @@ py_test(
         "testdata/bad_cc.diff",
         "testdata/important_cc.diff",
     ],
-    tags = ["no_oss"],
     deps = [
         ":check_contents",
+        "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],
 )
@@ -61,9 +61,9 @@ py_test(
         "testdata/crosstool.diff",
         "testdata/important_cc.diff",
     ],
-    tags = ["no_oss"],
     deps = [
         ":diff_parser",
+        "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],
 )
@@ -71,7 +71,6 @@ py_test(
 py_test(
     name = "generate_compile_commands_test",
     srcs = ["generate_compile_commands_test.py"],
-    tags = ["no_oss"],
     deps = [
         ":generate_compile_commands",
         "@absl_py//absl/testing:absltest",

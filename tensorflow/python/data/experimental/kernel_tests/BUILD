@@ -86,30 +86,6 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "checkpoint_input_pipeline_hook_test",
-    size = "medium",
-    srcs = ["checkpoint_input_pipeline_hook_test.py"],
-    tags = ["no_windows"],  # b/287333711
-    deps = [
-        "//tensorflow/python/checkpoint:checkpoint_management",
-        "//tensorflow/python/data/experimental/ops:iterator_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:control_flow_ops",
-        "//tensorflow/python/ops:variable_v1",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training:saver",
-        "//tensorflow/python/training:training_util",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_strict_test(
     name = "compression_ops_test",
     size = "small",
     srcs = ["compression_ops_test.py"],

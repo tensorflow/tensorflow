@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -120,6 +120,9 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
   ...
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
+  ...
+
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
   ...
 
 def pjrt_plugin_initialized(plugin_name: str) -> bool:

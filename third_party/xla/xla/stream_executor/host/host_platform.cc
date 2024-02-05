@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,9 +81,3 @@ static void InitializeHostPlatform() {
 
 REGISTER_MODULE_INITIALIZER(host_platform,
                             stream_executor::host::InitializeHostPlatform());
-
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(host_platform, multi_platform_manager);
-REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-                                     host_platform);

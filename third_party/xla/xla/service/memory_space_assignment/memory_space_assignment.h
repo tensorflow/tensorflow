@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -979,7 +979,9 @@ class MemorySpaceAssignment {
     SlicedCopyAllocation(
         const Allocation& prev_allocation, MemorySpace memory_space,
         std::vector<SliceDecision> slice_decisions_sorted_by_start_time,
-        int64_t copy_done_schedule_before_time, int64_t end_time);
+        int64_t copy_done_schedule_before_time, int64_t end_time,
+        const SlicedPrefetchOptions& sliced_prefetch_options,
+        absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn);
 
     bool is_sliced_copy_allocation() const override { return true; }
 
@@ -1030,6 +1032,8 @@ class MemorySpaceAssignment {
     //   sorted_segments_[i+j].copy.start_before_time
     std::vector<SliceDetail> slice_details_sorted_by_start_time_;
     HloInstruction* concat_ = nullptr;
+    const SlicedPrefetchOptions& sliced_prefetch_options_;
+    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn_;
   };
 
   // An allocation in the default memory space that mirrors another Allocation
@@ -1361,11 +1365,11 @@ class MemoryBoundednessBufferIntervalComparator
  private:
   // See the value returned by DescribeComparisonCriteria() for the meaning of
   // each tuple element.
-  using ComparisonTuple =
-      std::tuple<float, int64_t, int64_t, int64_t, int64_t, BufferValue::Id>;
+  using ComparisonTuple = std::tuple<int64_t, float, int64_t, int64_t, int64_t,
+                                     int64_t, BufferValue::Id>;
 
   ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
-
+  int64_t GetLatestUseTime(const BufferInterval& buffer_interval);
   absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
   const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
   MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache_;
@@ -1428,6 +1432,8 @@ struct Options {
 
   // Size function for buffer values.
   BufferValue::SizeFunction size_fn;
+
+  std::function<Shape(const Shape&)> get_equivalent_s8_shape_fn;
 
   // This function can be used to prevent certain HloValues (e.g., based on
   // the opcode) to be placed on the alternate memory.
@@ -1594,6 +1600,10 @@ struct Options {
   // Option to always spill buffers from alternate memory to default memory
   // and prefetching back to alternate memory(if needed) just in time for use.
   bool always_spill_to_default_memory = false;
+
+  // Config to override alternate memory assignment sorting order for filtered
+  // buffers.
+  MsaSortOrderOverrides msa_sort_order_overrides;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -2297,7 +2307,9 @@ class AlternateMemoryBestFitHeap
     kFailRequiresUncommit = 64,
     // For prefetching, indicates that all slices have the same start time, in
     // which case, we fallback to an unsliced solution.
-    kAllSlicesHaveTheSameStartTime = 128
+    kAllSlicesHaveTheSameStartTime = 128,
+    // There were conflicting preferred offsets.
+    kFailConflictingPreferredOffsets = 256
   };
 
   // Return true if the result belongs to a failure.
@@ -2708,6 +2720,11 @@ class AlternateMemoryBestFitHeap
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
 };
+
+// Returns true if the options indicate that we there is a preferred slice
+// size.
+bool IsUniformSliceSizingEnabled(const SlicedPrefetchOptions& options);
+
 }  // namespace memory_space_assignment
 }  // namespace xla
 

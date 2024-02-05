@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -155,6 +155,8 @@ def FusedMhaBackwardDagScaleBiasMaskSoftmax : I32EnumAttrCase<"BackwardScaleBias
 def FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleBiasMaskSoftmaxDropout", 3>;
 def FusedMhaBackwardDagSoftmax : I32EnumAttrCase<"BackwardSoftmax", 4>;
 def FusedMhaBackwardDagSoftmaxDropout : I32EnumAttrCase<"BackwardSoftmaxDropout", 5>;
+def FusedMhaBackwardDagScaleMaskSoftmax : I32EnumAttrCase<"BackwardScaleMaskSoftmax", 6>;
+def FusedMhaBackwardDagScaleMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleMaskSoftmaxDropout", 7>;
 
 def FusedMhaDagSignature: I32EnumAttr<"FusedMhaDagSignature",
     "DAG configuration for Fused Multi-Headed Attention",
@@ -179,7 +181,9 @@ def FusedMhaBackwardDagSignature: I32EnumAttr<"FusedMhaBackwardDagSignature",
     FusedMhaBackwardDagScaleBiasMaskSoftmax,
     FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout,
     FusedMhaBackwardDagSoftmax,
-    FusedMhaBackwardDagSoftmaxDropout]> {
+    FusedMhaBackwardDagSoftmaxDropout,
+    FusedMhaBackwardDagScaleMaskSoftmax,
+    FusedMhaBackwardDagScaleMaskSoftmaxDropout]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }

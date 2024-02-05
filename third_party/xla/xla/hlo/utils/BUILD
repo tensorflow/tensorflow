@@ -127,10 +127,13 @@ xla_cc_test(
     ],
     deps = [
         ":hlo_sharding_util",
+        "//xla:array",
         "//xla:shape_util",
         "//xla:test",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:tile_assignment",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",

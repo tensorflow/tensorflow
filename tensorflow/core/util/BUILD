@@ -758,7 +758,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
         "@local_xla//xla/stream_executor/rocm:rocblas_plugin",
         "@local_xla//xla/stream_executor/rocm:rocblas_wrapper",
-        "@local_xla//xla/stream_executor/rocm:rocm_gpu_executor",
+        "@local_xla//xla/stream_executor/rocm:rocm_executor",
         "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",

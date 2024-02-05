@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -92,6 +92,8 @@ StatusOr<Literal> HandleEvaluatorCustomCall(
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
+  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
+  // run before the ComparisonExpander which rewrites such comparisons.
   pipeline.AddPass<TopkDecomposer>();
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CholeskyExpander>();

@@ -182,31 +182,31 @@ class XlaCallModuleOp : public XlaOpKernel {
                                })
               << "])";
     }
-    string loading_device_type = ctx->device_type().type_string();
-    string loading_platform = "";
-    if (loading_device_type == DEVICE_CPU_XLA_JIT) {
-      loading_platform = "CPU";
-    } else if (loading_device_type == DEVICE_GPU_XLA_JIT) {
+    string compilation_device_type = ctx->device_type().type_string();
+    compilation_platform_ = "";
+    if (compilation_device_type == DEVICE_CPU_XLA_JIT) {
+      compilation_platform_ = "CPU";
+    } else if (compilation_device_type == DEVICE_GPU_XLA_JIT) {
 #if GOOGLE_CUDA
-      loading_platform = "CUDA";
+      compilation_platform_ = "CUDA";
 #elif TENSORFLOW_USE_ROCM
-      loading_platform = "ROCM";
+      compilation_platform_ = "ROCM";
 #else
       OP_REQUIRES(ctx, false,
                   absl::UnimplementedError("CUDA or ROCM build required"));
 #endif
-    } else if (loading_device_type == DEVICE_TPU_XLA_JIT) {
-      loading_platform = "TPU";
+    } else if (compilation_device_type == DEVICE_TPU_XLA_JIT) {
+      compilation_platform_ = "TPU";
     } else {
       OP_REQUIRES(ctx, false,
                   absl::UnimplementedError(absl::StrCat(
-                      "Unexpected device type ", loading_device_type)));
+                      "Unexpected device type ", compilation_device_type)));
     }
-    VLOG(3) << "Initializing XlaCallModuleOp on " << loading_platform;
+    VLOG(3) << "Initializing XlaCallModuleOp on " << compilation_platform_;
     {
       auto loader = XlaCallModuleLoader::Create(
           &context_, version, std::move(module_str), std::move(disabled_checks),
-          std::move(platforms), loading_platform,
+          std::move(platforms),
           /*num_invocation_args=*/ctx->num_inputs(),
           main_has_token_input_output);
       OP_REQUIRES_OK(ctx, loader.status());
@@ -239,6 +239,7 @@ class XlaCallModuleOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, shape.status());
       input_shapes.push_back(*std::move(shape));
     }
+    OP_REQUIRES_OK(ctx, loader_->SetPlatformIndex(compilation_platform_));
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
     OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
@@ -549,6 +550,7 @@ class XlaCallModuleOp : public XlaOpKernel {
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
   std::unique_ptr<XlaCallModuleLoader> loader_;
   std::vector<NameAttrList> function_list_;
+  std::string compilation_platform_;
 
   // Whether the XlaCallModule op has token input/output.
   std::vector<std::string> op_token_input_nodes_;

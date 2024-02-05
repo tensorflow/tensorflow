@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 
@@ -147,6 +148,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
+  const std::string fingerprint = hlo_module->GetFingerprint128();
   auto unique_module_group =
       std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
@@ -155,7 +157,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                       aot_options));
   return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name);
+      num_partitions, name, fingerprint);
 #else
   return absl::InternalError(
       "GPU Compilation requires the target to be built with CUDA or "

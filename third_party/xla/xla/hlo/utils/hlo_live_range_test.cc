@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -434,9 +434,9 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %b = f32[4096]{0} parameter(1)
   %negate_0 = f32[4096]{0} negate(f32[4096]{0} %a)
   %negate_1 = f32[4096]{0} negate(f32[4096]{0} %b)
-  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1), async_group_id=0, calls=%async_wrapped
+  %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1), calls=%async_wrapped
   %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1)
-  %async-done = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+  %async-done = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
 }
 )";

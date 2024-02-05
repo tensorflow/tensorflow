@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -65,12 +65,12 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime3/conditional_thunk.h"
-#include "xla/service/gpu/runtime3/for_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -153,7 +153,7 @@ static absl::Status LowerToXlaGpuRuntime(
     llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
     const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
   if (!module) {
-    return InternalError("No MLIR module to lower.");
+    return Internal("No MLIR module to lower.");
   }
 
   const DebugOptions& debug_options = hlo_module->config().debug_options();
@@ -172,7 +172,7 @@ static absl::Status LowerToXlaGpuRuntime(
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
   for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
     if (!DebugOptions::CommandBufferCmdType_IsValid(command_type_num)) {
-      return InternalError("Invalid command buffer command type");
+      return Internal("Invalid command buffer command type");
     }
     DebugOptions::CommandBufferCmdType command_type =
         static_cast<DebugOptions::CommandBufferCmdType>(command_type_num);
@@ -188,7 +188,7 @@ static absl::Status LowerToXlaGpuRuntime(
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
-    return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
+    return Internal("Failed to lower LMHLO to Gpu runtime custom calls.");
   }
 
   return absl::OkStatus();
@@ -205,9 +205,6 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
            cond_thunk->branch_thunks()) {
         ForAllThunks(fn, &branch_thunks->thunks());
       }
-    } else if (thunk->kind() == Thunk::kFor) {
-      auto* for_thunk = tensorflow::down_cast<ForThunk*>(thunk.get());
-      ForAllThunks(fn, &for_thunk->body_thunk_sequence()->thunks());
     } else if (thunk->kind() == Thunk::kSequential) {
       auto* sequential_thunk =
           tensorflow::down_cast<SequentialThunk*>(thunk.get());
@@ -324,7 +321,12 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*colorer=*/
+          hlo_module->config()
+                  .debug_options()
+                  .xla_gpu_enable_nccl_user_buffers()
+              ? CollectiveColorer()
+              : BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, can_share_buffer_function));
 
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"

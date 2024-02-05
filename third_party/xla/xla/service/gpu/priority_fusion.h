@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"

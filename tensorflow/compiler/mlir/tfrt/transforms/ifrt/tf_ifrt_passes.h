@@ -30,6 +30,10 @@ namespace ifrt_serving {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateRewriteClusterToIfrtCallPass();
 
+// Creates a pass that lowers ReadVariableOp to IfrtLoadVariableOp.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateSinkVariableAsNamedArrayPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 

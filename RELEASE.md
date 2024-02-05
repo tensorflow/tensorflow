@@ -40,6 +40,28 @@
     * Added support for `stablehlo.minimum`.
     * Added boolean parameter support for `tfl.gather_nd`.
 
+* `tf.train.CheckpointOptions` and `tf.saved_model.SaveOptions`
+    * These now take in a new argument called `experimental_sharding_callback`.
+      This is a callback function wrapper that will be executed to determine how
+      tensors will be split into shards when the saver writes the checkpoint
+      shards to disk. `tf.train.experimental.ShardByTaskPolicy` is the default
+      sharding behavior, but `tf.train.experimental.MaxShardSizePolicy` can be
+      used to shard the checkpoint with a maximum shard file size. Users with
+      advanced use cases can also write their own custom
+      `tf.train.experimental.ShardingCallback`s.
+
+* `tf.train.CheckpointOptions`
+    * Added `experimental_skip_slot_variables` (a boolean option) to skip
+    restoring of optimizer slot variables in a checkpoint.
+
+*   `tf.saved_model.SaveOptions`
+
+    * `SaveOptions` now takes a new argument called
+      `experimental_debug_stripper`. When enabled, this strips the debug nodes
+      from both the node defs and the function defs of the graph. Note that
+      this currently only strips the `Assert` nodes from the graph and
+      converts them into `NoOp`s instead.
+
 ## Keras
 
 *  `keras.layers.experimental.DynamicEmbedding`

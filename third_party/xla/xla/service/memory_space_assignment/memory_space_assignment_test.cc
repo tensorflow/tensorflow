@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -87,6 +88,7 @@ using memory_space_assignment::MemoryBoundLoopOptimizerOptions;
 using memory_space_assignment::MemorySpaceAssignment;
 using memory_space_assignment::MemorySpaceAssignmentCostAnalysis;
 using memory_space_assignment::MemorySpaceAssignmentRepacker;
+using memory_space_assignment::MsaSortOrderOverrides;
 using memory_space_assignment::Options;
 using memory_space_assignment::PreferredPrefetchOverrides;
 using memory_space_assignment::PrefetchIntervalPicker;
@@ -643,6 +645,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
@@ -705,6 +708,7 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -989,6 +993,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1064,6 +1069,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1139,6 +1145,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1213,6 +1220,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1285,6 +1293,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1365,6 +1374,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1441,6 +1451,7 @@ TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
       F32, {2, 3},
       /*minor_to_major=*/{1, 0},
       /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1761,7 +1772,8 @@ TEST_P(MemorySpaceAssignmentTest, While) {
   }
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
@@ -2100,7 +2112,8 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
@@ -2155,7 +2168,8 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   AssignMemorySpace(module.get());
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(fusion->operand(0)->operand(0),
@@ -4064,6 +4078,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*dim_unique=*/{},
           /*dim_ordered=*/{}, /*tiles=*/{},
+          /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*element_size_in_bits=*/0, kAlternateMemorySpace);
@@ -4072,6 +4087,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*dim_unique=*/{},
           /*dim_ordered=*/{}, /*tiles=*/{},
+          /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*element_size_in_bits=*/0, kDefaultMemorySpace);
@@ -4080,6 +4096,7 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*dim_unique=*/{},
           /*dim_ordered=*/{}, /*tiles=*/{},
+          /*tail_padding_alignment_in_elements=*/1,
           /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           /*element_size_in_bits=*/0, kDefaultMemorySpace);
@@ -4515,7 +4532,8 @@ TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
   // Negate instructions are in the alternate memory space (1).
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -4585,7 +4603,8 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {4, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kDefaultMemorySpace);
   // Expect only negates to be in alternate memory space. Not all might fit but
   // make sure at least one does.
@@ -4602,6 +4621,137 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh2, op::ShapeWithLayout(shape_in_default_mem));
   EXPECT_THAT(tanh3, op::ShapeWithLayout(shape_in_default_mem));
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       MemoryBoundednessOverrideSortOrderAssignFirst) {
+  // Override MSA sort order and try to assign all negates to alternate memory
+  // first.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3,4]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    tanh0 = f32[3,4]{1,0} tanh(p0)
+    negate0 = f32[3,4]{1,0} negate(p1)
+    tanh1 = f32[3,4]{1,0} tanh(tanh0)
+    negate1 = f32[3,4]{1,0} negate(negate0)
+    tanh2 = f32[3,4]{1,0} tanh(tanh1)
+    negate2 = f32[3,4]{1,0} negate(negate1)
+    tanh3 = f32[3,4]{1,0} tanh(tanh2)
+    negate3 = f32[3,4]{1,0} negate(negate2)
+    tanh4 = f32[3,4]{1,0} tanh(tanh3)
+    negate4 = f32[3,4]{1,0} negate(negate3)
+    ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "negate(.*)" }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(options.msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  // Parameters are in the default memory space.
+  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  // All negates are in alternate memory space except negate4.
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  EXPECT_EQ(negate0->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  EXPECT_EQ(negate1->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
+  EXPECT_EQ(negate2->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
+  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  EXPECT_EQ(tanh0->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
+  EXPECT_EQ(tanh1->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
+  EXPECT_EQ(tanh2->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
+  EXPECT_EQ(tanh3->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
+  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       MemoryBoundednessOverrideSortOrderAssignLast) {
+  // Override MSA sort order and try to assign all negates to alternate memory
+  // last.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3,4]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    tanh0 = f32[3,4]{1,0} tanh(p0)
+    negate0 = f32[3,4]{1,0} negate(p1)
+    tanh1 = f32[3,4]{1,0} tanh(tanh0)
+    negate1 = f32[3,4]{1,0} negate(negate0)
+    tanh2 = f32[3,4]{1,0} tanh(tanh1)
+    negate2 = f32[3,4]{1,0} negate(negate1)
+    tanh3 = f32[3,4]{1,0} tanh(tanh2)
+    negate3 = f32[3,4]{1,0} negate(negate2)
+    tanh4 = f32[3,4]{1,0} tanh(tanh3)
+    negate4 = f32[3,4]{1,0} negate(negate3)
+    ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "negate(.*)" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(options.msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  // Parameters are in the default memory space.
+  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  // All negates are in default memory space except negate3.
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  EXPECT_EQ(negate0->shape().layout().memory_space(), kDefaultMemorySpace);
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  EXPECT_EQ(negate1->shape().layout().memory_space(), kDefaultMemorySpace);
+  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
+  EXPECT_EQ(negate2->shape().layout().memory_space(), kDefaultMemorySpace);
+  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
+  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  EXPECT_EQ(tanh0->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
+  EXPECT_EQ(tanh1->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
+  EXPECT_EQ(tanh2->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
+  EXPECT_EQ(tanh3->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
+  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
@@ -4693,15 +4843,18 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   // Ensure all parameters and while are placed in default memory.
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {4, 6},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kDefaultMemorySpace);
   Shape s32_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       xla::S32, {},
-      /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kDefaultMemorySpace);
   Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {1},
-      /*minor_to_major=*/{0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kDefaultMemorySpace);
   Shape t_s32_f32v1_in_default_mem =
       ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
@@ -4812,7 +4965,8 @@ TEST_P(MemorySpaceAssignmentTest,
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   // p0 is in the default memory space.
   HloInstruction* p0 =
@@ -6873,15 +7027,14 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
 
   // Expect that of the four separate allocations for the "a" buffer, the first
   // and the next three are in separate colocations.
-  auto check_fun =
-      [](absl::Span<AllocationBlock*> allocations) {
-        EXPECT_TRUE(allocations.at(0)->GetColocationsCount() == 1 ||
-                    allocations.at(0)->GetColocationsCount() == 3);
-        EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 3);
-        EXPECT_EQ(allocations.at(2)->GetColocationsCount(), 3);
-        EXPECT_TRUE(allocations.at(3)->GetColocationsCount() == 1 ||
-                    allocations.at(3)->GetColocationsCount() == 3);
-      };
+  auto check_fun = [](absl::Span<AllocationBlock*> allocations) {
+    EXPECT_TRUE(allocations.at(0)->GetColocationsCount() == 1 ||
+                allocations.at(0)->GetColocationsCount() == 3);
+    EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 3);
+    EXPECT_EQ(allocations.at(2)->GetColocationsCount(), 3);
+    EXPECT_TRUE(allocations.at(3)->GetColocationsCount() == 1 ||
+                allocations.at(3)->GetColocationsCount() == 3);
+  };
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
   Options options = DefaultMemorySpaceOptions();
@@ -7304,8 +7457,8 @@ ENTRY entry {
   negate2 = f32[2,3] negate(negate1)
   negate3 = f32[2,3] negate(negate2)
   negate4 = f32[2,3] negate(negate3)
-  async-start = ((f32[2,3]), f32[2,3], f32[2]) async-start(negate1), async_group_id=0, async_execution_thread="foobar", calls=async_comp
-  async-done = f32[2,3] async-done(async-start), async_group_id=0, async_execution_thread="foobar", calls=async_comp
+  async-start = ((f32[2,3]), f32[2,3], f32[2]) async-start(negate1), async_execution_thread="foobar", calls=async_comp
+  async-done = f32[2,3] async-done(async-start), async_execution_thread="foobar", calls=async_comp
   add0 = f32[2,3] add(negate0, async-done)
   negate5 = f32[2,3] negate(add0)
   negate6 = f32[2,3] negate(negate5)
@@ -7540,6 +7693,66 @@ ENTRY entry {
   AssignMemorySpaceUsingCostAnalysis(module.get());
   EXPECT_THAT(FindInstruction(module.get(), "negate1")->operand(0),
               op::Parameter(1));
+}
+
+TEST_P(MemorySpaceAssignmentTest, AliasedOperandBug) {
+  // Test for a case where two aliased operands into the same instruction
+  // (param0 and custom_call2) cause a violation of the required assignment.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[4,4]{0,1} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+  param2 = f32[4,4]{0,1} parameter(2)
+  negate0 = f32[4]{0} negate(param1)
+  negate1 = f32[4]{0} negate(negate0)
+  negate2 = f32[4]{0} negate(negate1)
+  negate3 = f32[4]{0} negate(negate2)
+  negate4 = f32[4]{0} negate(negate3)
+  negate5 = f32[4]{0} negate(negate4)
+  custom_call1 = f32[4,4]{0,1} custom-call(param0), custom_call_target="FooBar", output_to_operand_aliasing={{}: (0, {})}
+  tanh = f32[4,4]{0,1} tanh(param2)
+  negate6 = f32[4]{0} negate(negate5)
+  negate7 = f32[4]{0} negate(negate6)
+  negate8 = f32[4]{0} negate(negate7)
+  negate9 = f32[4]{0} negate(negate8)
+  negate10 = f32[4]{0} negate(negate9)
+  negate11 = f32[4]{0} negate(negate10)
+  negate12 = f32[4]{0} negate(negate11)
+  negate13 = f32[4]{0} negate(negate12)
+  negate14 = f32[4]{0} negate(negate13)
+  negate15 = f32[4]{0} negate(negate14)
+  negate16 = f32[4]{0} negate(negate15)
+  custom_call2 = f32[4,4]{0,1} custom-call(custom_call1), custom_call_target="FooBar", output_to_operand_aliasing={{}: (0, {})}
+  custom_call3 = f32[4,4]{0,1} custom-call(param0, custom_call2), custom_call_target="FooBar", output_to_operand_aliasing={{}: (0, {})}
+  ROOT root = f32[4,4]{0,1} add(tanh, custom_call2)
+}
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_inst_priority = [](const HloInstruction* instruction) {
+          if (instruction->name() == "param2") {
+            return 0;
+          }
+          if (instruction->name() == "param0") {
+            return 1;
+          }
+          return 2;
+        };
+
+        return get_inst_priority(a.buffer->defining_instruction()) <
+               get_inst_priority(b.buffer->defining_instruction());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  Options options = DefaultMemorySpaceOptions();
+  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                    &prefetch_interval_picker);
 }
 
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
@@ -8550,7 +8763,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
   auto rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {kFeature, kOutput},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
@@ -8592,7 +8806,8 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
   auto rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {kFeature, kOutput},
-      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
@@ -10726,6 +10941,70 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
   EXPECT_EQ(remaining_memory.at(4), 512 - (2 * 16 + 16));
 }
 
+TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
+  absl::string_view hlo_str = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    while_cond_param = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+    ROOT p = pred[] get-tuple-element(while_cond_param), index=5
+  }
+
+  while_body {
+    while_body_param = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+    pinned_prev_param0 = f32[28,4] get-tuple-element(while_body_param), index=0
+    zero = s32[] constant(0)
+    next_param0 = f32[1,4] get-tuple-element(while_body_param), index=1
+    prev_prev_op3 = f32[1,4] get-tuple-element(while_body_param), index=2
+    prev_prev_op4 = f32[1,4] get-tuple-element(while_body_param), index=3
+    prev_op0 = f32[1,4] add(f32[1,4] prev_prev_op3, f32[1,4] prev_prev_op4)
+    prev_op1 = f32[1,4] add(f32[1,4] prev_prev_op4, f32[1,4] prev_op0)
+    prev_op2 = f32[1,4] add(f32[1,4] prev_op0, f32[1,4] prev_op1)
+    prev_op3 = f32[1,4] add(f32[1,4] prev_op1, f32[1,4] prev_op2)
+    pinned_slice = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    prev_op4 = f32[1,4] multiply(f32[1,4] pinned_slice, f32[1,4] prev_op3)
+    op0 = f32[1,4] add(f32[1,4] prev_op3, f32[1,4] prev_op4)
+    op1 = f32[1,4] add(f32[1,4] prev_op4, f32[1,4] op0)
+    op2 = f32[1,4] add(f32[1,4] op0, f32[1,4] op1)
+    op3 = f32[1,4] add(f32[1,4] op1, f32[1,4] op2)
+    pinned_slice2 = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    op4 = f32[1,4] multiply(f32[1,4] pinned_slice2, f32[1,4] op3)
+    next_op0 = f32[1,4] add(f32[1,4] op3, f32[1,4] op4)
+    next_op1 = f32[1,4] add(f32[1,4] op4, f32[1,4] next_op0)
+    next_op2 = f32[1,4] add(f32[1,4] next_op0, f32[1,4] next_op1)
+    next_op3 = f32[1,4] add(f32[1,4] next_op1, f32[1,4] next_op2)
+    pinned_slice3 = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    next_op4 = f32[1,4] multiply(f32[1,4] pinned_slice3, f32[1,4] next_op3)
+    p = pred[] get-tuple-element(while_body_param), index=5
+    ROOT root = tuple(pinned_prev_param0, next_param0, prev_prev_op3, prev_prev_op4, next_op4, p)
+  }
+
+  ENTRY entry {
+    p0 = f32[28,4] parameter(0)
+    p1 = f32[1,4] parameter(1)
+    p2 = f32[1,4] parameter(2)
+    p3 = f32[1,4] parameter(3)
+    p4 = pred[] parameter(4)
+    copy = f32[1,4] copy(p3)
+    tuple = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) tuple(p0, p1, p2, p3, copy, p4)
+    while = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) while(tuple), condition=while_cond, body=while_body
+    ROOT root = f32[1,4] get-tuple-element(while), index=4
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto optimizer,
+                          CreateOptimizer(21, 27, module.get(),
+                                          /*alternate_memory_size=*/512));
+  optimizer->Optimize();
+
+  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  // We expect that pinned_prev_param0 would not get pinned due to negative
+  // savings: 32(uses) -  28 * 16(size) = -416 Time 0: 3 temporaries (16 B) + 1
+  // pinned (4 B)
+  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 4));
+}
+
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndWhileLoop) {
   absl::string_view hlo_str = R"(
 HloModule module, is_scheduled=true
@@ -11166,9 +11445,11 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   // An HloInstruction* matcher for matching the asynchronous sliced copies
   // produced by MSA. In particular, the matcher performs the following
   // checks:
-  // - The copy is concluded with a concat-bitcast custom call
+  // - The copy is concluded with a concat-bitcast custom call, or a
+  //   bitcast of a concat-bitcast custom call if expect_bitcasted_io is true
   // - The operands to the concat-bitcast are asynchronous slices of the
-  //   expected operand
+  //   expected operand, or asynchronous slices of a bitcast of the expected
+  //   operand if expect_bitcasted_io is true
   // - The number of slices is as expected (i.e.,
   //   expected_slice_params_per_slice_in_spatial_order_.size())
   // - The copy is from and to the correct memory spaces
@@ -11186,47 +11467,57 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     AsyncSlicedCopy(int64_t to_space, int64_t from_space,
                     std::vector<std::vector<SliceParam>>
                         expected_slice_params_per_slice_in_spatial_order,
-                    ::testing::Matcher<const HloInstruction*> operand)
+                    ::testing::Matcher<const HloInstruction*> operand,
+                    bool expect_bitcasted_io)
         : to_space_(to_space),
           from_space_(from_space),
           expected_slice_params_per_slice_in_spatial_order_(
               std::move(expected_slice_params_per_slice_in_spatial_order)),
-          custom_call_matcher_(
-              memory_space_assignment::kConcatBitcastCustomCall,
-              std::vector<::testing::Matcher<const HloInstruction*>>(
-                  expected_slice_params_per_slice_in_spatial_order_.size(),
-                  op::AsyncDone(op::AsyncStart(operand)))) {}
+          base_hlo_matcher_(CreateBaseHloMatcher(
+              operand, expected_slice_params_per_slice_in_spatial_order_.size(),
+              expect_bitcasted_io)),
+          expect_bitcasted_io_(expect_bitcasted_io) {}
 
     bool MatchAndExplain(
         const HloInstruction* instruction,
         ::testing::MatchResultListener* listener) const override {
-      // Match the custom call.
-      if (!custom_call_matcher_.MatchAndExplain(instruction, listener)) {
+      // Match opcodes and number of operands.
+      if (!base_hlo_matcher_.MatchAndExplain(instruction, listener)) {
         return false;
       }
 
-      // Check if the custom call has the proper memory space.
-      const HloInstruction* concat_bitcast = instruction;
-      if (!MatchMemorySpace(concat_bitcast, to_space_, "concat-bitcast",
-                            listener)) {
+      // Check if the copied result has the proper memory space.
+      if (!MatchMemorySpace(instruction, to_space_, "copy result", listener)) {
         return false;
       }
 
-      // Check if the copied tensor has the proper memory space.
+      // Find some instructions in the async copy.
+      const HloInstruction* concat_bitcast =
+          (expect_bitcasted_io_ ? instruction->operand(0) : instruction);
+      VLOG(2) << "AsyncSlicedCopy identified the concat-bitcast as "
+              << concat_bitcast->name();
       const HloInstruction* copy_operand =
           concat_bitcast->operand(0)->operand(0)->operand(0);
-      if (!MatchMemorySpace(copy_operand, from_space_, "copy operand",
+      const HloInstruction* original_copy_operand =
+          (expect_bitcasted_io_ ? copy_operand->operand(0) : copy_operand);
+      VLOG(2) << "AsyncSlicedCopy identified the copy operand as "
+              << copy_operand->name() << ", and the original copy operand as "
+              << original_copy_operand->name();
+
+      // Check if the copied tensor has the proper memory space.
+      if (!MatchMemorySpace(original_copy_operand, from_space_, "copy operand",
                             listener)) {
         return false;
       }
 
       // Check if the copied tensor retains its shape.
-      if (!Shape::Equal().IgnoreMemorySpaceInLayout()(concat_bitcast->shape(),
-                                                      copy_operand->shape())) {
+      if (!Shape::Equal().IgnoreMemorySpaceInLayout()(
+              instruction->shape(), original_copy_operand->shape())) {
         *listener << " has a shape of "
-                  << copy_operand->shape().ToString(/*print_layout=*/true)
+                  << original_copy_operand->shape().ToString(
+                         /*print_layout=*/true)
                   << " before copying but a shape of "
-                  << concat_bitcast->shape().ToString(/*print_layout=*/true)
+                  << instruction->shape().ToString(/*print_layout=*/true)
                   << " after copying (ignoring memory space)";
 
         return false;
@@ -11302,7 +11593,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     }
 
     void DescribeTo(std::ostream* os) const override {
-      custom_call_matcher_.DescribeTo(os);
+      base_hlo_matcher_.DescribeTo(os);
       std::vector<std::string> slice_parameters_per_operand;
       for (int op_idx = 0;
            op_idx < expected_slice_params_per_slice_in_spatial_order_.size();
@@ -11330,6 +11621,22 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     }
 
    private:
+    static ::testing::Matcher<const HloInstruction*> CreateBaseHloMatcher(
+        ::testing::Matcher<const HloInstruction*> operand, int64_t num_slices,
+        bool expect_bitcasted_io) {
+      if (expect_bitcasted_io) {
+        return op::Bitcast(op::CustomCall(
+            memory_space_assignment::kConcatBitcastCustomCall,
+            std::vector<::testing::Matcher<const HloInstruction*>>(
+                num_slices,
+                op::AsyncDone(op::AsyncStart(op::Bitcast(operand))))));
+      }
+      return op::CustomCall(
+          memory_space_assignment::kConcatBitcastCustomCall,
+          std::vector<::testing::Matcher<const HloInstruction*>>(
+              num_slices, op::AsyncDone(op::AsyncStart(operand))));
+    }
+
     static bool MatchMemorySpace(const HloInstruction* instruction,
                                  int64_t expected_memory_space,
                                  std::string_view error_message_identifier,
@@ -11357,7 +11664,8 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     int64_t from_space_;
     std::vector<std::vector<SliceParam>>
         expected_slice_params_per_slice_in_spatial_order_;
-    ::xla::testing::HloCustomCallMatcher custom_call_matcher_;
+    ::testing::Matcher<const HloInstruction*> base_hlo_matcher_;
+    bool expect_bitcasted_io_;
   };
 
   // Returns an AsyncSlicedCopy matcher.
@@ -11365,10 +11673,11 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       int64_t to_space, int64_t from_space,
       std::vector<std::vector<SliceParam>>
           expected_slice_params_per_slice_in_spatial_order,
-      ::testing::Matcher<const HloInstruction*> operand_matcher) {
+      ::testing::Matcher<const HloInstruction*> operand_matcher,
+      bool expect_bitcasted_io = false) {
     return ::testing::MakeMatcher(new AsyncSlicedCopy(
         to_space, from_space, expected_slice_params_per_slice_in_spatial_order,
-        operand_matcher));
+        operand_matcher, expect_bitcasted_io));
   }
 
   // We make our own matcher for SlicedPrefetchOptions to work around the fact
@@ -11762,6 +12071,9 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       std::string_view slices_start_after_instruction_name,
       std::string_view slices_done_before_instruction_name,
       bool expect_slices_started_at_different_times) {
+    CHECK(concat_bitcast->IsCustomCall(
+        memory_space_assignment::kConcatBitcastCustomCall));
+
     // Get the schedule.
     auto entry_schedule =
         module.schedule().sequence(module.entry_computation()).instructions();
@@ -11835,29 +12147,39 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   }
 
   // Returns OkStatus iff:
-  // - When the slices of concat_bitcast are sorted in expected spatial order,
-  //   they are assigned chunks that spatially fall in the same order AND
-  // - The slices of concat_bitcast are assigned contiguous memory chunks AND
-  // - The concat_bitcast is assigned a chunk that is the concatenation of the
-  //   slice chunks AND
-  // - The size of the chunk assigned to the concat_bitcast has the same size
-  //   as the instruction's shape
+  // - Each slice is assigned a chunk that is the same size as the slice
+  //   instruction's shape.
+  // - When the slices of sliced_copy_result are sorted in expected spatial
+  //   order, they are assigned chunks that spatially fall in the same order AND
+  // - The slices of sliced_copy_result are assigned contiguous memory chunks
+  //   AND
+  // - The sliced_copy_result is assigned a chunk that is the concatenation of
+  //   the slice chunks AND
+  // - The size of the chunk assigned to the sliced_copy_result has the same
+  //   size as the instruction's shape
   static Status CheckSliceChunks(const PresetAssignments& assignments,
-                                 const HloInstruction* concat_bitcast) {
+                                 const HloInstruction* sliced_copy_result,
+                                 bool expect_bitcasted_io = false) {
+    const HloInstruction* concat_bitcast =
+        (expect_bitcasted_io ? sliced_copy_result->operand(0)
+                             : sliced_copy_result);
+    CHECK(concat_bitcast->IsCustomCall(
+        memory_space_assignment::kConcatBitcastCustomCall));
+
     absl::flat_hash_map<const HloInstruction*, Chunk> slices_to_chunks;
-    std::optional<Chunk> concat_bitcast_chunk = std::nullopt;
+    std::optional<Chunk> result_chunk = std::nullopt;
 
     for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
          assignments.chunks()) {
-      if (position_chunk_pair.first.instruction == concat_bitcast) {
-        if (concat_bitcast_chunk.has_value()) {
+      if (position_chunk_pair.first.instruction == sliced_copy_result) {
+        if (result_chunk.has_value()) {
           return FailedPrecondition(
-              "%s", absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+              "%s", absl::StrCat("Sliced copy ", sliced_copy_result->name(),
                                  " is assigned more than one chunk: ",
-                                 concat_bitcast_chunk->ToString(), " and ",
+                                 result_chunk->ToString(), " and ",
                                  position_chunk_pair.second.ToString()));
         }
-        concat_bitcast_chunk = position_chunk_pair.second;
+        result_chunk = position_chunk_pair.second;
       }
       for (const HloInstruction* slice : concat_bitcast->operands()) {
         if (position_chunk_pair.first.instruction == slice) {
@@ -11876,7 +12198,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
 
     std::vector<const HloInstruction*> sorted_slices =
         SortSlicesInExpectedSpatialOrder(concat_bitcast);
-    VLOG(1) << "Chunk assignments for " << concat_bitcast->name() << ":\n"
+    VLOG(1) << "Chunk assignments for " << sliced_copy_result->name() << ":\n"
             << absl::StrJoin(
                    sorted_slices, "\n",
                    [&](std::string* out, const HloInstruction* slice) {
@@ -11888,16 +12210,16 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
                      absl::StrAppend(out, "  slice ", slice->name(), ": ",
                                      chunk);
                    })
-            << "\n  concat-bitcast " << concat_bitcast->name() << ": "
-            << (concat_bitcast_chunk.has_value()
-                    ? concat_bitcast_chunk->ToString()
-                    : "no chunk assigned");
+            << "\n  sliced copy result " << sliced_copy_result->name() << ": "
+            << (result_chunk.has_value() ? result_chunk->ToString()
+                                         : "no chunk assigned");
     if (sorted_slices.empty()) {
       return OkStatus();
     }
 
     // Check that slices are assigned contiguous chunks that are spatially
-    // ordered according to sorted_slices.
+    // ordered according to sorted_slices. Also make sure that slices are
+    // assigned chunks with sizes that match their shape.
     int64_t previous_end = -1;
     int64_t min_offset = std::numeric_limits<int64_t>::max();
     int64_t max_limit = std::numeric_limits<int64_t>::min();
@@ -11909,6 +12231,16 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             absl::StrCat("Slice ", slice->name(), " is not assigned a chunk"));
       }
       const Chunk& chunk = it->second;
+
+      if (chunk.size != ShapeSize(slice->shape())) {
+        return FailedPrecondition(
+            "%s",
+            absl::StrCat("Slice ", slice->name(), " is assigned chunk ",
+                         chunk.ToString(), " with size ", chunk.size,
+                         ". Expected a size of ", ShapeSize(slice->shape()),
+                         ", to match its shape."));
+      }
+
       if (previous_end != -1 && chunk.offset != previous_end) {
         return FailedPrecondition(
             "%s", absl::StrCat(
@@ -11921,31 +12253,29 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       max_limit = std::max(max_limit, chunk.chunk_end());
     }
 
-    // Check that the concat_bitcast is assigned a chunk that is the
+    // Check that the sliced copy result is assigned a chunk that is the
     // concatenation of the slice chunks.
-    if (!concat_bitcast_chunk.has_value()) {
+    if (!result_chunk.has_value()) {
       return FailedPrecondition(
-          "%s", absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
+          "%s", absl::StrCat("Sliced copy result ", sliced_copy_result->name(),
                              " is not assigned a chunk."));
     }
-    Chunk expected_concat_bitcast_chunk =
-        Chunk::FromOffsetEnd(min_offset, max_limit);
-    if (!(*concat_bitcast_chunk == expected_concat_bitcast_chunk)) {
+    Chunk expected_result_chunk = Chunk::FromOffsetEnd(min_offset, max_limit);
+    if (!(*result_chunk == expected_result_chunk)) {
       return FailedPrecondition(
-          "%s",
-          absl::StrCat("Concat-bitcast ", concat_bitcast->name(),
-                       " is assigned chunk ", concat_bitcast_chunk->ToString(),
-                       " but its expected to be assigned chunk ",
-                       expected_concat_bitcast_chunk.ToString()));
+          "%s", absl::StrCat("Sliced copy result ", sliced_copy_result->name(),
+                             " is assigned chunk ", result_chunk->ToString(),
+                             ", but it's expected to be assigned chunk ",
+                             expected_result_chunk.ToString()));
     }
-    if (concat_bitcast_chunk->size != ShapeSize(concat_bitcast->shape())) {
+    if (result_chunk->size != ShapeSize(sliced_copy_result->shape())) {
       return FailedPrecondition(
-          "%s",
-          absl::StrCat(
-              "Concat-bitcast ", concat_bitcast->name(), " is assigned chunk ",
-              concat_bitcast_chunk->ToString(), " with size ",
-              concat_bitcast_chunk->size, ". Expected a size of ",
-              ShapeSize(concat_bitcast->shape()), ", to match its shape."));
+          "%s", absl::StrCat("Sliced copy result ", sliced_copy_result->name(),
+                             " is assigned chunk ", result_chunk->ToString(),
+                             " with size ", result_chunk->size,
+                             ". Expected a size of ",
+                             ShapeSize(sliced_copy_result->shape()),
+                             ", to match its shape."));
     }
 
     return OkStatus();
@@ -11963,6 +12293,9 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             const memory_space_assignment::SlicedPrefetchOptions& options) {
           return slice_proposer_.ProposeSlices(shape, options);
         };
+    options_.get_equivalent_s8_shape_fn = [](const Shape& original_shape) {
+      return ShapeUtil::MakeShape(S8, {ShapeSize(original_shape)});
+    };
   }
 
   bool allocate_across_sequential_calls() const override { return true; }
@@ -12860,5 +13193,96 @@ TEST_F(RepackingTest, Colocations) {
   EXPECT_EQ(f.GetColocationsCount(), 3);
   EXPECT_THAT(f.GetColocations(), UnorderedElementsAre(&d, &e, &f));
 }
+
+TEST_F(SlicedPrefetchTest, UniformSizedSlicing) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+  p2 = f32[8,16] parameter(2)
+  constant1 = f32[] constant(1.1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+  d = f32[8,8] tanh(c)
+  e = f32[8,8] tanh(d)
+  f = f32[8,8] tanh(e)
+  g = f32[8,8] tanh(f)
+  h = f32[8,8] tanh(g)
+
+  x = f32[8,8] add(p1, h)
+  padded_x = f32[8,16] pad(x, constant1), padding=0_0x0_8
+  ROOT r = f32[8,16] add(padded_x, p2)
+})zz";
+  const Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
+  const Shape s8_128 = ShapeUtil::MakeShape(S8, {128});
+
+  options_.sliced_prefetch_options.set_max_slices(100000);
+  options_.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);
+
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
+                                          options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal(
+              {s8_128, std::vector<SliceParam>({{0, 128}}), ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{128, 256}}),
+                         ShapeSize(s8_128)}),
+      })));
+
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_8_16, EqualsSlicedPrefetchOptions(
+                                          options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal(
+              {s8_128, std::vector<SliceParam>({{0, 128}}), ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{128, 256}}),
+                         ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{256, 384}}),
+                         ShapeSize(s8_128)}),
+          SliceProposal({s8_128, std::vector<SliceParam>({{384, 512}}),
+                         ShapeSize(s8_128)}),
+      })));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), options_,
+      /*max_prefetch_interval=*/100, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto root = module->entry_computation()->root_instruction();
+
+  // Expect p1 to be asynchronously copied via 2 slices, and p2 to be
+  // asynchronously copied via 4 slices. We expect p1 and p2 to be bitcast
+  // before slicing and after slicing.
+  EXPECT_THAT(
+      root,
+      op::Add(op::Pad(op::Add(IsAsyncSlicedCopy(
+                                  kAlternateMemorySpace, kDefaultMemorySpace,
+                                  {{{0, 128}}, {{128, 256}}}, op::Parameter(1),
+                                  /*expect_bitcasted_io=*/true),
+                              /*don't care*/ _),
+                      /*padding constant*/ _),
+              IsAsyncSlicedCopy(
+                  kAlternateMemorySpace, kDefaultMemorySpace,
+                  {{{0, 128}}, {{128, 256}}, {{256, 384}}, {{384, 512}}},
+                  op::Parameter(2), /*expect_bitcasted_io=*/true)));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1),
+                                /*expect_bitcasted_io=*/true));
+  TF_EXPECT_OK(CheckSliceChunks(*assignments,
+                                root->operand(0)->operand(0)->operand(0),
+                                /*expect_bitcasted_io=*/true));
+}
+
 }  // namespace
 }  // namespace xla

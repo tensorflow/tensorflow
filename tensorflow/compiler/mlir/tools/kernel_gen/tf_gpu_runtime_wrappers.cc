@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/stream.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -30,6 +29,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 static void ReportInternalError(tensorflow::OpKernelContext *ctx,
                                 const std::string msg) {

@@ -183,7 +183,7 @@ StringRef ExtractSingleBlockRegion(
   }
 
   ModuleOp module = region.getParentOfType<ModuleOp>();
-  auto builder = OpBuilder::atBlockBegin(module.getBody());
+  OpBuilder builder(module.getContext());
   auto loc = region.getParentOp()->getLoc();
   Block& entry = region.front();
   int num_region_arguments = entry.getNumArguments();
@@ -236,8 +236,9 @@ StringRef ExtractSingleBlockRegion(
 
   outlined_func.setPrivate();
 
-  // Uniquify the function name.
-  symbol_table.getSymbolTable(module).insert(outlined_func);
+  // Uniquify the function name, and insert into module.
+  symbol_table.getSymbolTable(module).insert(outlined_func,
+                                             module.getBody()->begin());
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
@@ -246,9 +247,10 @@ StringRef ExtractSingleBlockRegion(
 }
 
 // Returns call for region with single call whose result feeds into the
-// terminator of the region. if `allow_to_bool` is true, also allows a single
-// ToBoolOp between the region yield and the call. Returns none if the region
-// does not conform to this pattern.
+// terminator of the region. If `allow_to_bool` is true, it allows patterns used
+// in the condition of While ops, i.e. it allows a single bool (possibly passed
+// through a ToBoolOp) between the region yield and the call. Returns none if
+// the region does not conform to this pattern.
 std::optional<func::CallOp> IsSingleCallRegion(Region& region,
                                                bool allow_to_bool = false) {
   if (!llvm::hasSingleElement(region)) return std::nullopt;
@@ -275,10 +277,23 @@ std::optional<func::CallOp> IsSingleCallRegion(Region& region,
   func::CallOp call = dyn_cast<func::CallOp>(*it++);
   if (!call) return std::nullopt;
 
-  // All call results should feed into expected consumer
-  // All results of the call should feed into the yield.
-  if (call.getNumResults() != call_consumer->getNumOperands())
-    return std::nullopt;
+  if (allow_to_bool && call.getNumResults() == 1 &&
+      yield->getNumOperands() != 1) {
+    // Allow patterns of the form
+    // %cond = call(...)
+    // yield %cond, [...passthrough args...]
+    if (yield->getNumOperands() != block.getNumArguments() + 1)
+      return std::nullopt;
+    for (auto [yield_operand, block_arg] :
+         llvm::zip(yield->getOperands().drop_front(1), block.getArguments())) {
+      if (yield_operand != block_arg) return std::nullopt;
+    }
+  } else {
+    // All call results should feed into expected consumer
+    // All results of the call should feed into the yield.
+    if (call.getNumResults() != call_consumer->getNumOperands())
+      return std::nullopt;
+  }
 
   for (auto res_it : llvm::zip(call.getResults(), call_consumer->getOperands()))
     if (std::get<0>(res_it) != std::get<1>(res_it)) return std::nullopt;

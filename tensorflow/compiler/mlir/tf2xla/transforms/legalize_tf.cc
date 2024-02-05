@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -497,7 +498,7 @@ static void CreateWhile32(Location loc, int num_iterations,
     // Increment the loop induction variable by one.
     auto one =
         builder->create<mhlo::ConstantOp>(loc, builder->getI32IntegerAttr(1));
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, builder);
+    auto scalar_broadcast_dims = builder->getDenseI64ArrayAttr({});
     auto plus_one = builder->create<chlo::BroadcastAddOp>(
         loc, block->getArgument(0), one, scalar_broadcast_dims);
     // Prepend with the updated loop induction variable.
@@ -1707,7 +1708,8 @@ class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
         rewriter.create<SelectOp>(op.getLoc(), reshaped_input.getType(),
                                   compare, reshaped_input, zero_matrix);
     auto reduce = rewriter.create<ReduceOp>(op.getLoc(), masked, zero,
-                                            GetI64ElementsAttr({0}, &rewriter));
+                                            GetI64ElementsAttr({0}, &rewriter),
+                                            input_type.getElementType());
     assert(!input_type.getElementType().isInteger(1) &&
            "data type should not be i1");
     BuildReduceBody<AddOp>(input_type.getElementType(), &reduce.getBody(),
@@ -2171,7 +2173,7 @@ class ConvertFusedBatchNormGradBase
         non_feature_dims.push_back(i);
       }
       auto reduce_dims = GetI64ElementsAttr(non_feature_dims, &rewriter);
-      auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+      auto scalar_broadcast_dims = rewriter.getDenseI64ArrayAttr({});
 
       // scratch1 = rsqrt(var + epsilon)
       RankedTensorType scalar_float =
@@ -2314,7 +2316,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
 
       Value corrected_variance = rewriter.create<chlo::BroadcastMulOp>(
           op.getLoc(), batch_variance.getType(), batch_variance,
-          factor_const_op, /*broadcast_dimensions=*/DenseIntElementsAttr());
+          factor_const_op, /*broadcast_dimensions=*/DenseI64ArrayAttr());
 
       // Convert back to input type to stay aligned with expected output type
       // for TF op.
@@ -2334,24 +2336,24 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
         // new_running_mean = alpha * old_mean + beta * batch_mean.
         auto alpha_mul_old_mean = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), op.getMean().getType(), alpha, op.getMean(),
-            /*broadcast_dimensions=*/DenseIntElementsAttr());
+            /*broadcast_dimensions=*/DenseI64ArrayAttr());
         auto beta_mul_batch_mean = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), batch_mean.getType(), beta, batch_mean,
-            /*broadcast_dimensions=*/DenseIntElementsAttr());
+            /*broadcast_dimensions=*/DenseI64ArrayAttr());
         batch_mean = rewriter.create<chlo::BroadcastAddOp>(
             op.getLoc(), alpha_mul_old_mean, beta_mul_batch_mean,
-            /*broadcast_dimensions=*/DenseIntElementsAttr());
+            /*broadcast_dimensions=*/DenseI64ArrayAttr());
 
         // new_running_variance = alpha * old_variance + beta * batch_variance.
         auto alpha_mul_old_variance = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), op.getVariance().getType(), alpha, op.getVariance(),
-            /*broadcast_dimensions=*/DenseIntElementsAttr());
+            /*broadcast_dimensions=*/DenseI64ArrayAttr());
         auto beta_mul_batch_variance = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), corrected_variance.getType(), beta, corrected_variance,
-            /*broadcast_dimensions=*/DenseIntElementsAttr());
+            /*broadcast_dimensions=*/DenseI64ArrayAttr());
         corrected_variance = rewriter.create<chlo::BroadcastAddOp>(
             op.getLoc(), alpha_mul_old_variance, beta_mul_batch_variance,
-            /*broadcast_dimensions=*/DenseIntElementsAttr());
+            /*broadcast_dimensions=*/DenseI64ArrayAttr());
       }
 
       if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
@@ -2521,7 +2523,7 @@ Operation *AvgPoolDivideByCount(
     // Divide `pooled` by window counts.
     Value divisor =
         GetScalarConstOfType(element_type, loc, window_count, &rewriter);
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+    auto scalar_broadcast_dims = rewriter.getDenseI64ArrayAttr({});
     result = rewriter.create<chlo::BroadcastDivOp>(
         loc, pooled_type, pooled, divisor, scalar_broadcast_dims);
   } else {
@@ -4063,7 +4065,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     auto reduction = rewriter.create<ReduceOp>(
         loc, casted_input.getResult(), init,
-        GetI64ElementsAttr(xla_dimensions, &rewriter));
+        GetI64ElementsAttr(xla_dimensions, &rewriter), reduce_element_type);
     BuildReduceBody<ReductionOp>(reduce_element_type, &reduction.getBody(),
                                  &rewriter);
     Value result = reduction.getResult(0);
@@ -4090,7 +4092,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       Value divisor = rewriter.create<ConvertOp>(
           loc, tensorflow::GetTypeFromTFTensorShape({}, reduce_element_type),
           divisor_tensor);
-      auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+      auto broadcast_dims = rewriter.getDenseI64ArrayAttr({});
       result = rewriter.create<chlo::BroadcastDivOp>(loc, result, divisor,
                                                      broadcast_dims);
     }
@@ -4294,7 +4296,8 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     auto reduction = rewriter.create<ReduceOp>(
         loc, llvm::ArrayRef<Value>(operands),
-        llvm::ArrayRef<Value>(init_values), reduction_dimensions);
+        llvm::ArrayRef<Value>(init_values), reduction_dimensions,
+        TypeRange({input_element_type, index_element_type}));
     auto direction = Derived::GetDirection();
     BuildArgMinMaxReductionBody(input_element_type, index_element_type,
                                 direction, &reduction.getBody(), &rewriter);
@@ -6101,7 +6104,7 @@ class ConvertXlaReduceScatterOp
       if (replica_group_size == 0) return failure();
       auto divisor = GetScalarConstOfType(element_type, loc, replica_group_size,
                                           &rewriter);
-      auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+      auto broadcast_dims = rewriter.getDenseI64ArrayAttr({});
       result = rewriter.create<chlo::BroadcastDivOp>(
           loc, result, divisor.getResult(), broadcast_dims);
     }
@@ -6658,14 +6661,19 @@ class ConvertXlaVariadicReduceV2Op
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    // Create the mhlo.reduce op.
-    auto reduce_op = rewriter.create<mhlo::ReduceOp>(
-        loc, op.getInputs(), op.getInitValues(),
-        GetI64ElementsAttr(op.getDimensionsToReduce()));
     mlir::SymbolRefAttr func = op.getReducer();
     auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
+    SmallVector<Type> elementTypes{llvm::map_range(
+        func_ty.getResults(),
+        [](Type ty) { return ty.cast<ShapedType>().getElementType(); })};
+
+    // Create the mhlo.reduce op.
+    auto reduce_op = rewriter.create<mhlo::ReduceOp>(
+        loc, op.getInputs(), op.getInitValues(),
+        GetI64ElementsAttr(op.getDimensionsToReduce()), elementTypes);
+
     // Insert a call to the reducer in the region of the mhlo op.
     BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.getBody());
 

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,10 @@ namespace gpu {
 
 // Thunk that implements the ReplicaId(Idx == 0) or PartitionId(Idx == 1).
 class ReplicaOrPartitionIdThunk : public Thunk {
+ public:
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferAllocation::Slice dest() const { return dest_; }
 
  protected:
   ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,

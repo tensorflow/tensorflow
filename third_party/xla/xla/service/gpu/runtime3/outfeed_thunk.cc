@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -73,7 +73,8 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     ++output_leaf_it;
     const Shape& output_shape =
         ShapeUtil::GetSubshape(output_buffers->shape(), shape_index);
-    TF_RET_CHECK(ShapeUtil::Equal(source_slices_[index].shape, output_shape))
+    TF_RET_CHECK(
+        ShapeUtil::ReshapeIsBitcast(source_slices_[index].shape, output_shape))
         << "Mismatch between outfeed output buffer shape "
         << ShapeUtil::HumanStringWithLayout(output_shape)
         << " and outfeed source buffer shape "
@@ -81,7 +82,7 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     BufferAllocation::Slice source_slice = source_slices_[index].slice;
     if (!source_slice.allocation())
-      return InternalError("outfeed source missing buffer allocation");
+      return Internal("outfeed source missing buffer allocation");
     se::DeviceMemoryBase data_address =
         buffer_allocations.GetDeviceAddress(source_slice);
 
@@ -95,8 +96,8 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
-    return InternalError("Failed to complete data transfer on stream %p: %s",
-                         &stream, block_status.message());
+    return Internal("Failed to complete data transfer on stream %p: %s",
+                    &stream, block_status.message());
   }
 
   VLOG(2) << "Outfeeding from GPU complete";

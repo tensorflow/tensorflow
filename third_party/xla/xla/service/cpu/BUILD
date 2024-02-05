@@ -215,6 +215,7 @@ cc_library(
         ":compiler_functor",
         ":conv_canonicalization",
         ":cpu_executable",
+        ":cpu_float_support",
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
@@ -323,6 +324,7 @@ cc_library(
         "//xla/service:select_and_scatter_expander",
         "//xla/service:sharding_propagation",
         "//xla/service:sharding_remover",
+        "//xla/service:simplify_fp_conversions",
         "//xla/service:slice_sinker",
         "//xla/service:slow_operation_alarm",
         "//xla/service:sort_simplifier",
@@ -429,6 +431,7 @@ cc_library(
         "cpu_compiler_pure",
         ":executable_proto_cc",
         ":target_machine_features",
+        ":xla_framework",
         "//xla:cpu_function_runtime",
         "//xla:status",
         "//xla:statusor",
@@ -444,7 +447,6 @@ cc_library(
         "//xla/service:llvm_compiler",
         "//xla/stream_executor",
         "//xla/stream_executor/host:host_platform_id",
-        "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:Target",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -708,6 +710,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
+        "//xla/service/llvm_ir:math_ops",
         "//xla/service/llvm_ir:tuple_ops",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1282,6 +1285,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_instruction_fusion",
         "//xla:shape_util",
@@ -1647,6 +1651,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
     ] + mkl_deps(),
 )
@@ -1717,6 +1722,8 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
         "@com_google_absl//absl/algorithm:container",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
     ] + mkl_deps(),
 )
 
@@ -1738,7 +1745,21 @@ cc_library(
         "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/algorithm:container",
+        "@local_tsl//tsl/platform:platform_port",
     ] + mkl_deps(),
+)
+
+cc_library(
+    name = "cpu_float_support",
+    srcs = ["cpu_float_support.cc"],
+    hdrs = ["cpu_float_support.h"],
+    copts = tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onednn_matmul_rewriter",
+        "//xla/service:float_support",
+    ],
 )
 
 cc_library(

@@ -109,9 +109,17 @@ tf.__doc__ = """
   ```
   """
 
+tf.estimator.Estimator = doc_controls.inheritable_header("""\
+  Warning: TensorFlow 2.15 included the final release of the `tf-estimator` 
+  package. Estimators will not be available in TensorFlow 2.16 or after. See the
+  [migration guide](https://www.tensorflow.org/guide/migrate/migrating_estimator)
+  for more information about how to convert off of Estimators."
+  """)(tf.estimator.Estimator)
+
 
 class RawOpsPageInfo(module_page.ModulePageInfo):
   """Generates a custom page for `tf.raw_ops`."""
+
   DEFAULT_BUILDER_CLASS = base_page.TemplatePageBuilder
 
   def build(self):
@@ -215,10 +223,17 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
 
   def _score_name(self, path: doc_generator_visitor.ApiPath) -> TfNameScore:
     name = ".".join(path)
-    all_exports = [tf_export.TENSORFLOW_API_NAME,
-                   tf_export.KERAS_API_NAME,
-                   tf_export.ESTIMATOR_API_NAME]
+    all_exports = [
+        tf_export.TENSORFLOW_API_NAME,
+        tf_export.KERAS_API_NAME,
+    ]
 
+    try:
+      all_exports.append(tf_export.ESTIMATOR_API_NAME)
+    except AttributeError:
+      pass
+
+    canonical = None
     for api_name in all_exports:
       try:
         canonical = tf_export.get_canonical_name_for_symbol(
@@ -246,11 +261,13 @@ def build_docs(output_dir, code_url_prefix, search_hints):
   output_dir = pathlib.Path(output_dir)
   site_path = pathlib.Path("/", FLAGS.site_path)
 
-  if version.parse(tf.__version__) >= version.parse("2.9"):
-    doc_controls.set_deprecated(tf.compat.v1)
+  doc_controls.set_deprecated(tf.compat.v1)
+  try:
     doc_controls.set_deprecated(tf.estimator)
-    doc_controls.set_deprecated(tf.feature_column)
-    doc_controls.set_deprecated(tf.keras.preprocessing)
+  except AttributeError:
+    pass
+  doc_controls.set_deprecated(tf.feature_column)
+  doc_controls.set_deprecated(tf.keras.preprocessing)
 
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_builder_cls(tf.raw_ops, RawOpsPageInfo)

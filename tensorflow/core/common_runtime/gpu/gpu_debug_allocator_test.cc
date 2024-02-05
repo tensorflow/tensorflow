@@ -49,7 +49,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   GPUDebugAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              false /*use_unified_memory*/, {}, {})),
+                              stream_executor::MemoryType::kDevice, {}, {})),
                           1 << 30, "", {}),
       platform_device_id);
 
@@ -76,10 +76,11 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
           const tsl::PlatformDeviceId platform_device_id(0);
           auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
           GPUDebugAllocator a(
-              new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
-                                      stream_exec, platform_device_id,
-                                      false /*use_unified_memory*/, {}, {})),
-                                  1 << 30, "", {}),
+              new GPUBFCAllocator(
+                  absl::WrapUnique(new DeviceMemAllocator(
+                      stream_exec, platform_device_id,
+                      stream_executor::MemoryType::kDevice, {}, {})),
+                  1 << 30, "", {}),
               platform_device_id);
 
           std::vector<int64_t> cpu_array(s);
@@ -114,10 +115,11 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
           const tsl::PlatformDeviceId platform_device_id(0);
           auto stream_exec = ExecutorForPlatformDeviceId(platform_device_id);
           GPUDebugAllocator a(
-              new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
-                                      stream_exec, platform_device_id,
-                                      false /*use_unified_memory*/, {}, {})),
-                                  1 << 30, "", {}),
+              new GPUBFCAllocator(
+                  absl::WrapUnique(new DeviceMemAllocator(
+                      stream_exec, platform_device_id,
+                      stream_executor::MemoryType::kDevice, {}, {})),
+                  1 << 30, "", {}),
               platform_device_id);
 
           std::vector<int64_t> cpu_array(s);
@@ -151,7 +153,7 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
   GPUNanResetAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              false /*use_unified_memory*/, {}, {})),
+                              stream_executor::MemoryType::kDevice, {}, {})),
                           1 << 30, "", {}),
       platform_device_id);
 
@@ -196,7 +198,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   GPUNanResetAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              false /*use_unified_memory*/, {}, {})),
+                              stream_executor::MemoryType::kDevice, {}, {})),
                           1 << 30, "", {}),
       platform_device_id);
 
@@ -240,7 +242,7 @@ TEST(GPUDebugAllocatorTest, TracksSizes) {
   GPUDebugAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              false /*use_unified_memory*/, {}, {})),
+                              stream_executor::MemoryType::kDevice, {}, {})),
                           1 << 30, "", {}),
       platform_device_id);
   EXPECT_EQ(true, a.TracksAllocationSizes());
@@ -252,7 +254,7 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   GPUDebugAllocator a(
       new GPUBFCAllocator(absl::WrapUnique(new DeviceMemAllocator(
                               stream_exec, platform_device_id,
-                              false /*use_unified_memory*/, {}, {})),
+                              stream_executor::MemoryType::kDevice, {}, {})),
                           1 << 30, "", {}),
       platform_device_id);
   float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});

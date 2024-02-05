@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -246,6 +246,7 @@ typedef struct XLA_Layout {
   int64_t element_size_in_bits;
   int64_t memory_space;
   int64_t dynamic_shape_metadata_prefix_bytes;
+  int64_t tail_padding_alignment_in_elements;
 } XLA_Layout;
 
 // Represents an XLA shape tree.

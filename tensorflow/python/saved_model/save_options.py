@@ -16,6 +16,7 @@
 
 import enum
 
+from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -102,11 +103,13 @@ class SaveOptions:
       "namespace_whitelist",
       "save_debug_info",
       "function_aliases",
+      "experimental_debug_stripper",
       "experimental_io_device",
       "experimental_variable_policy",
       "experimental_custom_gradients",
       "experimental_image_format",
       "experimental_skip_saver",
+      "experimental_sharding_callback",
   )
 
   def __init__(
@@ -114,11 +117,13 @@ class SaveOptions:
       namespace_whitelist=None,
       save_debug_info=False,
       function_aliases=None,
+      experimental_debug_stripper=False,
       experimental_io_device=None,
       experimental_variable_policy=None,
       experimental_custom_gradients=True,
       experimental_image_format=False,
       experimental_skip_saver=False,
+      experimental_sharding_callback=None,
   ):
     """Creates an object that stores options for SavedModel saving.
 
@@ -146,6 +151,10 @@ class SaveOptions:
         tf.saved_model.SaveOptions( ...   function_aliases={'double':
         model.double}) >>> tf.saved_model.save(model, '/tmp/adder',
         options=options)
+      experimental_debug_stripper: bool. If set to True, this strips the debug
+        nodes from the graph, from both the nodes and the function defs. Note
+        that this currently only strips the `Assert` nodes from the graph and
+        converts them into `NoOp`s instead.
       experimental_io_device: string. Applies in a distributed setting.
         Tensorflow device to use to access the filesystem. If `None` (default)
         then for each variable the filesystem is accessed from the CPU:0 device
@@ -170,6 +179,12 @@ class SaveOptions:
         its native checkpointing ops - this is for models that do not use
         SavedModel's native checkpointing functionality to avoid the costs
         associated with creating and serializing those ops.
+      experimental_sharding_callback: `tf.train.experimental.ShardingCallback`.
+        A pre-made or custom callback that determines how checkpoints are
+        sharded on disk. Pre-made callback options are
+        `tf.train.experimental.ShardByDevicePolicy` and
+        `tf.train.experimental.MaxShardSizePolicy`. You may also write a custom
+        callback, see `tf.train.experimental.ShardingCallback`.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist
@@ -177,6 +192,7 @@ class SaveOptions:
     self.save_debug_info = save_debug_info
     self.function_aliases = function_aliases if function_aliases else dict()
     self.experimental_custom_gradients = experimental_custom_gradients
+    self.experimental_debug_stripper = experimental_debug_stripper
     self.experimental_io_device = experimental_io_device
     self.experimental_variable_policy = VariablePolicy.from_obj(
         experimental_variable_policy
@@ -190,6 +206,14 @@ class SaveOptions:
           "The option `experimental_image_format` is disabled in OSS."
       )
     self.experimental_image_format = experimental_image_format
+
+    if experimental_sharding_callback is not None:
+      if not isinstance(
+          experimental_sharding_callback, sharding_util.ShardingCallback):
+        raise ValueError("The experimental_sharding_callback checkpoint option"
+                         "must be of type ShardingCallback. The option provided"
+                         f"was of type {type(experimental_sharding_callback)}.")
+    self.experimental_sharding_callback = experimental_sharding_callback
 
 
 def _validate_namespace_whitelist(namespace_whitelist):

@@ -1018,7 +1018,7 @@ module @jit_fun.0 attributes {jax.uses_shape_polymorphism = true} {
     %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
     %3 = stablehlo.constant dense<4> : tensor<1xi32>
     %4 = "stablehlo.concatenate"(%0, %2, %3) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
-    %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
+    %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = array<i64: 1, 2>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
     %6 = stablehlo.add %5, %arg2 : (tensor<2x?x4xf32>, tensor<2x?x4xf32>) -> tensor<2x?x4xf32>
     return %5, %6 : tensor<2x?x4xf32>, tensor<2x?x4xf32>
   }

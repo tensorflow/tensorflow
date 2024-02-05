@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -349,6 +349,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   switch (opcode) {
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kErf:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
       if (!ShapeUtil::ElementIsFloating(shape)) {
@@ -3235,8 +3236,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand, absl::Span<const int64_t> broadcast_sizes) {
+  // This method is used to infer shape for xla::BroadcastInDim.
   TF_RETURN_IF_ERROR(ExpectArray(operand, "operand of broadcast"));
+  TF_RET_CHECK(!operand.is_unbounded_dynamic());
   for (int64_t size : broadcast_sizes) {
+    if (size == Shape::kUnboundedSize) {
+      return InvalidArgument("Non-broadcast dimensions must not be dynamic.");
+    }
     if (size < 0) {
       return InvalidArgument("Broadcast with negative dimension size %d.",
                              size);
@@ -3261,8 +3267,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand_shape, const Shape& output_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
+  // This method is used to infer shape for xla::BroadcastInDim.
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
   TF_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
+  TF_RET_CHECK(!output_shape.is_unbounded_dynamic());
   const int64_t operand_rank = operand_shape.rank();
   const int64_t output_rank = output_shape.rank();
   if (operand_rank > output_rank) {
@@ -3282,7 +3290,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       return InvalidArgument("Broadcast dimension %lld is out of bound",
                              broadcast_dimensions[i]);
     }
-    if (operand_shape.dimensions(i) !=
+    if (!operand_shape.is_unbounded_dynamic_dimension(i) &&
+        operand_shape.dimensions(i) !=
             output_shape.dimensions(broadcast_dimensions[i]) &&
         operand_shape.dimensions(i) != 1) {
       return InvalidArgument(
@@ -3292,8 +3301,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           i, operand_shape.dimensions(i), broadcast_dimensions[i],
           output_shape.dimensions(broadcast_dimensions[i]));
     }
-    if (operand_shape.is_dynamic_dimension(i) !=
-        output_shape.is_dynamic_dimension(broadcast_dimensions[i])) {
+    if (!operand_shape.is_unbounded_dynamic_dimension(i) &&
+        operand_shape.is_bounded_dynamic_dimension(i) !=
+            output_shape.is_bounded_dynamic_dimension(
+                broadcast_dimensions[i])) {
       return InvalidArgument(
           "Broadcast input and output dynamism mismatch: %s and %s",
           operand_shape.ToString(), output_shape.ToString());
@@ -3346,19 +3357,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
-
-  if (operand.is_unbounded_dynamic() ||
-      absl::c_any_of(new_sizes, [](int64_t size) {
-        return size == Shape::kUnboundedSize;
-      })) {
-    return InvalidArgument(
-        "Reshaping with unbounded dimensions is not supported.");
-  }
-
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);
   VLOG(3) << "Reshape inferred shape: "
           << ShapeUtil::HumanString(inferred_shape);
+
+  TF_RET_CHECK(!inferred_shape.is_unbounded_dynamic())
+      << "Reshaping with unbounded result shape is not supported.";
+  if (operand.is_unbounded_dynamic()) {
+    TF_RET_CHECK(!operand.is_bounded_dynamic())
+        << "Reshape operand with bounded and unbounded dynamism not supported.";
+    return inferred_shape;
+  }
 
   if (ShapeUtil::ElementsIn(operand) != ShapeUtil::ElementsIn(inferred_shape)) {
     return InvalidArgument(
@@ -3909,8 +3919,9 @@ Status ValidateScatterDimensionNumbers(
   }
 
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.
-  if (dim_numbers.scatter_dims_to_operand_dims_size() !=
-      scatter_indices_shape[dim_numbers.index_vector_dim()]) {
+  if (!CompatibleDimensionSizes(
+          dim_numbers.scatter_dims_to_operand_dims_size(),
+          scatter_indices_shape[dim_numbers.index_vector_dim()])) {
     return InvalidArgument(
         "Scatter op has %d elements in scatter_dims_to_operand_dims and the "
         "bound of dimension index_vector_dim=%d of scatter_indices is %d. "
@@ -4042,8 +4053,9 @@ Status ValidateScatterDimensionNumbers(
       if (scatter_dims_seen == scatter_dim_numbers.index_vector_dim()) {
         ++scatter_dims_seen;
       }
-      if (updates_shape.dimensions(i) !=
-          expanded_scatter_indices_shape[scatter_dims_seen]) {
+      if (!CompatibleDimensionSizes(
+              updates_shape.dimensions(i),
+              expanded_scatter_indices_shape[scatter_dims_seen])) {
         return InvalidArgument(
             "Bounds of the scatter dimensions of updates must be same as the "
             "bounds of the corresponding dimensions of scatter indices. For "

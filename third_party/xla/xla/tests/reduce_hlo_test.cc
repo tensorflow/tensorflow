@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -125,9 +125,7 @@ INSTANTIATE_TEST_CASE_P(ReduceWithLayoutTest_Instantiation,
                             ReduceLayout{{3, 2, 1, 0}, {1, 0, 2}},   //
                             ReduceLayout{{3, 2, 1, 0}, {2, 0, 1}},   //
                             ReduceLayout{{3, 2, 1, 0}, {2, 1, 0}},   //
-                            ReduceLayout{{3, 1, 2, 0}, {1, 2, 0}},   //
-                            ReduceLayout{{1, 2, 3, 0}, {1, 0, 2}},   //
-                            ReduceLayout{{0, 2, 1, 3}, {2, 0, 1}}),  //
+                            ReduceLayout{{3, 1, 2, 0}, {1, 2, 0}}),  //
                         PrintReduceLayout);
 
 }  // namespace

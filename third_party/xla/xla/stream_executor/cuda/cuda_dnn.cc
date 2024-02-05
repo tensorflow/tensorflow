@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -2555,7 +2555,7 @@ absl::Status CudnnSupport::DoCtcLossImpl(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
-CudnnSupport::createRnnDescriptor(
+CudnnSupport::CreateRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -2579,7 +2579,7 @@ CudnnSupport::createRnnDescriptor(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
+CudnnSupport::CreateRnnSequenceTensorDescriptor(int max_seq_length,
                                                 int batch_size, int data_size,
                                                 dnn::DataType data_type) {
   TF_ASSIGN_OR_RETURN(CudnnRnnSequenceTensorDescriptor descriptor,
@@ -2591,7 +2591,7 @@ CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-CudnnSupport::createRnnSequenceTensorDescriptor(
+CudnnSupport::CreateRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
     const absl::Span<const int>& seq_lengths, bool time_major,
     dnn::DataType data_type) {
@@ -2604,7 +2604,7 @@ CudnnSupport::createRnnSequenceTensorDescriptor(
 }
 
 absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-CudnnSupport::createRnnStateTensorDescriptor(int num_layer, int batch_size,
+CudnnSupport::CreateRnnStateTensorDescriptor(int num_layer, int batch_size,
                                              int data_size,
                                              dnn::DataType data_type) {
   return std::unique_ptr<dnn::RnnStateTensorDescriptor>(
@@ -6657,7 +6657,16 @@ GetCudnnFlashAttentionOperationGraph(
     bmm2_input_tensor = std::move(bias_out);
   }
 
-  if (use_causal_mask) {
+  if (use_mask) {
+    // Create mask op and tensor
+    TF_ASSIGN_OR_RETURN(
+        auto mask_out,
+        CreateCudnnMaskFwdTensor(intermediate_ops, intermediate_bmm2_lhs_dims,
+                                 intermediate_bmm2_lhs_strides,
+                                 intermediate_bmm2_lhs_descriptor.type(),
+                                 bmm2_input_tensor));
+    bmm2_input_tensor = std::move(mask_out);
+  } else if (use_causal_mask) {
     // Create mask op and tensor
     TF_ASSIGN_OR_RETURN(
         auto mask_out,
@@ -6684,12 +6693,13 @@ GetCudnnFlashAttentionOperationGraph(
 
   // Create dropout tensor
   // dropout is always virtual in inference or training for flash attention
-  TF_ASSIGN_OR_RETURN(auto dropout_out,
-                      CreateCudnnFlashAttentionDropoutFwdTensor(
-                          intermediate_ops, intermediate_bmm2_lhs_dims,
-                          intermediate_bmm2_lhs_strides,
-                          intermediate_bmm2_lhs_descriptor.type(),
-                          /*input_tensor*/ softmax_fwd_out, *dropout_rate));
+  TF_ASSIGN_OR_RETURN(
+      auto dropout_out,
+      CreateCudnnFlashAttentionDropoutFwdTensor(
+          intermediate_ops, intermediate_bmm2_lhs_dims,
+          intermediate_bmm2_lhs_strides,
+          intermediate_bmm2_lhs_descriptor.type(),
+          /*input_tensor*/ softmax_fwd_out, use_dropout ? *dropout_rate : 0));
   bmm2_input_tensor = std::move(dropout_out);
 
   std::vector<int64_t> bmm2_rhs_dims =
@@ -7129,7 +7139,15 @@ GetCudnnFlashAttentionBackwardOperationGraph(
                             tensor_p_after_alpha_scale));
     tensor_p_after_alpha_scale = std::move(tensor_p_after_bias);
   }
-  if (use_causal_mask) {
+
+  if (use_mask) {
+    // masking -> p_after_mask
+    TF_ASSIGN_OR_RETURN(
+        auto tensor_p_after_mask,
+        CreateCudnnMaskFwdTensor(intermediate_ops, p_dims, p_strides, dtype,
+                                 tensor_p_after_alpha_scale));
+    tensor_p_after_alpha_scale = std::move(tensor_p_after_mask);
+  } else if (use_causal_mask) {
     // Causal masking -> p_after_mask
     TF_ASSIGN_OR_RETURN(auto tensor_p_after_causal_mask,
                         CreateCudnnFlashAttentionCausalMaskTensor(
@@ -7144,9 +7162,21 @@ GetCudnnFlashAttentionBackwardOperationGraph(
       CreateCudnnTensor(p_dims, p_strides, CudnnfMHAUid::VIRTUAL_ID + 104,
                         dnn::DataType::kFloat, 1, -1,
                         /*is_virtual*/ true));
+
+  std::vector<int64_t> p_reduction_dims(p_dims.begin(), p_dims.end() - 1);
+  p_reduction_dims.push_back(1);
+
+  // Divide every stride by the last dim value.
+  std::vector<int64_t> p_reduction_strides;
+  p_reduction_strides.reserve(p_strides.size());
+  int64_t p_reduced_dim_len = p_dims.back();
+  for (auto stride : p_strides) {
+    p_reduction_strides.push_back(stride / p_reduced_dim_len);
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto tensor_softmax_stats,
-      CreateCudnnTensor(do_reduction_dims, do_reduction_strides,
+      CreateCudnnTensor(p_reduction_dims, p_reduction_strides,
                         CudnnfMHAUid::P_ID, dnn::DataType::kFloat, 1, -1));
 
   TF_ASSIGN_OR_RETURN(auto sub_desc,
@@ -7182,7 +7212,7 @@ GetCudnnFlashAttentionBackwardOperationGraph(
       auto tensor_p_after_scale_dropout,
       CreateCudnnFlashAttentionDropoutBwdTensor(
           intermediate_ops, p_dims, p_strides, dtype, tensor_p_after_softmax,
-          tensor_dropout_mask, *dropout_rate));
+          tensor_dropout_mask, use_dropout ? *dropout_rate : 0));
 
   // after_scale_dropout -> s_transpose
   auto p_transpose_dims = p_dims;
@@ -9305,7 +9335,7 @@ CudnnSupport::FusedMHARunnerFromDesc(
     scalar_input_values.push_back(dropout_scale);
     dropout_rng_offset = GetDropoutRngOffset(intermediate_shape);
 
-    if (bias_descriptor == std::nullopt) {
+    if (is_causal_mask) {
       // push negative infinity here
       scalar_input_uids.push_back(CudnnfMHAUid::NEG_INFINITY_ID);
       double negative_infinity_value = -std::numeric_limits<float>::infinity();
@@ -9415,19 +9445,24 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
         use_dropout ? (1.0f / (1.0f - *dropout_rate)) : 1.0f;
     ScalingParam dropout_scale(dropout_scale_value, dnn::DataType::kFloat);
     // scale prob
-    double scale_prob_value = 1.0 - *dropout_rate;
+    double scale_prob_value = use_dropout ? 1.0 - *dropout_rate : 1.0f;
     ScalingParam scale_prob(scale_prob_value, dnn::DataType::kFloat);
     scalar_values = {alpha_scale, dropout_scale, scale_prob};
     // push dropout seed and offset here
     dropout_rng_offset = GetDropoutRngOffset(intermediate_shape);
-    uids = {
-        CudnnfMHAUid::Q_ID,         CudnnfMHAUid::K_ID,  CudnnfMHAUid::P_ID,
-        CudnnfMHAUid::V_ID,         CudnnfMHAUid::dO_ID, CudnnfMHAUid::dQ_ID,
-        CudnnfMHAUid::dK_ID,        CudnnfMHAUid::dV_ID, CudnnfMHAUid::S_SUM_ID,
-        CudnnfMHAUid::d_Q_accum_ID, CudnnfMHAUid::O_ID};
+    uids = {CudnnfMHAUid::Q_ID,     CudnnfMHAUid::K_ID,
+            CudnnfMHAUid::P_ID,     CudnnfMHAUid::V_ID,
+            CudnnfMHAUid::dO_ID,    CudnnfMHAUid::dQ_ID,
+            CudnnfMHAUid::dK_ID,    CudnnfMHAUid::dV_ID,
+            CudnnfMHAUid::S_SUM_ID, CudnnfMHAUid::d_Q_accum_ID};
+    if (mask_descriptor != std::nullopt) {
+      uids.push_back(CudnnfMHAUid::MASK_ID);
+    }
+    uids.push_back(CudnnfMHAUid::O_ID);
     if (bias_descriptor != std::nullopt) {
       uids.push_back(CudnnfMHAUid::BIAS_ID);
-    } else {
+    }
+    if (is_causal_mask) {
       // is causal mask
       // negative infinity
       double negative_infinity_value = -std::numeric_limits<float>::infinity();

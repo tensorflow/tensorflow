@@ -831,9 +831,19 @@ void EvalSparseHybridImpl(TfLiteContext* context, TfLiteNode* node,
                                     quant_data, scaling_factors_ptr,
                                     input_offset_ptr,
                                     params->asymmetric_quantize_inputs);
-  for (int b = 0; b < batch_size; ++b) {
-    // Incorporate scaling of the filter.
-    scaling_factors_ptr[b] *= filter->params.scale;
+  float* per_channel_scale_ptr = nullptr;
+  if (VerifyPerChannelQuantization(context, filter) == kTfLiteOk) {
+    //  Per channel quantization.
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    per_channel_scale_ptr = affine_quantization->scale->data;
+  } else {
+    // Per tensor quantization.
+    for (int b = 0; b < batch_size; ++b) {
+      // Incorporate scaling of the filter.
+      scaling_factors_ptr[b] *= filter->params.scale;
+    }
   }
 
   if (params->asymmetric_quantize_inputs) {
@@ -841,7 +851,11 @@ void EvalSparseHybridImpl(TfLiteContext* context, TfLiteNode* node,
     for (int b = 0; b < batch_size; ++b) {
       const float scaled_zp = scaling_factors_ptr[b] * input_offset_ptr[b];
       for (int row = 0; row < output_depth; ++row) {
-        *per_thread_output_ptr++ -= scaled_zp * row_sums_ptr[row];
+        float scale = scaled_zp;
+        if (per_channel_scale_ptr) {
+          scale *= per_channel_scale_ptr[row];
+        }
+        *per_thread_output_ptr++ -= scale * row_sums_ptr[row];
       }
     }
   }
@@ -851,7 +865,7 @@ void EvalSparseHybridImpl(TfLiteContext* context, TfLiteNode* node,
   tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
       GetTensorData<int8_t>(filter), GetTensorData<uint8_t>(filter_ledger),
       output_depth, input_depth, quant_data, scaling_factors_ptr, batch_size,
-      per_thread_output);
+      per_thread_output, per_channel_scale_ptr);
 
   // Apply activation function to floats.
   tensor_utils::ApplyActivationToVector(per_thread_output,

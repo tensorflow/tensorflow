@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/overflow_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -107,18 +109,44 @@ class ShapeUtil {
     Shape shape;
   };
 
+  // Returns the product of the statically bound dimensions.
+  template <bool kBoundedDynamicOk>
+  static inline std::pair<int64_t, bool> ExtentProduct(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    int64_t product = 1;
+    bool any_overflows = false;
+    for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
+      if constexpr (kBoundedDynamicOk) {
+        if (shape.is_unbounded_dynamic_dimension(dim)) {
+          continue;
+        }
+      } else {
+        DCHECK(!shape.is_unbounded_dynamic_dimension(dim));
+      }
+      bool overflow;
+      std::tie(product, overflow) =
+          OverflowSafeMultiply(product, shape.dimensions(dim));
+      any_overflows |= overflow;
+    }
+    return {product, any_overflows};
+  }
+
+  // Returns the product of the statically bound dimensions.
+  static inline int64_t StaticExtentProduct(const Shape& shape) {
+    auto [product, overflow] = ExtentProduct</*kBoundedDynamicOk=*/true>(shape);
+    DCHECK(!overflow);
+    return product;
+  }
+
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static inline int64_t ElementsIn(const Shape& shape) {
-    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-    DCHECK_EQ(shape.dimensions_size(), shape.rank());
-    if (shape.dimensions().empty()) {
-      return 1LL;
-    }
-    auto begin = shape.dimensions().begin();
-    return std::accumulate(std::next(begin), shape.dimensions().end(), *begin,
-                           std::multiplies<int64_t>());
+    auto [product, overflow] =
+        ExtentProduct</*kBoundedDynamicOk=*/false>(shape);
+    DCHECK(!overflow);
+    return product;
   }
 
   // As ElementsIn(), but recurses through tuples.
@@ -394,8 +422,9 @@ class ShapeUtil {
   static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
-      int64_t memory_space = 0);
+      absl::Span<const Tile> tiles = {},
+      int64_t tail_padding_alignment_in_elements = 1,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0);
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that
@@ -408,6 +437,7 @@ class ShapeUtil {
       absl::Span<const bool> dim_ordered = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t tail_padding_alignment_in_elements = 1,
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
@@ -963,6 +993,9 @@ class ShapeUtil {
   // layout. Ignores tiling. `strides` must have size equal to the number of
   // dimensions of `shape`.
   static Status ByteStrides(const Shape& shape, absl::Span<int64_t> strides);
+  // Same as above but returns the stride array, or std::nullopt if error.
+  static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
+      const Shape& shape);
 
   // Returns the array size in bytes (layout/tiling required), all paddings are
   // included.

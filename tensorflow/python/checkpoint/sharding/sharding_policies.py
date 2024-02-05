@@ -28,8 +28,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.trackable import base
+from tensorflow.python.util import tf_export
 
 
+@tf_export.tf_export("train.experimental.ShardByTaskPolicy")
 class ShardByTaskPolicy(sharding_util.ShardingCallback):
   """Policy that splits tensors into shards based on their device spec task."""
 
@@ -67,8 +70,14 @@ _PartitionAxisAndSize = tuple[int, int]
 _OffsetAndShape = tuple[Sequence[int], Sequence[int]]
 
 
+@tf_export.tf_export("train.experimental.MaxShardSizePolicy")
 class MaxShardSizePolicy(sharding_util.ShardingCallback):
-  """Policy that splits tensors into shards with a max shard size."""
+  """Policy that splits tensors into shards with a max shard size.
+
+  Shards may exceed the max shard size if they contain 1. a single scalar/string
+  tensor that could not be sliced and exceeds the max shard size or 2. the
+  checkpoint object graph, whose size cannot be calculated when saving.
+  """
 
   def __init__(self, max_shard_size: int):
     self.max_shard_size = max_shard_size
@@ -223,20 +232,30 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
       dtype_size = dtypes.as_dtype(dtype).size
       total_size = root_shape.num_elements() * dtype_size  # in bytes
 
-      if dtype == dtypes.string:
+      # Calculate string tensor sizes.
+      if checkpoint_key == base.OBJECT_GRAPH_PROTO_KEY:
+        # In graph mode, the object graph is populated using feed_additions when
+        # the session is run. So, we can't calculate the size here. Fortunately,
+        # the serialized object graph string will never be that big, so we just
+        # place it in the current shard without worrying about its size.
+        total_size = dtype_size = 0
+      elif dtype == dtypes.string:
         if not context.executing_eagerly():
           with ops.device(shardable_tensor.device):
             root_tensor = ops.get_default_session().run(root_tensor)
+
         if root_shape.rank is None or root_shape.rank == 0:
           sizes = [string_ops.string_length(root_tensor, unit="BYTE")]
         else:
           sizes = [string_ops.string_length(elem, unit="BYTE")
                    for elem in root_tensor]
+
         if context.executing_eagerly():
           sizes = [size.numpy() for size in sizes]
         else:
           with ops.device(shardable_tensor.device):
             sizes = ops.get_default_session().run(sizes)
+
         total_size = sum(sizes)
         dtype_size = max(sizes)
 

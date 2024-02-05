@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,7 +70,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/initialize.h"
 
 namespace stream_executor {
 
@@ -138,18 +137,5 @@ class MultiPlatformManager {
 };
 
 }  // namespace stream_executor
-
-// multi_platform_manager.cc will define these instances.
-//
-// Registering a platform:
-// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_platform, multi_platform_manager);
-// REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-// my_platform);
-//
-// Registering a listener:
-// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_listener,
-// multi_platform_manager_listener);
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-DECLARE_MODULE_INITIALIZER(multi_platform_manager_listener);
 
 #endif  // XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
