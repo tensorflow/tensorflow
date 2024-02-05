@@ -284,6 +284,39 @@ std::vector<bool> CommandBufferCmdSequence::barriers() const {
                     [](auto& command) { return command.requires_barrier; });
   return barriers;
 }
+
+//===----------------------------------------------------------------------===//
+// TracedCommandBuffer
+//===----------------------------------------------------------------------===//
+
+TracedCommandBuffer::TracedCommandBuffer(
+    CommandBufferCmd::BufferUsageVector buffers) {
+  for (auto& buffer : buffers) {
+    allocs_indices_.insert(buffer.slice.index());
+  }
+}
+
+absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
+    BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
+    se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace) {
+  // Collect memory addresses for relevant allocations.
+  absl::InlinedVector<se::DeviceMemoryBase, 4> allocs;
+  for (auto& index : allocs_indices_) {
+    allocs.push_back(buffer_allocation->GetDeviceAddress(index));
+  }
+
+  // If memory addresses are the same and we have a command buffer return it.
+  if (recorded_allocs_ == allocs && command_buffer_)
+    return command_buffer_.get();
+
+  // Call command buffer tracing function passed by a user.
+  TF_ASSIGN_OR_RETURN(command_buffer_,
+                      se::CommandBuffer::Trace(executor, stream, trace));
+  recorded_allocs_ = std::move(allocs);
+
+  return command_buffer_.get();
+}
+
 //===----------------------------------------------------------------------===//
 // ComputationId
 //===----------------------------------------------------------------------===//

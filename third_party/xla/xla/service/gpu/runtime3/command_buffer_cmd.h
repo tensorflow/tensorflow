@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
@@ -263,6 +265,30 @@ class CommandBufferCmdSequence {
   // buffer allocation slices used by commands appended since the last barrier.
   absl::flat_hash_set<BufferAllocation::Slice> read_set_;
   absl::flat_hash_set<BufferAllocation::Slice> write_set_;
+};
+
+//===----------------------------------------------------------------------===//
+// TracedCommandBuffer
+//===----------------------------------------------------------------------===//
+
+// A cache for traced command buffers that will re-trace on change in buffer
+// allocations that are relevant for `buffers` passed to constructor.
+class TracedCommandBuffer {
+ public:
+  explicit TracedCommandBuffer(CommandBufferCmd::BufferUsageVector buffers);
+
+  // Returns cached command buffer if buffer allocation for relevant allocations
+  // did not change from last run. Traces a new command buffer using user
+  // provided callback if buffer allocation changed from last run.
+  absl::StatusOr<se::CommandBuffer*> GetOrTraceCommandBuffer(
+      BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
+      se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace);
+
+ private:
+  absl::flat_hash_set<BufferAllocation::Index> allocs_indices_;
+  absl::InlinedVector<se::DeviceMemoryBase, 4> recorded_allocs_;
+
+  std::unique_ptr<se::CommandBuffer> command_buffer_;
 };
 
 //===----------------------------------------------------------------------===//
