@@ -351,6 +351,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core/profiler/lib:traceme",
             "@com_google_absl//absl/types:variant",
+            "@local_tsl//tsl/platform:statusor",
         ],
     }),
 )
@@ -361,9 +362,11 @@ tf_cc_test(
     deps = [
         ":core",
         ":tensor_handle_data",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:status_matchers",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -397,8 +400,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
             "//tensorflow/core/profiler/lib:traceme",
             "@com_google_absl//absl/status",
+            "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:variant",
+            "@local_tsl//tsl/platform:statusor",
         ],
     }),
 )
@@ -414,8 +419,11 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/cleanup",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

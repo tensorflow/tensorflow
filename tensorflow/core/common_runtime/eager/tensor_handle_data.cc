@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 
+#include <string>
 #include <utility>
 #include <variant>
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -74,7 +78,8 @@ Status LocalTensorHandleData::NumElements(int64_t* num_elements) const {
 }
 
 Status LocalTensorHandleData::Unprotect() {
-  if (!IsReady()) {
+  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
+  if (!is_ready) {
     return errors::Internal("Cannot unprotect a non-ready tensor");
   }
 
@@ -84,7 +89,8 @@ Status LocalTensorHandleData::Unprotect() {
 }
 
 Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
-  DCHECK(!IsReady()) << "SetTensor is only called on non-ready handles.";
+  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
+  DCHECK(!is_ready) << "SetTensor is only called on non-ready handles.";
 
   tensor_ = std::move(t);
   // Create copy of original tensor to avoid forwarding
@@ -96,8 +102,12 @@ Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   return OkStatus();
 }
 
-string LocalTensorHandleData::DebugString() const {
-  if (IsReady()) {
+std::string LocalTensorHandleData::DebugString() const {
+  auto is_ready = IsReady();
+  if (!is_ready.ok()) {
+    return "LocalTensorHandleData is not ready";
+  }
+  if (*is_ready) {
     return tensor_.DeviceSafeDebugString();
   } else {
     return "LocalTensorHandleData";

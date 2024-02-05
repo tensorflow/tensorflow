@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -43,7 +44,7 @@ class LocalTensorHandleData {
   Status NumElements(int64_t* num_elements) const;
   Status Unprotect();
 
-  bool IsReady() const {
+  StatusOr<bool> IsReady() const {
     return std::visit([](auto& data) { return data.IsReady(); }, ctrl_);
   }
 
@@ -60,7 +61,7 @@ class LocalTensorHandleData {
 
   Status SetTensor(tensorflow::Tensor&& t);
 
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   tensorflow::Tensor tensor_;
@@ -79,7 +80,7 @@ class LocalTensorHandleData {
   // constructing and destructing the mutex for ready local tensors.
   class NonBlockingControl {
    public:
-    bool IsReady() const { return true; }
+    StatusOr<bool> IsReady() const { return true; }
     Status WaitReady(const char* caller) const { return OkStatus(); }
     void Poison(Status status) {}
     Status IsPoisoned() const { return OkStatus(); }
@@ -87,7 +88,7 @@ class LocalTensorHandleData {
 
   class BlockingControl {
    public:
-    bool IsReady() const {
+    StatusOr<bool> IsReady() const {
       tf_shared_lock l(mu_);
       return is_ready_;
     }

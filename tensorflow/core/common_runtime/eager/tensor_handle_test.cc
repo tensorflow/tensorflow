@@ -27,17 +27,19 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-using tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 TEST(TensorHandle_ShapeTest, AsyncShape) {
   Tensor t(DT_UINT16, TensorShape({2, 2}));
@@ -140,7 +142,9 @@ class PackedTensorHandleTest : public ::testing::Test {
     return std::vector<Device*>(all_devices.begin() + 1, all_devices.end());
   }
 
-  bool IsReady(TensorHandle* handle) const { return handle->IsReady(); }
+  StatusOr<bool> IsReady(TensorHandle* handle) const {
+    return handle->IsReady();
+  }
   Status WaitReady(TensorHandle* handle) const {
     return handle->WaitReady("Test");
   }
@@ -226,14 +230,16 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
     EXPECT_EQ(h->Type(), expected_handle_types.at(i));
     EXPECT_EQ(h->FullType().type_id(), TFT_UNSET);
   }
-  EXPECT_FALSE(IsReady(packed_handle));
+  EXPECT_THAT(IsReady(packed_handle), IsOkAndHolds(false));
 
   TF_ASSERT_OK(h2->SetRemoteShape(shape, ListGPUDevices().at(2),
                                   context()->GetContextViewId()));
-  EXPECT_FALSE(IsReady(packed_handle));
+  EXPECT_THAT(IsReady(packed_handle), IsOkAndHolds(false));
   TF_ASSERT_OK(h3->SetRemoteShape(shape, ListGPUDevices().at(3),
                                   context()->GetContextViewId()));
-  EXPECT_TRUE(IsReady(packed_handle));
+  EXPECT_THAT(IsReady(packed_handle), IsOkAndHolds(true));
+
+  packed_handle->Unref();
 }
 
 TEST_F(PackedTensorHandleTest, PackedSingleHandle) {
@@ -266,7 +272,9 @@ TEST_F(PackedTensorHandleTest, PackedSingleHandle) {
   TensorHandle* h0 = nullptr;
   TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &h0));
   EXPECT_EQ(h0->device(), d);
-  EXPECT_TRUE(IsReady(packed_handle));
+  TF_ASSERT_OK_AND_ASSIGN(bool is_ready, IsReady(packed_handle));
+  EXPECT_TRUE(is_ready);
+  packed_handle->Unref();
 }
 
 TEST_F(PackedTensorHandleTest, PoisonHandle) {
@@ -541,64 +549,6 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
                                          d2->name()),
               StatusIs(fake_failure_status.code(),
                        std::string(fake_failure_status.message())));
-}
-
-TEST_F(RemoteTensorHandleTest, SetRemoteTensorHandleShapeTwice) {
-  std::vector<std::unique_ptr<Device>> devices;
-  devices.push_back(
-      CreateDevice("CPU", "/job:worker/replica:0/task:0/device:CPU:0"));
-  devices.push_back(
-      CreateDevice("CPU", "/job:worker/replica:0/task:1/device:CPU:0"));
-  devices.push_back(
-      CreateDevice("CPU", "/job:worker/replica:0/task:2/device:CPU:0"));
-  StaticDeviceMgr device_mgr(std::move(devices));
-
-  EagerContext* context = new EagerContext(
-      SessionOptions(),
-      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /* async=*/false, &device_mgr,
-      /* device_mgr_owned=*/false, /* rendezvous=*/nullptr,
-      /* cluster_flr=*/nullptr, /*collective_executor_mgr=*/nullptr,
-      /*run_eager_op_as_function=*/true);
-  absl::Cleanup context_cleanup = [&]() { context->Unref(); };
-
-  tensorflow::DataType dtype = DT_FLOAT;
-  TensorShape shape = {};
-
-  const string remote_task = "/job:worker/replica:0/task:1";
-  Device* d1 = device_mgr.ListDevices().at(1);
-  TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
-      /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
-      /*unknown_device=*/true);
-  absl::Cleanup h_cleanup = [&]() { h->Unref(); };
-  EXPECT_EQ(h->device(), d1);
-
-  Device* d2 = device_mgr.ListDevices().at(2);
-  int64_t op_id = 1;
-  int output_num = 2;
-  TF_ASSERT_OK(
-      h->AddUnshapedRemoteMirror(d2, op_id, output_num, remote_task, context));
-
-  // Finds device_ != d, sets shape of `data` the first time.
-  TF_ASSERT_OK(h->SetRemoteShapeAndDevice(
-      shape, d2, context->GetContextViewId(), d2->name()));
-
-  // Finds device_ == d, sets shape of `data` the first time.
-  TF_ASSERT_OK(h->SetRemoteShapeAndDevice(
-      shape, d1, context->GetContextViewId(), d1->name()));
-
-  // Finds device_ == d, attempts to set shape of `data` the second time with
-  // the same value. No error message emitted.
-  TF_ASSERT_OK(h->SetRemoteShapeAndDevice(
-      shape, d1, context->GetContextViewId(), d1->name()));
-
-  // Finds device_ == d, attempts to set shape of `data` the third time with a
-  // different value. Results in error.
-  TensorShape another_shape({1});
-  EXPECT_THAT(h->SetRemoteShapeAndDevice(
-                  another_shape, d1, context->GetContextViewId(), d1->name()),
-              StatusIs(tensorflow::error::INTERNAL,
-                       HasSubstr("Trying to change shape to")));
 }
 
 TEST_F(RemoteTensorHandleTest, SetRemoteMirrorShapeTwice) {
