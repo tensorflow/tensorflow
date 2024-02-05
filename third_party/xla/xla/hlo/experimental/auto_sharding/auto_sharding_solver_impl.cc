@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/log/check.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -39,15 +38,8 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
   return 0.0;  // TODO(moffitt): Implement this.
 }
 
-std::vector<std::vector<NodeStrategyIdx>> StratFollow(
-    const AutoShardingSolverRequest& request) {
-  CHECK_EQ(request.num_nodes(), request.s_len_size());
-  std::vector<std::vector<NodeStrategyIdx>> strat_follow(request.num_nodes());
-  for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    if (request.s_follow(node_idx) >= 0) continue;
-    strat_follow[node_idx].resize(request.s_len(node_idx), -1);
-  }
-  return strat_follow;
+NodeStrategies FindShavedStrategies(const AutoShardingSolverRequest& request) {
+  return {};  // TODO(moffitt): Implement this.
 }
 
 }  // namespace spmd

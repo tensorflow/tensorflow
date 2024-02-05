@@ -298,7 +298,6 @@ AutoShardingSolverResult CallORToolsSolver(
   MPVariable* makespan_var = nullptr;
 
   size_t unique_nodes = 0;
-  const auto strat_follow = StratFollow(request);
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (request.s_follow(node_idx) < 0) {
       unique_nodes += 1;
@@ -379,13 +378,15 @@ AutoShardingSolverResult CallORToolsSolver(
   // 0. Do not choose solutions with infinity costs, as it will make the
   // objective value so large that other solution choices do not matter anymore.
   // Also eliminate strategies that are known to be dominated by others.
+  const NodeStrategies shaved_strategies = FindShavedStrategies(request);
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (s[node_idx].empty() || request.s_follow(node_idx) >= 0) continue;
     bool all_infinity = true;
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
       const double node_cost = request.computation_costs(node_idx).costs(j) +
                                request.communication_costs(node_idx).costs(j);
-      if (node_cost >= kInfinityCost || strat_follow[node_idx][j] >= 0) {
+      if (node_cost >= kInfinityCost ||
+          shaved_strategies.contains({node_idx, j})) {
         MPConstraint* constraint = solver->MakeRowConstraint(
             0.0, 0.0,
             absl::StrCat("infinitycost: s[", node_idx, "][", j, "] = 0"));
