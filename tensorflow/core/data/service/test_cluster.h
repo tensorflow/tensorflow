@@ -54,6 +54,7 @@ class TestCluster {
     int64_t worker_heartbeat_interval_ms = 0;
     int64_t job_gc_check_interval_ms = 0;
     int64_t job_gc_timeout_ms = 0;
+    int64_t worker_max_concurrent_snapshots = 0;
     std::string work_dir;
   };
 

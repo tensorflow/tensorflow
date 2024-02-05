@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dataset_store.h"
@@ -74,10 +75,12 @@ DataServiceMetadata GetDefaultMetadata() {
 
 class DispatcherClientTest : public ::testing::Test {
  protected:
-  Status SetUpTfDataService(int64_t num_workers) {
+  absl::Status SetUpTfDataService(int64_t num_workers,
+                                  int64_t worker_max_concurrent_snapshots = 0) {
     TestCluster::Config config;
     config.num_workers = num_workers;
     config.work_dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "work_dir");
+    config.worker_max_concurrent_snapshots = worker_max_concurrent_snapshots;
     test_cluster_ = std::make_unique<TestCluster>(config);
     TF_RETURN_IF_ERROR(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
@@ -96,12 +99,15 @@ class DispatcherClientTest : public ::testing::Test {
   }
 
   // Starts snapshots and returns the directories.
-  StatusOr<absl::flat_hash_set<std::string>> StartDummySnapshots() {
+  StatusOr<absl::flat_hash_set<std::string>> StartDummySnapshots(
+      int64_t num_snapshots) {
     DistributedSnapshotMetadata metadata =
         CreateDummyDistributedSnapshotMetadata();
     // Create a set of local file paths to which snapshots will be materialized.
-    absl::flat_hash_set<std::string> directories = {LocalTempFilename(),
-                                                    LocalTempFilename()};
+    absl::flat_hash_set<std::string> directories;
+    for (int64_t i = 0; i < num_snapshots; ++i) {
+      directories.insert(LocalTempFilename());
+    }
     for (const auto& directory : directories) {
       TF_RETURN_IF_ERROR(
           dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
@@ -156,7 +162,7 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
 TEST_F(DispatcherClientTest, SnapshotSkeletonWritten) {
   TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
-                          StartDummySnapshots());
+                          StartDummySnapshots(/*num_snapshots=*/3));
   for (const auto& path : paths) {
     TF_ASSERT_OK(Env::Default()->FileExists(CommittedChunksDirectory(path)));
     TF_ASSERT_OK(Env::Default()->FileExists(StreamsDirectory(path)));
@@ -166,7 +172,7 @@ TEST_F(DispatcherClientTest, SnapshotSkeletonWritten) {
 TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
   TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
-                          StartDummySnapshots());
+                          StartDummySnapshots(/*num_snapshots=*/3));
   for (const auto& path : paths) {
     TF_ASSERT_OK(
         Env::Default()->FileExists(io::JoinPath(path, "snapshot.metadata")));
@@ -176,25 +182,30 @@ TEST_F(DispatcherClientTest, SnapshotMetadataAndDatasetDefWritten) {
 }
 
 TEST_F(DispatcherClientTest, SnapshotsInHeartbeat) {
-  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1,
+                                  /*worker_max_concurrent_snapshots=*/3));
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
-                          StartDummySnapshots());
+                          StartDummySnapshots(/*num_snapshots=*/3));
   WorkerHeartbeatRequest worker_heartbeat_request;
   worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      WorkerHeartbeatResponse worker_heartbeat_response,
-      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
-  ASSERT_EQ(worker_heartbeat_response.snapshot_tasks_size(), paths.size());
-  for (const auto& snapshot_task : worker_heartbeat_response.snapshot_tasks()) {
-    ASSERT_TRUE(paths.count(snapshot_task.base_path()));
-    ASSERT_EQ(snapshot_task.stream_index(), 0);
+
+  for (int64_t i = 1; i <= 3; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        WorkerHeartbeatResponse worker_heartbeat_response,
+        dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+    ASSERT_EQ(worker_heartbeat_response.snapshot_tasks_size(), i);
+    for (const auto& snapshot_task :
+         worker_heartbeat_response.snapshot_tasks()) {
+      ASSERT_TRUE(paths.count(snapshot_task.base_path()));
+      ASSERT_EQ(snapshot_task.stream_index(), 0);
+    }
   }
 }
 
 TEST_F(DispatcherClientTest, GetSnapshotSplit) {
   TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/1));
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
-                          StartDummySnapshots());
+                          StartDummySnapshots(/*num_snapshots=*/3));
   WorkerHeartbeatRequest worker_heartbeat_request;
   worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -219,10 +230,12 @@ TEST_F(DispatcherClientTest, GetSnapshotSplit) {
 }
 
 TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
-  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/3));
+  TF_ASSERT_OK(SetUpTfDataService(/*num_workers=*/3,
+                                  /*worker_max_concurrent_snapshots=*/1));
   TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> paths,
-                          StartDummySnapshots());
+                          StartDummySnapshots(/*num_snapshots=*/3));
 
+  absl::flat_hash_set<std::string> snapshots_in_progress;
   for (int64_t i = 0; i < 3; ++i) {
     WorkerHeartbeatRequest worker_heartbeat_request;
     worker_heartbeat_request.set_worker_address(
@@ -230,8 +243,10 @@ TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
     TF_ASSERT_OK_AND_ASSIGN(
         WorkerHeartbeatResponse worker_heartbeat_response,
         dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+    EXPECT_EQ(worker_heartbeat_response.snapshot_tasks().size(), 1);
     for (const auto& snapshot_task :
          worker_heartbeat_response.snapshot_tasks()) {
+      snapshots_in_progress.insert(snapshot_task.base_path());
       GetSnapshotSplitRequest get_snapshot_split_request;
       Tensor split;
       int64_t local_split_index = 0;
@@ -245,6 +260,9 @@ TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
       EXPECT_FALSE(end_of_splits);
     }
   }
+
+  // Each worker writes one snapshot; each snapshot has been assigned a worker.
+  EXPECT_EQ(snapshots_in_progress, paths);
 }
 
 TEST_F(DispatcherClientTest, RegisterDatasetWithExplicitId) {
