@@ -687,7 +687,7 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
 llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
     absl::Span<const int64_t> strides) {
-  llvm::SmallVector<AffineExpr> result;
+  llvm::SmallVector<AffineExpr, 4> result;
   result.reserve(sizes.size());
   for (auto [size, stride] : llvm::zip(sizes, strides)) {
     result.push_back(linear.floorDiv(stride) % size);
