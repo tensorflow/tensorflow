@@ -679,10 +679,9 @@ StatusOr<ScheduleMetadata> ScheduleGpuModule(
   // instruction name with ids.
   std::string fingerprint = module->GetFingerprint128(
       HloPrintOptions::Canonical().set_print_backend_config(true));
-  HloInstruction* root = module->entry_computation()->root_instruction();
   FrontendAttributes attributes;
   (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
-  root->add_frontend_attributes(attributes);
+  module->add_frontend_attributes(attributes);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
 
