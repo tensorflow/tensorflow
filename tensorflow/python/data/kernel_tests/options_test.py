@@ -149,6 +149,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.parallel_batch = True
     options.experimental_optimization.shuffle_and_repeat_fusion = True
+    options.experimental_optimization.seq_interleave_prefetch = True
     options.experimental_warm_start = True
     options.experimental_slack = True
     options.dataset_name = "test_name"

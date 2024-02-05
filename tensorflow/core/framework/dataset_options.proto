@@ -82,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 21
+// next: 22
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -151,6 +151,12 @@ message OptimizationOptions {
   }
   // NOTE: field id 20 was removed in August 2023.
   reserved 20;
+  // Whether to replace parallel interleave with interleave and prefetch. Only
+  // takes effect if the parallel interleave is deterministic; otherwise does
+  // nothing.
+  oneof optional_seq_interleave_prefetch {
+    bool seq_interleave_prefetch = 21;
+  }
 }
 
 // next: 3
