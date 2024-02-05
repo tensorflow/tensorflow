@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -55,7 +56,8 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   explicit TestOnlyCommandBufferCmd(BufferUsageVector buffer_usage)
       : buffer_usage(buffer_usage) {}
 
-  absl::Status Record(const RecordParams&, se::CommandBuffer*) override {
+  absl::Status Record(const Thunk::ExecuteParams&,
+                      se::CommandBuffer*) override {
     return absl::OkStatus();
   }
 
@@ -172,11 +174,14 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   CommandBufferCmdSequence commands;
   commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
 
+  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record({executor, &stream, &stream, &allocations},
-                               command_buffer.get()));
+  TF_ASSERT_OK(commands.Record(params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
@@ -233,11 +238,14 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   };
   TF_ASSERT_OK(commands.Initialize({executor, source}));
 
+  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record({executor, &stream, &stream, &allocations},
-                               command_buffer.get()));
+  TF_ASSERT_OK(commands.Record(params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));

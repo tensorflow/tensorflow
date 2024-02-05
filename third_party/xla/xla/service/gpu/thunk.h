@@ -248,6 +248,9 @@ class Thunk {
   // InitializeParams
   //===--------------------------------------------------------------------===//
 
+  // TODO(ezhulenev): Merge InitializeParams and ExecuteParams as they have
+  // almost the same members and tightly coupled.
+
   // Parameters passed to Initialize. At thunk initialization time we do not
   // launch any "work" on device and only initialize thunks for execution, i.e.
   // we pre-load kernels on device and instantiate all command buffers.
@@ -269,7 +272,7 @@ class Thunk {
     se::Stream* command_buffer_trace_stream = nullptr;
 
     // Parameters for executing collective operations.
-    const CollectiveExecuteParams* collective_params = nullptr;
+    CollectiveExecuteParams* collective_params = nullptr;
 
     // Collective cliques acquired based on resource requests.
     CollectiveCliques* collective_cliques = nullptr;
@@ -325,6 +328,8 @@ class Thunk {
     ExecutionStreamIdMap additional_compute_streams;
 
    private:
+    friend class CommandBufferThunk;
+
     ExecuteParams(const BufferAllocations* buffer_allocations,
                   se::Stream* stream, se::Stream* command_buffer_trace_stream,
                   absl::InlinedVector<se::Stream*, 4> async_comms_streams,

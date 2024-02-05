@@ -80,7 +80,7 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
 
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
     const CommandBufferCmdSequence& commands,
-    const CommandBufferCmd::RecordParams& params) {
+    const Thunk::ExecuteParams& params) {
   bool should_update = false;
   const BufferAllocations* allocs = params.buffer_allocations;
 
@@ -142,13 +142,15 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   absl::MutexLock lock(&cmd_buffer->mutex);
 
-  CommandBufferCmd::RecordParams record_params = {
-      params.executor,
-      params.stream,
-      params.command_buffer_trace_stream,
-      const_cast<BufferAllocations*>(params.buffer_allocations),
-      params.collective_params,
-      params.collective_cliques};
+  // Construct ExecuteParams with empty fields for everything that is not needed
+  // for recording commands.
+  Thunk::ExecuteParams execute_params(
+      params.buffer_allocations, params.stream,
+      params.command_buffer_trace_stream, {}, params.collective_params,
+      params.collective_cliques, /*device_to_host_stream=*/nullptr,
+      /*host_to_device_stream=*/nullptr,
+      /*send_device_memory_function=*/nullptr,
+      /*recv_device_memory_function=*/nullptr);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -157,7 +159,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // NCCL operations in flight.
   if (cmd_buffer->command_buffer->state() ==
           se::CommandBuffer::State::kCreate &&
-      cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
+      cmd_buffer->ShouldUpdateCommandBuffer(commands_, execute_params)) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -172,7 +174,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     TF_RETURN_IF_ERROR(
-        commands_.Record(record_params, cmd_buffer->command_buffer.get()));
+        commands_.Record(execute_params, cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Initialized command buffer on device #"
@@ -208,16 +210,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::MutexLock lock(&cmd_buffer->mutex);
 
-  CommandBufferCmd::RecordParams record_params = {
-      executor,
-      params.stream,
-      params.command_buffer_trace_stream,
-      const_cast<BufferAllocations*>(params.buffer_allocations),
-      params.collective_params,
-      params.collective_cliques,
-      &cmd_buffer->state};
-
-  if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
+  if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
             << " by recoding command buffer cmd sequence" << " after "
             << cmd_buffer->num_executions << " executions since last update"
@@ -234,7 +227,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     TF_RETURN_IF_ERROR(
-        commands_.Record(record_params, cmd_buffer->command_buffer.get()));
+        commands_.Record(params, cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Updated command buffer in " << (end_micros - start_micros)

@@ -132,6 +132,7 @@ xla_test(
         "//xla:status",
         "//xla:types",
         "//xla/service:buffer_assignment",
+        "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
