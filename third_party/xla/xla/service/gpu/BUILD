@@ -380,6 +380,7 @@ cc_library(
         "//xla/service/gpu/runtime3:replica_id_thunk",
         "//xla/service/gpu/runtime3:send_recv_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
+        "//xla/service/gpu/runtime3:wait_for_streams_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
         "//xla/service/llvm_ir:buffer_assignment_util",
         "//xla/service/llvm_ir:dynamic_update_slice_util",
@@ -824,6 +825,7 @@ cc_library(
     hdrs = ["thunk.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":backend_configs_cc",
         ":buffer_allocations",
         ":gpu_executable_run_options",
         ":nccl_clique",
@@ -846,6 +848,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

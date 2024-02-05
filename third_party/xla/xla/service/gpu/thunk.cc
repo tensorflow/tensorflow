@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/nccl_clique.h"
@@ -154,14 +155,16 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     se::Stream* command_buffer_trace_stream,
     absl::Span<se::Stream* const> async_streams,
     CollectiveExecuteParams* collective_params,
-    CollectiveCliques* collective_cliques) {
+    CollectiveCliques* collective_cliques,
+    ExecutionStreamIdMap additional_compute_streams) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        {async_streams.begin(), async_streams.end()},
                        collective_params, collective_cliques,
                        run_options.run_options().device_to_host_stream(),
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
-                       run_options.run_options().recv_device_memory_function());
+                       run_options.run_options().recv_device_memory_function(),
+                       additional_compute_streams);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
@@ -172,7 +175,8 @@ Thunk::ExecuteParams::ExecuteParams(
     CollectiveCliques* collective_cliques, se::Stream* device_to_host_stream,
     se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
-    RecvDeviceMemoryFunction* recv_device_memory_function)
+    RecvDeviceMemoryFunction* recv_device_memory_function,
+    ExecutionStreamIdMap additional_compute_streams)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -182,7 +186,8 @@ Thunk::ExecuteParams::ExecuteParams(
       device_to_host_stream(device_to_host_stream),
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
-      recv_device_memory_function(recv_device_memory_function) {}
+      recv_device_memory_function(recv_device_memory_function),
+      additional_compute_streams(additional_compute_streams) {}
 
 //===----------------------------------------------------------------------===//
 
@@ -238,7 +243,21 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kTriangularSolve);
     CASE(kWhile);
     CASE(kFusedMHA);
+    CASE(kWaitForStreams);
   }
+}
+
+/*static*/
+absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
+    ExecutionStreamId stream_id, const ExecuteParams& params) {
+  if (stream_id == GetMainComputeStreamId()) {
+    return params.stream;
+  }
+  auto iter = params.additional_compute_streams.find(stream_id);
+  if (iter == params.additional_compute_streams.end()) {
+    return absl::InvalidArgumentError("Invalid execution stream id.");
+  }
+  return iter->second;
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
@@ -293,6 +312,12 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
   ThunkInfo thunk_info(nullptr);
   thunk_info.profile_annotation =
       absl::StrFormat("Thunk:#hlo_op=%s#", instr->name());
+  auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
+  if (gpu_backend_config.ok()) {
+    thunk_info.execution_stream_id =
+        std::max(Thunk::GetMainComputeStreamId().value(),
+                 gpu_backend_config->operation_queue_id());
+  }
   return thunk_info;
 }
 

@@ -48,10 +48,14 @@ absl::Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (workspace_.has_value()) {
     workspace = allocs.GetDeviceAddress(workspace_.value());
   }
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      GetStreamForExecution(Thunk::execution_stream_id(), params));
+
   return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
                  allocs.GetDeviceAddress(rhs_buffer_),
                  allocs.GetDeviceAddress(output_buffer_), workspace,
-                 deterministic_, params.stream);
+                 deterministic_, stream);
 }
 
 absl::Status GemmThunk::Initialize(const InitializeParams& params) {

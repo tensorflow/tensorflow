@@ -303,15 +303,34 @@ absl::Status MaybeRendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
     RendezvousSingleFlag& thunks_initialized);
 
-absl::Status ExecuteThunks(const std::string& module_name,
-                           ModuleIdentifier module_id,
-                           const ThunkSequence& thunk_sequence,
-                           Thunk::ExecutableSource executable_source,
-                           const ServiceExecutableRunOptions* run_options,
-                           const BufferAllocations& buffer_allocations,
-                           bool block_host_until_done,
-                           bool use_highest_priority_for_async_stream,
-                           RendezvousSingleFlag& thunks_initialized) {
+absl::flat_hash_set<ExecutionStreamId> ExtractAdditionalComputeStreamIds(
+    const HloModule& module) {
+  absl::flat_hash_set<ExecutionStreamId> stream_ids;
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* hlo : comp->instructions()) {
+      if (hlo->has_backend_config() &&
+          hlo->backend_config<GpuBackendConfig>().ok()) {
+        int64_t op_queue_id = hlo->backend_config<GpuBackendConfig>()
+                                  .value()
+                                  .operation_queue_id();
+        if (op_queue_id > 0) {
+          stream_ids.insert(ExecutionStreamId(op_queue_id));
+        }
+      }
+    }
+  }
+  return stream_ids;
+}
+
+absl::Status ExecuteThunks(
+    const std::string& module_name, ModuleIdentifier module_id,
+    const ThunkSequence& thunk_sequence,
+    Thunk::ExecutableSource executable_source,
+    const ServiceExecutableRunOptions* run_options,
+    const BufferAllocations& buffer_allocations, bool block_host_until_done,
+    bool use_highest_priority_for_async_stream,
+    RendezvousSingleFlag& thunks_initialized,
+    absl::flat_hash_set<ExecutionStreamId> additional_compute_stream_ids) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
   stream_executor::StreamPriority stream_priority =
@@ -340,6 +359,22 @@ absl::Status ExecuteThunks(const std::string& module_name,
     command_buffer_trace_stream = borrowed_command_buffer_trace_stream->get();
   }
 
+  // Borrow stream for additional compute streams
+  Thunk::ExecutionStreamIdMap additional_compute_streams;
+  std::vector<StreamPool::Ptr> additional_streams;
+  int num_streams = additional_compute_stream_ids.size();
+  if (num_streams > 0) {
+    TF_ASSIGN_OR_RETURN(
+        additional_streams,
+        run_options->BorrowStreams(executor->device_ordinal(), num_streams));
+
+    int64_t i = 0;
+    for (auto& stream : additional_compute_stream_ids) {
+      additional_compute_streams[stream] = additional_streams.at(i).get();
+      i++;
+    }
+    VLOG(2) << "Using " << num_streams << " additional compute streams.";
+  }
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
@@ -401,7 +436,7 @@ absl::Status ExecuteThunks(const std::string& module_name,
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       *run_options, buffer_allocations, main_stream,
       command_buffer_trace_stream, async_comms_streams, &collective_params,
-      &collective_cliques);
+      &collective_cliques, additional_compute_streams);
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -959,6 +994,11 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
 
   ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
 
+  absl::flat_hash_set<ExecutionStreamId> additional_compute_stream_ids;
+  if (has_module()) {
+    additional_compute_stream_ids = ExtractAdditionalComputeStreamIds(module());
+  }
+
   if (thunks_) {
     Thunk::ExecutableSource executable_source = {text_, binary_};
 
@@ -970,7 +1010,7 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                            .debug_options()
                            .xla_gpu_enable_highest_priority_async_stream()
                      : false,
-        thunks_initialized_flag_);
+        thunks_initialized_flag_, additional_compute_stream_ids);
   }
 
   // Match IrEmitter's temp buffer allocation for kernel launches. See
