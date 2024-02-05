@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,33 @@ class MklTestingUtil {
     Eigen::Tensor<T, 0, Eigen::RowMajor> max = eigen_tensor.maximum();
     *tensor_min = min();
     *tensor_max = max();
+  }
+
+  // This utlity function mimics Quantization of float/bfloat16 tensor with
+  // oneDNN backend QuantizeV2 operation. Since the op signature requires min
+  // and max values to be in float type, min_tensor and max_tensor should have
+  // their dtype set to DT_FLOAT.
+  template <typename T>
+  static void GetQuantizationTensors(const Tensor& input, Tensor* output,
+                                     DataType out_type, const string mode,
+                                     Tensor* min_tensor, Tensor* max_tensor) {
+    DCHECK_EQ(min_tensor->dtype(), DT_FLOAT);
+    DCHECK_EQ(max_tensor->dtype(), DT_FLOAT);
+    T min;
+    T max;
+    ComputeMinMax<T>(input, &min, &max);
+
+    float adjusted_min = static_cast<float>(min);
+    float adjusted_max = static_cast<float>(max);
+    if (mode == "SCALED") {
+      DCHECK_EQ(output->dtype(), DT_QINT8);
+      float range = std::max(std::abs(adjusted_min), std::abs(adjusted_max));
+      adjusted_min = -range;
+      adjusted_max = range;
+    }
+    RunMklQuantizeOp(input, adjusted_min, adjusted_max, out_type, mode, output);
+    min_tensor->flat<float>()(0) = adjusted_min;
+    max_tensor->flat<float>()(0) = adjusted_max;
   }
 };
 
