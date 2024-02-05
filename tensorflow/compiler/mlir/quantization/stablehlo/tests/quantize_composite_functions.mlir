@@ -6,8 +6,6 @@
 // Tests that basic dot_general is properly quantized.
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_dot_general_fn(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
@@ -45,8 +43,6 @@ module attributes {tf_saved_model.semantics} {
 // Tests that fused pattern for dot_general + bias is properly quantized.
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_dot_general_with_bias_same_shape_fn(%arg0: tensor<1x2xf32>) -> tensor<1x3xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
@@ -83,8 +79,6 @@ module attributes {tf_saved_model.semantics} {
 // is properly quantized.
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_dot_general_with_bias_dynamic_fn(%arg0: tensor<?x2xf32>) -> tensor<?x3xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
@@ -130,8 +124,6 @@ module attributes {tf_saved_model.semantics} {
 // Tests that basic convolution is properly quantized.
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_conv_fn(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x4x2xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
@@ -181,8 +173,6 @@ module attributes {tf_saved_model.semantics} {
 // Tests that fused pattern for convolution + bias is properly quantized.
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_conv_with_bias_fn(%arg0: tensor<1x3x4x3xf32>) -> tensor<1x3x4x2xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
@@ -235,8 +225,6 @@ module attributes {tf_saved_model.semantics} {
 // is properly quantized.
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_conv_with_bias_dynamic_fn(%arg0: tensor<?x3x4x3xf32>) -> tensor<?x3x4x2xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
@@ -315,8 +303,6 @@ module attributes {tf_saved_model.semantics} {
 // clipped range [0, r_max].
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_conv_with_bias_and_relu_dynamic_fn(%arg0: tensor<?x3x4x3xf32>) -> tensor<?x3x4x2xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>
@@ -397,8 +383,6 @@ module attributes {tf_saved_model.semantics} {
 // clipped range [0, r_max].
 
 // The following pattern does not converge because of a bug in QuantizePass.
-// TODO - b/305469508: Fix the QuantizePass to avoid this warning.
-// expected-warning @+1 {{Failed to converge pattern at QuantizePass.}}
 module attributes {tf_saved_model.semantics} {
   func.func private @quantize_conv_with_bias_and_relu6_dynamic_fn(%arg0: tensor<?x3x4x3xf32>) -> tensor<?x3x4x2xf32> attributes {tf._original_func_name = "main_0"} {
     %cst = "tf.Const"() {value = dense<3.00000000e-1> : tensor<2x3x3x2xf32>} : () -> tensor<2x3x3x2xf32>

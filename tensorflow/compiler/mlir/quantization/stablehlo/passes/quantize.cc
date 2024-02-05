@@ -145,8 +145,6 @@ void QuantizePass::runOnOperation() {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
-    // TODO: b/305469508 - Make QuantizationPattern converge if there are no
-    // patterns that are rewritable.
     module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }
