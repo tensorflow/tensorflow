@@ -699,9 +699,14 @@ static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
   }
 
   // Make sure nvlink exists and is executable.
-  const std::string bin_path =
+  absl::StatusOr<std::string> bin_path =
       se::FindCudaExecutable("nvlink", preferred_cuda_dir);
-  auto version = se::GetToolVersion(bin_path);
+
+  if (!bin_path.ok()) {
+    return std::nullopt;
+  }
+
+  auto version = se::GetToolVersion(bin_path.value());
   if (!version.ok()) {
     return std::nullopt;
   }

@@ -605,6 +605,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:subprocess",
+        "@local_tsl//tsl/platform:statusor",
     ]),
 )
 

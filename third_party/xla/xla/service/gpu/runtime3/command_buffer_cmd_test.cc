@@ -231,7 +231,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
       /*binary=*/se::gpu::internal::kAddI32KernelModule
 #endif
   };
-  TF_ASSERT_OK(commands.Initialize(executor, source));
+  TF_ASSERT_OK(commands.Initialize({executor, source}));
 
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 

@@ -127,7 +127,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) return absl::OkStatus();
 
-  TF_RETURN_IF_ERROR(commands_.Initialize(params.executor, params.src));
+  TF_RETURN_IF_ERROR(commands_.Initialize(params));
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/subprocess.h"
 
 #ifdef ENABLE_LIBNVPTXCOMPILER_SUPPORT
@@ -69,8 +70,10 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::call_once(log_once,
                     [] { LOG(INFO) << "Using nvlink for parallel linking"; });
   }
-  const std::string bin_path =
-      FindCudaExecutable("nvlink", std::string(preferred_cuda_dir));
+
+  TF_ASSIGN_OR_RETURN(
+      std::string bin_path,
+      FindCudaExecutable("nvlink", std::string(preferred_cuda_dir)));
 
   if (images.empty()) {
     return std::vector<uint8>();
