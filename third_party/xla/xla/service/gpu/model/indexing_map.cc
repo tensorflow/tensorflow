@@ -28,6 +28,8 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -39,6 +41,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using llvm::SmallBitVector;
+using llvm::SmallVector;
 using mlir::AffineBinaryOpExpr;
 using mlir::AffineConstantExpr;
 using mlir::AffineDimExpr;
@@ -635,13 +639,90 @@ bool IndexingMap::SimplifyConstraintRanges() {
   return !to_add.empty();
 }
 
+namespace {
+
+struct UsedParameters {
+  llvm::DenseSet<int64_t> dimension_ids;
+  llvm::DenseSet<int64_t> symbol_ids;
+};
+
+void GetUsedParametersImpl(const AffineExpr& expr,
+                           UsedParameters& used_parameters) {
+  if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
+    used_parameters.dimension_ids.insert(dim_expr.getPosition());
+    return;
+  }
+  if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
+    used_parameters.symbol_ids.insert(symbol_expr.getPosition());
+    return;
+  }
+  if (auto binary_expr = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
+    GetUsedParametersImpl(binary_expr.getLHS(), used_parameters);
+    GetUsedParametersImpl(binary_expr.getRHS(), used_parameters);
+  }
+}
+
+// Returns IDs of dimensions and symbols that participate in AffineExpr.
+UsedParameters GetUsedParameters(const mlir::AffineExpr& expr) {
+  UsedParameters used_parameters;
+  GetUsedParametersImpl(expr, used_parameters);
+  return used_parameters;
+}
+
+bool IsFunctionOfUnusedDimsAndSymbolsOnly(
+    const UsedParameters& used_parameters,
+    const SmallBitVector& unused_dims_bit_vector,
+    const SmallBitVector& unused_symbols_bit_vector) {
+  for (int64_t dim_id : used_parameters.dimension_ids) {
+    if (!unused_dims_bit_vector[dim_id]) return false;
+  }
+  for (int64_t symbol_id : used_parameters.symbol_ids) {
+    if (!unused_symbols_bit_vector[symbol_id]) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
 void IndexingMap::RemoveUnusedSymbols() {
   if (IsUndefined()) return;
 
   // Remove unused symbols from the affine_map.
   unsigned num_symbols_before = affine_map_.getNumSymbols();
-  auto unused_symbols_bit_vector =
+  SmallBitVector unused_symbols_bit_vector =
       mlir::getUnusedSymbolsBitVector({affine_map_});
+  SmallBitVector unused_dims_bit_vector =
+      mlir::getUnusedDimsBitVector({affine_map_});
+
+  // Check if the symbols that are unused in `affine_map` are also unused in
+  // expressions.
+  std::vector<std::pair<AffineExpr, UsedParameters>> candidates_to_remove;
+  for (const auto& [expr, range] : constraints_) {
+    UsedParameters used_parameters = GetUsedParameters(expr);
+    // If the expression uses only symbols and dims that are "unused" in
+    // `affine_map`, then we can remove it.
+    if (IsFunctionOfUnusedDimsAndSymbolsOnly(used_parameters,
+                                             unused_dims_bit_vector,
+                                             unused_symbols_bit_vector)) {
+      candidates_to_remove.push_back({expr, used_parameters});
+      continue;
+    }
+    // Otherwise, we need to mark all symbols of these expr as "used".
+    for (int64_t symbol_id : used_parameters.symbol_ids) {
+      unused_symbols_bit_vector[symbol_id] = false;
+    }
+  }
+  for (const auto& [expr, used_parameters] : candidates_to_remove) {
+    // Check again if all of the symbols are still "unused".
+    for (int64_t symbol_id : used_parameters.symbol_ids) {
+      if (!unused_symbols_bit_vector[symbol_id]) {
+        continue;
+      }
+    }
+    constraints_.erase(expr);
+  }
+
+  // Compress `affine_map` using the updated `unused_symbols_bit_vector`.
   affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols_bit_vector);
 
   // Remap symbols in the constraint expressions accordingly.
@@ -651,14 +732,10 @@ void IndexingMap::RemoveUnusedSymbols() {
   std::vector<Range> compressed_symbol_ranges_;
   MLIRContext* mlir_context = GetMLIRContext();
   int64_t used_symbols_count = 0;
-  unsigned kUnusedSymbol = std::numeric_limits<unsigned>::max();
   std::vector<AffineExpr> symbol_replacements;
   symbol_replacements.reserve(num_symbols_after);
   for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
-    if (unused_symbols_bit_vector[i]) {
-      symbol_replacements.push_back(
-          getAffineSymbolExpr(kUnusedSymbol, mlir_context));
-    } else {
+    if (!unused_symbols_bit_vector[i]) {
       compressed_symbol_ranges_.push_back(symbol_ranges_[i]);
       symbol_replacements.push_back(
           getAffineSymbolExpr(used_symbols_count++, mlir_context));
@@ -670,9 +747,6 @@ void IndexingMap::RemoveUnusedSymbols() {
   for (const auto& [expr, range] : constraints_) {
     auto updated_expr = expr.replaceSymbols(symbol_replacements);
     if (updated_expr == expr) continue;
-    if (updated_expr.isFunctionOfSymbol(kUnusedSymbol)) {
-      LOG(FATAL) << "Found unused symbol in the constraints.";
-    }
     to_add.push_back({updated_expr, range});
     to_remove.push_back(expr);
   }
