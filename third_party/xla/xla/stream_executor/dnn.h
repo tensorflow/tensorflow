@@ -1799,25 +1799,6 @@ class DnnSupport {
     return false;
   }
 
-  // Concatenates several layers into one, by concatenating the depth of each
-  // layer at matching x and y coordinates.
-  // The inputs must all have the same width and height, the output will have
-  // the same width and height as the inputs and its depth will be the sum of
-  // the input depths.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'depth concatenate'
-  // operation should be enqueued onto.
-  //  input_dimensions: The dimensions of each input.
-  //  input_data: un-owned device memory region which contains the
-  //    input data for each input layer.
-  //  output_data: un-owned device memory region in which to place the
-  //    depth concatenate result.
-  virtual bool DoDepthConcatenate(
-      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      DeviceMemory<float>* output_data) = 0;
-
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
   //

@@ -336,34 +336,6 @@ Stream &Stream::ThenRecordEvent(Event *event) {
   return *this;
 }
 
-Stream &Stream::ThenDepthConcatenate(
-    absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float> *const> input_data,
-    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data), PARAM(output_data));
-
-  for (size_t i = 1; i < input_dimensions.size(); ++i) {
-    if (input_dimensions[i].count() != input_dimensions[0].count() ||
-        input_dimensions[i].height() != input_dimensions[0].height() ||
-        input_dimensions[i].width() != input_dimensions[0].width()) {
-      SetError();
-      LOG(ERROR) << "Incompatible dimensions for depth concatenation.\n"
-                 << "input_dimensions[0]: " << input_dimensions[0].ToString()
-                 << "input_dimensions[" << i
-                 << "]: " << input_dimensions[i].ToString();
-      return *this;
-    }
-  }
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoDepthConcatenate(this, input_dimensions, input_data,
-                                       output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream *Stream::GetOrCreateSubStream() {
   // Do not destroy bad streams when holding mu_ because ~Stream() may
   // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.

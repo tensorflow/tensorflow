@@ -335,11 +335,6 @@ class Stream {
     return absl::UnimplementedError("DNN library is not found.");
   }
 
-  Stream &ThenDepthConcatenate(
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      DeviceMemory<float> *output_data);
-
   /////////////////
   // BLAS support
 
