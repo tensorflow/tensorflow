@@ -127,7 +127,12 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) return absl::OkStatus();
 
-  TF_RETURN_IF_ERROR(commands_.Initialize(params));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+                      GetOrCreateCommandBuffer(params.executor));
+  absl::MutexLock lock(&cmd_buffer->mutex);
+
+  // Initialize commands.
+  TF_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
@@ -136,11 +141,6 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       TF_RETURN_IF_ERROR(thunk->Initialize(params));
     }
   }
-
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
-                      GetOrCreateCommandBuffer(params.executor));
-
-  absl::MutexLock lock(&cmd_buffer->mutex);
 
   // Construct ExecuteParams with empty fields for everything that is not needed
   // for recording commands.
@@ -173,8 +173,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-    TF_RETURN_IF_ERROR(
-        commands_.Record(execute_params, cmd_buffer->command_buffer.get()));
+    TF_RETURN_IF_ERROR(commands_.Record(execute_params, cmd_buffer->state,
+                                        cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Initialized command buffer on device #"
@@ -226,8 +226,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-    TF_RETURN_IF_ERROR(
-        commands_.Record(params, cmd_buffer->command_buffer.get()));
+    TF_RETURN_IF_ERROR(commands_.Record(params, cmd_buffer->state,
+                                        cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Updated command buffer in " << (end_micros - start_micros)
