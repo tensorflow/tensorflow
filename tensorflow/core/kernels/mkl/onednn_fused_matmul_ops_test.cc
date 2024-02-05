@@ -346,9 +346,10 @@ class FusedMatMulOpsTest : public OpsTestBase {
     Tensor x_qtensor(qinput_dtype, x.shape());
     Tensor x_min_tensor(DT_FLOAT, TensorShape({}));
     Tensor x_max_tensor(DT_FLOAT, TensorShape({}));
-    MklTestingUtil::GetQuantizationTensors<T>(x, &x_qtensor, qinput_dtype,
-                                              input_quant_mode, &x_min_tensor,
-                                              &x_max_tensor);
+    auto status = MklTestingUtil::GetQuantizationTensors<T>(
+        x, &x_qtensor, qinput_dtype, input_quant_mode, &x_min_tensor,
+        &x_max_tensor);
+    ASSERT_TRUE(status.ok());
     Tensor y_qtensor(DT_QINT8, y.shape());
     const int num_channels = transpose_y ? y.dim_size(0) : y.dim_size(1);
     TensorShape minmax_shape =
@@ -364,8 +365,9 @@ class FusedMatMulOpsTest : public OpsTestBase {
                                                 &y_max_tensor);
       }
     } else {
-      MklTestingUtil::GetQuantizationTensors<T>(
+      auto status = MklTestingUtil::GetQuantizationTensors<T>(
           y, &y_qtensor, DT_QINT8, "SCALED", &y_min_tensor, &y_max_tensor);
+      ASSERT_TRUE(status.ok());
     }
 
     Scope root = tensorflow::Scope::NewRootScope();

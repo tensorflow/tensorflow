@@ -55,7 +55,7 @@ class MklTestingUtil {
   // and max values to be in float type, min_tensor and max_tensor should have
   // their dtype set to DT_FLOAT.
   template <typename T>
-  static void GetQuantizationTensors(const Tensor& input, Tensor* output,
+  static Status GetQuantizationTensors(const Tensor& input, Tensor* output,
                                      DataType out_type, const string mode,
                                      Tensor* min_tensor, Tensor* max_tensor) {
     if (min_tensor->dtype() != DT_FLOAT || max_tensor->dtype() != DT_FLOAT) {
