@@ -607,6 +607,9 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:subprocess",
         "@local_tsl//tsl/platform:statusor",
+        "//xla/stream_executor:stream_executor_headers",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:status",
     ]),
 )
 
