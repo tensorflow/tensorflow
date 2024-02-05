@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu::kernel::topk {
@@ -107,10 +108,11 @@ TEST_P(TopKKernelTest, TopKFloat) {
   stream.ThenMemZero(&output_values, k * batch_size * sizeof(T));
   stream.ThenMemZero(&output_indices, k * batch_size * sizeof(uint32_t));
 
-  se::Kernel kernel(executor);
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &kernel));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto kernel, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
@@ -118,7 +120,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
   TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), kernel, arr));
+                                custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream.BlockHostUntilDone().ok());
@@ -161,10 +163,11 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   stream.ThenMemZero(&output_values, k * batch_size * sizeof(T));
   stream.ThenMemZero(&output_indices, k * batch_size * sizeof(uint32_t));
 
-  se::Kernel kernel(executor);
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &kernel));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto kernel, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
@@ -172,7 +175,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
   TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), kernel, arr));
+                                custom_kernel->block_dims(), *kernel, arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream.BlockHostUntilDone().ok());

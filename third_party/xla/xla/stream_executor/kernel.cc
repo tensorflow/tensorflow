@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
+#include "tsl/platform/errors.h"
 
 namespace stream_executor {
 
@@ -50,6 +52,13 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 //===----------------------------------------------------------------------===//
 // Kernel
 //===----------------------------------------------------------------------===//
+
+absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
+    StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
+  auto kernel = std::make_unique<Kernel>(executor);
+  TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
+  return kernel;
+}
 
 Kernel::Kernel(Kernel &&from)
     : parent_(from.parent_),
