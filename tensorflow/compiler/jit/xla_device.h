@@ -158,7 +158,6 @@ class XlaDevice : public LocalDevice {
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
   Status Sync() override;
-  void Sync(const DoneCallback& done) override;
 
   Status TryGetDeviceContext(DeviceContext** out_context) override
       TF_LOCKS_EXCLUDED(mu_);
