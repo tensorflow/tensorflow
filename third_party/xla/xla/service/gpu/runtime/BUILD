@@ -84,6 +84,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/service/gpu/runtime3:nccl_all_gather_thunk",
         "//xla/service/gpu/runtime3:nccl_all_reduce_thunk",
+        "//xla/service/gpu/runtime3:nccl_all_to_all_thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
