@@ -4038,3 +4038,14 @@ func.func @ConvertStridedSliceToSliceNeg(%arg0: tensor<5x5x5x5xf32>) -> tensor<*
 
   // CHECK-NOT: %[[slice:.*]] = "tfl.slice"
 }
+
+// CHECK-LABEL: @StridedSliceToSliceBeginNeg
+func.func @StridedSliceToSliceBeginNeg(%arg0: tensor<5x5x5x5xf32>) -> tensor<*xf32> {
+  %44 = arith.constant dense<[-5, 0, 0, 0]> : tensor<4xi32>
+  %45 = arith.constant dense<[1, 1, 1, 1]> : tensor<4xi32>
+  %46 = arith.constant dense<1> : tensor<4xi32>
+  %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<5x5x5x5xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+  func.return %47 : tensor<*xf32>
+
+  // CHECK-NOT: %[[slice:.*]] = "tfl.slice"
+}

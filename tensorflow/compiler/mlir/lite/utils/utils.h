@@ -74,7 +74,7 @@ inline bool HasNonNegativeValues(Attribute value) {
   auto values = value.cast<DenseElementsAttr>().getValues<APInt>();
   return !std::any_of(
       values.begin(), values.end(),
-      [](const APInt& element_value) { return element_value.isNonPositive(); });
+      [](const APInt& element_value) { return element_value.isNegative(); });
 }
 
 // Utility function to get the offset between two dense attribute values.
