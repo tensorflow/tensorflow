@@ -69,3 +69,19 @@ def TfRestoreSplittingPass
 
   let constructor = "CreateTfRestoreSplittingPass()";
 }
+
+def TfRestoreMergingPass : Pass<"tf-restore-merging", "mlir::func::FuncOp"> {
+  let summary = "Merges `tf.RestoreV2` ops";
+
+  let description = [{
+    This pass merges multiple `tf.RestoreV2` ops into one `tf.RestoreV2` op
+    using variadic results. The current implementation merges restore ops only
+    if they have the same `prefix` and have constant tensor names and
+    shape/slice arguments.
+
+    This pass is run in order to undo `tf-restore-splitting` after cluster
+    formation and reduce the op dispatch overhead.
+  }];
+
+  let constructor = "CreateTfRestoreMergingPass()";
+}

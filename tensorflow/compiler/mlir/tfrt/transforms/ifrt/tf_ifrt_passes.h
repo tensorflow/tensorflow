@@ -39,6 +39,10 @@ CreateSinkVariableAsNamedArrayPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfRestoreSplittingPass();
 
+// Creates a pass that merges `tf.RestoreV2` ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfRestoreMergingPass();
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 

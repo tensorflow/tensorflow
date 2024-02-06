@@ -55,6 +55,7 @@ cc_library(
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",
+        "tf_restore_merging.cc",
         "tf_restore_splitting.cc",
     ],
     hdrs = [
