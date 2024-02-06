@@ -525,9 +525,9 @@ absl::Status CustomKernelLaunchCmd::Initialize(
     if (kernels_.contains(params.executor)) return absl::OkStatus();
   }
 
-  auto kernel = std::make_unique<se::Kernel>(params.executor);
-  TF_RETURN_IF_ERROR(
-      params.executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::Kernel> kernel,
+      se::Kernel::Create(params.executor, custom_kernel_.kernel_spec()));
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(params.executor, std::move(kernel));
