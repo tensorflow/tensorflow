@@ -48,6 +48,10 @@
 *   1.  Change import of keras from tensorflow as follows
 *   import tensorflow.keras as keras and import keras to import tf_keras as
     keras
+* **Apple Silicon users:** If you previously installed TensorFlow using
+    `pip install tensorflow-macos`, please update your installation method. Use
+    `pip install tensorflow` from now on. Starting with TF 2.17, the
+    `tensorflow-macos` package will no longer receive updates.
 
 ### Known Caveats
 
