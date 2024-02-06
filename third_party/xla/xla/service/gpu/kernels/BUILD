@@ -165,6 +165,7 @@ xla_test(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
