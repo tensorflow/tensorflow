@@ -6275,6 +6275,30 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
               GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2048,2] parameter(0)
+        b = f32[2,2048] parameter(1)
+        dot = f32[2048,2048] dot(a,b),
+              lhs_contracting_dims={1},
+              rhs_contracting_dims={0}
+        ROOT slice = f32[16,256] slice(dot), slice={[0:128:8],[0:2048:8]}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   const char* hlo_string = R"(
     HloModule module
