@@ -296,6 +296,11 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
 }
 
 TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
+#if defined(__APPLE__)
+  // CellReader::Delta doesn't work on Mac OS. See b/323686684
+  return;
+#endif
+
   CellReader<monitoring::testing::Histogram> compilation_time(
       kCompilationTimeStreamzName);
 
