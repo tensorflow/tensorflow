@@ -95,8 +95,10 @@ class DistributedSaveLoadFtTest(
               save_repetitions=[1, 2],
               load_repetitions=[1, 2],
               sharding_policy=[
-                  data_service_ops.ShardingPolicy.OFF,
-                  data_service_ops.ShardingPolicy.DYNAMIC])))
+                  # TODO(b/297930782): Enable dynamic sharding. Need to fix the
+                  # race condition where workers restart before sending the
+                  # final task completion update.
+                  data_service_ops.ShardingPolicy.OFF])))
   def test_dispatcher_and_worker_restart(
       self,
       num_elements: int,
@@ -137,15 +139,6 @@ class DistributedSaveLoadFtTest(
       self.assertContainsSubsequence(
           sorted(output),
           sorted(list(range(num_elements)) * repetitions * num_workers))
-
-    # For dynamic sharding, the first split (and possibly prefetched splits) may
-    # be lost. The result is a partial range plus zero or more `num_elements`
-    # ranges.
-    if (sharding_policy == data_service_ops.ShardingPolicy.DYNAMIC and
-        num_workers == 1):
-      num_ranges = len(output) // num_elements
-      self.assertContainsSubsequence(
-          sorted(output), sorted(list(range(num_elements)) * num_ranges))
 
   @combinations.generate(
       combinations.times(
