@@ -321,7 +321,7 @@ class XLAConfigOptions:
       rc.append(f"build --repo_env BAZEL_COMPILER={dpav.clang_path}")
       self.compiler_options.append("-Wno-error=unused-command-line-argument")
       if dpav.lld_path:
-        rc.append("build --linkopt --ld-path={dpav.lld_path}")
+        rc.append(f"build --linkopt --ld-path={dpav.lld_path}")
 
     if self.backend == Backend.CPU:
       build_and_test_tag_filters.append("-gpu")
