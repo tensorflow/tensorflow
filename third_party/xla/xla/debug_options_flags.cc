@@ -85,7 +85,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_division(true);
 
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  opts.set_xla_gpu_enable_cudnn_fmha(false);
+  opts.set_xla_gpu_enable_cudnn_fmha(true);
 
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
