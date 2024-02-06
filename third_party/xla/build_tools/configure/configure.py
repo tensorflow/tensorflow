@@ -61,6 +61,14 @@ _XLA_BAZELRC_NAME = "xla_configure.bazelrc"
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 
 
+def _find_executable(executable: str) -> Optional[str]:
+  logging.info("Trying to find path to %s...", executable)
+  # Resolving the symlink is necessary for finding system headers.
+  if unresolved_path := shutil.which(executable):
+    return str(pathlib.Path(unresolved_path).resolve())
+  return None
+
+
 def _find_executable_or_die(executable: str) -> str:
   """Finds executable and resolves symlinks or raises RuntimeError.
 
@@ -74,9 +82,7 @@ def _find_executable_or_die(executable: str) -> str:
   Raises:
     RuntimeError: if path to the executable cannot be found.
   """
-  logging.info("Trying to find path to %s...", executable)
-  # Resolving the symlink is necessary for finding system headers.
-  resolved_path_to_exe = str(pathlib.Path(shutil.which(executable)).resolve())
+  resolved_path_to_exe = _find_executable(executable)
   if resolved_path_to_exe is None:
     raise RuntimeError(
         f"Could not find executable `{executable}`! "
@@ -176,9 +182,10 @@ class DiscoverablePathsAndVersions:
   """
 
   clang_path: Optional[str] = None
-  gcc_path: Optional[str] = None
-  ld_library_path: Optional[str] = None
   clang_major_version: Optional[int] = None
+  gcc_path: Optional[str] = None
+  lld_path: Optional[str] = None
+  ld_library_path: Optional[str] = None
 
   # CUDA specific
   cublas_version: Optional[str] = None
@@ -201,6 +208,7 @@ class DiscoverablePathsAndVersions:
       self.clang_major_version = (
           self.clang_major_version or _get_clang_major_version(self.clang_path)
       )
+      self.lld_path = self.lld_path or _find_executable("ld.lld")
     elif config.host_compiler == HostCompiler.GCC:
       self.gcc_path = self.gcc_path or _find_executable_or_die("gcc")
 
@@ -312,6 +320,8 @@ class XLAConfigOptions:
       rc.append(f"build --repo_env CC={dpav.clang_path}")
       rc.append(f"build --repo_env BAZEL_COMPILER={dpav.clang_path}")
       self.compiler_options.append("-Wno-error=unused-command-line-argument")
+      if dpav.lld_path:
+        rc.append("build --linkopt --ld-path={dpav.lld_path}")
 
     if self.backend == Backend.CPU:
       build_and_test_tag_filters.append("-gpu")
@@ -423,6 +433,7 @@ def _parse_args():
   parser.add_argument("--clang_path")
   parser.add_argument("--gcc_path")
   parser.add_argument("--ld_library_path")
+  parser.add_argument("--lld_path")
 
   # CUDA specific
   parser.add_argument("--cublas_version")
