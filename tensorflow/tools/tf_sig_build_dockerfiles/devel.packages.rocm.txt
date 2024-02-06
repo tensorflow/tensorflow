@@ -1,4 +1,5 @@
 # All required ROCM packages
+libdrm-amdgpu-dev
 rocm-libs
 rocm-dev
 rocm-ml-sdk

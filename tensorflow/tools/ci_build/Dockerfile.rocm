@@ -25,7 +25,7 @@ RUN bin/bash -c 'if [[ $ROCM_DEB_REPO == https://repo.radeon.com/rocm/*  ]] ; th
       echo "deb [arch=amd64 trusted=yes] $ROCM_DEB_REPO $ROCM_BUILD_NAME $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/rocm.list ; \
     fi'
 RUN echo "deb [arch=amd64 trusted=yes] http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main" > /etc/apt/sources.list.d/llvm.list
-
+RUN echo "deb [arch=amd64] https://repo.radeon.com/amdgpu/6.0/ubuntu focal $ROCM_BUILD_NUM" > /etc/apt/sources.list.d/amdgpu.list
 
 # Install misc pkgs
 RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -82,7 +82,7 @@ RUN MIOPENKERNELS=$( \
     ) && \
     apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    rocm-dev rocm-libs rccl hipblaslt-dev ${MIOPENKERNELS} && \
+    rocm-dev rocm-libs libdrm-amdgpu-dev rccl hipblaslt-dev ${MIOPENKERNELS} && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
