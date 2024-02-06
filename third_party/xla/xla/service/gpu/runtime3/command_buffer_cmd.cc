@@ -297,7 +297,7 @@ TracedCommandBuffer::TracedCommandBuffer(
 }
 
 absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
-    BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
+    const BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
     se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace) {
   // Collect memory addresses for relevant allocations.
   absl::InlinedVector<se::DeviceMemoryBase, 4> allocs;
@@ -306,8 +306,9 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   }
 
   // If memory addresses are the same and we have a command buffer return it.
-  if (recorded_allocs_ == allocs && command_buffer_)
+  if (recorded_allocs_ == allocs && command_buffer_) {
     return command_buffer_.get();
+  }
 
   // Call command buffer tracing function passed by a user.
   TF_ASSIGN_OR_RETURN(command_buffer_,
@@ -935,11 +936,14 @@ absl::Status GemmCmd::Record(const Thunk::ExecuteParams& params,
   VLOG(5) << "  Out: " << output_buffer_ << " (" << out.opaque() << ")";
   VLOG(5) << "  Workspace: " << workspace_ << " (" << workspace.opaque() << ")";
 
+  auto traced_cmd = state.GetOrCreate<TracedCommandBuffer>(
+      this, [&] { return std::make_unique<TracedCommandBuffer>(buffers()); });
+
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
-      se::CommandBuffer::Trace(
-          params.stream->parent(), params.command_buffer_trace_stream,
-          [&](se::Stream* stream) {
+      traced_cmd->GetOrTraceCommandBuffer(
+          params.buffer_allocations, params.stream->parent(),
+          params.command_buffer_trace_stream, [&](se::Stream* stream) {
             return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
                            stream);
           }));

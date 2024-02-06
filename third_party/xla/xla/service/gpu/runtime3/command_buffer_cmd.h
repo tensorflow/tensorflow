@@ -125,7 +125,8 @@ class CommandBufferCmd {
         const CommandBufferCmd* cmd,
         absl::FunctionRef<std::unique_ptr<ConcreteState>()> create) {
       static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(GetOrCreate(cmd, create));
+      return static_cast<ConcreteState*>(GetOrCreate(
+          cmd, [&]() -> std::unique_ptr<State> { return create(); }));
     }
 
     template <typename ConcreteState>
@@ -273,7 +274,7 @@ class CommandBufferCmdSequence {
 
 // A cache for traced command buffers that will re-trace on change in buffer
 // allocations that are relevant for `buffers` passed to constructor.
-class TracedCommandBuffer {
+class TracedCommandBuffer : public CommandBufferCmd::State {
  public:
   explicit TracedCommandBuffer(CommandBufferCmd::BufferUsageVector buffers);
 
@@ -281,7 +282,7 @@ class TracedCommandBuffer {
   // did not change from last run. Traces a new command buffer using user
   // provided callback if buffer allocation changed from last run.
   absl::StatusOr<se::CommandBuffer*> GetOrTraceCommandBuffer(
-      BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
+      const BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
       se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
  private:
