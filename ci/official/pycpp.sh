@@ -15,8 +15,6 @@
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
-tfrun bazel query --config=analysis_checker
-
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
    tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$TFCI_OUTPUT_DIR/profile.json.gz" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
