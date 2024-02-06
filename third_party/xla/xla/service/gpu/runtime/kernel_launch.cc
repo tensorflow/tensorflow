@@ -42,13 +42,12 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_graph.h"
@@ -195,11 +194,7 @@ static absl::StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
                      " returned empty custom kernels for a fused computation"));
   }
 
-  auto kernel = std::make_unique<se::Kernel>(executor);
-  TF_RETURN_IF_ERROR(
-      executor->GetKernel(kernels[0].kernel_spec(), kernel.get()));
-
-  return kernel;
+  return se::Kernel::Create(executor, kernels[0].kernel_spec());
 }
 
 static absl::Status CustomLaunchImpl(

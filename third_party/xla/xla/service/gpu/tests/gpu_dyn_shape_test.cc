@@ -41,8 +41,8 @@ TEST_F(GpuDynamicShapeTest, DynamicShapeR2) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK-DAG: is_thread_0-true
-; CHECK-DAG: x.padded{{(_1)?}}.in_dyn_bounds-true
-; CHECK-DAG: x.padded{{(_1)?}}.in_bounds-true
+; CHECK-DAG: x.padded{{.*}}.in_dyn_bounds-true
+; CHECK-DAG: x.padded{{.*}}.in_bounds-true
 ; CHECK: %[[dyn_dim_size:.*]] = load i32, ptr
 ; CHECK: %[[dyn_element_total:.*]] = mul i32 1, %[[dyn_dim_size:.*]]
 ; CHECK: %[[linear_index:.*]] = add nuw nsw i32

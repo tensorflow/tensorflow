@@ -514,10 +514,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float>* raw_variable_gradient,
       ScratchAllocator* workspace_allocator) override;
 
-  bool DoDepthConcatenate(Stream* stream, BatchDescriptorSlice input_dimensions,
-                          DeviceMemorySlice<float> input_data,
-                          DeviceMemory<float>* output_data) override;
-
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.
   bool DeriveOutputBatchDescriptor(

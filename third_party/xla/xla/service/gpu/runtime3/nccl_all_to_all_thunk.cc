@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_to_all_thunk.h"
 
 #include <cstdint>
 #include <cstdlib>

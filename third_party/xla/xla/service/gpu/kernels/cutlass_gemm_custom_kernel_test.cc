@@ -42,13 +42,13 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  se::Kernel gemm(executor);
-
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
   auto custom_kernel = GetCutlassGemmKernel(
       "cutlass_gemm", PrimitiveType::F32, 4, 4, 4,
       /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto gemm, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;
@@ -71,7 +71,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
   TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), gemm, arr));
+                                custom_kernel->block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
@@ -94,13 +94,13 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  se::Kernel gemm(executor);
-
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
   auto custom_kernel = LoadCutlassGemmKernel(
       "cutlass_gemm", kernel_lib_path, PrimitiveType::F32, 4, 4, 4,
       /*indices=*/{0, 1, 2}, /*slices=*/{}, executor->GetDeviceDescription());
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto gemm, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
 
   int64_t length = 4 * 4;
   int64_t byte_length = sizeof(float) * length;
@@ -122,7 +122,7 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
   TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), gemm, arr));
+                                custom_kernel->block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);

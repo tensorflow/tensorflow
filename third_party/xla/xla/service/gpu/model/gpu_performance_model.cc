@@ -560,7 +560,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     const HloInstruction* producer, const EstimateRunTimeData& producer_runtime,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    const std::vector<HloInstruction*>& fused_consumers) {
+    absl::Span<const HloInstruction* const> fused_consumers) {
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   absl::Duration time_unfused =
@@ -706,7 +706,8 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
     const HloInstruction* producer, const EstimateRunTimeData& producer_runtime,
     const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    const std::vector<HloInstruction*>& fused_consumers, bool multi_output) {
+    absl::Span<const HloInstruction* const> fused_consumers,
+    bool multi_output) {
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   absl::Duration exec_time_fused =
@@ -764,7 +765,8 @@ GpuPerformanceModel::RunTimes
 GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    std::vector<HloInstruction*> fused_consumers, bool multi_output) {
+    absl::Span<const HloInstruction* const> fused_consumers,
+    bool multi_output) {
   EstimateRunTimeData producer_runtime =
       EstimateRunTimeForInstructionCached(producer, cost_analysis, config);
 
@@ -805,7 +807,8 @@ GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
 GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config,
-    std::vector<HloInstruction*> fused_consumers, bool multi_output) {
+    absl::Span<const HloInstruction* const> fused_consumers,
+    bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
   if (producer->opcode() == HloOpcode::kFusion) {
     VLOG(10) << producer->fused_instructions_computation()->ToString();

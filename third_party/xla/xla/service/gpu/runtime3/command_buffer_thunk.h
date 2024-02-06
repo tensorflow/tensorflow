@@ -61,7 +61,7 @@ class CommandBufferThunk : public Thunk {
     // Returns true if `commands` cmd sequence has to be recorded into
     // `command_buffer` to update it (see `recorded_allocs` below).
     bool ShouldUpdateCommandBuffer(const CommandBufferCmdSequence& commands,
-                                   const CommandBufferCmd::RecordParams& params)
+                                   const Thunk::ExecuteParams& params)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
 
     // se::CommandBuffer is not thread safe, and we guard it with a mutex to

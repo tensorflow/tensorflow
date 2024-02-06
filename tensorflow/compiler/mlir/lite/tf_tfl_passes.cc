@@ -148,6 +148,7 @@ void AddPreQuantizationStableHloToTfPasses(
   // This is needed since we are relying on XlaCallModule uses MHLO
   // specific features like mhlo::ErfOp which aren't supported
   // in StableHLO, but we have CHLO->StableHLO decompositions to legalize.
+  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   pass_manager.addPass(
       mlir::stablehlo::experimental::createChloRecomposeOpsPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(

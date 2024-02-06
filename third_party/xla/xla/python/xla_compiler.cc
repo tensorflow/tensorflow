@@ -902,6 +902,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
+      .def_property("xla_gpu_dump_autotune_results_to",
+                    &DebugOptions::xla_gpu_dump_autotune_results_to,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_dump_autotune_results_to(value);
+                    })
+      .def_property("xla_gpu_load_autotune_results_from",
+                    &DebugOptions::xla_gpu_load_autotune_results_from,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_load_autotune_results_from(value);
+                    })
       .def_property("xla_gpu_cuda_data_dir",
                     &DebugOptions::xla_gpu_cuda_data_dir,
                     [](DebugOptions* self, std::string value) {

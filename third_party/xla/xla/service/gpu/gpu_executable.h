@@ -16,23 +16,22 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 
-#include <atomic>
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
-#include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
@@ -40,12 +39,14 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/annotation.h"
-#include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/rendezvous.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -64,7 +65,6 @@ bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config);
 class GpuExecutable : public Executable {
  public:
   using OwnedThunkSequence = std::unique_ptr<const ThunkSequence>;
-  using OwnedGpuRuntimeProgram = std::unique_ptr<GpuRuntimeProgram>;
 
   struct ConstantInfo {
     std::string symbol_name;
@@ -88,10 +88,7 @@ class GpuExecutable : public Executable {
     std::string asm_text;
     std::vector<uint8_t> binary;
     se::GpuComputeCapability gpu_version;
-    // The GpuExecutable will either execute Thunks, XLA runtime executable
-    // (native function) or experimental XLA runtime executable (IREE VM
-    // function) depending on which is supplied.
-    std::variant<OwnedThunkSequence, OwnedGpuRuntimeProgram> executable;
+    OwnedThunkSequence executable;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
@@ -105,35 +102,11 @@ class GpuExecutable : public Executable {
 
   // Analyze the entry function to construct buffer allocation and other output
   // information.
-  //
-  // TODO(ezhulenev): Once Xla runtime enabled by default, hide this method as
-  // an implementation detail of GpuExecutable.
   static absl::Status SetUpMlirAllocation(
       mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
       Shape* output_shape);
-
-  // Returns an Executable that is loaded from an object file (XLA program
-  // compiled to a native function using the XLA Runtime stack).
-  static absl::StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
-      std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
-      absl::string_view mlir_module, DebugOptions debug_options,
-      absl::string_view asm_text, absl::string_view binary,
-      std::vector<ConstantInfo> constants,
-      se::GpuComputeCapability gpu_version);
-
-  // Constructor to use when loading a GpuExecutable from an object file (native
-  // function compiled for XLA Runtime). Omits setting class members that aren't
-  // used in XLA Runtime execution mode.
-  GpuExecutable(std::shared_ptr<HloModule> hlo_module, std::string asm_text,
-                std::vector<uint8_t> binary,
-                std::vector<ConstantInfo> constants,
-                se::GpuComputeCapability gpu_version,
-                absl::string_view module_name, Shape xla_output_shape,
-                std::vector<BufferAllocation> allocations,
-                absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-                std::unique_ptr<GpuRuntimeExecutable> runtime_executable);
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
@@ -198,14 +171,7 @@ class GpuExecutable : public Executable {
                                     : buffer_assignment_->Allocations();
   }
 
-  bool IsXlaRuntimeEnabled() const {
-    return gpu_runtime_executable_ != nullptr;
-  }
-
   const std::vector<ConstantInfo>& constants() const { return constants_; }
-
-  absl::StatusOr<std::string_view> GetObjFile() const;
-  absl::StatusOr<std::string_view> GetMlirModule() const;
 
   const BufferAssignment* buffer_assignment() const {
     return buffer_assignment_.get();
@@ -273,11 +239,8 @@ class GpuExecutable : public Executable {
   // compute_capability_.
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
-#ifdef TENSORFLOW_USE_ROCM
   std::vector<uint8_t> binary_;
-#else
-  const std::vector<uint8_t> binary_;
-#endif
+
   // The GPU version for compute compatibility check.
   se::GpuComputeCapability gpu_version_;
 
@@ -292,11 +255,6 @@ class GpuExecutable : public Executable {
   // We use rendezvous to guarantee that all participating threads complete
   // thunk initialization before we start executing any of them.
   RendezvousSingleFlag thunks_initialized_flag_;
-
-  // Gpu runtime executable that encapsulates all the state for running Gpu
-  // runtime custom calls implementing gpu abstraction layer (available only if
-  // Xla runtime is enabled).
-  std::unique_ptr<GpuRuntimeExecutable> gpu_runtime_executable_;
 
   std::string module_name_;
 

@@ -1146,6 +1146,7 @@ def OptimizeStridedSlice : Pat<
     (Arith_ConstantOp $begin),
     (Arith_ConstantOp (GetOffSet $begin, $end))),
   [(IsAllOnesConstant $stride),
+   (HasNonNegativeValues $begin),
    (HasNonNegativeOffset $begin, $end)]>;
 
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0.getType())">;

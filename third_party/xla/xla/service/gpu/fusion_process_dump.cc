@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -81,6 +82,22 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
   return fusion_instruction;
 }
 
+absl::string_view GetProducerName(const FusionStep& step) {
+  if (step.has_fusion()) {
+    return step.fusion().producer_name();
+  }
+
+  if (step.has_update_priority()) {
+    return step.update_priority().producer_name();
+  }
+
+  if (step.has_producer_ineligible()) {
+    return step.producer_ineligible().producer_name();
+  }
+
+  LOG(FATAL) << "Producer name not found in the current step.";
+}
+
 }  // namespace
 
 absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromFile(
@@ -136,29 +153,36 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromProto(
 }
 
 HloComputation* FusionProcessDump::GetCurrentComputation() {
-  auto step = CurrentStep();
-  if (step.has_fusion()) {
-    return instruction_name_to_computation_map_.at(
-        step.fusion().producer_name());
-  }
-
-  if (step.has_update_priority()) {
-    return instruction_name_to_computation_map_.at(
-        step.update_priority().producer_name());
-  }
-
-  if (step.has_producer_ineligible()) {
-    return instruction_name_to_computation_map_.at(
-        step.producer_ineligible().producer_name());
-  }
-
-  return nullptr;
+  return instruction_name_to_computation_map_.at(
+      GetProducerName(CurrentStep()));
 }
 
 HloInstruction* FusionProcessDump::GetInstructionWithName(
     absl::string_view name) {
   return instruction_name_to_computation_map_[name]->GetInstructionWithName(
       name);
+}
+
+HloInstruction* FusionProcessDump::GetProducer() {
+  return GetInstructionWithName(GetProducerName(CurrentStep()));
+}
+
+absl::InlinedVector<HloInstruction*, 2> FusionProcessDump::GetConsumers() {
+  auto& step = CurrentStep();
+
+  if (step.has_fusion()) {
+    return {GetInstructionWithName(step.fusion().consumer_name())};
+  }
+
+  if (step.has_update_priority()) {
+    absl::InlinedVector<HloInstruction*, 2> consumers;
+    for (const auto& consumer_name : step.update_priority().consumer_names()) {
+      consumers.push_back(GetInstructionWithName(consumer_name));
+    }
+    return consumers;
+  }
+
+  return {};
 }
 
 const FusionStep& FusionProcessDump::CurrentStep() {
@@ -186,6 +210,7 @@ void FusionProcessDump::Advance() {
         Fuse(producer, consumer, computation, fusion_step.fusion_name());
 
     instruction_name_to_computation_map_[fusion->name()] = computation;
+    last_fusion_ = fusion;
   }
   ++current_step_idx_;
 }

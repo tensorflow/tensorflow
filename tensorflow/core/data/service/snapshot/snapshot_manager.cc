@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -97,7 +98,7 @@ std::string PrefetchedSplitDir(const std::string& snapshot_path,
 
 absl::StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
     absl::string_view snapshot_path, absl::string_view worker_address,
-    int64_t stream_index) {
+    int64_t stream_index) TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
   if (assignments_[worker_address].size() >=
       worker_max_concurrent_snapshots()) {
@@ -110,15 +111,60 @@ absl::StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
                                             " already had an assignment for ",
                                             assignment.DebugString()));
   }
+  ++snapshot_assignment_counts_[snapshot_path];
   return true;
 }
 
 void SnapshotAssignmentManager::RemoveAssignment(
     absl::string_view snapshot_path, absl::string_view worker_address,
-    int64_t stream_index) {
+    int64_t stream_index) TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
-  assignments_[worker_address].erase(
+  auto num_erased = assignments_[worker_address].erase(
       {std::string(snapshot_path), stream_index});
+  if ((snapshot_assignment_counts_[snapshot_path] -= num_erased) <= 0) {
+    snapshot_assignment_counts_.erase(snapshot_path);
+  }
+}
+
+void SnapshotAssignmentManager::AddSnapshot(absl::string_view snapshot_path)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (!snapshot_assignment_counts_.contains(snapshot_path)) {
+    snapshot_assignment_counts_[snapshot_path] = 0;
+  }
+}
+
+std::vector<std::string> SnapshotAssignmentManager::LoadBalanceSnapshots(
+    absl::string_view worker_address) TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<std::string> result;
+  result.reserve(snapshot_assignment_counts_.size());
+
+  tsl::mutex_lock l(mu_);
+  const auto it = assignments_.find(worker_address);
+  if (it != assignments_.end()) {
+    for (const Assignment& assignment : it->second) {
+      result.push_back(assignment.snapshot_path);
+    }
+  }
+  if (result.size() >= worker_max_concurrent_snapshots()) {
+    return result;
+  }
+
+  absl::btree_multimap<size_t, std::string> snapshots_by_count;
+  for (const auto& [snapshot, count] : snapshot_assignment_counts_) {
+    snapshots_by_count.emplace(count, snapshot);
+  }
+
+  for (const auto& [_, snapshot] : snapshots_by_count) {
+    if (absl::c_find(result, snapshot) == result.end()) {
+      // Assigns the next least-assigned snapshot. Assigns one snapshot at a
+      // time in case workers reach the assignment limit before the user has
+      // submitted all requests.
+      result.push_back(snapshot);
+      return result;
+    }
+  }
+  return result;
 }
 
 absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(

@@ -46,6 +46,10 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
+#ifdef GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 namespace xla::gpu {
 
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
@@ -555,7 +559,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, GemmCmd) {
-#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12030
+#if defined(GOOGLE_CUDA) && CUDA_VERSION < 12030
   GTEST_SKIP() << "Command buffer tracing is not supported";
 #endif
   se::StreamExecutor* executor = GpuExecutor();

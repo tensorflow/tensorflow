@@ -60,6 +60,16 @@ class SnapshotAssignmentManager {
   void RemoveAssignment(absl::string_view snapshot_path,
                         absl::string_view worker_address, int64_t stream_index);
 
+  // Adds a new snapshot.
+  void AddSnapshot(absl::string_view snapshot_path);
+
+  // Load balances snapshots by the number of assigned streams. Given a worker,
+  // returns snapshots in the following order:
+  // - Snapshots already assigned to this worker.
+  // - Snapshots with the fewest assignments.
+  std::vector<std::string> LoadBalanceSnapshots(
+      absl::string_view worker_address);
+
   // Returns the maximum concurrent snapshots processed by each worker.
   int64_t worker_max_concurrent_snapshots() const {
     return worker_max_concurrent_snapshots_;
@@ -90,6 +100,9 @@ class SnapshotAssignmentManager {
   // A mapping of worker address to ongoing assignments.
   absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>> assignments_
       TF_GUARDED_BY(mu_);
+
+  // A mapping from snapshot to the number of assigned workers.
+  absl::flat_hash_map<std::string, int64_t> snapshot_assignment_counts_;
 
   // The maximum number of snapshots that a worker can concurrently process at a
   // given point in time. This is a tradeoff between worker resource usage and

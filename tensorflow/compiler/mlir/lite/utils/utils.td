@@ -26,8 +26,12 @@ def GetShape: NativeCodeCall<"GetShape($0)">;
 // Constraint that values in list attribute are all ones.
 def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
 
-// Constraint that checks if all values in list attribute are non-negative.
+// Constraint that checks if all values in offset between two
+// attributes are non-negative.
 def HasNonNegativeOffset : Constraint<CPred<"TFL::HasNonNegativeOffset($0, $1)">>;
+
+// Constraint that checks if all values in list attribute are non-negative.
+def HasNonNegativeValues : Constraint<CPred<"TFL::HasNonNegativeValues($0)">>;
 
 // Utility function to get the offset between two dense attribute values.
 def GetOffSet : NativeCodeCall<"TFL::GetOffSet($0, $1)">;

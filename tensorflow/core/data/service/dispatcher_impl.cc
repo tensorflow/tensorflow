@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -457,12 +458,21 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     TF_RETURN_IF_ERROR(
         FindNewTasks(worker_address, current_tasks, assigned_tasks, response));
   }
+
+  std::vector<std::string> snapshot_paths =
+      snapshot_assignment_manager_.LoadBalanceSnapshots(
+          request->worker_address());
   std::vector<SnapshotManager*> snapshots;
+  snapshots.reserve(snapshot_paths.size());
   {
     tf_shared_lock l(mu_);
-    snapshots.reserve(snapshots_.size());
-    for (const auto& [path, snapshot_manager] : snapshots_) {
-      snapshots.push_back(snapshot_manager.get());
+    for (const std::string& snapshot_path : snapshot_paths) {
+      const auto it = snapshots_.find(snapshot_path);
+      if (it == snapshots_.end()) {
+        return absl::InternalError(absl::StrCat(
+            "Dataset snapshot at ", snapshot_path, " does not exist."));
+      }
+      snapshots.push_back(it->second.get());
     }
   }
   for (SnapshotManager* snapshot_manager : snapshots) {
@@ -1188,6 +1198,7 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
       std::unique_ptr<SnapshotManager> snapshot_manager,
       SnapshotManager::Start(*request, snapshot_assignment_manager_, env_));
   snapshots_.insert({request->path(), std::move(snapshot_manager)});
+  snapshot_assignment_manager_.AddSnapshot(request->path());
 
   Update update;
   SnapshotUpdate* snapshot = update.mutable_snapshot();
@@ -1253,6 +1264,7 @@ absl::Status DataServiceDispatcherImpl::RestoreSnapshots()
         return;
       }
       snapshots_.insert({path, std::move(snapshot_manager.value())});
+      snapshot_assignment_manager_.AddSnapshot(path);
     });
   }
   thread_pool.reset();

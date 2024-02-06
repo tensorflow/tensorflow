@@ -421,11 +421,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* raw_variable_gradient,
       ScratchAllocator* workspace_allocator = nullptr) override;
 
-  bool DoDepthConcatenate(
-      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      DeviceMemory<float>* output_data) override;
-
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.
   bool DeriveOutputBatchDescriptor(

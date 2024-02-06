@@ -208,10 +208,7 @@ FusionDecision ProducerCandidateIsFusible(
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
       &producer, cost_analysis, GpuPerformanceModelOptions::Default(),
-
-      // `EstimateRunTimes`'s interface violates const correctness, so we
-      // need the const cast here.
-      {const_cast<HloInstruction*>(&consumer)},
+      /*fused_consumers=*/{&consumer},
       /*multi_output=*/true);
   if (t.time_fused > t.time_unfused) {
     return "will execute slower if fused";

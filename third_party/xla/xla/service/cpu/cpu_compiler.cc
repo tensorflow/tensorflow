@@ -662,6 +662,12 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
+  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
+  // run before the ComparisonExpander which rewrites such comparisons.
+  pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTopK;
+  });
+
   pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
@@ -808,9 +814,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pipeline.AddPass<ConditionalSimplifier>();
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
-  pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kTopK;
-  });
 
   // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
   // support libcalls. Disable this for now.
@@ -1349,8 +1352,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       post_optimization_ir_hook,
       CreateOrcJITPostCompilationHook(module.get(), &obj_files));
   if (!jit) {
-    return Internal("Creating JIT failed: %s",
-                         llvm::toString(jit.takeError()));
+    return Internal("Creating JIT failed: %s", llvm::toString(jit.takeError()));
   }
   llvm_module->setDataLayout((*jit)->data_layout());
   llvm_module->setTargetTriple((*jit)->target_triple().getTriple());
@@ -1494,7 +1496,7 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
       runtime::JitExecutable::Instantiate(serialized_mlir, entry_point, opts);
   if (!jit_executable.ok()) {
     return Internal("Failed to compile XLA Runtime program: %s",
-                         jit_executable.status().message());
+                    jit_executable.status().message());
   }
 
   return std::make_unique<XlaRuntimeCpuExecutable>(
@@ -1954,8 +1956,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       /*pre_optimization_hook=*/nullptr, /*post_optimization_hook=*/nullptr,
       /*post_codegen_hook=*/nullptr);
   if (!jit) {
-    return Internal("Creating JIT failed: %s",
-                         llvm::toString(jit.takeError()));
+    return Internal("Creating JIT failed: %s", llvm::toString(jit.takeError()));
   }
 
   // Create a named buffer from compiled object file.

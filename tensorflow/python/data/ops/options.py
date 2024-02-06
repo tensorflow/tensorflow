@@ -344,6 +344,16 @@ class OptimizationOptions(options_lib.OptionsBase):
       "when the last transformation is a synchronous transformation. If None, "
       "defaults to True.")
 
+  seq_interleave_prefetch = options_lib.create_option(
+      name="seq_interleave_prefetch",
+      ty=bool,
+      docstring=(
+          "Whether to replace parallel interleave using a sequential interleave"
+          " that prefetches elements from its input iterators. If None,"
+          " defaults to False."
+      ),
+  )
+
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
       ty=bool,
@@ -399,6 +409,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.filter_parallelization = self.filter_parallelization
     if self.inject_prefetch is not None:
       pb.inject_prefetch = self.inject_prefetch
+    if self.seq_interleave_prefetch is not None:
+      pb.seq_interleave_prefetch = self.seq_interleave_prefetch
     if self.map_and_batch_fusion is not None:
       pb.map_and_batch_fusion = self.map_and_batch_fusion
     if self.map_and_filter_fusion is not None:
@@ -424,6 +436,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.filter_parallelization = pb.filter_parallelization
     if pb.WhichOneof("optional_inject_prefetch") is not None:
       self.inject_prefetch = pb.inject_prefetch
+    if pb.WhichOneof("optional_seq_interleave_prefetch") is not None:
+      self.seq_interleave_prefetch = pb.seq_interleave_prefetch
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
       self.map_and_batch_fusion = pb.map_and_batch_fusion
     if pb.WhichOneof("optional_map_and_filter_fusion") is not None:

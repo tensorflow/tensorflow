@@ -228,36 +228,6 @@ static void ForwardCollectiveAttrs(mlir::ModuleOp module,
   func->setAttr("num_partitions", b.getI64IntegerAttr(config.num_partitions()));
 }
 
-absl::StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
-    mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes,
-    std::unique_ptr<ThunkSequence> thunk_sequence, const HloModule* hlo_module,
-    se::GpuComputeCapability compute_capability) {
-  const auto& module_config = hlo_module->config();
-  // Forward collective (NCCL) attributes for use by the lowering pipeline.
-  ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
-
-  // Lower LMHLO operations to the XLA:GPU runtime custom calls.
-  TF_RETURN_IF_ERROR(LowerToXlaGpuRuntime(
-      mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get(), hlo_module, compute_capability));
-
-  // TODO(b/232033540): Pass MLIR module directly to Gpu runtime executable
-  // without forcing serialization.
-  std::string module_str = llvm_ir::DumpToString(mlir_module);
-
-  if (hlo_module != nullptr) {
-    DumpToFileInDirOrStdout(*hlo_module, "gpu_rt_host", "mlir", module_str);
-  }
-
-  // Collect allocation indices for handling graph capture functions.
-  auto allocation_indices = GetAllocationIndices(mlir_module);
-
-  return std::make_unique<GpuRuntimeProgram>(
-      entry_function_name.str(), std::move(module_str), buffer_sizes.vec(),
-      std::move(allocation_indices), module_config.debug_options());
-}
-
 // Analyze the function signature to reconstruct a vector of BufferAllocation
 // objects, as well as other output information.
 //
@@ -442,27 +412,11 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  // TODO(ezhulenev): Remove the FP8 check once https://reviews.llvm.org/D140088
-  // is submitted. Currently we can't emit LLVM IR with fp8 types.
-  if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) &&
-      !HasFp8(*hlo_module)) {
-    // Sizes of all buffers required for running XLA module.
-    std::vector<int64_t> buffer_sizes;
-    llvm::transform(
-        results.allocations, std::back_inserter(buffer_sizes),
-        [](const BufferAllocation& allocation) { return allocation.size(); });
+  auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
+  ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
+               thunk_sequence.get());
+  results.executable = std::move(thunk_sequence);
 
-    TF_ASSIGN_OR_RETURN(
-        results.executable,
-        LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
-                     ir_emitter->ConsumeThunkSequence(), hlo_module,
-                     gpu_device_info.gpu_compute_capability()));
-  } else {
-    auto thunk_sequence = ir_emitter->ConsumeThunkSequence();
-    ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
-                 thunk_sequence.get());
-    results.executable = std::move(thunk_sequence);
-  }
   return results;
 }
 

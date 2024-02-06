@@ -99,6 +99,7 @@ constexpr char kMakeSloppyOpt[] = "make_sloppy";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kSeqInterleavePrefetchOpt[] = "seq_interleave_prefetch";
 constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
 constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
@@ -222,6 +223,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
+    }
+  }
+  if (optimization_options.optional_seq_interleave_prefetch_case() ==
+      OptimizationOptions::kSeqInterleavePrefetch) {
+    if (optimization_options.seq_interleave_prefetch()) {
+      optimization_enabled->insert(kSeqInterleavePrefetchOpt);
+    } else {
+      optimization_disabled->insert(kSeqInterleavePrefetchOpt);
     }
   }
 }
@@ -871,7 +880,7 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::array<tstring, 10> autotune_only_optimizations = {
+  std::array<tstring, 11> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
@@ -879,6 +888,7 @@ absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
       kMapFusionOpt,
+      kSeqInterleavePrefetchOpt,
       kInjectPrefetchOpt,
       kInjectIoPrefetchEligibleOpt,
       kInjectIoPrefetchOpt};

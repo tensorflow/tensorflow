@@ -672,13 +672,15 @@ GetOptimizationsTestCase GetOptimizationTestCase4() {
   options.mutable_optimization_options()->set_parallel_batch(true);
   options.mutable_optimization_options()->set_shuffle_and_repeat_fusion(true);
   options.mutable_optimization_options()->set_inject_prefetch(true);
+  options.mutable_optimization_options()->set_seq_interleave_prefetch(true);
   options.set_slack(true);
   return {options,
           /*expected_enabled=*/
           {"filter_fusion", "filter_parallelization", "make_sloppy",
            "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
            "map_parallelization", "noop_elimination", "parallel_batch",
-           "shuffle_and_repeat_fusion", "slack", "inject_prefetch"},
+           "shuffle_and_repeat_fusion", "slack", "inject_prefetch",
+           "seq_interleave_prefetch"},
           /*expected_disabled=*/{},
           /*expected_default=*/{}};
 }

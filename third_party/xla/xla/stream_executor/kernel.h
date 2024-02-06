@@ -88,6 +88,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/logging.h"
 
@@ -230,12 +231,22 @@ class Kernel {
       std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
           const Kernel &kernel, const KernelArgs &args)>;
 
+  // TODO(b/323534971): Kernel constructor should be moved to StreamExecutor or
+  // a dedicated KernelFactory accessible via StreamExecutor.
+
+  // Creates kernel on a given executor from a given kernel specification.
+  static absl::StatusOr<std::unique_ptr<Kernel>> Create(
+      StreamExecutor *executor, const MultiKernelLoaderSpec &spec);
+
+  // TODO(b/323534971): Delete move constructor.
   Kernel(Kernel &&from);
 
   // Constructs an "empty" (not-yet-loaded) kernel instance.
   //
   // parent is the StreamExecutor that will be responsible for loading the
   // implementation of this kernel. It must not be null.
+  //
+  // TODO(b/323534971): Delete this constructor and always use factory method.
   explicit Kernel(StreamExecutor *parent);
 
   // Releases resources associated with the kernel instance (i.e.

@@ -158,8 +158,10 @@ lit_test_suite(
         ],
     ),
     args = if_cuda_is_configured([
+        "--param=PTX=PTX",
         "--param=GPU=a100_80",
     ]) + if_rocm_is_configured([
+        "--param=PTX=GCN",
         "--param=GPU=mi200",
     ]),
     cfg = "//xla:lit.cfg.py",

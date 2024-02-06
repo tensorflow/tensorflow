@@ -1713,7 +1713,13 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
     } else if (input.type == TensorType_INT8) {
       // This is a quantized version. The scale of 'bias' depends on the scales
       // of input and filter.
-      auto bias_scale = GetScale(input_) * GetScale(weights_);
+      float bias_scale = GetScale(input_);
+      if (weights.per_channel_quantization &&
+          !weights.per_channel_quantization_scales.empty()) {
+        bias_scale *= weights.per_channel_quantization_scales[0];
+      } else {
+        bias_scale *= GetScale(weights_);
+      }
       TensorData bias = {TensorType_INT32, {units_}, 0, 0, bias_scale};
       bias_ = AddInput(bias);
     } else {
@@ -2331,6 +2337,44 @@ TEST_P(SparseQuantizedFullyConnectedOpTest, Simple1x16TestScaledInputOutput) {
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(-52, -50, -52));
+}
+
+TEST_P(SparseQuantizedFullyConnectedOpTest,
+       Simple1x16PerChannelQuantizationTest) {
+  std::vector<float> weight_data = {
+      1,  2,  3,  4,  -1, -2, -3, -4, 1,  2,  3,  4, -4, -3, -2, -1,  // u = 0
+      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0,  0,  0,   // u = 1
+      -1, -2, -3, -4, 4,  3,  2,  1,  -1, -2, -3, 4, 1,  2,  3,  4,   // u = 2
+  };
+  TensorData weight = {TensorType_INT8,
+                       {3, 16},
+                       0.0,
+                       0.0,
+                       0.0,
+                       0,
+                       true,
+                       {4.0 / 127.0, 1.0 / 127.0, 4.0 / 127.0},
+                       {0, 0, 0}};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {16};
+  SparseQuantizedFullyConnectedOpModel m(
+      GetRegistration(),
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_INT8, {2, 16}, 0, 0, 1}, weight, weight_data,
+      /*output=*/{TensorType_INT8, {}, 0, 0, 1});
+
+  m.SetBias({1, 2, 3});
+  m.SetInput({
+      1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,  // b = 0
+      4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(11, 1, 25, 0, 1, 21));
 }
 
 INSTANTIATE_TEST_SUITE_P(

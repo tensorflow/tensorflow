@@ -1,1 +1,35 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/uninitialized_algorithms.h b/libcxx/include/__memory/uninitialized_algorithms.h
+--- a/libcxx/include/__memory/uninitialized_algorithms.h
++++ b/libcxx/include/__memory/uninitialized_algorithms.h
+@@ -643,7 +643,7 @@
+     __guard.__complete();
+     std::__allocator_destroy(__alloc, __first, __last);
+   } else {
+-    __builtin_memcpy(__result, __first, sizeof(_Tp) * (__last - __first));
++    __builtin_memcpy(const_cast<__remove_const_t<_Tp>*>(__result), __first, sizeof(_Tp) * (__last - __first));
+   }
+ }
+ 
+diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/containers/sequences/vector/const_T.compile.pass.cpp b/libcxx/test/libcxx/containers/sequences/vector/const_T.compile.pass.cpp
+--- a/libcxx/test/libcxx/containers/sequences/vector/const_T.compile.pass.cpp
++++ b/libcxx/test/libcxx/containers/sequences/vector/const_T.compile.pass.cpp
+@@ -0,0 +1,18 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++// Make sure that `vector<const T>` works
++
++#include <vector>
++
++void test() {
++  std::vector<const int> v;
++  v.emplace_back(1);
++  v.push_back(1);
++  v.resize(3);
++}

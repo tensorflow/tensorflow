@@ -87,9 +87,7 @@ class GpuHloScheduleTest : public HloTestBase {
 
   static bool HasValidFingerprint(HloModule* module) {
     // Verify that the fingerprint of HLO prior to LHS is present.
-    const HloInstruction* root =
-        module->entry_computation()->root_instruction();
-    const FrontendAttributes& attrs = root->frontend_attributes();
+    const FrontendAttributes& attrs = module->frontend_attributes();
     auto it = attrs.map().find(kFingerprintBeforeLHS);
 
     // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_executor_util.h"
 
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/util/env_var.h"
 #include "tsl/util/proto/proto_utils.h"
 
@@ -334,12 +336,13 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = std::make_unique<se::Kernel>(stream_exec);
-  TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                      se::Kernel::Create(stream_exec, loader_spec));
+
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
-  kernel_base->set_metadata(m);
-  return std::move(kernel_base);
+  kernel->set_metadata(m);
+  return kernel;
 }
 
 absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,

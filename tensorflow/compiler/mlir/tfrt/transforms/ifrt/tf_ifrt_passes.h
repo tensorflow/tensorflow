@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -33,6 +34,10 @@ CreateRewriteClusterToIfrtCallPass();
 // Creates a pass that lowers ReadVariableOp to IfrtLoadVariableOp.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSinkVariableAsNamedArrayPass();
+
+// Creates a pass that splits `tf.RestoreV2` ops.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfRestoreSplittingPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep

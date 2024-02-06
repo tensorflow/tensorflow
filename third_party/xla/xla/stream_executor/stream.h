@@ -335,11 +335,6 @@ class Stream {
     return absl::UnimplementedError("DNN library is not found.");
   }
 
-  Stream &ThenDepthConcatenate(
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      DeviceMemory<float> *output_data);
-
   /////////////////
   // BLAS support
 
@@ -506,56 +501,6 @@ class Stream {
 
   template <typename T>
   using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;
-
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a, int lda,
-      DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
-      DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
-      const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator, blas::CallContext context);
-
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, DeviceMemorySlice<Eigen::bfloat16> a, int lda,
-      DeviceMemorySlice<Eigen::bfloat16> b, int ldb, float beta,
-      DeviceMemorySlice<Eigen::bfloat16> c, int ldc, int batch_count,
-      const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator, blas::CallContext context);
-
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, float alpha, DeviceMemorySlice<float> a, int lda,
-      DeviceMemorySlice<float> b, int ldb, float beta,
-      DeviceMemorySlice<float> c, int ldc, int batch_count,
-      const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator, blas::CallContext context);
-
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, double alpha, DeviceMemorySlice<double> a, int lda,
-      DeviceMemorySlice<double> b, int ldb, double beta,
-      DeviceMemorySlice<double> c, int ldc, int batch_count,
-      const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator, blas::CallContext context);
-
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<float> alpha,
-      DeviceMemorySlice<std::complex<float>> a, int lda,
-      DeviceMemorySlice<std::complex<float>> b, int ldb,
-      std::complex<float> beta, DeviceMemorySlice<std::complex<float>> c,
-      int ldc, int batch_count, const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator, blas::CallContext context);
-
-  Stream &ThenBlasGemmBatchedWithScratch(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      DeviceMemorySlice<std::complex<double>> a, int lda,
-      DeviceMemorySlice<std::complex<double>> b, int ldb,
-      std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
-      int ldc, int batch_count, const NumericOptions &numeric_options,
-      ScratchAllocator *scratch_allocator, blas::CallContext context);
 
   template <typename InputType, typename OutputType, typename ConstantType>
   absl::Status ThenBlasGemmStridedBatched(
@@ -742,9 +687,6 @@ class Stream {
   std::variant<StreamPriority, int> priority() const;
 
  private:
-  template <typename... Args>
-  friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
-
   // Checks whether types match before a call to extended BLAS version.
   template <typename ABType, typename CType, typename ScaleType>
   absl::Status CheckTypesForExtendedBlas(

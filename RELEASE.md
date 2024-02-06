@@ -14,6 +14,9 @@
     * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
       the profiler now requires setting `profiler_outdir` in `trace_on`.
 
+* `tf.estimator`
+    * The tf.estimator API is removed.
+
 
 ### Known Caveats
 
@@ -21,10 +24,19 @@
 * <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
+*  Full aarch64 Linux and Arm64 macOS wheels are now published to the 
+  `tensorflow` pypi repository and no longer redirect to a separate package.
+
 ### Major Features and Improvements
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+*  Support for Python 3.12 has been added.
+*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now 
+   available for easier TPU based installs.
+*  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
+
 
 ### Bug Fixes and Other Changes
 

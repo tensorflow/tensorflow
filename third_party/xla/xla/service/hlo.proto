@@ -111,7 +111,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 86
+// Next ID: 87
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -373,6 +373,9 @@ message HloInstructionProto {
   reserved 83;
   // Used to be wait_on_operation_queues.
   reserved 84;
+
+  // Sparsity descriptor for dot operation.
+  xla.SparsityDescriptor dot_sparsity = 86;
 }
 
 // Serialization of HloComputation.

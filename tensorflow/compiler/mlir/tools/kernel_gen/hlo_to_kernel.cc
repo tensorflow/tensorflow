@@ -188,8 +188,9 @@ int main(int argc, char** argv) {
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
   llvm::cl::opt<int64_t> max_supported_rank(
       "max-supported-rank",
-      llvm::cl::desc("maximum supported rank to be guaranteed by rank "
-                     "specialization lowering"),
+      llvm::cl::desc(
+          "maximum supported rank to be guaranteed by rank specialization "
+          "lowering, skip rank specialization if negative"),
       llvm::cl::init(5));
   llvm::cl::list<int64_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
