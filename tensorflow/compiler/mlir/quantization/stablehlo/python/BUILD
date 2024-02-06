@@ -67,6 +67,7 @@ pytype_strict_library(
 tf_py_strict_test(
     name = "quantize_model_test",
     srcs = ["integration_test/quantize_model_test.py"],
+    shard_count = 50,  # Parallelize the test to avoid timeouts.
     deps = [
         ":quantization",
         ":quantize_model_test_base",
