@@ -398,6 +398,13 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
         std::back_inserter(configs));
   }
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+    absl::c_copy(
+        std::vector<Config>{
+            Config(16, 32, 32, 8, 1, 2),
+            Config(16, 64, 128, 8, 1, 4),
+            Config(16, 64, 128, 16, 3, 4),
+        },
+        std::back_inserter(configs));
     configs.erase(
         std::remove_if(configs.begin(), configs.end(),
                        [](const Config& config) {
