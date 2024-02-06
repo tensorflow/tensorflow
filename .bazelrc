@@ -710,6 +710,52 @@ build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
 test:release_cpu_windows --config=release_base
 
+# Lessen the strain of long path names. Windows has a maximum filename length
+# limit that bazel often hits. Setting output_user_root and some of these other
+# paths to have very short prexises seems to help.
+# See also Python's tempfile.gettempdir for why it's TMPDIR
+build:release_windows_cpu --repo_env TMPDIR=C:/tf/tmp
+build:release_windows_cpu --action_env TMPDIR=C:/tf/tmp
+# output_user_root needs to be worked in to a TFCI variable or something.
+# Startup options like these must appear immediately after the "bazel"
+# invocation (before "test" or "build") and are unaffected by --config
+# settings.
+# startup --output_user_root=C:/tf/bzl
+
+# Tweak Bazel settings to enable Windows symlinks for runfiles.
+# By default, if I recall correctly, when running a Python executable,
+# Bazel packs the script and all its dependencies (the runfiles) into a huge
+# zip file and then unpacks it into a temporary directory. This emulates
+# the Linux behavior for running an executable, in which a script and all
+# its dependencies are soft-copied as a huge tree of symlink files to form
+# a compatible execution structure.
+#
+# Since Windows doesn't have symlinks by default, bazel had to add the zip
+# thing as a workaround. TF also had to add some kind of
+# simple_console_for_windows target to group everything up properly. However,
+# modern Windows systems (and our CI Windows systems) do have symlinks, and
+# bazel can be told to use them and switch the runfiles assembler to use
+# those instead, but it also needs some of these other options to fully convert
+# from the old behavior. I remember finding these by hunting through docs and
+# GitHub issues, so look there for more information.
+startup --windows_enable_symlinks  # startup is ok since it only affect Windows
+build:release_windows_cpu --enable_runfiles
+build:release_windows_cpu --nobuild_python_zip
+build:release_windows_cpu --legacy_external_runfiles=false
+
+# Tweak msys2 behavior for correct binary execution
+# I don't fully remember this. I think there was an issue with the native symlinks
+# or some other settings I was using in the container such that Bazel was trying to
+# execute a hybrid Windows/Msys2 path, like C:\windows\path/then/posix/path or something
+# along those lines. I managed to "fix" it by forcing msys2 to disable all conversions
+# via MSYS2_ARG_CONV_EXCL (a common thing on StackOverflow) and then by telling all test
+# binaries to run_under 'exec', which toggled some other path conversion behavior somehow.
+# It may have worked out that way because bazel was running under Powershell, but the
+# binaries themselves needed to run under msys2's shell, and exec fixed that, or something.
+build:release_windows_cpu --repo_env MSYS2_ARG_CONV_EXCL="*"
+build:release_windows_cpu --action_env MSYS2_ARG_CONV_EXCL="*"
+test:release_windows_cpu --run_under=exec
+
 # Exclude TFRT integration for anything but Linux.
 build:android --config=no_tfrt
 build:macos   --config=no_tfrt
@@ -768,6 +814,11 @@ test:macos_x86_wheel_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_
 test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
 test:macos_x86_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_x86_wheel_test --config=macos_x86_wheel_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
+# CPU WHEEL
+test:windows_cpu_wheel_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_windows,-windows_exclude
+test:windows_cpu_wheel_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_windows,-windows_excluded
+test:windows_cpu_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
+test:windows_cpu_wheel_test --config=windows_cpu_wheel_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
@@ -804,6 +855,11 @@ test:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow/
 # CROSS-COMPILE MACOS X86 PYCPP
 test:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
 test:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
+# WINDOWS X86 PYCPP
+test:windows_cpu_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_windows,-windows_excluded
+test:windows_cpu_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_windows,-windows_excluded
+test:windows_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+test:windows_cpu_pycpp_test --config=windows_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # END TF TEST SUITE OPTIONS
 
 # START CROSS-COMPILE CONFIGS

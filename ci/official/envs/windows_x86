@@ -1,0 +1,56 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+TFCI_BAZEL_COMMON_ARGS="--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_cpu_windows"
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=windows_cpu
+TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow"
+TFCI_DOCKER_ENABLE=1
+TFCI_DOCKER_IMAGE=
+TFCI_DOCKER_PULL_ENABLE=0
+TFCI_DOCKER_REBUILD_ARGS="tensorflow/ci/devinfra/docker_windows"
+TFCI_INDEX_HTML_ENABLE=1
+TFCI_LIB_SUFFIX="-cpu-windows-x86_64"
+TFCI_OUTPUT_DIR=build_output
+TFCI_WHL_AUDIT_ENABLE=0
+TFCI_WHL_BAZEL_TEST_ENABLE=1
+TFCI_WHL_SIZE_LIMIT=240M
+TFCI_WHL_SIZE_LIMIT_ENABLE=0
+# During testing, I also had (not sure if these will work directly):
+# 1. The SIG Build cache enabled as well as a local disk cache inside the container.
+# TFCI_BAZEL_COMMON_ARGS="--config sigbuild_remote_cache --disk_cache=C:/bc"
+#
+# I am not sure if the disk cache may have been causing slowdown problems with
+# tests and builds. Between the build cache and the huge number of runfile
+# symlinks, there would have been an enormous amount of small writes to disk.
+# On Windows, Docker internal disks are Hyper-V volumes. When I left off, I was
+# wondering if I should pre-allocate a large amount of hard disk space within
+# the volume (i.e. create a large file filled with actual zeroes that would
+# necessitate expanding the Hyper-V volume) to find out if there was any
+# speedup compared to letting Bazel make millions of tiny expansions to the
+# volumem one at a time. I'm not familiar with Hyper-V behavior, so if it's
+# smart about disk access then that might have been a dead end.
+#
+# 2. Push gcloud into the container for when I tried RBE
+# TFCI_DOCKER_ARGS="-v C:/users/angerson/AppData/Roaming/gcloud:C:/users/ContainerAdministrator/Appdata/Roaming/gcloud"
+#
+# 3. An explicit storage setting for Docker that expanded the available container
+# volume space to the remaining hard disk size.
+#
+# TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS --storage-opt size=$(df -B1 /c/ProgramData/Docker --output=avail | tail -n 1 | awk '{print $1}')"
+#
+# Docker on Windows has very little documentation, especially with regards to
+# its configuration.  By default, Windows secretly sets a low upper bound for
+# dynamically-growing container storage volumes -- I think 20GB or so. I had to
+# explicitly calculate and set the limit to the remaining amount of space on
+# the machine.

@@ -20,7 +20,7 @@ if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
   docker pull "$TFCI_DOCKER_IMAGE" || sleep 15
   docker pull "$TFCI_DOCKER_IMAGE" || sleep 15
   docker pull "$TFCI_DOCKER_IMAGE"
-fi 
+fi
 
 if [[ "$TFCI_DOCKER_REBUILD_ENABLE" == 1 ]]; then
   DOCKER_BUILDKIT=1 docker build --cache-from "$TFCI_DOCKER_IMAGE" -t "$TFCI_DOCKER_IMAGE" $TFCI_DOCKER_REBUILD_ARGS
@@ -42,4 +42,20 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
       "$TFCI_DOCKER_IMAGE" \
     bash
 fi
-tfrun() { docker exec tf "$@"; }
+
+tfrun() {
+  # On Windows (where MSYSTEM will be set), always run under powershell if the
+  # command is bazel-related, including bazel itself and any explicitly
+  # requested bazel-bin/etc/etc targets. Bazel on Windows is supposed to be
+  # invoked from powershell instead of MSYS environments; see
+  # https://bazel.build/configure/windows
+  # The fact that bazel-bin targets are included here somewhat contradicts
+  # my comment in .bazelrc where I set --run_under to "exec" to force bazel
+  # to use MSYS2. Maybe it's all to do with path conversion problems? I'm
+  # not fully sure, but this combination did work when I was working on it.
+  if [[ "$MSYSTEM" != "" && "$1" =~ bazel ]]; then
+    docker exec tf powershell -command "$@"
+  else
+    docker exec tf "$@";
+  fi
+}
