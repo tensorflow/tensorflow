@@ -119,9 +119,22 @@ bool CheckDominance(const AutoShardingSolverRequest& request,
                     const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
                     NodeStrategyIdx first, NodeStrategyIdx second);
 
-// For every node, examine each sharding strategy to see if it is dominated by
-// another.
-NodeStrategies FindShavedStrategies(const AutoShardingSolverRequest& request);
+class StrategyShaver {
+ public:
+  explicit StrategyShaver(const AutoShardingSolverRequest& request);
+
+  // For every node, examine each sharding strategy to see if it is dominated by
+  // another.
+  NodeStrategies FindShavedStrategies() const;
+
+ private:
+  const AutoShardingSolverRequest& request_;  // NOLINT
+  std::vector<std::vector<EdgeIdx>> src_edge_map_;
+  std::vector<std::vector<EdgeIdx>> dst_edge_map_;
+  std::vector<std::vector<AliasIdx>> src_alias_map_;
+  std::vector<std::vector<AliasIdx>> dst_alias_map_;
+  std::vector<std::vector<NodeIdx>> followers_;
+};
 
 }  // namespace spmd
 }  // namespace xla
