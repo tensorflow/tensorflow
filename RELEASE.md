@@ -14,6 +14,9 @@
     * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
       the profiler now requires setting `profiler_outdir` in `trace_on`.
 
+* `tf.estimator`
+    * The tf.estimator API is removed.
+
 
 ### Known Caveats
 
