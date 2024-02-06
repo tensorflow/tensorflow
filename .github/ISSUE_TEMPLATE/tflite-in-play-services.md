@@ -1,7 +1,9 @@
 ---
 name: TensorFlow Lite in Play Services issue
 about: Use this template for issues with TensorFlow Lite in Google Play Services
-labels: 'comp:lite-in-play-services'
+title: ''
+labels: ''
+assignees: ''
 
 ---
 
