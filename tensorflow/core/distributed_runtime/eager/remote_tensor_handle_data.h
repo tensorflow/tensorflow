@@ -47,7 +47,7 @@ class RemoteTensorHandleData {
   Status NumElements(int64_t* num_elements) const;
   Status Unprotect() { return OkStatus(); }
 
-  StatusOr<bool> IsReady() const;
+  bool IsReady() const;
   Status WaitReady(const char* caller) const;
   Status SetShape(const TensorShape& shape);
   Status SetShapeAndRemoteTask(const TensorShape& shape,

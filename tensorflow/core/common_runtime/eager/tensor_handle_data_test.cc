@@ -17,16 +17,12 @@ limitations under the License.
 
 #include <utility>
 
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(TensorHandleData, TensorAttribute) {
   Tensor t(DT_UINT16, TensorShape({2, 2}));
@@ -93,17 +89,17 @@ TEST(TensorHandleData, NumElementsAttribute) {
 TEST(TensorHandleData, UnprotectReady) {
   Tensor t(DT_UINT16, TensorShape({2, 3}));
   LocalTensorHandleData handle_data(std::move(t));
-  EXPECT_THAT(handle_data.IsReady(), IsOkAndHolds(true));
+  EXPECT_TRUE(handle_data.IsReady());
 
   TF_EXPECT_OK(handle_data.Unprotect());
 }
 
 TEST(TensorHandleData, UnprotectNotReady) {
   LocalTensorHandleData handle_data;
-  TF_ASSERT_OK_AND_ASSIGN(bool is_ready, handle_data.IsReady());
-  EXPECT_FALSE(is_ready);
+  EXPECT_FALSE(handle_data.IsReady());
 
-  EXPECT_THAT(handle_data.Unprotect(), StatusIs(tensorflow::error::INTERNAL));
+  EXPECT_THAT(handle_data.Unprotect(),
+              tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
 }
 
 TEST(TensorHandleData, DebugString) {
@@ -136,8 +132,9 @@ TEST(TensorHandleData, BlockingControlPoisonHandle) {
   handle_data.Poison(fake_failure_status);
 
   EXPECT_THAT(handle_data.IsPoisoned(),
-              StatusIs(fake_failure_status.code(),
-                       std::string(fake_failure_status.message())));
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 }
 
 TEST(TensorHandleData, BlockingControlSetTensor) {

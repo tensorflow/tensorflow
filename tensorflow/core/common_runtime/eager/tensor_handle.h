@@ -291,10 +291,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // Further, it can be in a non-ready state. It would become ready with a call
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
-  // An error status can be returned when the underlying handle is poisoned.
-  // This state is distinguished from the ready or non-ready state which is
-  // returned as the boolean.
-  StatusOr<bool> IsReady() const;
+  bool IsReady() const;
   Status WaitReady(const char* caller) const;
 
   tensorflow::Device* device_;
@@ -364,10 +361,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     Status Dim(int dim_index, int64_t* dim) const;
     Status NumElements(int64_t* num_elements) const;
     Status Unprotect();
-    StatusOr<bool> IsReady() const;
+    bool IsReady() const;
     Status WaitReady(const char* caller) const;
     void Poison(Status status);
-    std::string DebugString() const;
+    string DebugString() const;
 
     // Number of packed handles.
     int NumPackedHandles() const;

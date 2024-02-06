@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -39,8 +38,6 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/status.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -52,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -116,7 +112,7 @@ Status TensorHandle::PackedTensorHandleData::Unprotect() {
   return OkStatus();
 }
 
-StatusOr<bool> TensorHandle::PackedTensorHandleData::IsReady() const {
+bool TensorHandle::PackedTensorHandleData::IsReady() const {
   {
     tf_shared_lock l(mu_);
     if (!is_poisoned_.ok()) {
@@ -124,8 +120,7 @@ StatusOr<bool> TensorHandle::PackedTensorHandleData::IsReady() const {
     }
   }
   for (auto* handle : handles_) {
-    TF_ASSIGN_OR_RETURN(bool is_ready_local, handle->IsReady());
-    if (!is_ready_local) {
+    if (!handle->IsReady()) {
       return false;
     }
   }
@@ -151,15 +146,13 @@ void TensorHandle::PackedTensorHandleData::Poison(Status status) {
   is_poisoned_ = status;
 }
 
-std::string TensorHandle::PackedTensorHandleData::DebugString() const {
+string TensorHandle::PackedTensorHandleData::DebugString() const {
   string debug_str = "PackedTensorHandleData: ";
   for (const auto* handle : handles_) {
-    auto retval = std::visit(
-        [](auto&& data) -> StatusOr<string> { return data.DebugString(); },
-        handle->data_);
-    if (!retval.ok()) {
-      debug_str.append(absl::StrCat(retval.status().ToString(), "; "));
-    }
+    debug_str.append(
+        absl::StrCat(std::visit([](auto& data) { return data.DebugString(); },
+                                handle->data_),
+                     "; "));
   }
   return debug_str;
 }
@@ -435,7 +428,7 @@ void TensorHandle::Release() {
 
 tensorflow::DataType TensorHandle::DataType() const { return dtype; }
 
-StatusOr<bool> TensorHandle::IsReady() const {
+bool TensorHandle::IsReady() const {
   return std::visit([](auto& data) { return data.IsReady(); }, data_);
 }
 
@@ -541,8 +534,7 @@ Device* TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
 }
 
 Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (!is_ready && inference_shape_.IsFullyDefined()) {
+  if (!IsReady() && inference_shape_.IsFullyDefined()) {
     bool fill = inference_shape_.AsTensorShape(shape);
     DCHECK(fill);
     return OkStatus();
@@ -554,8 +546,7 @@ Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
 Status TensorHandle::InferenceShape(
     shape_inference::InferenceContext* const inference_context,
     shape_inference::ShapeHandle* shape_handle) {
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (is_ready) {
+  if (IsReady()) {
     std::vector<shape_inference::DimensionHandle> dims_handle;
     int num_dims;
     TF_RETURN_IF_ERROR(NumDims(&num_dims));
@@ -601,12 +592,10 @@ void TensorHandle::SetInferenceShape(
 }
 
 Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (is_ready) {
+  if (IsReady()) {
     return OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(is_ready, other->IsReady());
-  if (is_ready) {
+  if (other->IsReady()) {
     TensorShape other_shape;
     TF_RETURN_IF_ERROR(other->Shape(&other_shape));
     inference_shape_ = other_shape;
@@ -618,8 +607,7 @@ Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
 
 Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
   DCHECK(shape != nullptr);
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (!is_ready && !inference_shape_.unknown_rank()) {
+  if (!IsReady() && !inference_shape_.unknown_rank()) {
     *shape = inference_shape_;
     return OkStatus();
   } else {
@@ -638,8 +626,7 @@ Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
 
 Status TensorHandle::NumDims(int* num_dims) const {
   DCHECK(num_dims != nullptr);
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (!is_ready && !inference_shape_.unknown_rank()) {
+  if (!IsReady() && !inference_shape_.unknown_rank()) {
     *num_dims = inference_shape_.dims();
     return OkStatus();
   } else {
@@ -650,8 +637,7 @@ Status TensorHandle::NumDims(int* num_dims) const {
 
 Status TensorHandle::Dim(int dim_index, int64_t* dim) const {
   DCHECK(dim != nullptr);
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (!is_ready && !inference_shape_.unknown_rank() &&
+  if (!IsReady() && !inference_shape_.unknown_rank() &&
       inference_shape_.dim_size(dim_index) != -1) {
     *dim = inference_shape_.dim_size(dim_index);
     return OkStatus();
@@ -664,8 +650,7 @@ Status TensorHandle::Dim(int dim_index, int64_t* dim) const {
 
 Status TensorHandle::NumElements(int64_t* num_elements) const {
   DCHECK(num_elements != nullptr);
-  TF_ASSIGN_OR_RETURN(bool is_ready, IsReady());
-  if (!is_ready && inference_shape_.IsFullyDefined()) {
+  if (!IsReady() && inference_shape_.IsFullyDefined()) {
     *num_elements = inference_shape_.num_elements();
     return OkStatus();
   } else {

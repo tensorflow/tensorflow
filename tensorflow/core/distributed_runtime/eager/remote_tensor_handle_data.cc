@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -162,7 +161,7 @@ Status RemoteTensorHandleData::NumElements(int64_t* num_elements) const {
   return OkStatus();
 }
 
-StatusOr<bool> RemoteTensorHandleData::IsReady() const {
+bool RemoteTensorHandleData::IsReady() const {
   tf_shared_lock l(mu_);
   return is_ready_;
 }
