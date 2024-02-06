@@ -24,6 +24,7 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -298,6 +299,43 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
       dot->shape().dimensions(), input_dim_sizes);
   return HloInstructionIndexing::FromIndexingMaps(
       {lhs_indexing_map, rhs_indexing_map});
+}
+
+HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
+    const HloPadInstruction* pad, MLIRContext* mlir_context) {
+  const Shape& output_shape = pad->shape();
+  int64_t output_rank = output_shape.rank();
+
+  const PaddingConfig& padding_config = pad->padding_config();
+  std::vector<AffineExpr> exprs;
+  std::vector<std::pair<AffineExpr, Range>> constraints;
+  std::vector<Range> dimension_ranges;
+  exprs.reserve(output_rank);
+  constraints.reserve(output_rank);
+  for (int64_t dim = 0; dim < output_rank; ++dim) {
+    AffineExpr dim_expr = getAffineDimExpr(dim, mlir_context);
+    const auto& dim_config = padding_config.dimensions()[dim];
+    dimension_ranges.push_back(Range{
+        dim_config.edge_padding_low(),
+        output_shape.dimensions()[dim] - 1 - dim_config.edge_padding_high()});
+    if (dim_config.interior_padding() == 0) {
+      exprs.push_back(dim_expr + dim_config.edge_padding_low());
+    } else {
+      exprs.push_back(dim_expr.floorDiv(dim_config.interior_padding() + 1) +
+                      dim_config.edge_padding_low());
+      constraints.push_back({(dim_expr - dim_config.edge_padding_low()) %
+                                 (dim_config.interior_padding() + 1),
+                             Range{0, 0}});
+    }
+  }
+  IndexingMap input_indexing_map(
+      AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
+      dimension_ranges, /*symbol_ranges = */ {}, absl::MakeSpan(constraints));
+  IndexingMap padding_value_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
+      output_shape.dimensions(), /*symbol_upper_bounds=*/{});
+  return HloInstructionIndexing::FromIndexingMaps(
+      {input_indexing_map, padding_value_indexing_map});
 }
 
 HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
@@ -930,6 +968,9 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   }
   if (auto iota = DynCast<HloIotaInstruction>(instr)) {
     return HloInstructionIndexing{};
+  }
+  if (auto pad = DynCast<HloPadInstruction>(instr)) {
+    return ComputeOutputToInputPadOpIndexing(pad, ctx);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeOutputToInputReduceOpIndexing(reduce, output_id, ctx);

@@ -1248,6 +1248,31 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
                           )"))));
 }
 
+TEST_F(IndexingAnalysisTest, PadOp) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 4] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[12, 16] pad(p0, p1), padding=1_4_1x4_8_0
+    }
+  )");
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                                        (d0, d1) -> (d0 floordiv 2 + 1, d1 + 4)
+                                        domain:
+                                        d0 in [1, 7]
+                                        d1 in [4, 7]
+                                        (d0 - 1) mod 2 in [0, 0]
+                                      )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                                        (d0, d1) -> ()
+                                        domain:
+                                        d0 in [0, 11]
+                                        d1 in [0, 15]
+                                      )"))));
+}
+
 TEST_F(IndexingAnalysisTest, ReduceOp) {
   auto ir = R"(
     HloModule m
