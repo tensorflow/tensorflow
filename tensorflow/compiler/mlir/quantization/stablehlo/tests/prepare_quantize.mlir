@@ -74,17 +74,17 @@ func.func @dot_redundant_stats(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
 
 // -----
 
-// CHECK-LABEL: func @convert_same_scale_propagate
-func.func @convert_same_scale_propagate(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+// CHECK-LABEL: func @reshape_same_scale_propagate
+func.func @reshape_same_scale_propagate(%arg0: tensor<2x3xf32>) -> tensor<6xf32> {
   // CHECK: %[[dq:.*]] = "quantfork.dcast"
   // CHECK-SAME: (tensor<2x3x!quant.uniform<i8:f32, 0.0078408040252386357:-1>>)
   %0 = "quantfork.stats"(%arg0) {bitsNum = 8 : i64, layerStats = dense<[-0.999415695, 0.99998933]> : tensor<2xf32>, narrowRange = false} : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  // CHECK: %[[convert:.*]] = stablehlo.convert %[[dq]]
-  %1 = stablehlo.convert %0 : (tensor<2x3xf32>) -> (tensor<2x3xf32>)
-  // CHECK: %[[q:.*]] = "quantfork.qcast"(%[[convert]])
-  // CHECK-SAME: -> tensor<2x3x!quant.uniform<i8:f32, 0.0078408040252386357:-1>>
-  %2 = "quantfork.stats"(%1) {bitsNum = 8 : i64, layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>, narrowRange = false} : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  func.return %2 : tensor<2x3xf32>
+  // CHECK: %[[reshape:.*]] = stablehlo.reshape %[[dq]]
+  %1 = stablehlo.reshape %0 : (tensor<2x3xf32>) -> (tensor<6xf32>)
+  // CHECK: %[[q:.*]] = "quantfork.qcast"(%[[reshape]])
+  // CHECK-SAME: -> tensor<6x!quant.uniform<i8:f32, 0.0078408040252386357:-1>>
+  %2 = "quantfork.stats"(%1) {bitsNum = 8 : i64, layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>, narrowRange = false} : (tensor<6xf32>) -> tensor<6xf32>
+  func.return %2 : tensor<6xf32>
 }
 
 // -----
