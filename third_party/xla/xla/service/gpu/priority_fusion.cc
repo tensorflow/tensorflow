@@ -417,7 +417,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
     auto contains_significant_reduce = [&](const HloInstruction* instr) {
       auto fusion = HloFusionAdaptor::ForInstruction(instr);
       return HloAnyOf(fusion->GetRoots(), *fusion, [](auto node) {
-        if (node.opcode() != HloOpcode::kReduce) return false;
+        if (!(node.opcode() == HloOpcode::kReduce && node.shape().IsArray())) {
+          return false;
+        }
 
         int64_t reduction_size =
             ShapeUtil::ElementsIn(node.instruction().operand(0)->shape()) /
