@@ -17,11 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_CPU_ONEDNN_MEMORY_UTIL_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
+#include <memory>
+
 #include "dnnl.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
+#include "xla/literal.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,6 +43,9 @@ struct StackAlloca {
 
 // Declare as opaque to put structure definition together with dependant code.
 struct MemrefInfoPOD;
+using MemrefInfoHandler = std::shared_ptr<MemrefInfoPOD>;
+
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal);
 
 StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
                                        const llvm_ir::IrArray& ir_array);

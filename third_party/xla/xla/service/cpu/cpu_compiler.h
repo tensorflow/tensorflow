@@ -187,6 +187,7 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   Status RunHloPasses(HloModule* module, bool is_aot_compile,
                       llvm::TargetMachine* target_machine,
+                      const CompileOptions& compile_options,
                       bool is_mlir_compile = false);
 
   // Runs HLO passes up to and including layout assignment.
@@ -198,7 +199,8 @@ class CpuCompiler : public LLVMCompiler {
   // Runs HLO passes after layout assignment.
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
+      LLVMTargetMachineFeatures* target_machine_features,
+      const CompileOptions& compile_options, bool is_mlir_compile);
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
       std::unique_ptr<HloModule> module);
