@@ -147,6 +147,20 @@ StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
   return result;
 }
 
+HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
+  while (!hlo->IsCustomCall(HostOffloader::kPipelineBackwardTarget)) {
+    if (hlo->opcode() != HloOpcode::kReshape &&
+        hlo->opcode() != HloOpcode::kBitcast) {
+      break;
+    }
+    if (hlo->user_count() != 1) {
+      break;
+    }
+    hlo = hlo->users()[0];
+  }
+  return hlo;
+}
+
 }  // namespace
 
 Status HostOffloader::HandlePipelineForwardCustomCall(
@@ -282,7 +296,8 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
                         out->append(inst->name());
                       }));
   }
-  HloInstruction* consuming_ds_user = consuming_ds->users()[0];
+  HloInstruction* consuming_ds_user =
+      FindDSAnnotation(consuming_ds->users()[0]);
   if (consuming_ds_user->opcode() != HloOpcode::kCustomCall) {
     return Internal("Dynamic-slice does not have a matching annotation.");
   }
