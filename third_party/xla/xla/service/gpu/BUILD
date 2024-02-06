@@ -3648,16 +3648,16 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_compiler_test",
     srcs = ["gpu_compiler_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backends = ["gpu"],
     deps = [
         ":horizontal_loop_fusion",
         ":metrics",
         "//xla:autotune_results_proto_cc",
         "//xla/service:buffer_assignment",
-        "//xla/service:gpu_plugin",
+        "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service:xla_debug_info_manager",
