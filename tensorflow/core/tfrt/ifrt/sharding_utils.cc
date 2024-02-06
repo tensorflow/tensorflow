@@ -364,7 +364,6 @@ CreateArrayFromHostTensorForSingleDevice(xla::ifrt::Client& ifrt_client,
       });
 }
 
-}  // namespace
 
 StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
@@ -473,6 +472,8 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
       absl::MakeSpan(rearranged_arrays),
       xla::ifrt::ArrayCopySemantics::kDonateInput);
 }
+
+}  // namespace
 
 absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
@@ -636,23 +637,11 @@ absl::StatusOr<tensorflow::Tensor> MakeTensorFromArray(
       tensor_shape, thread_pool_device);
 }
 
-StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
+    const xla::ifrt::DeviceList& device_list,
+    const xla::HloSharding& hlo_sharding,
     const Eigen::ThreadPoolDevice& thread_pool_device) {
-  if (device_ids.empty()) {
-    return absl::InvalidArgumentError("device_ids cannot be empty");
-  }
-  std::vector<xla::ifrt::Device*> devices;
-  devices.reserve(device_ids.size());
-  for (auto device_id : device_ids) {
-    TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
-                        ifrt_client.LookupDevice(device_id));
-    devices.push_back(device);
-  }
-  xla::ifrt::DeviceList device_list(
-      xla::ifrt::DeviceList::Devices(devices.begin(), devices.end()));
-
   VLOG(3) << "IsTiled: " << hlo_sharding.IsTiled();
   VLOG(3) << "IsReplicated: " << hlo_sharding.IsReplicated();
   VLOG(3) << "IsTileMaximal: " << hlo_sharding.IsTileMaximal();
@@ -685,6 +674,27 @@ StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
   return MakeAssembledArrayFromHostBuffer(ifrt_client, input_tensor,
                                           std::move(hlo_sharding), device_list,
                                           thread_pool_device);
+}
+
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+    xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
+    absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
+    const Eigen::ThreadPoolDevice& thread_pool_device) {
+  if (device_ids.empty()) {
+    return absl::InvalidArgumentError("device_ids cannot be empty");
+  }
+  std::vector<xla::ifrt::Device*> devices;
+  devices.reserve(device_ids.size());
+  for (auto device_id : device_ids) {
+    TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
+                        ifrt_client.LookupDevice(device_id));
+    devices.push_back(device);
+  }
+  xla::ifrt::DeviceList device_list(
+      xla::ifrt::DeviceList::Devices(devices.begin(), devices.end()));
+
+  return MakeArrayFromTensor(ifrt_client, input_tensor, device_list,
+                             hlo_sharding, thread_pool_device);
 }
 
 }  // namespace ifrt_serving

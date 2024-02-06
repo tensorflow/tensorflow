@@ -32,20 +32,18 @@ namespace tensorflow {
 namespace ifrt_serving {
 
 // Create a tensor from the given host tensor based on given device ids and
-// sharding information. This is different from
-// `MakeAssembledArrayFromHostBuffer` in that this function is a generic version
-// that supports single device.
-StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
+// sharding information.
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
     const Eigen::ThreadPoolDevice& thread_pool_device);
 
-// Sharded the given `data` by the `sharding` specification.
-// It currently supports even sharding, replication and partial replication.
-StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeAssembledArrayFromHostBuffer(
+// A variant of the above api. The difference is that the user passes in
+// device_list directly instead of a list of device_ids.
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceList& device_list,
+    const xla::HloSharding& hlo_sharding,
     const Eigen::ThreadPoolDevice& thread_pool_device);
 
 // Reshard an disassembled array list back to one single tensor
