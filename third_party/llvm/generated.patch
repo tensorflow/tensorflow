@@ -1,4 +1,2845 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libc/src/errno/libc_errno.cpp b/libc/src/errno/libc_errno.cpp
+--- a/libc/src/errno/libc_errno.cpp
++++ b/libc/src/errno/libc_errno.cpp
+@@ -44,5 +44,7 @@
+ 
+ #endif // LIBC_FULL_BUILD
+ 
++namespace LIBC_NAMESPACE {
+ // Define the global `libc_errno` instance.
+ LIBC_NAMESPACE::Errno libc_errno;
++} // namespace LIBC_NAMESPACE
+diff -ruN --strip-trailing-cr a/libc/src/errno/libc_errno.h b/libc/src/errno/libc_errno.h
+--- a/libc/src/errno/libc_errno.h
++++ b/libc/src/errno/libc_errno.h
+@@ -39,8 +39,9 @@
+   void operator=(int);
+   operator int();
+ };
+-} // namespace LIBC_NAMESPACE
+ 
+ extern LIBC_NAMESPACE::Errno libc_errno;
+ 
++} // namespace LIBC_NAMESPACE
++
+ #endif // LLVM_LIBC_SRC_ERRNO_LIBC_ERRNO_H
+diff -ruN --strip-trailing-cr a/libc/test/integration/src/pthread/pthread_create_test.cpp b/libc/test/integration/src/pthread/pthread_create_test.cpp
+--- a/libc/test/integration/src/pthread/pthread_create_test.cpp
++++ b/libc/test/integration/src/pthread/pthread_create_test.cpp
+@@ -332,7 +332,7 @@
+ }
+ 
+ TEST_MAIN() {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   run_success_tests();
+   run_failure_tests();
+   return 0;
+diff -ruN --strip-trailing-cr a/libc/test/integration/src/pthread/pthread_join_test.cpp b/libc/test/integration/src/pthread/pthread_join_test.cpp
+--- a/libc/test/integration/src/pthread/pthread_join_test.cpp
++++ b/libc/test/integration/src/pthread/pthread_join_test.cpp
+@@ -25,7 +25,7 @@
+ }
+ 
+ TEST_MAIN() {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   nullJoinTest();
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/integration/src/unistd/getcwd_test.cpp b/libc/test/integration/src/unistd/getcwd_test.cpp
+--- a/libc/test/integration/src/unistd/getcwd_test.cpp
++++ b/libc/test/integration/src/unistd/getcwd_test.cpp
+@@ -31,12 +31,12 @@
+   cwd = LIBC_NAMESPACE::getcwd(buffer, 0);
+   ASSERT_TRUE(cwd == nullptr);
+   ASSERT_ERRNO_EQ(EINVAL);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   // Insufficient size
+   cwd = LIBC_NAMESPACE::getcwd(buffer, 2);
+   ASSERT_TRUE(cwd == nullptr);
+-  int err = libc_errno;
++  int err = LIBC_NAMESPACE::libc_errno;
+   ASSERT_EQ(err, ERANGE);
+ 
+   return 0;
+diff -ruN --strip-trailing-cr a/libc/test/IntegrationTest/test.h b/libc/test/IntegrationTest/test.h
+--- a/libc/test/IntegrationTest/test.h
++++ b/libc/test/IntegrationTest/test.h
+@@ -68,9 +68,12 @@
+ ////////////////////////////////////////////////////////////////////////////////
+ // Errno checks.
+ 
+-#define ASSERT_ERRNO_EQ(VAL) ASSERT_EQ(VAL, static_cast<int>(libc_errno))
+-#define ASSERT_ERRNO_SUCCESS() ASSERT_EQ(0, static_cast<int>(libc_errno))
+-#define ASSERT_ERRNO_FAILURE() ASSERT_NE(0, static_cast<int>(libc_errno))
++#define ASSERT_ERRNO_EQ(VAL)                                                   \
++  ASSERT_EQ(VAL, static_cast<int>(LIBC_NAMESPACE::libc_errno))
++#define ASSERT_ERRNO_SUCCESS()                                                 \
++  ASSERT_EQ(0, static_cast<int>(LIBC_NAMESPACE::libc_errno))
++#define ASSERT_ERRNO_FAILURE()                                                 \
++  ASSERT_NE(0, static_cast<int>(LIBC_NAMESPACE::libc_errno))
+ 
+ // Integration tests are compiled with -ffreestanding which stops treating
+ // the main function as a non-overloadable special function. Hence, we use a
+diff -ruN --strip-trailing-cr a/libc/test/src/dirent/dirent_test.cpp b/libc/test/src/dirent/dirent_test.cpp
+--- a/libc/test/src/dirent/dirent_test.cpp
++++ b/libc/test/src/dirent/dirent_test.cpp
+@@ -55,17 +55,17 @@
+ }
+ 
+ TEST(LlvmLibcDirentTest, OpenNonExistentDir) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ::DIR *dir = LIBC_NAMESPACE::opendir("___xyz123__.non_existent__");
+   ASSERT_TRUE(dir == nullptr);
+   ASSERT_ERRNO_EQ(ENOENT);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+ 
+ TEST(LlvmLibcDirentTest, OpenFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ::DIR *dir = LIBC_NAMESPACE::opendir("testdata/file1.txt");
+   ASSERT_TRUE(dir == nullptr);
+   ASSERT_ERRNO_EQ(ENOTDIR);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/errno/errno_test.cpp b/libc/test/src/errno/errno_test.cpp
+--- a/libc/test/src/errno/errno_test.cpp
++++ b/libc/test/src/errno/errno_test.cpp
+@@ -11,6 +11,6 @@
+ 
+ TEST(LlvmLibcErrnoTest, Basic) {
+   int test_val = 123;
+-  libc_errno = test_val;
++  LIBC_NAMESPACE::libc_errno = test_val;
+   ASSERT_ERRNO_EQ(test_val);
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/math/acosf_test.cpp b/libc/test/src/math/acosf_test.cpp
+--- a/libc/test/src/math/acosf_test.cpp
++++ b/libc/test/src/math/acosf_test.cpp
+@@ -22,7 +22,7 @@
+ using LlvmLibcAcosfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcAcosfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::acosf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/acoshf_test.cpp b/libc/test/src/math/acoshf_test.cpp
+--- a/libc/test/src/math/acoshf_test.cpp
++++ b/libc/test/src/math/acoshf_test.cpp
+@@ -22,7 +22,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcAcoshfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::acoshf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/asinf_test.cpp b/libc/test/src/math/asinf_test.cpp
+--- a/libc/test/src/math/asinf_test.cpp
++++ b/libc/test/src/math/asinf_test.cpp
+@@ -23,7 +23,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcAsinfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::asinf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/asinhf_test.cpp b/libc/test/src/math/asinhf_test.cpp
+--- a/libc/test/src/math/asinhf_test.cpp
++++ b/libc/test/src/math/asinhf_test.cpp
+@@ -22,7 +22,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcAsinhfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::asinhf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/atanf_test.cpp b/libc/test/src/math/atanf_test.cpp
+--- a/libc/test/src/math/atanf_test.cpp
++++ b/libc/test/src/math/atanf_test.cpp
+@@ -22,7 +22,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcAtanfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::atanf(aNaN));
+   EXPECT_FP_EXCEPTION(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/atanhf_test.cpp b/libc/test/src/math/atanhf_test.cpp
+--- a/libc/test/src/math/atanhf_test.cpp
++++ b/libc/test/src/math/atanhf_test.cpp
+@@ -23,7 +23,7 @@
+ 
+ TEST_F(LlvmLibcAtanhfTest, SpecialNumbers) {
+   using Sign = LIBC_NAMESPACE::fputil::Sign;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::atanhf(aNaN));
+   EXPECT_FP_EXCEPTION(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/cosf_test.cpp b/libc/test/src/math/cosf_test.cpp
+--- a/libc/test/src/math/cosf_test.cpp
++++ b/libc/test/src/math/cosf_test.cpp
+@@ -24,7 +24,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcCosfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::cosf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/coshf_test.cpp b/libc/test/src/math/coshf_test.cpp
+--- a/libc/test/src/math/coshf_test.cpp
++++ b/libc/test/src/math/coshf_test.cpp
+@@ -23,7 +23,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcCoshfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::coshf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -42,7 +42,7 @@
+ }
+ 
+ TEST_F(LlvmLibcCoshfTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::coshf(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/exp10f_test.cpp b/libc/test/src/math/exp10f_test.cpp
+--- a/libc/test/src/math/exp10f_test.cpp
++++ b/libc/test/src/math/exp10f_test.cpp
+@@ -21,7 +21,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcExp10fTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::exp10f(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -40,7 +40,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExp10fTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::exp10f(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+@@ -55,7 +55,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExp10fTest, Underflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       0.0f, LIBC_NAMESPACE::exp10f(FPBits(0xff7fffffU).get_val()),
+       FE_UNDERFLOW);
+@@ -97,7 +97,7 @@
+       0x41200000, // x = 10.0f
+   };
+   for (int i = 0; i < N; ++i) {
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float x = FPBits(INPUTS[i]).get_val();
+     EXPECT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Exp10, x,
+                                    LIBC_NAMESPACE::exp10f(x), 0.5);
+@@ -113,14 +113,14 @@
+     float x = FPBits(v).get_val();
+     if (isnan(x) || isinf(x))
+       continue;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float result = LIBC_NAMESPACE::exp10f(x);
+ 
+     // If the computation resulted in an error or did not produce valid result
+     // in the single-precision floating point range, then ignore comparing with
+     // MPFR result as MPFR can still produce valid results because of its
+     // wider precision.
+-    if (isnan(result) || isinf(result) || libc_errno != 0)
++    if (isnan(result) || isinf(result) || LIBC_NAMESPACE::libc_errno != 0)
+       continue;
+     ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Exp10, x,
+                                    LIBC_NAMESPACE::exp10f(x), 0.5);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/exp10_test.cpp b/libc/test/src/math/exp10_test.cpp
+--- a/libc/test/src/math/exp10_test.cpp
++++ b/libc/test/src/math/exp10_test.cpp
+@@ -106,7 +106,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::exp10(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/exp2f_test.cpp b/libc/test/src/math/exp2f_test.cpp
+--- a/libc/test/src/math/exp2f_test.cpp
++++ b/libc/test/src/math/exp2f_test.cpp
+@@ -22,7 +22,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcExp2fTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::exp2f(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -41,7 +41,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExp2fTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::exp2f(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+@@ -72,7 +72,7 @@
+       0xc3150000U, /*-0x1.2ap+7f*/
+   };
+   for (int i = 0; i < N; ++i) {
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float x = FPBits(INPUTS[i]).get_val();
+     EXPECT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Exp2, x,
+                                    LIBC_NAMESPACE::exp2f(x), 0.5);
+@@ -81,7 +81,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExp2fTest, Underflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       0.0f, LIBC_NAMESPACE::exp2f(FPBits(0xff7fffffU).get_val()), FE_UNDERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+@@ -109,14 +109,14 @@
+     float x = FPBits(v).get_val();
+     if (isnan(x) || isinf(x))
+       continue;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float result = LIBC_NAMESPACE::exp2f(x);
+ 
+     // If the computation resulted in an error or did not produce valid result
+     // in the single-precision floating point range, then ignore comparing with
+     // MPFR result as MPFR can still produce valid results because of its
+     // wider precision.
+-    if (isnan(result) || isinf(result) || libc_errno != 0)
++    if (isnan(result) || isinf(result) || LIBC_NAMESPACE::libc_errno != 0)
+       continue;
+     ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Exp2, x,
+                                    LIBC_NAMESPACE::exp2f(x), 0.5);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/exp2_test.cpp b/libc/test/src/math/exp2_test.cpp
+--- a/libc/test/src/math/exp2_test.cpp
++++ b/libc/test/src/math/exp2_test.cpp
+@@ -81,7 +81,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::exp2(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/expf_test.cpp b/libc/test/src/math/expf_test.cpp
+--- a/libc/test/src/math/expf_test.cpp
++++ b/libc/test/src/math/expf_test.cpp
+@@ -21,7 +21,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcExpfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::expf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -40,7 +40,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExpfTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::expf(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+@@ -55,7 +55,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExpfTest, Underflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       0.0f, LIBC_NAMESPACE::expf(FPBits(0xff7fffffU).get_val()), FE_UNDERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+@@ -76,7 +76,7 @@
+ TEST_F(LlvmLibcExpfTest, Borderline) {
+   float x;
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   x = FPBits(0x42affff8U).get_val();
+   ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Exp, x,
+                                  LIBC_NAMESPACE::expf(x), 0.5);
+@@ -110,14 +110,14 @@
+     float x = FPBits(v).get_val();
+     if (isnan(x) || isinf(x))
+       continue;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float result = LIBC_NAMESPACE::expf(x);
+ 
+     // If the computation resulted in an error or did not produce valid result
+     // in the single-precision floating point range, then ignore comparing with
+     // MPFR result as MPFR can still produce valid results because of its
+     // wider precision.
+-    if (isnan(result) || isinf(result) || libc_errno != 0)
++    if (isnan(result) || isinf(result) || LIBC_NAMESPACE::libc_errno != 0)
+       continue;
+     EXPECT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Exp, x,
+                                    LIBC_NAMESPACE::expf(x), 0.5);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/expm1f_test.cpp b/libc/test/src/math/expm1f_test.cpp
+--- a/libc/test/src/math/expm1f_test.cpp
++++ b/libc/test/src/math/expm1f_test.cpp
+@@ -21,7 +21,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcExpm1fTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::expm1f(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -40,7 +40,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExpm1fTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::expm1f(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+@@ -55,7 +55,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExpm1fTest, Underflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ(-1.0f, LIBC_NAMESPACE::expm1f(FPBits(0xff7fffffU).get_val()));
+ 
+   float x = FPBits(0xc2cffff8U).get_val();
+@@ -70,7 +70,7 @@
+ TEST_F(LlvmLibcExpm1fTest, Borderline) {
+   float x;
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   x = FPBits(0x42affff8U).get_val();
+   ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Expm1, x,
+                                  LIBC_NAMESPACE::expm1f(x), 0.5);
+@@ -119,14 +119,14 @@
+     float x = FPBits(v).get_val();
+     if (isnan(x) || isinf(x))
+       continue;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float result = LIBC_NAMESPACE::expm1f(x);
+ 
+     // If the computation resulted in an error or did not produce valid result
+     // in the single-precision floating point range, then ignore comparing with
+     // MPFR result as MPFR can still produce valid results because of its
+     // wider precision.
+-    if (isnan(result) || isinf(result) || libc_errno != 0)
++    if (isnan(result) || isinf(result) || LIBC_NAMESPACE::libc_errno != 0)
+       continue;
+     ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Expm1, x,
+                                    LIBC_NAMESPACE::expm1f(x), 0.5);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/expm1_test.cpp b/libc/test/src/math/expm1_test.cpp
+--- a/libc/test/src/math/expm1_test.cpp
++++ b/libc/test/src/math/expm1_test.cpp
+@@ -75,7 +75,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::expm1(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/exp_test.cpp b/libc/test/src/math/exp_test.cpp
+--- a/libc/test/src/math/exp_test.cpp
++++ b/libc/test/src/math/exp_test.cpp
+@@ -79,7 +79,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::exp(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/log10_test.cpp b/libc/test/src/math/log10_test.cpp
+--- a/libc/test/src/math/log10_test.cpp
++++ b/libc/test/src/math/log10_test.cpp
+@@ -102,7 +102,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::log10(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/log1pf_test.cpp b/libc/test/src/math/log1pf_test.cpp
+--- a/libc/test/src/math/log1pf_test.cpp
++++ b/libc/test/src/math/log1pf_test.cpp
+@@ -76,7 +76,7 @@
+     float x = FPBits(v).get_val();
+     if (isnan(x) || isinf(x))
+       continue;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Log1p, x,
+                                    LIBC_NAMESPACE::log1pf(x), 0.5);
+   }
+diff -ruN --strip-trailing-cr a/libc/test/src/math/log1p_test.cpp b/libc/test/src/math/log1p_test.cpp
+--- a/libc/test/src/math/log1p_test.cpp
++++ b/libc/test/src/math/log1p_test.cpp
+@@ -102,7 +102,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::log1p(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/log2f_test.cpp b/libc/test/src/math/log2f_test.cpp
+--- a/libc/test/src/math/log2f_test.cpp
++++ b/libc/test/src/math/log2f_test.cpp
+@@ -52,13 +52,13 @@
+     float x = FPBits(v).get_val();
+     if (isnan(x) || isinf(x))
+       continue;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float result = LIBC_NAMESPACE::log2f(x);
+     // If the computation resulted in an error or did not produce valid result
+     // in the single-precision floating point range, then ignore comparing with
+     // MPFR result as MPFR can still produce valid results because of its
+     // wider precision.
+-    if (isnan(result) || isinf(result) || libc_errno != 0)
++    if (isnan(result) || isinf(result) || LIBC_NAMESPACE::libc_errno != 0)
+       continue;
+     ASSERT_MPFR_MATCH_ALL_ROUNDING(mpfr::Operation::Log2, x,
+                                    LIBC_NAMESPACE::log2f(x), 0.5);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/log2_test.cpp b/libc/test/src/math/log2_test.cpp
+--- a/libc/test/src/math/log2_test.cpp
++++ b/libc/test/src/math/log2_test.cpp
+@@ -101,7 +101,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::log2(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/log_test.cpp b/libc/test/src/math/log_test.cpp
+--- a/libc/test/src/math/log_test.cpp
++++ b/libc/test/src/math/log_test.cpp
+@@ -100,7 +100,7 @@
+       double x = FPBits(v).get_val();
+       if (isnan(x) || isinf(x) || x < 0.0)
+         continue;
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+       double result = LIBC_NAMESPACE::log(x);
+       ++cc;
+       if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/powf_test.cpp b/libc/test/src/math/powf_test.cpp
+--- a/libc/test/src/math/powf_test.cpp
++++ b/libc/test/src/math/powf_test.cpp
+@@ -72,7 +72,7 @@
+         if (isnan(y) || isinf(y))
+           continue;
+ 
+-        libc_errno = 0;
++        LIBC_NAMESPACE::libc_errno = 0;
+         float result = LIBC_NAMESPACE::powf(x, y);
+         ++cc;
+         if (isnan(result) || isinf(result))
+diff -ruN --strip-trailing-cr a/libc/test/src/math/RoundToIntegerTest.h b/libc/test/src/math/RoundToIntegerTest.h
+--- a/libc/test/src/math/RoundToIntegerTest.h
++++ b/libc/test/src/math/RoundToIntegerTest.h
+@@ -51,7 +51,7 @@
+ 
+   void test_one_input(RoundToIntegerFunc func, F input, I expected,
+                       bool expectError) {
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
+ 
+     ASSERT_EQ(func(input), expected);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/sincosf_test.cpp b/libc/test/src/math/sincosf_test.cpp
+--- a/libc/test/src/math/sincosf_test.cpp
++++ b/libc/test/src/math/sincosf_test.cpp
+@@ -25,7 +25,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcSinCosfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   float sin, cos;
+ 
+   LIBC_NAMESPACE::sincosf(aNaN, &sin, &cos);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/sinf_test.cpp b/libc/test/src/math/sinf_test.cpp
+--- a/libc/test/src/math/sinf_test.cpp
++++ b/libc/test/src/math/sinf_test.cpp
+@@ -25,7 +25,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcSinfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::sinf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/sinhf_test.cpp b/libc/test/src/math/sinhf_test.cpp
+--- a/libc/test/src/math/sinhf_test.cpp
++++ b/libc/test/src/math/sinhf_test.cpp
+@@ -23,7 +23,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcSinhfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::sinhf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -66,7 +66,7 @@
+ }
+ 
+ TEST_F(LlvmLibcSinhfTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::sinhf(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/acosf_test.cpp b/libc/test/src/math/smoke/acosf_test.cpp
+--- a/libc/test/src/math/smoke/acosf_test.cpp
++++ b/libc/test/src/math/smoke/acosf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcAcosfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcAcosfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::acosf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/acoshf_test.cpp b/libc/test/src/math/smoke/acoshf_test.cpp
+--- a/libc/test/src/math/smoke/acoshf_test.cpp
++++ b/libc/test/src/math/smoke/acoshf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcAcoshfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcAcoshfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::acoshf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/asinf_test.cpp b/libc/test/src/math/smoke/asinf_test.cpp
+--- a/libc/test/src/math/smoke/asinf_test.cpp
++++ b/libc/test/src/math/smoke/asinf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcAsinfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcAsinfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::asinf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/asinhf_test.cpp b/libc/test/src/math/smoke/asinhf_test.cpp
+--- a/libc/test/src/math/smoke/asinhf_test.cpp
++++ b/libc/test/src/math/smoke/asinhf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcAsinhfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcAsinhfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::asinhf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/atanf_test.cpp b/libc/test/src/math/smoke/atanf_test.cpp
+--- a/libc/test/src/math/smoke/atanf_test.cpp
++++ b/libc/test/src/math/smoke/atanf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcAtanfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcAtanfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::atanf(aNaN));
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/atanhf_test.cpp b/libc/test/src/math/smoke/atanhf_test.cpp
+--- a/libc/test/src/math/smoke/atanhf_test.cpp
++++ b/libc/test/src/math/smoke/atanhf_test.cpp
+@@ -20,7 +20,7 @@
+ 
+ TEST_F(LlvmLibcAtanhfTest, SpecialNumbers) {
+   using Sign = LIBC_NAMESPACE::fputil::Sign;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::atanhf(aNaN));
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/cosf_test.cpp b/libc/test/src/math/smoke/cosf_test.cpp
+--- a/libc/test/src/math/smoke/cosf_test.cpp
++++ b/libc/test/src/math/smoke/cosf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcCosfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcCosfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::cosf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/coshf_test.cpp b/libc/test/src/math/smoke/coshf_test.cpp
+--- a/libc/test/src/math/smoke/coshf_test.cpp
++++ b/libc/test/src/math/smoke/coshf_test.cpp
+@@ -20,7 +20,7 @@
+ using LlvmLibcCoshfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcCoshfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::coshf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -39,7 +39,7 @@
+ }
+ 
+ TEST_F(LlvmLibcCoshfTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::coshf(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/exp10f_test.cpp b/libc/test/src/math/smoke/exp10f_test.cpp
+--- a/libc/test/src/math/smoke/exp10f_test.cpp
++++ b/libc/test/src/math/smoke/exp10f_test.cpp
+@@ -18,7 +18,7 @@
+ using LlvmLibcExp10fTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcExp10fTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::exp10f(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -41,7 +41,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExp10fTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::exp10f(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/exp2f_test.cpp b/libc/test/src/math/smoke/exp2f_test.cpp
+--- a/libc/test/src/math/smoke/exp2f_test.cpp
++++ b/libc/test/src/math/smoke/exp2f_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcExp2fTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcExp2fTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::exp2f(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -43,7 +43,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExp2fTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::exp2f(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/expf_test.cpp b/libc/test/src/math/smoke/expf_test.cpp
+--- a/libc/test/src/math/smoke/expf_test.cpp
++++ b/libc/test/src/math/smoke/expf_test.cpp
+@@ -18,7 +18,7 @@
+ using LlvmLibcExpfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcExpfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::expf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -37,7 +37,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExpfTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::expf(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/expm1f_test.cpp b/libc/test/src/math/smoke/expm1f_test.cpp
+--- a/libc/test/src/math/smoke/expm1f_test.cpp
++++ b/libc/test/src/math/smoke/expm1f_test.cpp
+@@ -18,7 +18,7 @@
+ using LlvmLibcExpm1fTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcExpm1fTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ_ALL_ROUNDING(aNaN, LIBC_NAMESPACE::expm1f(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -37,7 +37,7 @@
+ }
+ 
+ TEST_F(LlvmLibcExpm1fTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::expm1f(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/RoundToIntegerTest.h b/libc/test/src/math/smoke/RoundToIntegerTest.h
+--- a/libc/test/src/math/smoke/RoundToIntegerTest.h
++++ b/libc/test/src/math/smoke/RoundToIntegerTest.h
+@@ -46,7 +46,7 @@
+ 
+   void test_one_input(RoundToIntegerFunc func, F input, I expected,
+                       bool expectError) {
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     LIBC_NAMESPACE::fputil::clear_except(FE_ALL_EXCEPT);
+ 
+     ASSERT_EQ(func(input), expected);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/sincosf_test.cpp b/libc/test/src/math/smoke/sincosf_test.cpp
+--- a/libc/test/src/math/smoke/sincosf_test.cpp
++++ b/libc/test/src/math/smoke/sincosf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcSinCosfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcSinCosfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   float sin, cos;
+ 
+   LIBC_NAMESPACE::sincosf(aNaN, &sin, &cos);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/sinf_test.cpp b/libc/test/src/math/smoke/sinf_test.cpp
+--- a/libc/test/src/math/smoke/sinf_test.cpp
++++ b/libc/test/src/math/smoke/sinf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcSinfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcSinfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::sinf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/sinhf_test.cpp b/libc/test/src/math/smoke/sinhf_test.cpp
+--- a/libc/test/src/math/smoke/sinhf_test.cpp
++++ b/libc/test/src/math/smoke/sinhf_test.cpp
+@@ -20,7 +20,7 @@
+ using LlvmLibcSinhfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcSinhfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::sinhf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+@@ -50,7 +50,7 @@
+ }
+ 
+ TEST_F(LlvmLibcSinhfTest, Overflow) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_FP_EQ_WITH_EXCEPTION(
+       inf, LIBC_NAMESPACE::sinhf(FPBits(0x7f7fffffU).get_val()), FE_OVERFLOW);
+   EXPECT_MATH_ERRNO(ERANGE);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/tanf_test.cpp b/libc/test/src/math/smoke/tanf_test.cpp
+--- a/libc/test/src/math/smoke/tanf_test.cpp
++++ b/libc/test/src/math/smoke/tanf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcTanfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcTanfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::tanf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/smoke/tanhf_test.cpp b/libc/test/src/math/smoke/tanhf_test.cpp
+--- a/libc/test/src/math/smoke/tanhf_test.cpp
++++ b/libc/test/src/math/smoke/tanhf_test.cpp
+@@ -19,7 +19,7 @@
+ using LlvmLibcTanhfTest = LIBC_NAMESPACE::testing::FPTest<float>;
+ 
+ TEST_F(LlvmLibcTanhfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::tanhf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/tanf_test.cpp b/libc/test/src/math/tanf_test.cpp
+--- a/libc/test/src/math/tanf_test.cpp
++++ b/libc/test/src/math/tanf_test.cpp
+@@ -25,7 +25,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcTanfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::tanf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/math/tanhf_test.cpp b/libc/test/src/math/tanhf_test.cpp
+--- a/libc/test/src/math/tanhf_test.cpp
++++ b/libc/test/src/math/tanhf_test.cpp
+@@ -22,7 +22,7 @@
+ namespace mpfr = LIBC_NAMESPACE::testing::mpfr;
+ 
+ TEST_F(LlvmLibcTanhfTest, SpecialNumbers) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   EXPECT_FP_EQ(aNaN, LIBC_NAMESPACE::tanhf(aNaN));
+   EXPECT_MATH_ERRNO(0);
+diff -ruN --strip-trailing-cr a/libc/test/src/sched/affinity_test.cpp b/libc/test/src/sched/affinity_test.cpp
+--- a/libc/test/src/sched/affinity_test.cpp
++++ b/libc/test/src/sched/affinity_test.cpp
+@@ -17,7 +17,7 @@
+ 
+ TEST(LlvmLibcSchedAffinityTest, SmokeTest) {
+   cpu_set_t mask;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   pid_t tid = LIBC_NAMESPACE::syscall_impl<pid_t>(SYS_gettid);
+   ASSERT_GT(tid, pid_t(0));
+@@ -32,15 +32,15 @@
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   pid_t tid = LIBC_NAMESPACE::syscall_impl<pid_t>(SYS_gettid);
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(
+       LIBC_NAMESPACE::sched_getaffinity(tid, sizeof(cpu_set_t), nullptr),
+       Fails(EFAULT));
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(
+       LIBC_NAMESPACE::sched_setaffinity(tid, sizeof(cpu_set_t), nullptr),
+       Fails(EFAULT));
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sched/cpu_count_test.cpp b/libc/test/src/sched/cpu_count_test.cpp
+--- a/libc/test/src/sched/cpu_count_test.cpp
++++ b/libc/test/src/sched/cpu_count_test.cpp
+@@ -17,7 +17,7 @@
+ 
+ TEST(LlvmLibcSchedCpuCountTest, SmokeTest) {
+   cpu_set_t mask;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   pid_t tid = LIBC_NAMESPACE::syscall_impl<pid_t>(SYS_gettid);
+   ASSERT_GT(tid, pid_t(0));
+diff -ruN --strip-trailing-cr a/libc/test/src/sched/get_priority_test.cpp b/libc/test/src/sched/get_priority_test.cpp
+--- a/libc/test/src/sched/get_priority_test.cpp
++++ b/libc/test/src/sched/get_priority_test.cpp
+@@ -58,7 +58,7 @@
+ }
+ 
+ TEST(LlvmLibcSchedGetPriorityTest, SmokeTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   // We Test:
+   // SCHED_OTHER, SCHED_FIFO, SCHED_RR
+diff -ruN --strip-trailing-cr a/libc/test/src/sched/param_and_scheduler_test.cpp b/libc/test/src/sched/param_and_scheduler_test.cpp
+--- a/libc/test/src/sched/param_and_scheduler_test.cpp
++++ b/libc/test/src/sched/param_and_scheduler_test.cpp
+@@ -37,7 +37,7 @@
+ class SchedTest : public LIBC_NAMESPACE::testing::Test {
+ public:
+   void testSched(int policy, bool can_set) {
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     int init_policy = LIBC_NAMESPACE::sched_getscheduler(0);
+     ASSERT_GE(init_policy, 0);
+@@ -55,38 +55,40 @@
+     // Negative pid
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setscheduler(-1, policy, &param), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     ASSERT_EQ(LIBC_NAMESPACE::sched_getscheduler(-1), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     // Invalid Policy
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setscheduler(0, policy | 128, &param), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     // Out of bounds priority
+     param.sched_priority = min_priority - 1;
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setscheduler(0, policy, &param), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     param.sched_priority = max_priority + 1;
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setscheduler(0, policy, &param), -1);
+     // A bit hard to test as depending if we are root or not we can run into
+     // different issues.
+-    ASSERT_TRUE(libc_errno == EINVAL || libc_errno == EPERM);
+-    libc_errno = 0;
++    ASSERT_TRUE(LIBC_NAMESPACE::libc_errno == EINVAL ||
++                LIBC_NAMESPACE::libc_errno == EPERM);
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     // Some sched policies require permissions, so skip
+     param.sched_priority = min_priority;
+     // Success / missing permissions.
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setscheduler(0, policy, &param),
+               can_set ? 0 : -1);
+-    ASSERT_TRUE(can_set ? (libc_errno == 0)
+-                        : (libc_errno == EINVAL || libc_errno == EPERM));
+-    libc_errno = 0;
++    ASSERT_TRUE(can_set ? (LIBC_NAMESPACE::libc_errno == 0)
++                        : (LIBC_NAMESPACE::libc_errno == EINVAL ||
++                           LIBC_NAMESPACE::libc_errno == EPERM));
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     ASSERT_EQ(LIBC_NAMESPACE::sched_getscheduler(0),
+               can_set ? policy : init_policy);
+@@ -96,12 +98,12 @@
+     param.sched_priority = -1;
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setparam(0, &param), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     param.sched_priority = max_priority + 1;
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setparam(0, &param), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     for (int priority = min_priority; priority <= max_priority; ++priority) {
+       ASSERT_EQ(LIBC_NAMESPACE::sched_getparam(0, &param), 0);
+@@ -113,17 +115,18 @@
+       // Negative pid
+       ASSERT_EQ(LIBC_NAMESPACE::sched_setparam(-1, &param), -1);
+       ASSERT_ERRNO_EQ(EINVAL);
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+ 
+       ASSERT_EQ(LIBC_NAMESPACE::sched_getparam(-1, &param), -1);
+       ASSERT_ERRNO_EQ(EINVAL);
+-      libc_errno = 0;
++      LIBC_NAMESPACE::libc_errno = 0;
+ 
+       // Success / missing permissions
+       ASSERT_EQ(LIBC_NAMESPACE::sched_setparam(0, &param), can_set ? 0 : -1);
+-      ASSERT_TRUE(can_set ? (libc_errno == 0)
+-                          : (libc_errno == EINVAL || libc_errno == EPERM));
+-      libc_errno = 0;
++      ASSERT_TRUE(can_set ? (LIBC_NAMESPACE::libc_errno == 0)
++                          : (LIBC_NAMESPACE::libc_errno == EINVAL ||
++                             LIBC_NAMESPACE::libc_errno == EPERM));
++      LIBC_NAMESPACE::libc_errno = 0;
+ 
+       ASSERT_EQ(LIBC_NAMESPACE::sched_getparam(0, &param), 0);
+       ASSERT_ERRNO_SUCCESS();
+@@ -134,7 +137,7 @@
+     // Null test
+     ASSERT_EQ(LIBC_NAMESPACE::sched_setscheduler(0, policy, nullptr), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+   }
+ };
+ 
+@@ -152,13 +155,13 @@
+ LIST_SCHED_TESTS(SCHED_IDLE, true)
+ 
+ TEST(LlvmLibcSchedParamAndSchedulerTest, NullParamTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   ASSERT_EQ(LIBC_NAMESPACE::sched_setparam(0, nullptr), -1);
+   ASSERT_ERRNO_EQ(EINVAL);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   ASSERT_EQ(LIBC_NAMESPACE::sched_getparam(0, nullptr), -1);
+   ASSERT_ERRNO_EQ(EINVAL);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sched/sched_rr_get_interval_test.cpp b/libc/test/src/sched/sched_rr_get_interval_test.cpp
+--- a/libc/test/src/sched/sched_rr_get_interval_test.cpp
++++ b/libc/test/src/sched/sched_rr_get_interval_test.cpp
+@@ -17,7 +17,7 @@
+ #include <sched.h>
+ 
+ TEST(LlvmLibcSchedRRGetIntervalTest, SmokeTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   auto SetSched = [&](int policy) {
+     int min_priority = LIBC_NAMESPACE::sched_get_priority_min(policy);
+     ASSERT_GE(min_priority, 0);
+@@ -58,19 +58,19 @@
+     // Null timespec
+     ASSERT_EQ(LIBC_NAMESPACE::sched_rr_get_interval(0, nullptr), -1);
+     ASSERT_ERRNO_EQ(EFAULT);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     // Negative pid
+     ASSERT_EQ(LIBC_NAMESPACE::sched_rr_get_interval(-1, &ts), -1);
+     ASSERT_ERRNO_EQ(EINVAL);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+   }
+ 
+   // Negative tests don't have SCHED_RR set
+   SetSched(SCHED_OTHER);
+   ASSERT_EQ(LIBC_NAMESPACE::sched_rr_get_interval(0, &ts), 0);
+   ASSERT_ERRNO_SUCCESS();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   // TODO: Missing unkown pid -> ESRCH. This is read only so safe to try a few
+   //       unlikely values.
+diff -ruN --strip-trailing-cr a/libc/test/src/sched/yield_test.cpp b/libc/test/src/sched/yield_test.cpp
+--- a/libc/test/src/sched/yield_test.cpp
++++ b/libc/test/src/sched/yield_test.cpp
+@@ -11,7 +11,7 @@
+ #include "test/UnitTest/Test.h"
+ 
+ TEST(LlvmLibcSchedYieldTest, SmokeTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   // sched_yield() always succeeds, just do a basic test that errno/ret are
+   // properly 0.
+   ASSERT_EQ(LIBC_NAMESPACE::sched_yield(), 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/signal/sigaltstack_test.cpp b/libc/test/src/signal/sigaltstack_test.cpp
+--- a/libc/test/src/signal/sigaltstack_test.cpp
++++ b/libc/test/src/signal/sigaltstack_test.cpp
+@@ -47,7 +47,7 @@
+ 
+ TEST(LlvmLibcSignalTest, SigaltstackRunOnAltStack) {
+   struct sigaction action;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::sigaction(SIGUSR1, nullptr, &action),
+               Succeeds(0));
+   action.sa_handler = handler;
+diff -ruN --strip-trailing-cr a/libc/test/src/signal/signal_test.cpp b/libc/test/src/signal/signal_test.cpp
+--- a/libc/test/src/signal/signal_test.cpp
++++ b/libc/test/src/signal/signal_test.cpp
+@@ -19,7 +19,7 @@
+ using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+ 
+ TEST(LlvmLibcSignal, Invalid) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   LIBC_NAMESPACE::sighandler_t valid = +[](int) {};
+   EXPECT_THAT((void *)LIBC_NAMESPACE::signal(0, valid),
+               Fails(EINVAL, (void *)SIG_ERR));
+diff -ruN --strip-trailing-cr a/libc/test/src/signal/sigprocmask_test.cpp b/libc/test/src/signal/sigprocmask_test.cpp
+--- a/libc/test/src/signal/sigprocmask_test.cpp
++++ b/libc/test/src/signal/sigprocmask_test.cpp
+@@ -33,7 +33,7 @@
+ 
+ // This tests for invalid input.
+ TEST_F(LlvmLibcSignalTest, SigprocmaskInvalid) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   sigset_t valid;
+   // 17 and -4 are out of the range for sigprocmask's how paramater.
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/fgetc_test.cpp b/libc/test/src/stdio/fgetc_test.cpp
+--- a/libc/test/src/stdio/fgetc_test.cpp
++++ b/libc/test/src/stdio/fgetc_test.cpp
+@@ -33,7 +33,7 @@
+     // This is an error and not a real EOF.
+     ASSERT_EQ(LIBC_NAMESPACE::feof(file), 0);
+     ASSERT_NE(LIBC_NAMESPACE::ferror(file), 0);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     ASSERT_EQ(0, LIBC_NAMESPACE::fclose(file));
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/fgetc_unlocked_test.cpp b/libc/test/src/stdio/fgetc_unlocked_test.cpp
+--- a/libc/test/src/stdio/fgetc_unlocked_test.cpp
++++ b/libc/test/src/stdio/fgetc_unlocked_test.cpp
+@@ -36,7 +36,7 @@
+     // This is an error and not a real EOF.
+     ASSERT_EQ(LIBC_NAMESPACE::feof(file), 0);
+     ASSERT_NE(LIBC_NAMESPACE::ferror(file), 0);
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     ASSERT_EQ(0, LIBC_NAMESPACE::fclose(file));
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/fgets_test.cpp b/libc/test/src/stdio/fgets_test.cpp
+--- a/libc/test/src/stdio/fgets_test.cpp
++++ b/libc/test/src/stdio/fgets_test.cpp
+@@ -36,7 +36,7 @@
+   // This is an error and not a real EOF.
+   ASSERT_EQ(LIBC_NAMESPACE::feof(file), 0);
+   ASSERT_NE(LIBC_NAMESPACE::ferror(file), 0);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   ASSERT_EQ(0, LIBC_NAMESPACE::fclose(file));
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/fileop_test.cpp b/libc/test/src/stdio/fileop_test.cpp
+--- a/libc/test/src/stdio/fileop_test.cpp
++++ b/libc/test/src/stdio/fileop_test.cpp
+@@ -39,7 +39,7 @@
+   ASSERT_THAT(LIBC_NAMESPACE::fread(read_data, 1, sizeof(CONTENT), file),
+               returns(EQ(size_t(0))).with_errno(NE(0)));
+   ASSERT_NE(LIBC_NAMESPACE::ferror(file), 0);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr(file);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror(file), 0);
+@@ -70,7 +70,7 @@
+   ASSERT_THAT(LIBC_NAMESPACE::fwrite(CONTENT, 1, sizeof(CONTENT), file),
+               returns(EQ(size_t(0))).with_errno(NE(0)));
+   ASSERT_NE(LIBC_NAMESPACE::ferror(file), 0);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr(file);
+ 
+@@ -78,15 +78,15 @@
+   ASSERT_THAT(LIBC_NAMESPACE::fputs(CONTENT, file),
+               returns(EQ(EOF)).with_errno(NE(0)));
+   ASSERT_NE(LIBC_NAMESPACE::ferror(file), 0);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr(file);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror(file), 0);
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::fwrite("nothing", 1, 1, file),
+               returns(EQ(0)).with_errno(NE(0)));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   ASSERT_EQ(LIBC_NAMESPACE::fclose(file), 0);
+ 
+@@ -101,10 +101,10 @@
+   ASSERT_EQ(LIBC_NAMESPACE::ferror(file), 0);
+ 
+   // This is not a readable file.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::fread(data, 1, 1, file),
+               returns(EQ(0)).with_errno(NE(0)));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   ASSERT_EQ(0, LIBC_NAMESPACE::fclose(file));
+ 
+@@ -119,15 +119,15 @@
+ 
+   // Check that the other functions correctly set libc_errno.
+ 
+-  // libc_errno = 0;
++  // LIBC_NAMESPACE::libc_errno = 0;
+   // ASSERT_NE(LIBC_NAMESPACE::fseek(file, 0, SEEK_SET), 0);
+   // ASSERT_ERRNO_FAILURE();
+ 
+-  // libc_errno = 0;
++  // LIBC_NAMESPACE::libc_errno = 0;
+   // ASSERT_NE(LIBC_NAMESPACE::fclose(file), 0);
+   // ASSERT_ERRNO_FAILURE();
+ 
+-  // libc_errno = 0;
++  // LIBC_NAMESPACE::libc_errno = 0;
+   // ASSERT_EQ(LIBC_NAMESPACE::fopen("INVALID FILE NAME", "r"),
+   //           static_cast<FILE *>(nullptr));
+   // ASSERT_ERRNO_FAILURE();
+@@ -163,7 +163,7 @@
+   constexpr size_t WRITE_NMEMB = sizeof(WRITE_DATA) / sizeof(MyStruct);
+   constexpr char FILENAME[] = "testdata/fread_fwrite.test";
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   FILE *file = LIBC_NAMESPACE::fopen(FILENAME, "w");
+   ASSERT_FALSE(file == nullptr);
+   ASSERT_EQ(size_t(0), LIBC_NAMESPACE::fwrite(WRITE_DATA, 0, 1, file));
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/fopencookie_test.cpp b/libc/test/src/stdio/fopencookie_test.cpp
+--- a/libc/test/src/stdio/fopencookie_test.cpp
++++ b/libc/test/src/stdio/fopencookie_test.cpp
+@@ -67,7 +67,7 @@
+   } else if (whence == SEEK_END) {
+     new_offset = *offset + ss->endpos;
+   } else {
+-    libc_errno = EINVAL;
++    LIBC_NAMESPACE::libc_errno = EINVAL;
+     return -1;
+   }
+   if (new_offset < 0 || size_t(new_offset) > ss->bufsize)
+@@ -115,7 +115,7 @@
+   ASSERT_EQ(size_t(0), LIBC_NAMESPACE::fwrite(CONTENT, 1, sizeof(CONTENT), f));
+   ASSERT_NE(LIBC_NAMESPACE::ferror(f), 0);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr(f);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror(f), 0);
+@@ -149,7 +149,7 @@
+             LIBC_NAMESPACE::fread(read_data, 1, sizeof(WRITE_DATA), f));
+   ASSERT_NE(LIBC_NAMESPACE::ferror(f), 0);
+   ASSERT_ERRNO_EQ(EBADF);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr(f);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror(f), 0);
+@@ -178,7 +178,7 @@
+   ASSERT_EQ(LIBC_NAMESPACE::fread(read_data, 1, READ_SIZE, f), size_t(0));
+   ASSERT_NE(LIBC_NAMESPACE::ferror(f), 0);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr(f);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror(f), 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/remove_test.cpp b/libc/test/src/stdio/remove_test.cpp
+--- a/libc/test/src/stdio/remove_test.cpp
++++ b/libc/test/src/stdio/remove_test.cpp
+@@ -20,7 +20,7 @@
+ TEST(LlvmLibcRemoveTest, CreateAndRemoveFile) {
+   // The test strategy is to create a file and remove it, and also verify that
+   // it was removed.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+ 
+@@ -39,7 +39,7 @@
+ TEST(LlvmLibcRemoveTest, CreateAndRemoveDir) {
+   // The test strategy is to create a dir and remove it, and also verify that
+   // it was removed.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   constexpr const char *FILENAME = "remove.test.dir";
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/setvbuf_test.cpp b/libc/test/src/stdio/setvbuf_test.cpp
+--- a/libc/test/src/stdio/setvbuf_test.cpp
++++ b/libc/test/src/stdio/setvbuf_test.cpp
+@@ -102,6 +102,6 @@
+             0);
+   ASSERT_ERRNO_EQ(EINVAL);
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_EQ(0, LIBC_NAMESPACE::fclose(f));
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/stdio/unlocked_fileop_test.cpp b/libc/test/src/stdio/unlocked_fileop_test.cpp
+--- a/libc/test/src/stdio/unlocked_fileop_test.cpp
++++ b/libc/test/src/stdio/unlocked_fileop_test.cpp
+@@ -37,7 +37,7 @@
+             LIBC_NAMESPACE::fread_unlocked(data, 1, sizeof(READ_SIZE), f));
+   ASSERT_NE(LIBC_NAMESPACE::ferror_unlocked(f), 0);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr_unlocked(f);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror_unlocked(f), 0);
+@@ -58,7 +58,7 @@
+             LIBC_NAMESPACE::fwrite_unlocked(CONTENT, 1, sizeof(CONTENT), f));
+   ASSERT_NE(LIBC_NAMESPACE::ferror_unlocked(f), 0);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   LIBC_NAMESPACE::clearerr_unlocked(f);
+   ASSERT_EQ(LIBC_NAMESPACE::ferror_unlocked(f), 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/atof_test.cpp b/libc/test/src/stdlib/atof_test.cpp
+--- a/libc/test/src/stdlib/atof_test.cpp
++++ b/libc/test/src/stdlib/atof_test.cpp
+@@ -23,13 +23,13 @@
+   LIBC_NAMESPACE::fputil::FPBits<double> expected_fp =
+       LIBC_NAMESPACE::fputil::FPBits<double>(uint64_t(0x405ec00000000000));
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_THAT(LIBC_NAMESPACE::atof("123"),
+               Succeeds<double>(expected_fp.get_val()));
+ }
+ 
+ TEST(LlvmLibcAToFTest, FailedParsingTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   // atof does not flag errors.
+   EXPECT_THAT(LIBC_NAMESPACE::atof("???"), Succeeds<double>(0.0));
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/strtod_test.cpp b/libc/test/src/stdlib/strtod_test.cpp
+--- a/libc/test/src/stdlib/strtod_test.cpp
++++ b/libc/test/src/stdlib/strtod_test.cpp
+@@ -46,7 +46,7 @@
+     LIBC_NAMESPACE::fputil::FPBits<double> expected_fp =
+         LIBC_NAMESPACE::fputil::FPBits<double>(expectedRawData);
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     double result = LIBC_NAMESPACE::strtod(inputString, &str_end);
+     if (expectedErrno == 0)
+       EXPECT_THAT(result, Succeeds<double>(expected_fp.get_val()));
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/strtof_test.cpp b/libc/test/src/stdlib/strtof_test.cpp
+--- a/libc/test/src/stdlib/strtof_test.cpp
++++ b/libc/test/src/stdlib/strtof_test.cpp
+@@ -43,7 +43,7 @@
+     LIBC_NAMESPACE::fputil::FPBits<float> expected_fp =
+         LIBC_NAMESPACE::fputil::FPBits<float>(expectedRawData);
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     float result = LIBC_NAMESPACE::strtof(inputString, &str_end);
+ 
+     EXPECT_EQ(str_end - inputString, expectedStrLen);
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/strtoint32_test.cpp b/libc/test/src/stdlib/strtoint32_test.cpp
+--- a/libc/test/src/stdlib/strtoint32_test.cpp
++++ b/libc/test/src/stdlib/strtoint32_test.cpp
+@@ -20,7 +20,7 @@
+                    int base) {
+   auto result = internal::strtointeger<int32_t>(str, base);
+   if (result.has_error())
+-    libc_errno = result.error;
++    LIBC_NAMESPACE::libc_errno = result.error;
+ 
+   if (str_end != nullptr)
+     *str_end = const_cast<char *>(str + result.parsed_len);
+@@ -32,7 +32,7 @@
+                      int base) {
+   auto result = internal::strtointeger<uint32_t>(str, base);
+   if (result.has_error())
+-    libc_errno = result.error;
++    LIBC_NAMESPACE::libc_errno = result.error;
+ 
+   if (str_end != nullptr)
+     *str_end = const_cast<char *>(str + result.parsed_len);
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/strtoint64_test.cpp b/libc/test/src/stdlib/strtoint64_test.cpp
+--- a/libc/test/src/stdlib/strtoint64_test.cpp
++++ b/libc/test/src/stdlib/strtoint64_test.cpp
+@@ -20,7 +20,7 @@
+                    int base) {
+   auto result = internal::strtointeger<int64_t>(str, base);
+   if (result.has_error())
+-    libc_errno = result.error;
++    LIBC_NAMESPACE::libc_errno = result.error;
+ 
+   if (str_end != nullptr)
+     *str_end = const_cast<char *>(str + result.parsed_len);
+@@ -32,7 +32,7 @@
+                      int base) {
+   auto result = internal::strtointeger<uint64_t>(str, base);
+   if (result.has_error())
+-    libc_errno = result.error;
++    LIBC_NAMESPACE::libc_errno = result.error;
+ 
+   if (str_end != nullptr)
+     *str_end = const_cast<char *>(str + result.parsed_len);
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/strtold_test.cpp b/libc/test/src/stdlib/strtold_test.cpp
+--- a/libc/test/src/stdlib/strtold_test.cpp
++++ b/libc/test/src/stdlib/strtold_test.cpp
+@@ -77,7 +77,7 @@
+         LIBC_NAMESPACE::fputil::FPBits<long double>(expectedRawData);
+     const int expected_errno = expectedErrno;
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     long double result = LIBC_NAMESPACE::strtold(inputString, &str_end);
+ 
+     LIBC_NAMESPACE::fputil::FPBits<long double> actual_fp =
+diff -ruN --strip-trailing-cr a/libc/test/src/stdlib/StrtolTest.h b/libc/test/src/stdlib/StrtolTest.h
+--- a/libc/test/src/stdlib/StrtolTest.h
++++ b/libc/test/src/stdlib/StrtolTest.h
+@@ -35,7 +35,7 @@
+ 
+   void InvalidBase(FunctionT func) {
+     const char *ten = "10";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(ten, nullptr, -1), ReturnT(0));
+     ASSERT_ERRNO_EQ(EINVAL);
+   }
+@@ -45,23 +45,23 @@
+ 
+     // TODO: Look into collapsing these repeated segments.
+     const char *ten = "10";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(ten, &str_end, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - ten, ptrdiff_t(2));
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(ten, nullptr, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+ 
+     const char *hundred = "100";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(hundred, &str_end, 10), ReturnT(100));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - hundred, ptrdiff_t(3));
+ 
+     const char *big_number = "1234567890";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(big_number, &str_end, 10), ReturnT(1234567890));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - big_number, ptrdiff_t(10));
+@@ -69,7 +69,7 @@
+     // This number is larger than 2^32, meaning that if long is only 32 bits
+     // wide, strtol will return LONG_MAX.
+     const char *bigger_number = "12345678900";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     if constexpr (sizeof(ReturnT) < 8) {
+       ASSERT_EQ(func(bigger_number, &str_end, 10), T_MAX);
+       ASSERT_ERRNO_EQ(ERANGE);
+@@ -80,14 +80,14 @@
+     EXPECT_EQ(str_end - bigger_number, ptrdiff_t(11));
+ 
+     const char *too_big_number = "123456789012345678901";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(too_big_number, &str_end, 10), T_MAX);
+     ASSERT_ERRNO_EQ(ERANGE);
+     EXPECT_EQ(str_end - too_big_number, ptrdiff_t(21));
+ 
+     const char *long_number_range_test =
+         "10000000000000000000000000000000000000000000000000";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(long_number_range_test, &str_end, 10), T_MAX);
+     ASSERT_ERRNO_EQ(ERANGE);
+     EXPECT_EQ(str_end - long_number_range_test, ptrdiff_t(50));
+@@ -95,19 +95,19 @@
+     // For most negative numbers, the unsigned functions treat it the same as
+     // casting a negative variable to an unsigned type.
+     const char *negative = "-100";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(negative, &str_end, 10), ReturnT(-100));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - negative, ptrdiff_t(4));
+ 
+     const char *big_negative_number = "-1234567890";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(big_negative_number, &str_end, 10), ReturnT(-1234567890));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - big_negative_number, ptrdiff_t(11));
+ 
+     const char *too_big_negative_number = "-123456789012345678901";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     // If the number is signed, it should return the smallest negative number
+     // for the current type, but if it's unsigned it should max out and return
+     // the largest positive number for the current type. From the standard:
+@@ -125,73 +125,73 @@
+     char *str_end = nullptr;
+ 
+     const char *spaces_before = "     10";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(spaces_before, &str_end, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - spaces_before, ptrdiff_t(7));
+ 
+     const char *spaces_after = "10      ";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(spaces_after, &str_end, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - spaces_after, ptrdiff_t(2));
+ 
+     const char *word_before = "word10";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(word_before, &str_end, 10), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - word_before, ptrdiff_t(0));
+ 
+     const char *word_after = "10word";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(word_after, &str_end, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - word_after, ptrdiff_t(2));
+ 
+     const char *two_numbers = "10 999";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(two_numbers, &str_end, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - two_numbers, ptrdiff_t(2));
+ 
+     const char *two_signs = "--10 999";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(two_signs, &str_end, 10), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - two_signs, ptrdiff_t(0));
+ 
+     const char *sign_before = "+2=4";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(sign_before, &str_end, 10), ReturnT(2));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - sign_before, ptrdiff_t(2));
+ 
+     const char *sign_after = "2+2=4";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(sign_after, &str_end, 10), ReturnT(2));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - sign_after, ptrdiff_t(1));
+ 
+     const char *tab_before = "\t10";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(tab_before, &str_end, 10), ReturnT(10));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - tab_before, ptrdiff_t(3));
+ 
+     const char *all_together = "\t  -12345and+67890";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(all_together, &str_end, 10), ReturnT(-12345));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - all_together, ptrdiff_t(9));
+ 
+     const char *just_spaces = "  ";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_spaces, &str_end, 10), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_spaces, ptrdiff_t(0));
+ 
+     const char *just_space_and_sign = " +";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_space_and_sign, &str_end, 10), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_space_and_sign, ptrdiff_t(0));
+@@ -209,12 +209,12 @@
+       for (int first_digit = 0; first_digit <= 36; ++first_digit) {
+         small_string[0] = int_to_b36_char(first_digit);
+         if (first_digit < base) {
+-          libc_errno = 0;
++          LIBC_NAMESPACE::libc_errno = 0;
+           ASSERT_EQ(func(small_string, nullptr, base),
+                     static_cast<ReturnT>(first_digit));
+           ASSERT_ERRNO_SUCCESS();
+         } else {
+-          libc_errno = 0;
++          LIBC_NAMESPACE::libc_errno = 0;
+           ASSERT_EQ(func(small_string, nullptr, base), ReturnT(0));
+           ASSERT_ERRNO_SUCCESS();
+         }
+@@ -227,18 +227,18 @@
+         for (int second_digit = 0; second_digit <= 36; ++second_digit) {
+           small_string[1] = int_to_b36_char(second_digit);
+           if (first_digit < base && second_digit < base) {
+-            libc_errno = 0;
++            LIBC_NAMESPACE::libc_errno = 0;
+             ASSERT_EQ(
+                 func(small_string, nullptr, base),
+                 static_cast<ReturnT>(second_digit + (first_digit * base)));
+             ASSERT_ERRNO_SUCCESS();
+           } else if (first_digit < base) {
+-            libc_errno = 0;
++            LIBC_NAMESPACE::libc_errno = 0;
+             ASSERT_EQ(func(small_string, nullptr, base),
+                       static_cast<ReturnT>(first_digit));
+             ASSERT_ERRNO_SUCCESS();
+           } else {
+-            libc_errno = 0;
++            LIBC_NAMESPACE::libc_errno = 0;
+             ASSERT_EQ(func(small_string, nullptr, base), ReturnT(0));
+             ASSERT_ERRNO_SUCCESS();
+           }
+@@ -256,14 +256,14 @@
+ 
+             if (first_digit < base && second_digit < base &&
+                 third_digit < base) {
+-              libc_errno = 0;
++              LIBC_NAMESPACE::libc_errno = 0;
+               ASSERT_EQ(func(small_string, nullptr, base),
+                         static_cast<ReturnT>(third_digit +
+                                              (second_digit * base) +
+                                              (first_digit * base * base)));
+               ASSERT_ERRNO_SUCCESS();
+             } else if (first_digit < base && second_digit < base) {
+-              libc_errno = 0;
++              LIBC_NAMESPACE::libc_errno = 0;
+               ASSERT_EQ(
+                   func(small_string, nullptr, base),
+                   static_cast<ReturnT>(second_digit + (first_digit * base)));
+@@ -273,23 +273,23 @@
+               // The number is treated as a one digit hexadecimal.
+               if (base == 16 && first_digit == 0 && second_digit == 33) {
+                 if (third_digit < base) {
+-                  libc_errno = 0;
++                  LIBC_NAMESPACE::libc_errno = 0;
+                   ASSERT_EQ(func(small_string, nullptr, base),
+                             static_cast<ReturnT>(third_digit));
+                   ASSERT_ERRNO_SUCCESS();
+                 } else {
+-                  libc_errno = 0;
++                  LIBC_NAMESPACE::libc_errno = 0;
+                   ASSERT_EQ(func(small_string, nullptr, base), ReturnT(0));
+                   ASSERT_ERRNO_SUCCESS();
+                 }
+               } else {
+-                libc_errno = 0;
++                LIBC_NAMESPACE::libc_errno = 0;
+                 ASSERT_EQ(func(small_string, nullptr, base),
+                           static_cast<ReturnT>(first_digit));
+                 ASSERT_ERRNO_SUCCESS();
+               }
+             } else {
+-              libc_errno = 0;
++              LIBC_NAMESPACE::libc_errno = 0;
+               ASSERT_EQ(func(small_string, nullptr, base), ReturnT(0));
+               ASSERT_ERRNO_SUCCESS();
+             }
+@@ -303,19 +303,19 @@
+     char *str_end = nullptr;
+ 
+     const char *no_prefix = "123abc";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(no_prefix, &str_end, 16), ReturnT(0x123abc));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - no_prefix, ptrdiff_t(6));
+ 
+     const char *yes_prefix = "0x456def";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(yes_prefix, &str_end, 16), ReturnT(0x456def));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - yes_prefix, ptrdiff_t(8));
+ 
+     const char *letter_after_prefix = "0xabc123";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(letter_after_prefix, &str_end, 16), ReturnT(0xabc123));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - letter_after_prefix, ptrdiff_t(8));
+@@ -326,7 +326,7 @@
+     // Max size for unsigned 32 bit numbers
+ 
+     const char *max_32_bit_value = "0xFFFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(max_32_bit_value, &str_end, 0),
+               ((is_signed_v<ReturnT> && sizeof(ReturnT) == 4)
+                    ? T_MAX
+@@ -335,7 +335,7 @@
+     EXPECT_EQ(str_end - max_32_bit_value, ptrdiff_t(10));
+ 
+     const char *negative_max_32_bit_value = "-0xFFFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(negative_max_32_bit_value, &str_end, 0),
+               ((is_signed_v<ReturnT> && sizeof(ReturnT) == 4)
+                    ? T_MIN
+@@ -346,13 +346,13 @@
+     // Max size for signed 32 bit numbers
+ 
+     const char *max_31_bit_value = "0x7FFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(max_31_bit_value, &str_end, 0), ReturnT(0x7FFFFFFF));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - max_31_bit_value, ptrdiff_t(10));
+ 
+     const char *negative_max_31_bit_value = "-0x7FFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(negative_max_31_bit_value, &str_end, 0),
+               -ReturnT(0x7FFFFFFF));
+     ASSERT_ERRNO_SUCCESS();
+@@ -361,7 +361,7 @@
+     // Max size for unsigned 64 bit numbers
+ 
+     const char *max_64_bit_value = "0xFFFFFFFFFFFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(max_64_bit_value, &str_end, 0),
+               (is_signed_v<ReturnT> || sizeof(ReturnT) < 8
+                    ? T_MAX
+@@ -372,7 +372,7 @@
+     // See the end of CleanBase10Decode for an explanation of how this large
+     // negative number can end up as T_MAX.
+     const char *negative_max_64_bit_value = "-0xFFFFFFFFFFFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(
+         func(negative_max_64_bit_value, &str_end, 0),
+         (is_signed_v<ReturnT>
+@@ -384,14 +384,14 @@
+     // Max size for signed 64 bit numbers
+ 
+     const char *max_63_bit_value = "0x7FFFFFFFFFFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(max_63_bit_value, &str_end, 0),
+               (sizeof(ReturnT) < 8 ? T_MAX : ReturnT(0x7FFFFFFFFFFFFFFF)));
+     ASSERT_ERRNO_EQ(sizeof(ReturnT) < 8 ? ERANGE : 0);
+     EXPECT_EQ(str_end - max_63_bit_value, ptrdiff_t(18));
+ 
+     const char *negative_max_63_bit_value = "-0x7FFFFFFFFFFFFFFF";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(negative_max_63_bit_value, &str_end, 0),
+               (sizeof(ReturnT) >= 8 ? -ReturnT(0x7FFFFFFFFFFFFFFF)
+                                     : (is_signed_v<ReturnT> ? T_MIN : T_MAX)));
+@@ -403,23 +403,23 @@
+     char *str_end = nullptr;
+ 
+     const char *just_prefix = "0x";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_prefix, &str_end, 16), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_prefix, ptrdiff_t(1));
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_prefix, &str_end, 0), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_prefix, ptrdiff_t(1));
+ 
+     const char *prefix_with_x_after = "0xx";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(prefix_with_x_after, &str_end, 16), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - prefix_with_x_after, ptrdiff_t(1));
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(prefix_with_x_after, &str_end, 0), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - prefix_with_x_after, ptrdiff_t(1));
+@@ -429,43 +429,43 @@
+     char *str_end = nullptr;
+ 
+     const char *base_ten = "12345";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(base_ten, &str_end, 0), ReturnT(12345));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - base_ten, ptrdiff_t(5));
+ 
+     const char *base_sixteen_no_prefix = "123abc";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(base_sixteen_no_prefix, &str_end, 0), ReturnT(123));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - base_sixteen_no_prefix, ptrdiff_t(3));
+ 
+     const char *base_sixteen_with_prefix = "0x456def";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(base_sixteen_with_prefix, &str_end, 0), ReturnT(0x456def));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - base_sixteen_with_prefix, ptrdiff_t(8));
+ 
+     const char *base_eight_with_prefix = "012345";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(base_eight_with_prefix, &str_end, 0), ReturnT(012345));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - base_eight_with_prefix, ptrdiff_t(6));
+ 
+     const char *just_zero = "0";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_zero, &str_end, 0), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_zero, ptrdiff_t(1));
+ 
+     const char *just_zero_x = "0x";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_zero_x, &str_end, 0), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_zero_x, ptrdiff_t(1));
+ 
+     const char *just_zero_eight = "08";
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     ASSERT_EQ(func(just_zero_eight, &str_end, 0), ReturnT(0));
+     ASSERT_ERRNO_SUCCESS();
+     EXPECT_EQ(str_end - just_zero_eight, ptrdiff_t(1));
+diff -ruN --strip-trailing-cr a/libc/test/src/string/strdup_test.cpp b/libc/test/src/string/strdup_test.cpp
+--- a/libc/test/src/string/strdup_test.cpp
++++ b/libc/test/src/string/strdup_test.cpp
+@@ -15,7 +15,7 @@
+ TEST(LlvmLibcStrDupTest, EmptyString) {
+   const char *empty = "";
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   char *result = LIBC_NAMESPACE::strdup(empty);
+   ASSERT_ERRNO_SUCCESS();
+ 
+@@ -28,7 +28,7 @@
+ TEST(LlvmLibcStrDupTest, AnyString) {
+   const char *abc = "abc";
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   char *result = LIBC_NAMESPACE::strdup(abc);
+   ASSERT_ERRNO_SUCCESS();
+ 
+@@ -39,7 +39,7 @@
+ }
+ 
+ TEST(LlvmLibcStrDupTest, NullPtr) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   char *result = LIBC_NAMESPACE::strdup(nullptr);
+   ASSERT_ERRNO_SUCCESS();
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/str_to_double_test.cpp b/libc/test/src/__support/str_to_double_test.cpp
+--- a/libc/test/src/__support/str_to_double_test.cpp
++++ b/libc/test/src/__support/str_to_double_test.cpp
+@@ -90,7 +90,7 @@
+   uint64_t double_output_mantissa = 0;
+   uint32_t output_exp2 = 0;
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   auto double_result =
+       internal::simple_decimal_conversion<double>("123456789012345678900");
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/str_to_float_test.cpp b/libc/test/src/__support/str_to_float_test.cpp
+--- a/libc/test/src/__support/str_to_float_test.cpp
++++ b/libc/test/src/__support/str_to_float_test.cpp
+@@ -46,7 +46,7 @@
+   uint32_t float_output_mantissa = 0;
+   uint32_t output_exp2 = 0;
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   auto float_result =
+       internal::simple_decimal_conversion<float>("123456789012345678900");
+   float_output_mantissa = float_result.num.mantissa;
+diff -ruN --strip-trailing-cr a/libc/test/src/__support/str_to_fp_test.h b/libc/test/src/__support/str_to_fp_test.h
+--- a/libc/test/src/__support/str_to_fp_test.h
++++ b/libc/test/src/__support/str_to_fp_test.h
+@@ -66,7 +66,7 @@
+                                       const int expectedErrno = 0) {
+     StorageType actual_output_mantissa = 0;
+     uint32_t actual_output_exp2 = 0;
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+ 
+     auto result = internal::simple_decimal_conversion<T>(numStart);
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/mman/linux/madvise_test.cpp b/libc/test/src/sys/mman/linux/madvise_test.cpp
+--- a/libc/test/src/sys/mman/linux/madvise_test.cpp
++++ b/libc/test/src/sys/mman/linux/madvise_test.cpp
+@@ -20,7 +20,7 @@
+ 
+ TEST(LlvmLibcMadviseTest, NoError) {
+   size_t alloc_size = 128;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   void *addr = LIBC_NAMESPACE::mmap(nullptr, alloc_size, PROT_READ,
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   ASSERT_ERRNO_SUCCESS();
+@@ -38,7 +38,7 @@
+ }
+ 
+ TEST(LlvmLibcMadviseTest, Error_BadPtr) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_THAT(LIBC_NAMESPACE::madvise(nullptr, 8, MADV_SEQUENTIAL),
+               Fails(ENOMEM));
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/mman/linux/mincore_test.cpp b/libc/test/src/sys/mman/linux/mincore_test.cpp
+--- a/libc/test/src/sys/mman/linux/mincore_test.cpp
++++ b/libc/test/src/sys/mman/linux/mincore_test.cpp
+@@ -27,7 +27,7 @@
+ using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+ 
+ TEST(LlvmLibcMincoreTest, UnMappedMemory) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   unsigned char vec;
+   int res = LIBC_NAMESPACE::mincore(nullptr, 1, &vec);
+   EXPECT_THAT(res, Fails(ENOMEM, -1));
+@@ -39,7 +39,7 @@
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   EXPECT_NE(addr, MAP_FAILED);
+   EXPECT_EQ(reinterpret_cast<unsigned long>(addr) % page_size, 0ul);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int res = LIBC_NAMESPACE::mincore(static_cast<char *>(addr) + 1, 1, nullptr);
+   EXPECT_THAT(res, Fails(EINVAL, -1));
+   EXPECT_THAT(LIBC_NAMESPACE::munmap(addr, page_size), Succeeds());
+@@ -51,7 +51,7 @@
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   EXPECT_NE(addr, MAP_FAILED);
+   EXPECT_EQ(reinterpret_cast<unsigned long>(addr) % page_size, 0ul);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int res = LIBC_NAMESPACE::mincore(addr, 1, nullptr);
+   EXPECT_THAT(res, Fails(EFAULT, -1));
+ }
+@@ -63,7 +63,7 @@
+   EXPECT_NE(addr, MAP_FAILED);
+   EXPECT_EQ(reinterpret_cast<unsigned long>(addr) % page_size, 0ul);
+   unsigned char vec;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int res = LIBC_NAMESPACE::mincore(addr, 1, &vec);
+   EXPECT_THAT(res, Succeeds());
+   EXPECT_THAT(LIBC_NAMESPACE::munmap(addr, page_size), Succeeds());
+@@ -76,7 +76,7 @@
+   EXPECT_NE(addr, MAP_FAILED);
+   EXPECT_EQ(reinterpret_cast<unsigned long>(addr) % page_size, 0ul);
+   unsigned char vec;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int res = LIBC_NAMESPACE::mincore(addr, -1, &vec);
+   EXPECT_THAT(res, Fails(ENOMEM, -1));
+   EXPECT_THAT(LIBC_NAMESPACE::munmap(addr, page_size), Succeeds());
+@@ -102,11 +102,11 @@
+ 
+   // page out the memory
+   {
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     EXPECT_THAT(LIBC_NAMESPACE::madvise(addr, page_size, MADV_DONTNEED),
+                 Succeeds());
+ 
+-    libc_errno = 0;
++    LIBC_NAMESPACE::libc_errno = 0;
+     int res = LIBC_NAMESPACE::mincore(addr, page_size, &vec);
+     EXPECT_EQ(vec & 1u, 0u);
+     EXPECT_THAT(res, Succeeds());
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/mman/linux/mlock_test.cpp b/libc/test/src/sys/mman/linux/mlock_test.cpp
+--- a/libc/test/src/sys/mman/linux/mlock_test.cpp
++++ b/libc/test/src/sys/mman/linux/mlock_test.cpp
+@@ -120,7 +120,7 @@
+ 
+ TEST(LlvmLibcMlockTest, InvalidFlag) {
+   size_t alloc_size = 128; // page size
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   void *addr = LIBC_NAMESPACE::mmap(nullptr, alloc_size, PROT_READ,
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   ASSERT_ERRNO_SUCCESS();
+@@ -151,8 +151,9 @@
+         Succeeds());
+     auto retval = LIBC_NAMESPACE::mlockall(MCL_CURRENT);
+     if (retval == -1) {
+-      EXPECT_TRUE(libc_errno == ENOMEM || libc_errno == EPERM);
+-      libc_errno = 0;
++      EXPECT_TRUE(LIBC_NAMESPACE::libc_errno == ENOMEM ||
++                  LIBC_NAMESPACE::libc_errno == EPERM);
++      LIBC_NAMESPACE::libc_errno = 0;
+       return;
+     }
+     unsigned char vec;
+@@ -164,8 +165,9 @@
+   {
+     auto retval = LIBC_NAMESPACE::mlockall(MCL_FUTURE);
+     if (retval == -1) {
+-      EXPECT_TRUE(libc_errno == ENOMEM || libc_errno == EPERM);
+-      libc_errno = 0;
++      EXPECT_TRUE(LIBC_NAMESPACE::libc_errno == ENOMEM ||
++                  LIBC_NAMESPACE::libc_errno == EPERM);
++      LIBC_NAMESPACE::libc_errno = 0;
+       return;
+     }
+     PageHolder holder;
+@@ -180,8 +182,9 @@
+   {
+     auto retval = LIBC_NAMESPACE::mlockall(MCL_FUTURE | MCL_ONFAULT);
+     if (retval == -1) {
+-      EXPECT_TRUE(libc_errno == ENOMEM || libc_errno == EPERM);
+-      libc_errno = 0;
++      EXPECT_TRUE(LIBC_NAMESPACE::libc_errno == ENOMEM ||
++                  LIBC_NAMESPACE::libc_errno == EPERM);
++      LIBC_NAMESPACE::libc_errno = 0;
+       return;
+     }
+     PageHolder holder;
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/mman/linux/mmap_test.cpp b/libc/test/src/sys/mman/linux/mmap_test.cpp
+--- a/libc/test/src/sys/mman/linux/mmap_test.cpp
++++ b/libc/test/src/sys/mman/linux/mmap_test.cpp
+@@ -19,7 +19,7 @@
+ 
+ TEST(LlvmLibcMMapTest, NoError) {
+   size_t alloc_size = 128;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   void *addr = LIBC_NAMESPACE::mmap(nullptr, alloc_size, PROT_READ,
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   ASSERT_ERRNO_SUCCESS();
+@@ -34,7 +34,7 @@
+ }
+ 
+ TEST(LlvmLibcMMapTest, Error_InvalidSize) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   void *addr = LIBC_NAMESPACE::mmap(nullptr, 0, PROT_READ,
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   EXPECT_THAT(addr, Fails(EINVAL, MAP_FAILED));
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/mman/linux/mprotect_test.cpp b/libc/test/src/sys/mman/linux/mprotect_test.cpp
+--- a/libc/test/src/sys/mman/linux/mprotect_test.cpp
++++ b/libc/test/src/sys/mman/linux/mprotect_test.cpp
+@@ -21,7 +21,7 @@
+ 
+ TEST(LlvmLibcMProtectTest, NoError) {
+   size_t alloc_size = 128;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   void *addr = LIBC_NAMESPACE::mmap(nullptr, alloc_size, PROT_READ,
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   ASSERT_ERRNO_SUCCESS();
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/mman/linux/posix_madvise_test.cpp b/libc/test/src/sys/mman/linux/posix_madvise_test.cpp
+--- a/libc/test/src/sys/mman/linux/posix_madvise_test.cpp
++++ b/libc/test/src/sys/mman/linux/posix_madvise_test.cpp
+@@ -20,7 +20,7 @@
+ 
+ TEST(LlvmLibcPosixMadviseTest, NoError) {
+   size_t alloc_size = 128;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   void *addr = LIBC_NAMESPACE::mmap(nullptr, alloc_size, PROT_READ,
+                                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+   ASSERT_ERRNO_SUCCESS();
+@@ -38,7 +38,7 @@
+ }
+ 
+ TEST(LlvmLibcPosixMadviseTest, Error_BadPtr) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   // posix_madvise is a no-op on DONTNEED, so it shouldn't fail even with the
+   // nullptr.
+   EXPECT_EQ(LIBC_NAMESPACE::posix_madvise(nullptr, 8, POSIX_MADV_DONTNEED), 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/prctl/linux/prctl_test.cpp b/libc/test/src/sys/prctl/linux/prctl_test.cpp
+--- a/libc/test/src/sys/prctl/linux/prctl_test.cpp
++++ b/libc/test/src/sys/prctl/linux/prctl_test.cpp
+@@ -34,7 +34,7 @@
+ TEST(LlvmLibcSysPrctlTest, GetTHPDisable) {
+   // Manually check errno since the return value logic here is not
+   // covered in ErrnoSetterMatcher.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int ret = LIBC_NAMESPACE::prctl(PR_GET_THP_DISABLE, 0, 0, 0, 0);
+   ASSERT_ERRNO_SUCCESS();
+   // PR_GET_THP_DISABLE return (as the function result) the current
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/random/linux/getrandom_test.cpp b/libc/test/src/sys/random/linux/getrandom_test.cpp
+--- a/libc/test/src/sys/random/linux/getrandom_test.cpp
++++ b/libc/test/src/sys/random/linux/getrandom_test.cpp
+@@ -15,13 +15,13 @@
+ 
+ TEST(LlvmLibcGetRandomTest, InvalidFlag) {
+   LIBC_NAMESPACE::cpp::array<char, 10> buffer;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::getrandom(buffer.data(), buffer.size(), -1),
+               LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails(EINVAL));
+ }
+ 
+ TEST(LlvmLibcGetRandomTest, InvalidBuffer) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::getrandom(nullptr, 65536, 0),
+               LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails(EFAULT));
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/resource/getrlimit_setrlimit_test.cpp b/libc/test/src/sys/resource/getrlimit_setrlimit_test.cpp
+--- a/libc/test/src/sys/resource/getrlimit_setrlimit_test.cpp
++++ b/libc/test/src/sys/resource/getrlimit_setrlimit_test.cpp
+@@ -29,7 +29,7 @@
+ 
+   constexpr const char *TEST_FILE1 = "testdata/resource_limits1.test";
+   constexpr const char *TEST_FILE2 = "testdata/resource_limits2.test";
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd1 = LIBC_NAMESPACE::open(TEST_FILE1, O_CREAT | O_WRONLY, S_IRWXU);
+   ASSERT_GT(fd1, 0);
+@@ -54,7 +54,7 @@
+   ASSERT_LT(fd2, 0);
+   ASSERT_ERRNO_FAILURE();
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::close(fd1), Succeeds(0));
+ 
+   fd2 = LIBC_NAMESPACE::open(TEST_FILE2, O_RDONLY);
+@@ -64,7 +64,7 @@
+   ASSERT_LT(fd1, 0);
+   ASSERT_ERRNO_FAILURE();
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::close(fd2), Succeeds(0));
+ 
+   ASSERT_THAT(LIBC_NAMESPACE::unlink(TEST_FILE1), Succeeds(0));
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/select/select_ui_test.cpp b/libc/test/src/sys/select/select_ui_test.cpp
+--- a/libc/test/src/sys/select/select_ui_test.cpp
++++ b/libc/test/src/sys/select/select_ui_test.cpp
+@@ -18,7 +18,7 @@
+ // Instead, one has to run it manually and press a key on the keyboard
+ // to make the test succeed.
+ TEST(LlvmLibcSelectTest, ReadStdinAfterSelect) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   constexpr int STDIN_FD = 0;
+   fd_set set;
+   FD_ZERO(&set);
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/sendfile/sendfile_test.cpp b/libc/test/src/sys/sendfile/sendfile_test.cpp
+--- a/libc/test/src/sys/sendfile/sendfile_test.cpp
++++ b/libc/test/src/sys/sendfile/sendfile_test.cpp
+@@ -35,7 +35,7 @@
+   constexpr const char *OUT_FILE = "testdata/sendfile_out.test";
+   const char IN_DATA[] = "sendfile test";
+   constexpr ssize_t IN_SIZE = ssize_t(sizeof(IN_DATA));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int in_fd = LIBC_NAMESPACE::open(IN_FILE, O_CREAT | O_WRONLY, S_IRWXU);
+   ASSERT_GT(in_fd, 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/stat/chmod_test.cpp b/libc/test/src/sys/stat/chmod_test.cpp
+--- a/libc/test/src/sys/stat/chmod_test.cpp
++++ b/libc/test/src/sys/stat/chmod_test.cpp
+@@ -28,7 +28,7 @@
+   constexpr const char *TEST_FILE = "testdata/chmod.test";
+   const char WRITE_DATA[] = "test data";
+   constexpr ssize_t WRITE_SIZE = ssize_t(sizeof(WRITE_DATA));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_WRONLY);
+   ASSERT_GT(fd, 0);
+@@ -46,7 +46,7 @@
+   // Opening for writing should fail.
+   EXPECT_EQ(LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_WRONLY), -1);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   // But opening for reading should succeed.
+   fd = LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_RDONLY);
+   EXPECT_GT(fd, 0);
+@@ -57,9 +57,9 @@
+ }
+ 
+ TEST(LlvmLibcChmodTest, NonExistentFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   ASSERT_THAT(LIBC_NAMESPACE::chmod("non-existent-file", S_IRUSR),
+               Fails(ENOENT));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/stat/fchmodat_test.cpp b/libc/test/src/sys/stat/fchmodat_test.cpp
+--- a/libc/test/src/sys/stat/fchmodat_test.cpp
++++ b/libc/test/src/sys/stat/fchmodat_test.cpp
+@@ -30,7 +30,7 @@
+   constexpr const char *TEST_FILE_BASENAME = "fchmodat.test";
+   const char WRITE_DATA[] = "fchmodat test";
+   constexpr ssize_t WRITE_SIZE = ssize_t(sizeof(WRITE_DATA));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_CREAT | O_WRONLY, S_IRWXU);
+   ASSERT_GT(fd, 0);
+@@ -49,7 +49,7 @@
+   // Opening for writing should fail.
+   EXPECT_EQ(LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_WRONLY), -1);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   // But opening for reading should succeed.
+   fd = LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_RDONLY);
+   EXPECT_GT(fd, 0);
+@@ -63,10 +63,10 @@
+ }
+ 
+ TEST(LlvmLibcFchmodatTest, NonExistentFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   ASSERT_THAT(
+       LIBC_NAMESPACE::fchmodat(AT_FDCWD, "non-existent-file", S_IRUSR, 0),
+       Fails(ENOENT));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/stat/fchmod_test.cpp b/libc/test/src/sys/stat/fchmod_test.cpp
+--- a/libc/test/src/sys/stat/fchmod_test.cpp
++++ b/libc/test/src/sys/stat/fchmod_test.cpp
+@@ -28,7 +28,7 @@
+   constexpr const char *TEST_FILE = "testdata/fchmod.test";
+   const char WRITE_DATA[] = "test data";
+   constexpr ssize_t WRITE_SIZE = ssize_t(sizeof(WRITE_DATA));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_WRONLY);
+   ASSERT_GT(fd, 0);
+@@ -46,7 +46,7 @@
+   // Opening for writing should fail.
+   EXPECT_EQ(LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_WRONLY), -1);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   // But opening for reading should succeed.
+   fd = LIBC_NAMESPACE::open(TEST_FILE, O_APPEND | O_RDONLY);
+   EXPECT_GT(fd, 0);
+@@ -57,8 +57,8 @@
+ }
+ 
+ TEST(LlvmLibcChmodTest, NonExistentFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_EQ(LIBC_NAMESPACE::fchmod(-1, S_IRUSR), -1);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/stat/fstat_test.cpp b/libc/test/src/sys/stat/fstat_test.cpp
+--- a/libc/test/src/sys/stat/fstat_test.cpp
++++ b/libc/test/src/sys/stat/fstat_test.cpp
+@@ -26,7 +26,7 @@
+   // make it readonly using chmod. We test that chmod actually succeeded by
+   // trying to open the file for writing and failing.
+   constexpr const char *TEST_FILE = "testdata/fstat.test";
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_CREAT | O_WRONLY, S_IRWXU);
+   ASSERT_GT(fd, 0);
+@@ -42,9 +42,9 @@
+ }
+ 
+ TEST(LlvmLibcFStatTest, NonExistentFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   struct stat statbuf;
+   ASSERT_THAT(LIBC_NAMESPACE::fstat(-1, &statbuf), Fails(EBADF));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/stat/lstat_test.cpp b/libc/test/src/sys/stat/lstat_test.cpp
+--- a/libc/test/src/sys/stat/lstat_test.cpp
++++ b/libc/test/src/sys/stat/lstat_test.cpp
+@@ -26,7 +26,7 @@
+   // make it readonly using chmod. We test that chmod actually succeeded by
+   // trying to open the file for writing and failing.
+   constexpr const char *TEST_FILE = "testdata/lstat.test";
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_CREAT | O_WRONLY, S_IRWXU);
+   ASSERT_GT(fd, 0);
+@@ -42,10 +42,10 @@
+ }
+ 
+ TEST(LlvmLibcLStatTest, NonExistentFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   struct stat statbuf;
+   ASSERT_THAT(LIBC_NAMESPACE::lstat("non-existent-file", &statbuf),
+               Fails(ENOENT));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/sys/stat/stat_test.cpp b/libc/test/src/sys/stat/stat_test.cpp
+--- a/libc/test/src/sys/stat/stat_test.cpp
++++ b/libc/test/src/sys/stat/stat_test.cpp
+@@ -26,7 +26,7 @@
+   // make it readonly using chmod. We test that chmod actually succeeded by
+   // trying to open the file for writing and failing.
+   constexpr const char *TEST_FILE = "testdata/stat.test";
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_CREAT | O_WRONLY, S_IRWXU);
+   ASSERT_GT(fd, 0);
+@@ -42,10 +42,10 @@
+ }
+ 
+ TEST(LlvmLibcStatTest, NonExistentFile) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   struct stat statbuf;
+   ASSERT_THAT(LIBC_NAMESPACE::stat("non-existent-file", &statbuf),
+               Fails(ENOENT));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/termios/termios_test.cpp b/libc/test/src/termios/termios_test.cpp
+--- a/libc/test/src/termios/termios_test.cpp
++++ b/libc/test/src/termios/termios_test.cpp
+@@ -30,21 +30,21 @@
+ 
+ TEST(LlvmLibcTermiosTest, SpeedSmokeTest) {
+   struct termios t;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::cfsetispeed(&t, B50), Succeeds(0));
+   ASSERT_EQ(LIBC_NAMESPACE::cfgetispeed(&t), speed_t(B50));
+   ASSERT_THAT(LIBC_NAMESPACE::cfsetospeed(&t, B75), Succeeds(0));
+   ASSERT_EQ(LIBC_NAMESPACE::cfgetospeed(&t), speed_t(B75));
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::cfsetispeed(&t, ~CBAUD), Fails(EINVAL));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::cfsetospeed(&t, ~CBAUD), Fails(EINVAL));
+ }
+ 
+ TEST(LlvmLibcTermiosTest, GetAttrSmokeTest) {
+   struct termios t;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int fd = LIBC_NAMESPACE::open("/dev/tty", O_RDONLY);
+   if (fd < 0)
+     return; // When /dev/tty is not available, no point continuing.
+@@ -54,7 +54,7 @@
+ }
+ 
+ TEST(LlvmLibcTermiosTest, TcGetSidSmokeTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int fd = LIBC_NAMESPACE::open("/dev/tty", O_RDONLY);
+   if (fd < 0)
+     return; // When /dev/tty is not available, no point continuing.
+diff -ruN --strip-trailing-cr a/libc/test/src/time/gmtime_test.cpp b/libc/test/src/time/gmtime_test.cpp
+--- a/libc/test/src/time/gmtime_test.cpp
++++ b/libc/test/src/time/gmtime_test.cpp
+@@ -28,7 +28,7 @@
+   EXPECT_TRUE(tm_data == nullptr);
+   ASSERT_ERRNO_EQ(EOVERFLOW);
+ 
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   seconds = INT_MIN * static_cast<int64_t>(
+                           TimeConstants::NUMBER_OF_SECONDS_IN_LEAP_YEAR) -
+             1;
+diff -ruN --strip-trailing-cr a/libc/test/src/time/nanosleep_test.cpp b/libc/test/src/time/nanosleep_test.cpp
+--- a/libc/test/src/time/nanosleep_test.cpp
++++ b/libc/test/src/time/nanosleep_test.cpp
+@@ -18,7 +18,7 @@
+ TEST(LlvmLibcNanosleep, SmokeTest) {
+   // TODO: When we have the code to read clocks, test that time has passed.
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   struct timespec tim = {1, 500};
+   struct timespec tim2 = {0, 0};
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/access_test.cpp b/libc/test/src/unistd/access_test.cpp
+--- a/libc/test/src/unistd/access_test.cpp
++++ b/libc/test/src/unistd/access_test.cpp
+@@ -21,7 +21,7 @@
+ TEST(LlvmLibcAccessTest, CreateAndTest) {
+   // The test strategy is to repeatedly create a file in different modes and
+   // test that it is accessable in those modes but not in others.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   constexpr const char *FILENAME = "access.test";
+   auto TEST_FILE = libc_make_test_file_path(FILENAME);
+@@ -46,10 +46,10 @@
+   ASSERT_ERRNO_SUCCESS();
+   ASSERT_EQ(LIBC_NAMESPACE::access(TEST_FILE, R_OK), -1);
+   ASSERT_ERRNO_EQ(EACCES);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_EQ(LIBC_NAMESPACE::access(TEST_FILE, W_OK), -1);
+   ASSERT_ERRNO_EQ(EACCES);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_THAT(LIBC_NAMESPACE::unlink(TEST_FILE), Succeeds(0));
+ }
+ 
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/chdir_test.cpp b/libc/test/src/unistd/chdir_test.cpp
+--- a/libc/test/src/unistd/chdir_test.cpp
++++ b/libc/test/src/unistd/chdir_test.cpp
+@@ -27,7 +27,7 @@
+   auto TEST_FILE = libc_make_test_file_path(FILENAME2);
+   constexpr const char *FILENAME3 = "chdir.test";
+   auto TEST_FILE_BASE = libc_make_test_file_path(FILENAME3);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_PATH);
+   ASSERT_GT(fd, 0);
+@@ -42,8 +42,8 @@
+ }
+ 
+ TEST(LlvmLibcChdirTest, ChangeToNonExistentDir) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   ASSERT_THAT(LIBC_NAMESPACE::chdir("non-existent-dir"), Fails(ENOENT));
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/dup2_test.cpp b/libc/test/src/unistd/dup2_test.cpp
+--- a/libc/test/src/unistd/dup2_test.cpp
++++ b/libc/test/src/unistd/dup2_test.cpp
+@@ -20,7 +20,7 @@
+ 
+ TEST(LlvmLibcdupTest, ReadAndWriteViaDup) {
+   constexpr int DUPFD = 0xD0;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   constexpr const char *FILENAME = "dup2.test";
+   auto TEST_FILE = libc_make_test_file_path(FILENAME);
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/dup3_test.cpp b/libc/test/src/unistd/dup3_test.cpp
+--- a/libc/test/src/unistd/dup3_test.cpp
++++ b/libc/test/src/unistd/dup3_test.cpp
+@@ -25,7 +25,7 @@
+ 
+ TEST(LlvmLibcdupTest, ReadAndWriteViaDup) {
+   constexpr int DUPFD = 0xD0;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   constexpr const char *FILENAME = "dup3.test";
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/dup_test.cpp b/libc/test/src/unistd/dup_test.cpp
+--- a/libc/test/src/unistd/dup_test.cpp
++++ b/libc/test/src/unistd/dup_test.cpp
+@@ -19,7 +19,7 @@
+ #include <sys/stat.h>
+ 
+ TEST(LlvmLibcdupTest, ReadAndWriteViaDup) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Succeeds;
+   constexpr const char *FILENAME = "dup.test";
+   auto TEST_FILE = libc_make_test_file_path(FILENAME);
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/fchdir_test.cpp b/libc/test/src/unistd/fchdir_test.cpp
+--- a/libc/test/src/unistd/fchdir_test.cpp
++++ b/libc/test/src/unistd/fchdir_test.cpp
+@@ -27,7 +27,7 @@
+   auto TEST_FILE = libc_make_test_file_path(FILENAME2);
+   constexpr const char *FILENAME3 = "fchdir.test";
+   auto TEST_FILE_BASE = libc_make_test_file_path(FILENAME3);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   int dir_fd = LIBC_NAMESPACE::open(TEST_DIR, O_DIRECTORY);
+   ASSERT_GT(dir_fd, 0);
+@@ -47,8 +47,8 @@
+ 
+ TEST(LlvmLibcChdirTest, ChangeToNonExistentDir) {
+   using LIBC_NAMESPACE::testing::ErrnoSetterMatcher::Fails;
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   ASSERT_EQ(LIBC_NAMESPACE::fchdir(0), -1);
+   ASSERT_ERRNO_FAILURE();
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ }
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/ftruncate_test.cpp b/libc/test/src/unistd/ftruncate_test.cpp
+--- a/libc/test/src/unistd/ftruncate_test.cpp
++++ b/libc/test/src/unistd/ftruncate_test.cpp
+@@ -34,7 +34,7 @@
+   //   2. Read it to make sure what was written is actually in the file.
+   //   3. Truncate to 1 byte.
+   //   4. Try to read more than 1 byte and fail.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+   ASSERT_GT(fd, 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/isatty_test.cpp b/libc/test/src/unistd/isatty_test.cpp
+--- a/libc/test/src/unistd/isatty_test.cpp
++++ b/libc/test/src/unistd/isatty_test.cpp
+@@ -21,7 +21,7 @@
+ TEST(LlvmLibcIsATTYTest, StdInOutTests) {
+   // If stdin is connected to a terminal, assume that all of the standard i/o
+   // fds are.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   if (LIBC_NAMESPACE::isatty(0)) {
+     EXPECT_THAT(LIBC_NAMESPACE::isatty(0), Succeeds(1)); // stdin
+     EXPECT_THAT(LIBC_NAMESPACE::isatty(1), Succeeds(1)); // stdout
+@@ -34,14 +34,14 @@
+ }
+ 
+ TEST(LlvmLibcIsATTYTest, BadFdTest) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   EXPECT_THAT(LIBC_NAMESPACE::isatty(-1), Fails(EBADF, 0)); // invalid fd
+ }
+ 
+ TEST(LlvmLibcIsATTYTest, DevTTYTest) {
+   constexpr const char *FILENAME = "/dev/tty";
+   auto TTY_FILE = libc_make_test_file_path(FILENAME);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int fd = LIBC_NAMESPACE::open(TTY_FILE, O_RDONLY);
+   if (fd > 0) {
+     ASSERT_ERRNO_SUCCESS();
+@@ -53,7 +53,7 @@
+ TEST(LlvmLibcIsATTYTest, FileTest) {
+   constexpr const char *FILENAME = "isatty.test";
+   auto TEST_FILE = libc_make_test_file_path(FILENAME);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+   ASSERT_GT(fd, 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/linkat_test.cpp b/libc/test/src/unistd/linkat_test.cpp
+--- a/libc/test/src/unistd/linkat_test.cpp
++++ b/libc/test/src/unistd/linkat_test.cpp
+@@ -34,7 +34,7 @@
+   //   2. Create a link to that file.
+   //   3. Open the link to check that the link was created.
+   //   4. Cleanup the file and its link.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int write_fd =
+       LIBC_NAMESPACE::open(TEST_FILE_PATH, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/link_test.cpp b/libc/test/src/unistd/link_test.cpp
+--- a/libc/test/src/unistd/link_test.cpp
++++ b/libc/test/src/unistd/link_test.cpp
+@@ -28,7 +28,7 @@
+   //   2. Create a link to that file.
+   //   3. Open the link to check that the link was created.
+   //   4. Cleanup the file and its link.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int write_fd = LIBC_NAMESPACE::open(TEST_FILE, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+   ASSERT_GT(write_fd, 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/readlinkat_test.cpp b/libc/test/src/unistd/readlinkat_test.cpp
+--- a/libc/test/src/unistd/readlinkat_test.cpp
++++ b/libc/test/src/unistd/readlinkat_test.cpp
+@@ -24,7 +24,7 @@
+   auto LINK_VAL = libc_make_test_file_path(FILENAME);
+   constexpr const char *FILENAME2 = "readlinkat.test.link";
+   auto LINK = libc_make_test_file_path(FILENAME2);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   // The test strategy is as follows:
+   //   1. Create a symlink with value LINK_VAL.
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/readlink_test.cpp b/libc/test/src/unistd/readlink_test.cpp
+--- a/libc/test/src/unistd/readlink_test.cpp
++++ b/libc/test/src/unistd/readlink_test.cpp
+@@ -22,7 +22,7 @@
+   auto LINK_VAL = libc_make_test_file_path(FILENAME);
+   constexpr const char *FILENAME2 = "readlink.test.link";
+   auto LINK = libc_make_test_file_path(FILENAME2);
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   // The test strategy is as follows:
+   //   1. Create a symlink with value LINK_VAL.
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/symlinkat_test.cpp b/libc/test/src/unistd/symlinkat_test.cpp
+--- a/libc/test/src/unistd/symlinkat_test.cpp
++++ b/libc/test/src/unistd/symlinkat_test.cpp
+@@ -34,7 +34,7 @@
+   //   2. Create a link to that file.
+   //   3. Open the link to check that the link was created.
+   //   4. Cleanup the file and its link.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int write_fd =
+       LIBC_NAMESPACE::open(TEST_FILE_PATH, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/symlink_test.cpp b/libc/test/src/unistd/symlink_test.cpp
+--- a/libc/test/src/unistd/symlink_test.cpp
++++ b/libc/test/src/unistd/symlink_test.cpp
+@@ -30,7 +30,7 @@
+   //   2. Create a symlink to that file.
+   //   3. Open the symlink to check that the symlink was created.
+   //   4. Cleanup the file and its symlink.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int write_fd = LIBC_NAMESPACE::open(TEST_FILE, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+   ASSERT_GT(write_fd, 0);
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/syscall_test.cpp b/libc/test/src/unistd/syscall_test.cpp
+--- a/libc/test/src/unistd/syscall_test.cpp
++++ b/libc/test/src/unistd/syscall_test.cpp
+@@ -27,7 +27,7 @@
+ // because the macro generates a call to the actual internal function
+ // (__llvm_libc_syscall) which is inside the namespace.
+ TEST(LlvmLibcSyscallTest, TrivialCall) {
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+ 
+   ASSERT_GE(LIBC_NAMESPACE::syscall(SYS_gettid), 0l);
+   ASSERT_ERRNO_SUCCESS();
+diff -ruN --strip-trailing-cr a/libc/test/src/unistd/truncate_test.cpp b/libc/test/src/unistd/truncate_test.cpp
+--- a/libc/test/src/unistd/truncate_test.cpp
++++ b/libc/test/src/unistd/truncate_test.cpp
+@@ -34,7 +34,7 @@
+   //   2. Read it to make sure what was written is actually in the file.
+   //   3. Truncate to 1 byte.
+   //   4. Try to read more than 1 byte and fail.
+-  libc_errno = 0;
++  LIBC_NAMESPACE::libc_errno = 0;
+   int fd = LIBC_NAMESPACE::open(TEST_FILE, O_WRONLY | O_CREAT, S_IRWXU);
+   ASSERT_ERRNO_SUCCESS();
+   ASSERT_GT(fd, 0);
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/ErrnoSetterMatcher.h b/libc/test/UnitTest/ErrnoSetterMatcher.h
+--- a/libc/test/UnitTest/ErrnoSetterMatcher.h
++++ b/libc/test/UnitTest/ErrnoSetterMatcher.h
+@@ -109,8 +109,8 @@
+ 
+   bool match(T got) {
+     actual_return = got;
+-    actual_errno = libc_errno;
+-    libc_errno = 0;
++    actual_errno = LIBC_NAMESPACE::libc_errno;
++    LIBC_NAMESPACE::libc_errno = 0;
+     if constexpr (ignore_errno())
+       return return_cmp.compare(actual_return);
+     else
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/FPMatcher.h b/libc/test/UnitTest/FPMatcher.h
+--- a/libc/test/UnitTest/FPMatcher.h
++++ b/libc/test/UnitTest/FPMatcher.h
+@@ -132,8 +132,8 @@
+ #define EXPECT_MATH_ERRNO(expected)                                            \
+   do {                                                                         \
+     if (math_errhandling & MATH_ERRNO) {                                       \
+-      int actual = libc_errno;                                                 \
+-      libc_errno = 0;                                                          \
++      int actual = LIBC_NAMESPACE::libc_errno;                                 \
++      LIBC_NAMESPACE::libc_errno = 0;                                          \
+       EXPECT_EQ(actual, expected);                                             \
+     }                                                                          \
+   } while (0)
+@@ -141,8 +141,8 @@
+ #define ASSERT_MATH_ERRNO(expected)                                            \
+   do {                                                                         \
+     if (math_errhandling & MATH_ERRNO) {                                       \
+-      int actual = libc_errno;                                                 \
+-      libc_errno = 0;                                                          \
++      int actual = LIBC_NAMESPACE::libc_errno;                                 \
++      LIBC_NAMESPACE::libc_errno = 0;                                          \
+       ASSERT_EQ(actual, expected);                                             \
+     }                                                                          \
+   } while (0)
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/FuchsiaTest.h b/libc/test/UnitTest/FuchsiaTest.h
+--- a/libc/test/UnitTest/FuchsiaTest.h
++++ b/libc/test/UnitTest/FuchsiaTest.h
+@@ -14,9 +14,12 @@
+ #define WITH_SIGNAL(X) #X
+ 
+ // These macros are used in string unittests.
+-#define ASSERT_ERRNO_EQ(VAL) ASSERT_EQ(VAL, static_cast<int>(libc_errno))
+-#define ASSERT_ERRNO_SUCCESS() ASSERT_EQ(0, static_cast<int>(libc_errno))
+-#define ASSERT_ERRNO_FAILURE() ASSERT_NE(0, static_cast<int>(libc_errno))
++#define ASSERT_ERRNO_EQ(VAL)                                                   \
++  ASSERT_EQ(VAL, static_cast<int>(LIBC_NAMESPACE::libc_errno))
++#define ASSERT_ERRNO_SUCCESS()                                                 \
++  ASSERT_EQ(0, static_cast<int>(LIBC_NAMESPACE::libc_errno))
++#define ASSERT_ERRNO_FAILURE()                                                 \
++  ASSERT_NE(0, static_cast<int>(LIBC_NAMESPACE::libc_errno))
+ 
+ #ifndef EXPECT_DEATH
+ // Since zxtest has ASSERT_DEATH but not EXPECT_DEATH, wrap calling it
+diff -ruN --strip-trailing-cr a/libc/test/UnitTest/LibcTest.h b/libc/test/UnitTest/LibcTest.h
+--- a/libc/test/UnitTest/LibcTest.h
++++ b/libc/test/UnitTest/LibcTest.h
+@@ -446,9 +446,12 @@
+ ////////////////////////////////////////////////////////////////////////////////
+ // Errno checks.
+ 
+-#define ASSERT_ERRNO_EQ(VAL) ASSERT_EQ(VAL, static_cast<int>(libc_errno))
+-#define ASSERT_ERRNO_SUCCESS() ASSERT_EQ(0, static_cast<int>(libc_errno))
+-#define ASSERT_ERRNO_FAILURE() ASSERT_NE(0, static_cast<int>(libc_errno))
++#define ASSERT_ERRNO_EQ(VAL)                                                   \
++  ASSERT_EQ(VAL, static_cast<int>(LIBC_NAMESPACE::libc_errno))
++#define ASSERT_ERRNO_SUCCESS()                                                 \
++  ASSERT_EQ(0, static_cast<int>(LIBC_NAMESPACE::libc_errno))
++#define ASSERT_ERRNO_FAILURE()                                                 \
++  ASSERT_NE(0, static_cast<int>(LIBC_NAMESPACE::libc_errno))
+ 
+ ////////////////////////////////////////////////////////////////////////////////
+ // Subprocess checks.
 diff -ruN --strip-trailing-cr a/libcxx/include/__memory/uninitialized_algorithms.h b/libcxx/include/__memory/uninitialized_algorithms.h
 --- a/libcxx/include/__memory/uninitialized_algorithms.h
 +++ b/libcxx/include/__memory/uninitialized_algorithms.h
