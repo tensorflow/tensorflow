@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
@@ -460,13 +459,6 @@ class StreamExecutor {
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
-  // Adds a task to the tsl::thread::ThreadPool work queue. These tasks must be
-  // fire-and-forget and have no external data or timing dependencies; their
-  // execution order and completion time have no guarantees.
-  // For an example of an appropriate task, see HostBlas::DoBlasGemmInternal;
-  // there, temporary internal buffers are freed using this method.
-  void EnqueueOnBackgroundThread(std::function<void()> task);
-
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
   // Mutable so that caching functions (like DeviceDescription, AsBlas, etc.)
@@ -502,16 +494,6 @@ class StreamExecutor {
   //
   // Immutable post-initialization.
   int device_ordinal_;
-
-  // Executor for handling host callback work that cannot be performed
-  // by a host callback thread - for example, cleanup after a host BLAS routine
-  // (which may make device API calls). This work cannot block the host
-  // callback thread, will be completed asynchronously, and should be treated
-  // as fire-and-forget. Assume no ordering guarantees WRT the tasks enqueued
-  // here.
-  //
-  // Immutable post-initialization. Object is thread-safe.
-  std::unique_ptr<tsl::thread::ThreadPool> background_threads_;
 
   // Counter for the current number of live streams. This is used to check
   // for accidentally-outstanding streams at StreamExecutor teardown time, as

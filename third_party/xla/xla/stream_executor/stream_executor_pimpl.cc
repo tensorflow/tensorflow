@@ -62,14 +62,6 @@ std::string StackTraceIfVLOG10() {
   }
 }
 
-// Make sure the executor is done with its work; we know (because this isn't
-// publicly visible) that all enqueued work is quick.
-void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
-  absl::Notification n;
-  executor->Schedule([&n]() { n.Notify(); });
-  n.WaitForNotification();
-}
-
 }  // namespace
 
 // Get per-device memory limit in bytes. Returns 0 if
@@ -88,15 +80,11 @@ StreamExecutor::StreamExecutor(
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
-      background_threads_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
 
 StreamExecutor::~StreamExecutor() {
-  BlockOnThreadExecutor(background_threads_.get());
-
   if (live_stream_count_.load() != 0) {
     LOG(WARNING) << "Not all streams were deallocated at executor destruction "
                  << "time. This may lead to unexpected/bad behavior - "
@@ -323,10 +311,6 @@ bool StreamExecutor::SynchronizeAllActivity() {
           << StackTraceIfVLOG10();
   bool ok = implementation_->SynchronizeAllActivity();
 
-  // This should all be quick and infallible work, so we can perform the
-  // synchronization even in the case of failure.
-  BlockOnThreadExecutor(background_threads_.get());
-
   return ok;
 }
 
@@ -487,10 +471,6 @@ std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
 
 bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   return implementation_->DeviceMemoryUsage(free, total);
-}
-
-void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
-  background_threads_->Schedule(std::move(task));
 }
 
 std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {

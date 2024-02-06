@@ -543,20 +543,6 @@ void Stream::CheckError(bool operation_retcode) {
   status_ = absl::InternalError("Unknown error");
 }
 
-// It looks confusing, but all this is doing is inserting a callback at the
-// present point in the stream to then enqueue a task on the host executor.
-Stream &Stream::ThenEnqueueOnBackgroundThread(
-    std::function<void(StreamExecutor *)> task) {
-  VLOG_CALL(PARAM(task));
-
-  StreamExecutor *stream_executor = this->parent_;
-  std::function<void()> bound_task = std::bind(task, stream_executor);
-
-  return ThenDoHostCallback([stream_executor, bound_task]() {
-    stream_executor->EnqueueOnBackgroundThread(bound_task);
-  });
-}
-
 absl::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 
