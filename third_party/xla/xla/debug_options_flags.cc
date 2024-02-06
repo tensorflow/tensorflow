@@ -137,6 +137,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_xla_runtime_executable(false);
   opts.set_xla_gpu_enable_custom_fusions(false);
+  opts.set_xla_gpu_enable_address_computation_fusion(true);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
@@ -1092,6 +1093,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Limits custom fusion only to fusions which match this regular "
       "expression. Default is all custom fusions registerered in a current "
       "process."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_address_computation_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_address_computation_fusion),
+      debug_options->xla_gpu_enable_address_computation_fusion(),
+      "Whether to enable XLA address computation fusion"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
