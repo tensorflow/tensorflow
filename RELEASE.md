@@ -27,6 +27,18 @@
 * `tf.estimator`
     * The tf.estimator API is removed.
 
+* Keras 3.0 will be the default Keras version. You may need to update your script to use Keras 3.0.
+* Please refer to the new Keras documentation for Keras 3.0(https://keras.io/keras_3).
+*
+* To continue using Keras 2.0, do the following.
+*   1. Set the environment vaiable TF_USE_LEGACY_KERAS to 1
+*   2. Change import of keras from tensorflow as follows
+*        import tensorflow.keras as keras
+              and
+         import keras
+              to
+         import tf_keras as keras
+
 
 ### Known Caveats
 
