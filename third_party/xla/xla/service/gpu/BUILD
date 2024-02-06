@@ -2515,6 +2515,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_headers",
         "//xla/tools:hlo_module_loader",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
