@@ -27,7 +27,6 @@ class OptimizationBarrierExpander : public HloModulePass {
 
   absl::string_view name() const override { return "cse_barrier_expander"; }
 
- protected:
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
