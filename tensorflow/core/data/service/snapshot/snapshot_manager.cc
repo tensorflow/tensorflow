@@ -137,9 +137,9 @@ void SnapshotAssignmentManager::AddSnapshot(absl::string_view snapshot_path)
 std::vector<std::string> SnapshotAssignmentManager::LoadBalanceSnapshots(
     absl::string_view worker_address) TF_LOCKS_EXCLUDED(mu_) {
   std::vector<std::string> result;
-  result.reserve(snapshot_assignment_counts_.size());
 
   tsl::mutex_lock l(mu_);
+  result.reserve(snapshot_assignment_counts_.size());
   const auto it = assignments_.find(worker_address);
   if (it != assignments_.end()) {
     for (const Assignment& assignment : it->second) {
