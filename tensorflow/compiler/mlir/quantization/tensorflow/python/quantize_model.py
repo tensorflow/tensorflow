@@ -682,15 +682,16 @@ def _populate_quantization_options_default_values(
           == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
       )
       or (
-          quantization_options.op_set == quant_opts_pb2.OpSet.XLA
+          quantization_options.op_set
+          in (quant_opts_pb2.OpSet.XLA, quant_opts_pb2.OpSet.STABLEHLO)
           and quantization_options.quantization_method.preset_method
           == _PresetMethod.METHOD_STATIC_RANGE_INT8
       )
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform Quantized'
-        ' opset, weight only quantization, or XLA opset with static range'
-        ' quantization.'
+        ' opset, weight only quantization, or XLA/StableHLO opset with static'
+        ' range quantization.'
     )
 
   if (
