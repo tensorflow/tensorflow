@@ -59,7 +59,7 @@ docker run --name xla_gpu -w /xla -it -d --rm -v $PWD:/xla tensorflow/build:late
 To build XLA with GPU support use the following command:
 
 ```
-docker exec -e xla_gpu ./configure.py --backend=CUDA
+docker exec xla_gpu ./configure.py --backend=CUDA
 docker exec xla_gpu bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
