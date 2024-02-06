@@ -529,10 +529,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kDot: {
-        TF_RETURN_IF_ERROR(HandleDot(
-            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
-            cluster_env, batch_dim_map, option, call_graph));
-        if (option.allow_replicated_strategy_for_dot_and_conv) {
+        TF_RETURN_IF_ERROR(HandleDot(strategy_group, strategy_groups,
+                                     strategy_map, ins, instruction_id,
+                                     sequence, hlo_cost_analysis, cluster_env,
+                                     batch_dim_map, option, call_graph));
+
+        if (option.allow_recompute_heavy_op) {
           AddReplicatedStrategy(
               ins, ins->shape(), cluster_env, strategy_map, strategy_group,
               GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
@@ -541,10 +543,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kConvolution: {
-        TF_RETURN_IF_ERROR(HandleConv(
-            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
-            cluster_env, batch_dim_map, option, call_graph));
-        if (option.allow_replicated_strategy_for_dot_and_conv) {
+        TF_RETURN_IF_ERROR(HandleConv(strategy_group, strategy_groups,
+                                      strategy_map, ins, instruction_id,
+                                      sequence, hlo_cost_analysis, cluster_env,
+                                      batch_dim_map, option, call_graph));
+        if (option.allow_recompute_heavy_op) {
           AddReplicatedStrategy(
               ins, ins->shape(), cluster_env, strategy_map, strategy_group,
               GetDotConvReplicationPenalty(ins, instruction_id, /* window */ 10,
