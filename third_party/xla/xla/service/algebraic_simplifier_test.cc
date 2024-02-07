@@ -952,6 +952,30 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfNegate) {
       GmockMatch(m::Negate(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
+  const char* kModuleStr = R"(
+    HloModule m
+    max_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] maximum(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[] parameter(0)
+      b = f32[1000,1000] broadcast(p), dimensions={}
+      ROOT reduce = f32[] reduce(b, f32[] constant(0)), dimensions={0,1}, to_apply=max_f32
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
+}
+
 // Test that Const + A is canonicalized to A + Const.
 TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   auto m = CreateNewVerifiedModule();
