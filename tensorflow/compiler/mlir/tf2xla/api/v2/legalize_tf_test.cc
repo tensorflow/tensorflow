@@ -305,14 +305,8 @@ TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
           kMlirModuleStr,
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED));
 
-#if defined(__APPLE__)
-  // TODO(b/324066692): CellReader::Delta(kFullBridge).sum() returns
-  //                    zero on Mac OS. Needs further investigation.
-  return;
-#endif
-
-  // Compilation time should have been non-zero
-  EXPECT_GT(compilation_time.Delta(kFullBridge).sum(), 0);
+  // Compilation time should have been updated.
+  EXPECT_GT(compilation_time.Delta(kFullBridge).num(), 0);
 }
 
 }  // namespace v2
