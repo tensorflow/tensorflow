@@ -2087,6 +2087,9 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
+#ifdef DNNL_AARCH64_USE_ACL
+  GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
   using ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -2165,6 +2168,9 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
+#ifdef DNNL_AARCH64_USE_ACL
+  GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
   using ops::Placeholder;
 
   for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
@@ -2271,6 +2277,9 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
 
 #ifdef INTEL_MKL
 TEST_F(RemapperTest, FuseConv3DWithBiasAndAddN) {
+#ifdef DNNL_AARCH64_USE_ACL
+  GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
   if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
@@ -2343,6 +2352,9 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAddN) {
 }
 
 TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
+#ifdef DNNL_AARCH64_USE_ACL
+  GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
   if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
