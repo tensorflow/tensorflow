@@ -469,6 +469,18 @@ py_strict_binary(
     ],
 )
 
+# copybara:comment_begin(oss-only)
+py_strict_binary(
+    name = "grpc_tpu_worker",
+    srcs = ["grpc_tpu_worker.py"],
+)
+
+py_strict_binary(
+    name = "grpc_tpu_worker_service",
+    srcs = ["grpc_tpu_worker_service.py"],
+)
+# copybara:comment_end
+
 EMITTED_AOT_SAVE_MODEL_OBJECTS = [
     "x_matmul_y_large/saved_model.pb",
     "x_matmul_y_large/variables/variables.index",
