@@ -4415,7 +4415,14 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           VLOG(3) << "Found optimized allocation for " << use.hlo_use.ToString()
                   << " (loop idx: " << loop_optimized_allocation_info.use_index
                   << "): " << allocation->ToString();
-          if (allocation->is_copy_allocation()) {
+          if (require_no_copy_alternate_mem_allocation) {
+            if (allocation->is_copy_allocation() ||
+                allocation->memory_space() == MemorySpace::kDefault) {
+              LOG(WARNING) << "Optimized allocation could not be applied "
+                              "because the tensor is pre-colored, allocation: "
+                           << allocation->ToString();
+            }
+          } else if (allocation->is_copy_allocation()) {
             allow_no_copy_alternate_mem_allocation = true;
             const MemorySpaceAssignment::CopyAllocation* copy_allocation =
                 static_cast<const MemorySpaceAssignment::CopyAllocation*>(
