@@ -496,21 +496,22 @@ bool AppleInfo::IsBionic() const {
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
          gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
          gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
+         gpu_type == AppleGpu::kA17Pro || gpu_type == AppleGpu::kM1 ||
+         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
+         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
+}
+
+bool AppleInfo::IsSIMDMatMulSupported() const {
+  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
+         gpu_type == AppleGpu::kA16 || gpu_type == AppleGpu::kA17Pro ||
          gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
          gpu_type == AppleGpu::kM1Max || gpu_type == AppleGpu::kM1Ultra ||
          gpu_type == AppleGpu::kM2;
 }
 
-bool AppleInfo::IsSIMDMatMulSupported() const {
-  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
-         gpu_type == AppleGpu::kA16 || gpu_type == AppleGpu::kM1 ||
-         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
-         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
-}
-
 bool AppleInfo::IsSIMDMatMulFp32Perf2x() const {
   return gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
-         gpu_type == AppleGpu::kM2;
+         gpu_type == AppleGpu::kA17Pro || gpu_type == AppleGpu::kM2;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
