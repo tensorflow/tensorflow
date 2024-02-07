@@ -1369,7 +1369,7 @@ class HloInstruction {
   // Returns true if this instruction has a side effect. An instruction has a
   // side effect if it uses certain opcodes or calls a computation with a side
   // effect.
-  virtual bool HasSideEffect() const;
+  bool HasSideEffect() const;
 
   // Returns the result shape of this instruction.
   const Shape& shape() const;

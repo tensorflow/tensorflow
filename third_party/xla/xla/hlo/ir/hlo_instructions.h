@@ -264,10 +264,6 @@ class HloAsyncInstruction : public HloInstruction {
   // *end(GetAsyncChain()) is the async-done op.
   std::vector<HloAsyncInstruction*> GetAsyncChain() const;
 
-  bool HasSideEffect() const override {
-    return async_wrapped_instruction()->HasSideEffect();
-  }
-
  protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
