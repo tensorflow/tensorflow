@@ -61,6 +61,7 @@ using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
 using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
 #else
+#define TF_CUPTI_HAS_CHANNEL_ID 0
 using CuptiActivityKernelTy = CUpti_ActivityKernel4;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpy2;
