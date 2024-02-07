@@ -315,6 +315,14 @@ class HloTestBase : public ManifestCheckingTest {
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
 
+  // Same as above but allows running with different configs.
+  ::testing::AssertionResult RunAndCompareTwoModules(
+      absl::string_view hlo_string_module_0,
+      absl::string_view hlo_string_module_1, const HloModuleConfig& config_0,
+      const HloModuleConfig& config_1, const std::optional<ErrorSpec>& error,
+      bool run_hlo_passes = true,
+      std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
+
   // Same as above but requires explicit arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       absl::string_view hlo_string_module_0,

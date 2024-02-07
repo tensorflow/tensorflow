@@ -598,6 +598,31 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
+    string_view hlo_string_module_0, string_view hlo_string_module_1,
+    const HloModuleConfig& config_0, const HloModuleConfig& config_1,
+    const std::optional<ErrorSpec>& error, bool run_hlo_passes,
+    std::optional<int64_t> args_max_bits_of_precision) {
+  auto module_0_or_status =
+      ParseAndReturnVerifiedModule(hlo_string_module_0, config_0);
+  if (!module_0_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_0_or_status.status().ToString();
+  }
+
+  auto module_1_or_status =
+      ParseAndReturnVerifiedModule(hlo_string_module_1, config_1);
+  if (!module_1_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_1_or_status.status().ToString();
+  }
+  return RunAndCompareTwoModules(std::move(module_0_or_status).value(),
+                                 std::move(module_1_or_status).value(), error,
+                                 run_hlo_passes, args_max_bits_of_precision);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModules(
     absl::string_view hlo_string_module_0,
     absl::string_view hlo_string_module_1,
     const absl::Span<Literal* const> arguments,
