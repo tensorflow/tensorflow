@@ -26,14 +26,7 @@ def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::Mo
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 
   let constructor = "CreateRewriteClusterToIfrtCallPass()";
-
-  let options = [
-    Option<"tpu_compile_metadata_debug_", "tpu-compile-metadata-debug", "bool", "false",
-          "if enabled, output compile metadata as readable string in "
-         "an extra __tpu_compile_metadata_debug attribute for debug">,
-  ];
-
-}
+ }
 
 def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::ModuleOp"> {
   let summary = "Sink variable tensor for tpu device as named IFRT array";
