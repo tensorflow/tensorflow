@@ -25,7 +25,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -47,7 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
-#include "xla/service/gpu/runtime/tracing.h"
+#include "xla/service/gpu/runtime3/annotation.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_parser.h"
@@ -937,10 +936,7 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
 
   ScopedAnnotation annotation([&] { return module_annotations_.top_level; });
-  absl::Cleanup annotations_cleanup =
-      [previous = SetCurrentModuleAnnotations(&module_annotations_)] {
-        SetCurrentModuleAnnotations(previous);
-      };
+  ScopedModuleAnnotations module_annotations(&module_annotations_);
 
   ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
 

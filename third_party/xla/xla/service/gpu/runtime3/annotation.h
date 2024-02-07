@@ -65,6 +65,21 @@ struct ModuleAnnotations {
   absl::flat_hash_map<std::string_view, KernelAnnotation> kernels;
 };
 
+//===----------------------------------------------------------------------===//
+// Scoped RAII helper to set and restore thread local module annotations
+//===----------------------------------------------------------------------===//
+
+class ScopedModuleAnnotations {
+ public:
+  explicit ScopedModuleAnnotations(const ModuleAnnotations* annotations);
+  ~ScopedModuleAnnotations();
+
+ private:
+  const ModuleAnnotations* restore_;
+};
+
+const ModuleAnnotations* GetCurrentModuleAnnotations();
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_RUNTIME3_ANNOTATION_H_

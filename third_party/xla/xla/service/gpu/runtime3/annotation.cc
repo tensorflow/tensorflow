@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -231,6 +232,26 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod) : top_level{mod} {
       }
     }
   }
+}
+
+//===----------------------------------------------------------------------===//
+// Scoped RAII helper to set and restore thread local module annotations
+//===----------------------------------------------------------------------===//
+
+namespace {
+thread_local const ModuleAnnotations* current_annotations = nullptr;
+}  // namespace
+
+ScopedModuleAnnotations::ScopedModuleAnnotations(
+    const ModuleAnnotations* annotations)
+    : restore_(std::exchange(current_annotations, annotations)) {}
+
+ScopedModuleAnnotations::~ScopedModuleAnnotations() {
+  std::exchange(current_annotations, restore_);
+}
+
+const ModuleAnnotations* GetCurrentModuleAnnotations() {
+  return current_annotations;
 }
 
 }  // namespace xla::gpu
