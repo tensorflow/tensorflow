@@ -1,1 +1,17 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/test/tools/llvm-objcopy/ELF/prefix-symbols-remove.test b/llvm/test/tools/llvm-objcopy/ELF/prefix-symbols-remove.test
+--- a/llvm/test/tools/llvm-objcopy/ELF/prefix-symbols-remove.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/prefix-symbols-remove.test
+@@ -15,9 +15,9 @@
+ # RUN: cmp %t5 %t6
+ 
+ ## Show that the last --remove-symbol-prefix option wins.
+-# RUN: llvm-objcopy --remove-symbol-prefix=__pf_ --remove-symbol-prefix=__ %t %7
+-# RUN: llvm-objcopy --remove-symbol-prefix=__ %t %8
+-# RUN: cmp %7 %8
++# RUN: llvm-objcopy --remove-symbol-prefix=__pf_ --remove-symbol-prefix=__ %t %t7
++# RUN: llvm-objcopy --remove-symbol-prefix=__ %t %t8
++# RUN: cmp %t7 %t8
+ 
+ !ELF
+ FileHeader:
