@@ -784,26 +784,6 @@ func.func @FuseReshapeAroundBMMRHS(%arg0: tensor<1x3x6x5x1024xf32>) -> tensor<1x
   // CHECK: return %0 : tensor<1x3x6x5x8192xf32>
 }
 
-// CHECK-LABEL: @FuseTransposeIntoBMM_RHS
-func.func @FuseTransposeIntoBMM_RHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x1440x1440xf32> {
-  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
-  %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<1x1440x256xf32>, tensor<3xi32>) -> tensor<1x256x1440xf32>
-  %33 = "tfl.batch_matmul"(%arg0, %32) {adj_x = false, adj_y = false} : (tensor<1x4x1440x256xf32>, tensor<1x256x1440xf32>) -> tensor<1x4x1440x1440xf32>
-  return %33 : tensor<1x4x1440x1440xf32>
-  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x1440x256xf32>, tensor<1x1440x256xf32>) -> tensor<1x4x1440x1440xf32>
-  // CHECK: return %0 : tensor<1x4x1440x1440xf32>
-}
-
-// CHECK-LABEL: @FuseTransposeIntoBMM_RHS2
-func.func @FuseTransposeIntoBMM_RHS2(%arg0: tensor<?x?x40xf32>,  %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
-  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
-  %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-  %33 = "tfl.batch_matmul"(%arg0, %32) {adj_x = false, adj_y = false} : (tensor<?x?x40xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %33 : tensor<?x?x?xf32>
-  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<?x?x40xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  // CHECK: return %0 : tensor<?x?x?xf32>
-}
-
 // CHECK-LABEL: @FuseTransposeIntoBMM_LHS
 func.func @FuseTransposeIntoBMM_LHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x256x256xf32> {
   %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
