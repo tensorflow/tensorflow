@@ -616,10 +616,17 @@ class Options(options_lib.OptionsBase):
       ),
       default_factory=lambda: True if test_mode.TEST_MODE else None,
   )
+
   dataset_name = options_lib.create_option(
       name="dataset_name",
       ty=str,
       docstring="A name for the dataset, to help in debugging.")
+
+  framework_type = options_lib.create_option(
+      name="framework_type",
+      ty=list,
+      docstring="The list of frameworks that are used to generate this "
+      "pipeline, used for telemetry.")
 
   threading = options_lib.create_option(
       name="threading",
@@ -678,6 +685,9 @@ class Options(options_lib.OptionsBase):
       pb.warm_start = self.experimental_warm_start
     if self.dataset_name is not None:
       pb.dataset_name = self.dataset_name
+    if self.framework_type:
+      for framework_type in self.framework_type:
+        pb.framework_type.append(framework_type)
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -699,6 +709,10 @@ class Options(options_lib.OptionsBase):
       self.experimental_warm_start = pb.warm_start
     if pb.WhichOneof("optional_dataset_name") is not None:
       self.dataset_name = pb.dataset_name
+    if pb.framework_type:
+      self.framework_type = []
+      for framework_type in pb.framework_type:
+        self.framework_type.append(framework_type)
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):
