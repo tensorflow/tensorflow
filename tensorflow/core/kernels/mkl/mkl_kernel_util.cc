@@ -40,15 +40,13 @@ void MklTestingUtil::RunMklQuantizeOp(const Tensor& input,
   Node* max_node = test::graph::Constant(&*graph, Tensor(max), "max");
 
   Node* quantize_op;
-  string round_mode =
-      (mode == "SCALE") ? "HALF_TO_EVEN" : "HALF_AWAY_FROM_ZERO";
   TF_CHECK_OK(NodeBuilder("mkl_quantizeV2", "_MklQuantizeV2")
                   .Input(input_node)
                   .Input(min_node)
                   .Input(max_node)
                   .Attr("T", type)
                   .Attr("mode", mode)
-                  .Attr("round_mode", round_mode)
+                  .Attr("round_mode", "HALF_TO_EVEN")
                   .Attr("_kernel", "QuantizedMklOp")
                   .Finalize(&*graph, &quantize_op));
 

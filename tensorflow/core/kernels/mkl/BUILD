@@ -535,17 +535,3 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
     ] + MKL_TEST_DEPS,
 )
-
-tf_cc_test_mkl(
-    name = "onednn_fused_batchmatmul_op_test",
-    size = "medium",
-    srcs = ["onednn_fused_batchmatmul_op_test.cc"],
-    linkstatic = 1,
-    deps = [
-        ":mkl_batch_matmul_op",
-        ":mkl_kernel_util",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core/kernels:quantization_utils",
-        "@com_google_absl//absl/strings",
-    ] + MKL_TEST_DEPS,
-)
