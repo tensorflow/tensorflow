@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "Eigen/Core"
+#include "Eigen/SparseCore"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,9 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/util/mkl_util.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"
 
 using dnnl::stream;
 
@@ -62,10 +62,10 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
   explicit MklSparseMatrixMatMulOp(OpKernelConstruction* ctx)
       : MklDnnMatMulOpBase<T, void, T>(ctx), eigen_sparse_matmul_op_(ctx) {}
 
-  // Throws errors if there are issues with the input
+  // Throws errors if there are issues with the input.
   Status ValidateInputs(const CSRSparseMatrix& sparse_matrix_a,
                         const Tensor& dense_tensor_b, int* rank) {
-    // Datatype
+    // Validate datatypes.
     if (sparse_matrix_a.dtype() != dense_tensor_b.dtype()) {
       return errors::InvalidArgument(
           "Input types don't match.  a.dtype == ",
@@ -73,14 +73,14 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
           " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype()));
     }
 
-    // Rank
+    // Validate the ranks.
     *rank = sparse_matrix_a.dims();
     if (*rank != dense_tensor_b.dims()) {
       return errors::InvalidArgument("Ranks of a and b must match, saw: ", rank,
                                      " vs. ", dense_tensor_b.dims(), ".");
     }
 
-    // Shape
+    // Validate shapes.
     const auto& a_dense_shape = sparse_matrix_a.dense_shape().vec<int64_t>();
     const int64_t a_inner_dim = a_dense_shape(*rank - 1);
     const int64_t b_inner_dim = dense_tensor_b.dim_size(*rank - 2);
@@ -95,7 +95,7 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
     return s;
   }
 
-  // Determine if we should call the Eigen kernel as a fallback
+  // Determine if we should call the Eigen kernel as a fallback.
   bool ShouldCallEigenFallback(const CSRSparseMatrix& sparse_matrix_a,
                                const Tensor& dense_tensor_b, int rank) {
     if (sparse_matrix_a.dtype() != DT_FLOAT) {
@@ -111,9 +111,9 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    // Try to catch any exceptions during the matmul itself
+    // Try to catch any exceptions during the matmul itself.
     try {
-      // Handle the input
+      // Handle the input.
       const CSRSparseMatrix* sparse_matrix_a;
       OP_REQUIRES_OK(ctx, ExtractVariantFromInput(ctx, 0, &sparse_matrix_a));
       const Tensor& rhs_tensor = ctx->input(1);
@@ -129,7 +129,7 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
         return;
       }
 
-      // Dimensions of the matrices
+      // Dimensions of the matrices.
       int64_t num_lhs_rows = dense_shape(rank - 2);
       int64_t num_lhs_cols = dense_shape(rank - 1);
       int64_t num_rhs_rows = rhs_tensor.dim_size(rank - 2);
@@ -138,7 +138,7 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
       memory::dims rhs_dims = memory::dims({num_rhs_rows, num_rhs_cols});
       memory::dims output_dims = memory::dims({num_lhs_rows, num_rhs_cols});
 
-      // Choose the datatype
+      // Choose the datatype.
       const float* lhs_data;
       dnnl::memory::data_type lhs_datatype;
       switch (sparse_matrix_a->dtype()) {
@@ -154,7 +154,7 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
                   "sparse-matrix input."));
       }
 
-      // Get the primitive
+      // Get the oneDNN primitive.
       string prefix = "sparsecsrmatmul";
       MklMatMulParams matmul_params(prefix, lhs_dims, rhs_dims, output_dims,
                                     dnnl::memory::dims(), dnnl::memory::dims(),
@@ -163,7 +163,7 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
       MklMatMulPrimitive<T, T, T, true>* matmul_prim =
           MklMatMulPrimitiveFactory<T, T, T, T, true>::Get(matmul_params, 0);
 
-      // Threading
+      // Threading.
       auto st = ExecuteSingleThreadedGemm(num_lhs_rows, num_rhs_rows,
                                           num_rhs_cols, sizeof(T));
       Eigen::ThreadPoolInterface* eigen_interface =
@@ -171,11 +171,11 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
       tsl::OneDnnThreadPool eigen_tp(eigen_interface,
                                      ThreadPoolUseCallerThread(), st ? 1 : -1);
 
-      // Get the cached primitive
+      // Get the cached primitive.
       std::shared_ptr<dnnl::matmul::primitive_desc> matmul_pd =
           matmul_prim->GetPrimitiveDesc();
 
-      // Allocate room for the result
+      // Allocate room for the result.
       TensorShape output_tf_shape({num_lhs_rows, num_rhs_cols});
       OP_REQUIRES_OK(ctx,
                      ctx->allocate_output(0, output_tf_shape, &output_tensor));
@@ -185,15 +185,15 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
       MklDnnData<T> lhs_mkl(&(this->cpu_engine_));
       MklDnnData<T> rhs_mkl(&(this->cpu_engine_));
 
-      // CPU stream
+      // CPU stream.
       std::shared_ptr<stream> cpu_stream;
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
-      // Allocate a scratchpad
+      // Allocate a scratchpad.
       UserScratchPad<unsigned char> scratch_pad;
       scratch_pad.AllocateSPTensor(matmul_prim, ctx);
 
-      // Execute the actual matmul
+      // Execute the actual matmul.
       matmul_prim->Execute(
           cpu_stream, lhs_data, rhs_data, output_data, scratch_pad.Get(),
           nullptr, nullptr,

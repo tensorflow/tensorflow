@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +39,7 @@ static Graph *SparseMatrixMatmulGenerate(int nnz, int m, int k, int n,
   Graph *g = new Graph(OpRegistry::Global());
   CSRSparseMatrix csr_matrix;
 
-  /* Generate the random COO matrix */
+  // Generate the random COO matrix.
   Tensor a_values_t(DT_FLOAT, TensorShape({nnz}));
   Tensor a_indices_t(DT_INT64, TensorShape({nnz, 2}));
   Tensor a_shape_t(DT_INT64, TensorShape({2}));
@@ -57,38 +57,38 @@ static Graph *SparseMatrixMatmulGenerate(int nnz, int m, int k, int n,
     a_indices_mat(i, 1) = (const int64_t)a_rhs_dist(gen);
   }
 
-  /* Calculate some constants for the conversion */
+  // Calculate some constants for the conversion.
   const int64_t batch_size = 1;
   const int num_rows = a_shape_vec(0);
   const int num_cols = a_shape_vec(1);
 
-  /* Allocate memory for the output CSR */
+  // Allocate memory for the output CSR.
   Tensor csr_batch_pointers(DT_INT32, TensorShape({batch_size + 1}));
   Tensor csr_column_indices(DT_INT32, TensorShape({nnz}));
   Tensor csr_row_pointers(DT_INT32, TensorShape({(num_rows + 1) * batch_size}));
 
-  /* Cast the indices matrix to const */
+  // Cast the indices matrix to const.
   auto a_indices_mat_const = std::as_const(a_indices_t).matrix<int64_t>();
 
-  /* Zero out the row pointers */
+  // Zero out the row pointers.
   memset(csr_row_pointers.flat<int32>().data(), 0,
          (num_rows + 1) * batch_size * sizeof(int32));
 
-  /* Convert from COO to CSR */
+  // Convert from COO to CSR.
   functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
   TF_CHECK_OK(coo_to_csr(batch_size, num_rows, num_cols, a_indices_mat_const,
                          csr_batch_pointers.vec<int32>(),
                          csr_row_pointers.vec<int32>(),
                          csr_column_indices.vec<int32>()));
 
-  /* Construct a CSRSparseMatrix */
+  // Construct a CSRSparseMatrix.
   TF_CHECK_OK(CSRSparseMatrix::CreateCSRSparseMatrix(
       DT_FLOAT, a_shape_t, csr_batch_pointers, csr_row_pointers,
       csr_column_indices, a_values_t, &csr_matrix));
   *csr_matrix_t = new Tensor(cpu_allocator(), DT_VARIANT, TensorShape({}));
   (*csr_matrix_t)->scalar<Variant>()() = std::move(csr_matrix);
 
-  /* Generate the dense tensor to multiply against */
+  // Generate the dense tensor to multiply against.
   *dense_matrix_t = new Tensor(DT_FLOAT, TensorShape({k, n}));
   (*dense_matrix_t)->flat<float>().setRandom();
 
@@ -135,8 +135,8 @@ static Graph *SparseMatrixMatmul(const string &kind, Graph *g,
       ->Arg(/* unused arg */ 1);
 // NOLINTEND
 
-#define BM_SparseMatrixMatmul(NNZ, M, K, N) \
-  BM_SparseMatrixMatmulDev(Default, NNZ, M, K, N, cpu);
+#define BM_SparseMatrixMatmul(NNZ, M, K, N)             \
+  BM_SparseMatrixMatmulDev(Default, NNZ, M, K, N, cpu); \
   BM_SparseMatrixMatmulDev(Mkl, NNZ, M, K, N, cpu);
 
 BM_SparseMatrixMatmul(128, 8, 512, 1);
@@ -167,7 +167,7 @@ BM_SparseMatrixMatmul(16384, 4096, 4096, 1024);
 
 BM_SparseMatrixMatmul(16384, 4096, 4096, 4096);
 
-/* The big ones */
+// The big ones.
 BM_SparseMatrixMatmul(100, 1, 1000000, 100);
 BM_SparseMatrixMatmul(200, 1, 2000000, 100);
 BM_SparseMatrixMatmul(400, 1, 4000000, 100);
@@ -180,7 +180,7 @@ BM_SparseMatrixMatmul(800, 8, 1000000, 100);
 BM_SparseMatrixMatmul(1600, 8, 2000000, 100);
 BM_SparseMatrixMatmul(3200, 8, 4000000, 100);
 
-/* The bigger ones */
+// The bigger ones.
 // BM_SparseMatrixMatmul(100, 1, 1000000, 1000);
 // BM_SparseMatrixMatmul(200, 1, 2000000, 1000);
 // BM_SparseMatrixMatmul(400, 1, 4000000, 1000);

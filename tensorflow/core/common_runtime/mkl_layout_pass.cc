@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1557,7 +1557,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     Tensor tensor;
     bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
 
-    // Check the environment variable
+    // Check the environment variable.
     if (!UseOnednnSpmm()) {
       VLOG(2) << "TF_ENABLE_ONEDNN_SPMM is disabled";
       return false;
@@ -1565,14 +1565,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       VLOG(2) << "TF_ENABLE_ONEDNN_SPMM is enabled";
     }
 
-    // Check the datatype
+    // Check the datatype.
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
     if (T != DT_FLOAT) {
       VLOG(2) << "_MklSparseMatrixMatMul only supports DT_FLOAT";
       return false;
     }
 
-    // Check for adjointing
+    // Check for adjointing.
     TF_CHECK_OK(GetNodeAttr(n->def(), "adjoint_a", &adjoint_a));
     TF_CHECK_OK(GetNodeAttr(n->def(), "adjoint_b", &adjoint_b));
     if (adjoint_a || adjoint_b) {
@@ -1581,7 +1581,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       return false;
     }
 
-    // Check transposing
+    // Check for transposing.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &transpose_a));
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_b", &transpose_b));
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_output", &transpose_out));

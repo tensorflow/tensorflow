@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   // Rewrite rule for Conv2D, Conv2DBackpropInput and Conv2DBackpropFilter.
   static bool RewriteConv2D(EagerOperation* op);
 
-  // Rewrite rule for MklSparseMatrixMatMul
+  // Rewrite rule for MklSparseMatrixMatMul.
   static bool RewriteSparseMatrixMatMul(EagerOperation* op);
 
   // Rewrite rule for FusedBatchNormV3 and FusedBatchNormGradV3
@@ -246,14 +246,14 @@ bool MklEagerOpRewrite::RewriteSparseMatrixMatMul(EagerOperation* op) {
   Tensor tensor;
   bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
 
-  // Check the datatype
+  // Check the datatype.
   TF_CHECK_OK(GetNodeAttr(ndef, "T", &T));
   if (T != DT_FLOAT) {
     VLOG(1) << "_MklSparseMatrixMatMul only supports DT_FLOAT";
     return false;
   }
 
-  // Check for adjointing
+  // Check for adjointing.
   TF_CHECK_OK(GetNodeAttr(ndef, "adjoint_a", &adjoint_a));
   TF_CHECK_OK(GetNodeAttr(ndef, "adjoint_b", &adjoint_b));
   if (adjoint_a || adjoint_b) {
@@ -262,7 +262,7 @@ bool MklEagerOpRewrite::RewriteSparseMatrixMatMul(EagerOperation* op) {
     return false;
   }
 
-  // Check transposing
+  // Check for transposing.
   TF_CHECK_OK(GetNodeAttr(ndef, "transpose_a", &transpose_a));
   TF_CHECK_OK(GetNodeAttr(ndef, "transpose_b", &transpose_b));
   TF_CHECK_OK(GetNodeAttr(ndef, "transpose_output", &transpose_out));

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -837,7 +837,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     if (add_data != nullptr)
       context_.add_mem->set_data_handle(add_data, *stream);
 #else
-    if (CSR) {
+    if constexpr (CSR) {
       context_.a_mem->set_data_handle(
           static_cast<void*>(const_cast<Tlhs*>(a_data)), 0);
       context_.a_mem->set_data_handle(
@@ -922,8 +922,8 @@ class MklMatMulPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::primitive> matmul_primitive = nullptr;
 
     // Create MatMul descriptor and primitive descriptor.
-    if (CSR) {
-      // If it's a CSR matrix
+    if constexpr (CSR) {
+      // If it's a CSR matrix.
       const auto tmp = memory::desc::csr(
           params.a_dims, MklDnnType<Tlhs>(), params.a_nnz,
           dnnl::memory::data_type::s32, dnnl::memory::data_type::s32);
@@ -990,7 +990,7 @@ class MklMatMulPrimitive : public MklPrimitive {
 #endif  // !ENABLE_ONEDNN_V3
 
     // Create memory primitive based on dummy data.
-    if (CSR) {
+    if constexpr (CSR) {
       context_.a_mem.reset(new dnnl::memory(*context_.a_md, cpu_engine_,
                                             std::vector<void*>(3, DummyData)));
     } else {
