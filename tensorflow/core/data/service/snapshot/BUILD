@@ -17,9 +17,6 @@ tf_cc_test(
     name = "distributed_snapshot_test",
     srcs = ["distributed_snapshot_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
-    tags = [
-        "notsan",  # TODO(b/324060977): Fix tsan failure.
-    ],
     deps = [
         ":path_utils",
         ":test_utils",
