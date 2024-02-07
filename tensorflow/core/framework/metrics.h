@@ -253,6 +253,9 @@ void RecordPipelineProcessingTime(const string& id,
 // Increments the count of binaries loaded from the persistent cache.
 void UpdatePersistentCacheLoadCount();
 
+// Increments the count of BEF and MLIR deserialized.
+void UpdateAotBefMlirLoadCount();
+
 // Updates the metrics stored about time spent building graphs.
 //
 // By "GraphBuild", we refer to building a client graph, which is a sub-graph of
