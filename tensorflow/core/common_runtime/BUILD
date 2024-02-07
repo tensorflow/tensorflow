@@ -3481,7 +3481,10 @@ cc_library(
     srcs = ["serving_device_selector.cc"],
     hdrs = ["serving_device_selector.h"],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],

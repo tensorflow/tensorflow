@@ -499,9 +499,14 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core/common_runtime:serving_device_selector",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -513,6 +518,7 @@ tf_cc_test(
         ":gpu_serving_device_selector",
         "//tensorflow/core/common_runtime:serving_device_selector",
         "//tensorflow/core/common_runtime:serving_device_selector_policies",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
