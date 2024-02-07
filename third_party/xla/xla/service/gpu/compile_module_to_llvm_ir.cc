@@ -57,7 +57,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/mlir/backends/gpu/transforms/passes.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
 #include "xla/service/buffer_assignment.h"
@@ -146,53 +145,6 @@ class DumpAfterPassIfEnabled : public mlir::PassInstrumentation {
   const mlir::ModuleOp* mlir_module_;
   int pass_counter_ = 0;
 };
-
-// Lowers MLIR module to the XLA Gpu runtime custom calls.
-static absl::Status LowerToXlaGpuRuntime(
-    mlir::ModuleOp module, llvm::StringRef entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
-    const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
-  if (!module) {
-    return Internal("No MLIR module to lower.");
-  }
-
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  bool should_verify = debug_options.xla_gpu_llvm_verification_level() >= 1;
-#ifndef NDEBUG
-  should_verify = true;
-#endif
-
-  mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
-  pm.enableVerifier(should_verify);
-  if (hlo_module != nullptr && DumpingEnabledForHloModule(*hlo_module)) {
-    pm.addInstrumentation(
-        std::make_unique<DumpAfterPassIfEnabled>(hlo_module, &module));
-  }
-
-  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
-  for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
-    if (!DebugOptions::CommandBufferCmdType_IsValid(command_type_num)) {
-      return Internal("Invalid command buffer command type");
-    }
-    DebugOptions::CommandBufferCmdType command_type =
-        static_cast<DebugOptions::CommandBufferCmdType>(command_type_num);
-    command_types.insert(command_type);
-  }
-
-  GpuPipelineOpts opts;
-  opts.command_types = command_types;
-  opts.min_graph_size = debug_options.xla_gpu_graph_min_graph_size();
-  opts.enable_concurrent_region =
-      debug_options.xla_gpu_graph_enable_concurrent_region();
-  opts.compute_capability = compute_capability;
-  populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
-
-  if (pm.run(module).failed()) {
-    return Internal("Failed to lower LMHLO to Gpu runtime custom calls.");
-  }
-
-  return absl::OkStatus();
-}
 
 }  // namespace
 
