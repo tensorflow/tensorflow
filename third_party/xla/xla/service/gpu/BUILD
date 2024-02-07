@@ -436,6 +436,8 @@ cc_library(
         "//xla/service/gpu/runtime3:cub_sort_thunk",
         "//xla/service/gpu/runtime3:gpublas_lt_matmul_thunk",
         "//xla/service/gpu/runtime3:triangular_solve_thunk",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 

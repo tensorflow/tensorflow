@@ -48,6 +48,11 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 
+#if TENSORFLOW_USE_ROCM
+// for TF_HIPBLASLT
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
