@@ -12,12 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/array3d.h"
-#include "xla/array4d.h"
 #include "xla/error_spec.h"
-#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
