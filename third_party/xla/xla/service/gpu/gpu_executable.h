@@ -248,14 +248,6 @@ class GpuExecutable : public Executable {
   // IrEmitter (null if XLA:GPU runtime is enabled).
   OwnedThunkSequence thunks_;
 
-  // A flag that signals if `thunks_` initialization is completed. Thunks
-  // initialization might allocate new control data structures on device, which
-  // can lead to deadlocks if executed concurrently with other replicas.
-  //
-  // We use rendezvous to guarantee that all participating threads complete
-  // thunk initialization before we start executing any of them.
-  RendezvousSingleFlag thunks_initialized_flag_;
-
   std::string module_name_;
 
   xla::Shape output_shape_;
