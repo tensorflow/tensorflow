@@ -15,27 +15,31 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_DEBUGGING_MLIR_DUMP_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_DEBUGGING_MLIR_DUMP_H_
 
-#include <memory>
-
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace quantization {
 
-// Enables IR printing for `pm`. When the passes are run, the IRs will be dumped
-// to `out_stream`.
-void EnableIrPrinting(llvm::raw_ostream &out_stream, mlir::PassManager &pm);
+// Enables IR printing for `pm`. When the passes are run, each pass will dump to
+// its own file with prefix `file_name_prefix`.
+void EnableIrPrinting(mlir::PassManager &pm,
+                      absl::string_view file_name_prefix);
 
 // If verbosity level >= 1, this will dump intermediate IRs of passes to a file.
-// The file path is given by prefixing `name`.mlir with the value of the
-// TF_QUANT_MLIR_DUMP_PREFIX env variable. Returns `nullptr` iff the verbosity
-// level < 1 or TF_QUANT_MLIR_DUMP_PREFIX is not set or set to an empty string.
-// The returned ostream instance should live until the pass run is complete.
-absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> MaybeEnableIrPrinting(
-    mlir::PassManager &pm, absl::string_view name);
+// The dumped mlir files with be under a directory determined by
+// the TF_QUANT_MLIR_DUMP_PREFIX env variable. The PassManager will dump to a
+// new file for each pass. The file name will have the format
+// {file_name_prefix}_{dump_counter}_{pass_name}_{func_name}_{before|after}.mlir.
+// * `file_name_prefix` is from input.
+// * `dump_counter` increments from 1 for each time the PassManager dumps.
+// * `pass_name` is the name of the pass.
+// * `func_name` is the function name if the pass applies to a function.
+//   Otherwise this is empty.
+// * `before|after` indicates whether the dump occurs before or after the pass.
+absl::Status MaybeEnableIrPrinting(mlir::PassManager &pm,
+                                   absl::string_view file_name_prefix);
 
 }  // namespace quantization
 }  // namespace tensorflow
