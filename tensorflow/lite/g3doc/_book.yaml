@@ -282,6 +282,9 @@ upper_tabs:
         - title: "Convert JAX models"
           path: /lite/examples/jax_conversion/overview
           status: nightly
+        - title: "Colab for JAX to TFLite"
+          path: /lite/examples/jax_conversion/jax_to_tflite
+          status: nightly
       - title: "Model compatibility"
         section:
         - title: "Overview"
