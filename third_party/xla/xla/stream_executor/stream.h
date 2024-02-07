@@ -297,44 +297,6 @@ class Stream {
     return absl::UnimplementedError("DNN library is not found.");
   }
 
-  template <typename ElementType>
-  absl::Status ThenPoolForward(
-      const dnn::PoolingDescriptor &pooling_dimensions,
-      const NumericOptions &numeric_options,
-      const dnn::BatchDescriptor &input_dimensions,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      DeviceMemory<ElementType> *output_data,
-      ScratchAllocator *workspace_allocator = nullptr) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
-                                pooling_dimensions, numeric_options,
-                                input_dimensions, input_data, output_dimensions,
-                                *output_data, workspace_allocator);
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  absl::Status ThenPoolBackward(
-      const dnn::PoolingDescriptor &pooling_dimensions,
-      const NumericOptions &numeric_options,
-      const dnn::BatchDescriptor &input_dimensions,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      const DeviceMemory<ElementType> &output_data,
-      const DeviceMemory<ElementType> &input_diff_data,
-      DeviceMemory<ElementType> *output_diff_data,
-      ScratchAllocator *workspace_allocator = nullptr) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoPoolBackward(
-          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
-          numeric_options, input_dimensions, input_data, output_dimensions,
-          output_data, input_diff_data, *output_diff_data, workspace_allocator);
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
   /////////////////
   // BLAS support
 
