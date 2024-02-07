@@ -266,6 +266,8 @@ std::string WrapDotInHtml(std::string dot) {
     }
     #graph-container {height:95vh;width:100%;padding:10px;display:block;}
     #graph-container svg { height: 100% !important; width: 100% !important;}
+    .node, .cluster {cursor:pointer;}
+    .cluster:hover, .node:hover {outline: solid 3px black;}
   </style>
 </head>
 <body>
