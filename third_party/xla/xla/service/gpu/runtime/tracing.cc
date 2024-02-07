@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/runtime/logical_result.h"
 #include "xla/runtime/tracing.h"
-#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/support.h"
+#include "xla/service/gpu/runtime3/annotation.h"
 #include "tsl/profiler/lib/scoped_annotation_stack.h"
 
 namespace xla {
@@ -55,7 +55,7 @@ void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
 namespace {
 thread_local const ModuleAnnotations* current_annotations{};
 thread_local std::string_view current_tracing_scope = {};
-}
+}  // namespace
 
 static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
   current_tracing_scope = annotation.hlo_op;

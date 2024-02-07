@@ -732,14 +732,8 @@ cc_library(
 
 cc_library(
     name = "tracing",
-    srcs = [
-        "annotation.cc",
-        "tracing.cc",
-    ],
-    hdrs = [
-        "annotation.h",
-        "tracing.h",
-    ],
+    srcs = ["tracing.cc"],
+    hdrs = ["tracing.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
@@ -751,6 +745,7 @@ cc_library(
         "//xla/runtime:logical_result",
         "//xla/runtime:tracing",
         "//xla/runtime:type_id",
+        "//xla/service/gpu/runtime3:annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/diagnostics.h"
 #include "xla/runtime/type_id.h"
-#include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime3/annotation.h"
 
 namespace xla {
 namespace gpu {

@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
-#define XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_ANNOTATION_H_
+#define XLA_SERVICE_GPU_RUNTIME3_ANNOTATION_H_
+
+#include <string>
+#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace xla::gpu {
+
 // Prepared information for the top level NVTX/profiler range covering an
 // HloModule
 struct ModuleAnnotation {
-  explicit ModuleAnnotation(const std::string& module_name);
+  explicit ModuleAnnotation(std::string_view module_name);
   explicit ModuleAnnotation(const HloModule& mod);
+
   std::string_view longest_op_name_prefix() const;
   nvtxStringHandle_t NvtxRegisteredTitle() const;
   std::string_view Title() const;
@@ -38,8 +44,9 @@ struct ModuleAnnotation {
 
 // Prepared information for a kernel/thunk/fusion/... within an HloModule
 struct KernelAnnotation {
-  KernelAnnotation(const ModuleAnnotation& module_annotaion,
+  KernelAnnotation(const ModuleAnnotation& module_annotation,
                    const HloInstruction& inst);
+
   nvtxStringHandle_t NvtxRegisteredTitle() const;
   std::string_view Title() const;
 
@@ -47,14 +54,17 @@ struct KernelAnnotation {
   std::string title_str;
   nvtxStringHandle_t title{};
 };
+
 // Parsed/prepared information for an HloModule that gets propagated to NVTX
 // ranges/profilers/... at execution time.
 struct ModuleAnnotations {
-  explicit ModuleAnnotations(const std::string& module_name);
+  explicit ModuleAnnotations(std::string_view module_name);
   explicit ModuleAnnotations(const HloModule&);
+
   ModuleAnnotation top_level;
-  absl::flat_hash_map<std::string_view, KernelAnnotation> kernels{};
+  absl::flat_hash_map<std::string_view, KernelAnnotation> kernels;
 };
+
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_ANNOTATION_H_

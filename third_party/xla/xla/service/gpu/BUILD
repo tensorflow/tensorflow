@@ -1271,6 +1271,7 @@ cc_library(
         "//xla/service:xla_debug_info_manager",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu/runtime:tracing",
+        "//xla/service/gpu/runtime3:annotation",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
