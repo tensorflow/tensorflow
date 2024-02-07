@@ -598,7 +598,7 @@ tensorflow::Fprint128 ResourceHandleWithLayout::CacheKey() const {
   return f;
 }
 
-tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
+absl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
   // Only set the value for deferenced layout if the incoming layout is not
   // empty. This is still hacky as we use empty layout as placeholder for
   // eagerly placed VarHandleOp.
