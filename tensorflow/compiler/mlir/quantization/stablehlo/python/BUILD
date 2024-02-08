@@ -88,6 +88,7 @@ tf_python_pybind_extension(
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
         "@pybind11",

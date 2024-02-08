@@ -33,6 +33,29 @@ cc_library(
     ],
 )
 
+# OSS: This is a header-only target. Do NOT directly depend on `config_impl` unless it is necessary
+# (e.g. undefined symbol error), to avoid ODR violation.
+cc_library(
+    name = "config",
+    hdrs = ["config.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+    ],
+)
+
+# OSS: This is a impl target corresponding to `config`. Do NOT directly depend on `config_impl`
+# unless it is necessary (e.g. undefined symbol error), to avoid ODR violation.
+cc_library(
+    name = "config_impl",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+    ],
+)
+
 cc_library(
     name = "io",
     srcs = ["io.cc"],

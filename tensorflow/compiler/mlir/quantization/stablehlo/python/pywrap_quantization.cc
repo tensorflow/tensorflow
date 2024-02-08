@@ -20,6 +20,7 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil   // IWYU pragma: keep
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 
@@ -28,8 +29,9 @@ namespace py = pybind11;
 namespace {
 
 using ::mlir::quant::stablehlo::QuantizeStaticRangePtq;
+using ::stablehlo::quantization::PopulateDefaults;
 
-}
+}  // namespace
 
 PYBIND11_MODULE(pywrap_quantization, m) {
   // Supports absl::Status type conversions.
@@ -61,5 +63,18 @@ PYBIND11_MODULE(pywrap_quantization, m) {
         py::arg("quantization_config_serialized"), py::kw_only(),
         py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
         py::arg("function_aliases"), py::arg("py_function_library"));
+  // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
+
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting should also change.
+  // LINT.IfChange(populate_default_configs)
+  m.def("populate_default_configs", &PopulateDefaults,
+        R"pbdoc(
+        Populates `QuantizationConfig` with default values.
+
+        Returns an updated `QuantizationConfig` (serialized) after populating
+        default values to fields that the user did not explicitly specify.
+        )pbdoc",
+        py::arg("user_provided_config_serialized"));
   // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
 }

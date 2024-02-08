@@ -89,7 +89,9 @@ def quantize_saved_model(
         ' single signature.'
     )
 
-  config = _populate_default_quantization_config(config)
+  config = qc.QuantizationConfig.FromString(
+      pywrap_quantization.populate_default_configs(config.SerializeToString())
+  )
 
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
