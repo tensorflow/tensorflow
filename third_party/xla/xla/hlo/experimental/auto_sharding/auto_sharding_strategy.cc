@@ -128,6 +128,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       only_allow_divisible = option.only_allow_divisible_intermediate;
     }
 
+    bool is_follow_necessary_for_correctness = false;
     switch (opcode) {
       case HloOpcode::kParameter: {
         auto it = while_body_args_to_input_tuple.find(ins);
@@ -139,6 +140,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           VLOG(5) << "Following while input " << while_input_tuple->name();
           strategy_group = CreateTupleStrategyGroup(instruction_id);
           strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
+          // We use this following relationship to ensure that the input tuple
+          // of the while loop, and the parameter of the body of that while
+          // loop. Therefore, this followinf relationship is necessary for
+          // correctness, and is not merely an optmization.
+          is_follow_necessary_for_correctness = true;
           for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
             std::unique_ptr<StrategyGroup> child_strategies =
                 MaybeFollowInsStrategyGroup(
@@ -747,10 +753,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       if (!LeafVectorsAreConsistent(strategy_group->strategies,
                                     strategy_group->following->strategies)) {
         // It confuses the solver if two instructions have different number of
-        // sharding strategies but share the same ILP variable. The solver
-        // would run much longer and/or return infeasible solutions.
-        // So if two strategies' strategiess are inconsistent, we unfollow
-        // them.
+        // sharding strategies but share the same ILP variable. The solver would
+        // run much longer and/or return infeasible solutions. So if two
+        // strategies are inconsistent, we unfollow them.
+        CHECK(!is_follow_necessary_for_correctness)
+            << "Reverting a following decision that is necessary for "
+               "correctness. Please report this as a bug.";
         strategy_group->following = nullptr;
       }
     } else if (strategy_group->is_tuple) {
@@ -759,6 +767,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             !LeafVectorsAreConsistent(
                 strategy_group->childs.at(i)->strategies,
                 strategy_group->childs.at(i)->following->strategies)) {
+          CHECK(!is_follow_necessary_for_correctness)
+              << "Reverting a following decision that is necessary for "
+                 "correctness. Please report this as a bug.";
           strategy_group->childs.at(i)->following = nullptr;
         }
       }
