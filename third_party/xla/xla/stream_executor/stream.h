@@ -225,34 +225,6 @@ class Stream {
   //
   // See DnnSupport::* for comments on the following methods.
 
-  template <typename InputT, typename ScaleT, typename SideInputT,
-            typename BiasT, typename OutputT>
-  absl::Status FusedConvolveWithAlgorithm(
-      const dnn::BatchDescriptor &conv_input_descriptor,
-      const DeviceMemory<InputT> &conv_input_data, ScaleT conv_input_scale,
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<InputT> &filter_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const DeviceMemory<SideInputT> &side_input_data, ScaleT side_input_scale,
-      const dnn::BatchDescriptor &bias_descriptor,
-      const DeviceMemory<BiasT> &biases, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputT> *output, ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoFusedConvolve(
-          this, dnn::ToDataType<InputT>::value,
-          dnn::ToDataType<SideInputT>::value, dnn::ToDataType<BiasT>::value,
-          dnn::ToDataType<OutputT>::value, conv_input_descriptor,
-          conv_input_data, conv_input_scale, filter_descriptor, filter_data,
-          convolution_descriptor, side_input_data, side_input_scale,
-          bias_descriptor, biases, activation_mode, output_descriptor, *output,
-          scratch_allocator, algorithm_config, output_profile_result);
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
   absl::Status CudnnReorderConvolutionFilterAndBias(
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<int8_t> &filter_input,
