@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
-#include "Eigen/Core"  // from @eigen_archive
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -70,7 +70,7 @@ std::vector<T> RandomVecNegative(int num_elements) {
 }
 
 PrimitiveType Get(float) { return PrimitiveType::F32; }
-PrimitiveType Get(Eigen::bfloat16) { return PrimitiveType::BF16; }
+PrimitiveType Get(bfloat16) { return PrimitiveType::BF16; }
 
 se::StreamExecutor* GetGpuExecutor() {
   auto* platform =

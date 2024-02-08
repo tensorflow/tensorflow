@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "Eigen/Core"  // from @eigen_archive
 #include "xla/service/gpu/kernels/topk_kernel.cu.h"
+#include "xla/types.h"
 
 namespace xla::gpu {
 
-template void* GetTopKKernelForK<Eigen::bfloat16, 1>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 2>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 4>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 8>(int n);
-template void* GetTopKKernelForK<Eigen::bfloat16, 16>(int n);
+template void* GetTopKKernelForK<bfloat16, 1>(int n);
+template void* GetTopKKernelForK<bfloat16, 2>(int n);
+template void* GetTopKKernelForK<bfloat16, 4>(int n);
+template void* GetTopKKernelForK<bfloat16, 8>(int n);
+template void* GetTopKKernelForK<bfloat16, 16>(int n);
 
 }  // namespace xla::gpu

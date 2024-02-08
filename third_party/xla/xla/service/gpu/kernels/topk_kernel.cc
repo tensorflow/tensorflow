@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "Eigen/Core"  // from @eigen_archive
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
 #include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -110,8 +110,8 @@ absl::Status RunTopk(se::Stream* stream, PrimitiveType dtype,
       return TypedTopK<float>(stream, data, num_elements, top_elements,
                               top_indices, k, batch_size);
     case PrimitiveType::BF16:
-      return TypedTopK<Eigen::bfloat16>(
-          stream, data, num_elements, top_elements, top_indices, k, batch_size);
+      return TypedTopK<bfloat16>(stream, data, num_elements, top_elements,
+                                 top_indices, k, batch_size);
     default:
       return absl::UnimplementedError("GpuTopK not implemented for this dtype");
   }
