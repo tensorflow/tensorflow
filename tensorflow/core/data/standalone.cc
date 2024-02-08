@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/tf_data_memory_logger.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -76,7 +78,21 @@ OpKernelContext::Params CreateParams(
 
 Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
                    SerializationContext* serialization_ctx)
-    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {}
+    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {
+  if (DatasetBaseIterator* dataset_iterator =
+          dynamic_cast<DatasetBaseIterator*>(iterator_.get())) {
+    tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
+        *Env::Default(), dataset_iterator);
+    TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
+    EnsureIteratorMemoryLoggerStarted();
+  }
+}
+
+Iterator::~Iterator() {
+  if (tf_dataz_metrics_collector_) {
+    TfDatazMetricsRegistry::Deregister(tf_dataz_metrics_collector_);
+  }
+}
 
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
