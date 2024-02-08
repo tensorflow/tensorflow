@@ -2271,6 +2271,7 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:lazy_op_runner",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
