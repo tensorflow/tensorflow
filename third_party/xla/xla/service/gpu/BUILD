@@ -1210,28 +1210,6 @@ bool_flag(
 )
 
 cc_library(
-    name = "non_atomically_upgradeable_rw_lock",
-    srcs = [],
-    hdrs = [
-        "non_atomically_upgradeable_rw_lock.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-xla_cc_test(
-    name = "non_atomically_upgradeable_rw_lock_test",
-    srcs = ["non_atomically_upgradeable_rw_lock_test.cc"],
-    deps = [
-        ":non_atomically_upgradeable_rw_lock",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
     name = "gpu_executable",
     srcs = [
         "gpu_executable.cc",
@@ -1250,7 +1228,6 @@ cc_library(
         ":ir_emission_utils",
         ":nccl_clique",
         ":nccl_clique_key",
-        ":non_atomically_upgradeable_rw_lock",
         ":stream_executor_util",
         ":thunk",
         "//xla:executable_run_options",

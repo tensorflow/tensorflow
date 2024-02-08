@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime3/annotation.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -189,8 +188,7 @@ class GpuExecutable : public Executable {
   // GPU execution completes.
   absl::Status ExecuteThunksOrXlaRuntime(
       const ServiceExecutableRunOptions* run_options,
-      const BufferAllocations& buffer_allocations, bool block_host_until_done,
-      NonAtomicallyUpgradeableRWLock& gpu_lock);
+      const BufferAllocations& buffer_allocations, bool block_host_until_done);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;

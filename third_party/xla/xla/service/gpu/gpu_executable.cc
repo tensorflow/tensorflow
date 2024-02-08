@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime3/annotation.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
@@ -777,12 +776,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously. We do not add locking for
   // "recursive" invocations, which are done when holding a lock already.
-  NonAtomicallyUpgradeableRWLock gpu_lock(&GetGpuMutex(executor));
-  std::optional<NonAtomicallyUpgradeableRWLock::WriterLock> exclusive_gpu_lock;
-  const gpu::GpuExecutableRunOptions* gpu_opts =
-      run_options->run_options().gpu_executable_run_options();
-  if (gpu_opts && gpu_opts->requires_exclusive_lock_on_gpu()) {
-    exclusive_gpu_lock.emplace(&gpu_lock);
+  std::variant<absl::ReaderMutexLock, absl::WriterMutexLock> gpu_lock(
+      std::in_place_index_t<0>{}, &GetGpuMutex(executor));
+
+  // Maybe update to a writer lock to get exlcusive acess to underlying GPU.
+  if (auto* gpu_opts = run_options->run_options().gpu_executable_run_options();
+      gpu_opts && gpu_opts->requires_exclusive_lock_on_gpu()) {
+    gpu_lock.emplace<1>(&GetGpuMutex(executor));
   }
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
@@ -918,8 +918,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(
-      run_options, buffer_allocations, block_host_until_done, gpu_lock));
+  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(run_options, buffer_allocations,
+                                               block_host_until_done));
 
   TF_RETURN_IF_ERROR(
       buffer_allocations.TearDown(buffers_in_result, GetAllocations()));
@@ -933,8 +933,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
 absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    NonAtomicallyUpgradeableRWLock& gpu_lock) {
+    const BufferAllocations& buffer_allocations, bool block_host_until_done) {
   TF_RETURN_IF_ERROR(
       CheckCompatibilityWithServiceExecutableRunOptions(run_options));
 
