@@ -4631,6 +4631,40 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
   HloInstruction* rhs;
   CHECK(Match(compare, m::Compare(m::Op(&lhs), m::Op(&rhs))));
 
+  // Gt(Max(a,b), a) -> Gt(b,a)
+  // Gt(Max(a,b), b) -> Gt(a,b)
+  // Gt(a, Min(a,b)) -> Gt(a,b)
+  // Gt(b, Min(a,b)) -> Gt(b,a)
+  if (compare->comparison_direction() == ComparisonDirection::kGt) {
+    HloInstruction* a;
+    HloInstruction* b;
+    if (Match(lhs, m::Maximum(m::Op(&a), m::Op(&b)))) {
+      if (rhs == a) {  // Gt(Max(a,b), a) -> Gt(b,a)
+        TF_ASSIGN_OR_RETURN(auto new_compare,
+                            MakeCompareHlo(ComparisonDirection::kGt, b, a,
+                                           &compare->metadata()));
+        return ReplaceInstruction(compare, new_compare);
+      } else if (rhs == b) {  // Gt(Max(a,b), b) -> Gt(a,b)
+        TF_ASSIGN_OR_RETURN(auto new_compare,
+                            MakeCompareHlo(ComparisonDirection::kGt, a, b,
+                                           &compare->metadata()));
+        return ReplaceInstruction(compare, new_compare);
+      }
+    } else if (Match(rhs, m::Minimum(m::Op(&a), m::Op(&b)))) {
+      if (lhs == a) {  // Gt(a, Min(a,b)) -> Gt(a,b)
+        TF_ASSIGN_OR_RETURN(auto new_compare,
+                            MakeCompareHlo(ComparisonDirection::kGt, a, b,
+                                           &compare->metadata()));
+        return ReplaceInstruction(compare, new_compare);
+      } else if (lhs == b) {  // Gt(b, Min(a,b)) -> Gt(b,a)
+        TF_ASSIGN_OR_RETURN(auto new_compare,
+                            MakeCompareHlo(ComparisonDirection::kGt, b, a,
+                                           &compare->metadata()));
+        return ReplaceInstruction(compare, new_compare);
+      }
+    }
+  }
+
   if (Cast<HloCompareInstruction>(compare)->type() ==
       Comparison::Type::kUnsigned) {
     // X u<  0 -> false
@@ -5988,22 +6022,18 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // Here we build up the slice dimensions for lhs
     DimensionVector lhs_start_indices, lhs_limit_indices, lhs_strides;
     for (int64_t lhs_index = 0; lhs_index < lhs->shape().rank(); ++lhs_index) {
-      int64_t start = 0;
-      int64_t limit = lhs->shape().dimensions(lhs_index);
-      int64_t stride = 1;
-      if (map_lhs_dot[lhs_index] != -1) {
-        // If it is not a contracting dimension, we slice it according to the
-        // slicing of the corresponding dimension in dot
-        int64_t dot_index = map_lhs_dot[lhs_index];
-        start = slice->slice_starts(dot_index);
-        limit = slice->slice_limits(dot_index);
-        stride = slice->slice_strides(dot_index);
-      }
+      int64_t size = lhs->shape().dimensions(lhs_index);
+      // If it is not a contracting dimension, we slice it according to the
+      // slicing of the corresponding dimension in dot
+      int64_t i = map_lhs_dot[lhs_index];
+      int64_t start = i >= 0 ? slice->slice_starts(i) : 0;
+      int64_t limit = i >= 0 ? slice->slice_limits(i) : size;
+      int64_t stride = i >= 0 ? slice->slice_strides(i) : 1;
       lhs_start_indices.push_back(start);
       lhs_limit_indices.push_back(limit);
       lhs_strides.push_back(stride);
       // Record if any slicing occurs here
-      if (start != 0 || limit < lhs->shape().dimensions(lhs_index)) {
+      if (start != 0 || limit < size || stride != 1) {
         slice_lhs = true;
       }
     }
@@ -6011,22 +6041,18 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     // Here we do the same for rhs
     DimensionVector rhs_start_indices, rhs_limit_indices, rhs_strides;
     for (int64_t rhs_index = 0; rhs_index < rhs->shape().rank(); ++rhs_index) {
-      int64_t start = 0;
-      int64_t limit = rhs->shape().dimensions(rhs_index);
-      int64_t stride = 1;
-      if (map_rhs_dot[rhs_index] != -1) {
-        // If it is not a contracting dimension, we slice it according to the
-        // slicing of the corresponding dimension in dot
-        int64_t dot_index = map_rhs_dot[rhs_index];
-        start = slice->slice_starts(dot_index);
-        limit = slice->slice_limits(dot_index);
-        stride = slice->slice_strides(dot_index);
-      }
+      int64_t size = rhs->shape().dimensions(rhs_index);
+      // If it is not a contracting dimension, we slice it according to the
+      // slicing of the corresponding dimension in dot
+      int64_t i = map_rhs_dot[rhs_index];
+      int64_t start = i >= 0 ? slice->slice_starts(i) : 0;
+      int64_t limit = i >= 0 ? slice->slice_limits(i) : size;
+      int64_t stride = i >= 0 ? slice->slice_strides(i) : 1;
       rhs_start_indices.push_back(start);
       rhs_limit_indices.push_back(limit);
       rhs_strides.push_back(stride);
       // Record if any slicing occurs here
-      if (start != 0 || limit < rhs->shape().dimensions(rhs_index)) {
+      if (start != 0 || limit < size || stride != 1) {
         slice_rhs = true;
       }
     }
@@ -7209,6 +7235,25 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                       reduce->AddInstruction(
                           MakeScalarInstruction(reduce, result_value)),
                       {}));
+    }
+  }
+
+  // Replace Reduce(Broadcast(x), a, Max()) or Reduce(Broadcast(x), a, Min())
+  // with Max(x, a) or Min(x, a) when x is a scalar and the broadcast is
+  // reduced to a scalar.
+  if (HloInstruction * broadcast_arg;
+      Match(arg, m::Broadcast(m::Op(&broadcast_arg))) &&
+      (Match(function->root_instruction(),
+             m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))) ||
+       Match(function->root_instruction(),
+             m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+    if (broadcast_arg->shape().rank() == 0 &&
+        reduce->dimensions().size() == arg->shape().rank()) {
+      return ReplaceWithNewInstruction(
+          reduce,
+          HloInstruction::CreateBinary(
+              reduce_result_shape, function->root_instruction()->opcode(),
+              broadcast_arg, reduce->mutable_operand(1)));
     }
   }
 

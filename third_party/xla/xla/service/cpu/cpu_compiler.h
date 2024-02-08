@@ -101,7 +101,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
   CpuAotCompilationResult(
       ObjectFileData object_file_data,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64_t result_buffer_index,
+      int64_t result_buffer_index, std::unique_ptr<HloModule> module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult() override = default;
 
@@ -115,6 +115,9 @@ class CpuAotCompilationResult : public AotCompilationResult {
   }
   int64_t result_buffer_index() const { return result_buffer_index_; }
 
+  const HloModule* optimized_module() const override;
+  std::unique_ptr<HloModule> consume_optimized_module() override;
+
  private:
   // Contains the compiled computation: an object file.
   const ObjectFileData object_file_data_;
@@ -127,6 +130,9 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
   const int64_t result_buffer_index_;
+
+  // Contains the optimized HLO module.
+  std::unique_ptr<HloModule> module_;
 
   // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
   // otherwise is nullptr.
@@ -187,6 +193,7 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   Status RunHloPasses(HloModule* module, bool is_aot_compile,
                       llvm::TargetMachine* target_machine,
+                      const CompileOptions& compile_options,
                       bool is_mlir_compile = false);
 
   // Runs HLO passes up to and including layout assignment.
@@ -198,7 +205,8 @@ class CpuCompiler : public LLVMCompiler {
   // Runs HLO passes after layout assignment.
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
+      LLVMTargetMachineFeatures* target_machine_features,
+      const CompileOptions& compile_options, bool is_mlir_compile);
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
       std::unique_ptr<HloModule> module);

@@ -234,6 +234,17 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const HloAliasAnalysis& alias_analysis,
                                      const Options& options) {
+  // Filter out values that alias with the entry computation root.
+  const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
+  const HloInstruction* root = alias_analysis.dataflow_analysis()
+                                   .module()
+                                   .entry_computation()
+                                   ->root_instruction();
+  for (const HloPosition& position : buffer.ComputePositions()) {
+    if (position.instruction == root) {
+      return false;
+    }
+  }
   std::vector<HloUse> uses =
       FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis);
   return value.defining_instruction()->parent() ==
@@ -4415,7 +4426,14 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
           VLOG(3) << "Found optimized allocation for " << use.hlo_use.ToString()
                   << " (loop idx: " << loop_optimized_allocation_info.use_index
                   << "): " << allocation->ToString();
-          if (allocation->is_copy_allocation()) {
+          if (require_no_copy_alternate_mem_allocation) {
+            if (allocation->is_copy_allocation() ||
+                allocation->memory_space() == MemorySpace::kDefault) {
+              LOG(WARNING) << "Optimized allocation could not be applied "
+                              "because the tensor is pre-colored, allocation: "
+                           << allocation->ToString();
+            }
+          } else if (allocation->is_copy_allocation()) {
             allow_no_copy_alternate_mem_allocation = true;
             const MemorySpaceAssignment::CopyAllocation* copy_allocation =
                 static_cast<const MemorySpaceAssignment::CopyAllocation*>(

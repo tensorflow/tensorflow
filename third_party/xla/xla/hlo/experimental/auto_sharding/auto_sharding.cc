@@ -1707,10 +1707,12 @@ AutoShardingSolverResult CallSolver(
   int num_nodes_without_default = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     const StrategyGroup* strategy_group = strategy_groups[node_idx];
-    auto instruction_name =
-        instructions.at(strategy_group->instruction_id)->name();
+    const auto instruction = instructions.at(strategy_group->instruction_id);
+    const auto instruction_name = instruction->name();
+    const auto opcode = HloOpcodeString(instruction->opcode());
     request.add_instruction_names(
         absl::StrCat(instruction_name, " (id: ", node_idx, ")"));
+    request.add_opcodes(std::string(opcode));
     AutoShardingSolverRequest_Costs ci, di, mi, pi;
     AutoShardingSolverRequest_Names strategy_names;
     std::optional<HloSharding> default_strategy;

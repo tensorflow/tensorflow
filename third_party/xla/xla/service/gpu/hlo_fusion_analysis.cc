@@ -239,10 +239,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
         continue;
       }
       if (!IsRealReductionHero(*root, *hero)) {
-        // Needs to have a compatible shape to the reduce operand.
-        if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-                root->shape(), hero_operand_shape,
-                /*ignore_element_type=*/true)) {
+        // Needs to have a compatible shape to the reduce operand (compatible
+        // meaning same number of elements).
+        if (ShapeUtil::ElementsIn(root->shape()) !=
+            ShapeUtil::ElementsIn(hero_operand_shape)) {
           valid_shapes = false;
           break;
         }

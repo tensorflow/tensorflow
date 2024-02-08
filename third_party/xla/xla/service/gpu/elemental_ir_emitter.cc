@@ -49,18 +49,6 @@ namespace gpu {
 
 using absl::StrAppend;
 
-namespace {
-// Returns whether operand is a floating-point literal with the given value.
-bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  if (operand->opcode() == HloOpcode::kConstant &&
-      operand->literal().IsAllFloat(value)) {
-    return true;
-  }
-  return operand->opcode() == HloOpcode::kBroadcast &&
-         IsFPLiteralWithValue(operand->operand(0), value);
-}
-}  // namespace
-
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
     : ElementalIrEmitter(ir_emitter_context.llvm_module(), b),

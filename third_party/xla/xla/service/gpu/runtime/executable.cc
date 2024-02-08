@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/cholesky.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
@@ -231,13 +230,13 @@ GpuRuntimeExecutable::Create(std::string module_name,
       JitExecutable::Instantiate(program->module, program->entry_point, opts);
   if (!jit_executable.ok())
     return Internal("Failed to compile XLA Runtime program: %s",
-                         jit_executable.status().message());
+                    jit_executable.status().message());
 
   // Instantiate state for all registered runtime modules.
   auto modules_state = ModulesState::Instantiate();
   if (!modules_state.ok())
     return Internal("Failed to instantiate modules state: %s",
-                         modules_state.status().message());
+                    modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::move(module_name), std::move(program->buffer_sizes),
@@ -259,7 +258,7 @@ GpuRuntimeExecutable::Create(
   auto modules_state = ModulesState::Instantiate();
   if (!modules_state.ok())
     return Internal("Failed to instantiate modules state: %s",
-                         modules_state.status().message());
+                    modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::move(module_name), std::move(buffer_sizes),
@@ -318,7 +317,6 @@ absl::Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
-    NonAtomicallyUpgradeableRWLock& gpu_lock,
     const BufferAllocation* temp_alloc) {
   // We pass a pointer to the executable through UserData, so that we can
   // get access to other exported functions from custom call handlers.
@@ -339,7 +337,7 @@ absl::Status GpuRuntimeExecutable::Execute(
   const runtime::FunctionType& signature = executable.signature();
   if (signature.num_operands() != buffer_allocations.size())
     return Internal("Expected %d arguments but got %d buffer allocations",
-                         signature.num_operands(), buffer_allocations.size());
+                    signature.num_operands(), buffer_allocations.size());
 
   for (unsigned i = 0; i < executable.signature().num_operands(); ++i) {
     auto* memref = llvm::dyn_cast<runtime::MemrefType>(signature.operand(i));
@@ -430,7 +428,7 @@ absl::Status GpuRuntimeExecutable::Execute(
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &binary, &kernels, &gemm_configs, &conv_runners, &collectives_,
-      &fft_plans, &send_recv_events, &gpu_lock,
+      &fft_plans, &send_recv_events,
 #if GOOGLE_CUDA || TF_HIPBLASLT
       &matmul_plans,
 #endif
@@ -454,7 +452,7 @@ absl::Status GpuRuntimeExecutable::Execute(
   auto state_ref = modules_state_.InitializeUserData(user_data);
   if (!state_ref.ok())
     return Internal("Failed to initialize runtime modules state: %s",
-                         state_ref.status().message());
+                    state_ref.status().message());
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Instantiate all CUDA graphs before executing the main function.
@@ -466,7 +464,7 @@ absl::Status GpuRuntimeExecutable::Execute(
             debug_options_.xla_gpu_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
       return Internal("Failed to instantiate GPU graphs: %s",
-                           instantiated.message());
+                      instantiated.message());
     }
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -488,8 +486,7 @@ absl::Status GpuRuntimeExecutable::Execute(
 
   if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
     return Internal("Failed to execute XLA Runtime executable: %s%s%s.",
-                         st.message(), diagnostic.empty() ? "" : ": ",
-                         diagnostic);
+                    st.message(), diagnostic.empty() ? "" : ": ", diagnostic);
   }
 
   return absl::OkStatus();

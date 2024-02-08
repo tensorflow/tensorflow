@@ -4,19 +4,54 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
+*   TensorFlow Windows Build:
+
+    *   Clang is now the default compiler to build TensorFlow CPU wheels on the
+        Windows Platform starting with this release. The currently supported
+        version is LLVM/clang 17. The official Wheels-published on PyPI will be
+        based on Clang; however, users retain the option to build wheels using
+        the MSVC compiler following the steps mentioned in
+        https://www.tensorflow.org/install/source_windows as has been the case
+        before
+
 ### Breaking Changes
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+*   <DOCUMENT BREAKING CHANGES HERE>
+*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
-* `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be set
-  if `profiler` arg is set to `True`.
-    * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
-      the profiler now requires setting `profiler_outdir` in `trace_on`.
+*   `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be
+    set if `profiler` arg is set to `True`.
 
-* `tf.estimator`
-    * The tf.estimator API is removed.
+    *   `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op.
+        Enabling the profiler now requires setting `profiler_outdir` in
+        `trace_on`.
 
+*   `tf.estimator`
+
+    *   The tf.estimator API is removed.
+
+*   Keras 3.0 will be the default Keras version. You may need to update your
+    script to use Keras 3.0.
+
+*   Please refer to the new Keras documentation for Keras 3.0
+    (https://keras.io/keras_3).
+
+*   To continue using Keras 2.0, do the following.
+
+*   1.  Install tf-keras via pip install tf-keras~=2.16
+
+    1.  To switch tf.keras to use Keras 2 (tf-keras), set the environment
+        variable TF_USE_LEGACY_KERAS=1 directly or in your python program by
+        import os;os.environ["TF_USE_LEGACY_KERAS"]=1. Please note that this
+        will set it for all packages in your Python runtime program
+
+*   1.  Change import of keras from tensorflow as follows
+*   import tensorflow.keras as keras and import keras to import tf_keras as
+    keras
+* **Apple Silicon users:** If you previously installed TensorFlow using
+    `pip install tensorflow-macos`, please update your installation method. Use
+    `pip install tensorflow` from now on. Starting with TF 2.17, the
+    `tensorflow-macos` package will no longer receive updates.
 
 ### Known Caveats
 

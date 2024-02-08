@@ -124,7 +124,7 @@ tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
   return loader;
 }
 
-tsl::Status XlaCallModuleLoader::SetPlatformIndex(
+absl::Status XlaCallModuleLoader::SetPlatformIndex(
     absl::string_view compilation_platform) {
   int platform_index = -1;
   if (!platforms_.empty()) {
@@ -186,7 +186,7 @@ tsl::Status XlaCallModuleLoader::SetPlatformIndex(
   return tsl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
+absl::Status XlaCallModuleLoader::RefineDynamicShapes(
     llvm::ArrayRef<xla::Shape> input_shapes) {
   // Skip shape refinement for new versions if USES_SHAPE_POLYMORPHISM_ATTR=1
   if (version_ >= kVersionStartSupportUsesShapePolymorphismAttr) {
@@ -349,7 +349,7 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   return tsl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::LoadModule(
+absl::Status XlaCallModuleLoader::LoadModule(
     mlir::MLIRContext *context, int version, std::string module_str,
     std::vector<std::string> disabled_checks,
     std::vector<std::string> platforms, int num_invocation_args,
@@ -446,7 +446,7 @@ tsl::Status XlaCallModuleLoader::LoadModule(
   return tsl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::ValidateDialect() {
+absl::Status XlaCallModuleLoader::ValidateDialect() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
   bool moduleHasUnsupportedDialects = false;
 

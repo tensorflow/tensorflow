@@ -197,20 +197,17 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier() {
 absl::StatusOr<GpuCommandBuffer::NoOpKernel*> GpuCommandBuffer::GetNoOpKernel(
     StreamExecutor* executor) {
   if (!noop_kernel_) {
-    auto noop_kernel = std::make_unique<NoOpKernel>(executor);
-
     MultiKernelLoaderSpec spec(/*arity=*/0);
 #if !defined(TENSORFLOW_USE_ROCM)
     spec.AddCudaPtxInMemory(gpu::kNoOpKernel, "noop");
 #else
     spec.AddInProcessSymbol(gpu::GetNoOpKernel(), "noop");
 #endif  // TENSORFLOW_USE_ROCM
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, noop_kernel.get()));
 
-    noop_kernel_ = std::move(noop_kernel);
+    TF_ASSIGN_OR_RETURN(noop_kernel_, NoOpKernel::Create(executor, spec));
   }
 
-  return noop_kernel_.get();
+  return &noop_kernel_;
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
@@ -263,10 +260,10 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
       // TODO(b/316343054): This should be an empty node, however CUDA 12.3 does
       // not support empty nodes inside conditional command buffers.
       GpuGraphNodeInfo& node_info = nodes_.emplace_back();
-      TF_ASSIGN_OR_RETURN(auto noop, GetNoOpKernel(executor));
+      TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel(executor));
       TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-          &node_info.handle, graph_, absl::MakeSpan(dependencies), noop->name(),
-          AsGpuKernel(noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
+          &node_info.handle, graph_, absl::MakeSpan(dependencies), "noop",
+          AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
           /*kernel_params=*/nullptr, /*extra=*/nullptr));
       barriers_.push_back(node_info.handle);
     } else {
@@ -633,15 +630,14 @@ absl::Status GpuCommandBuffer::If(StreamExecutor* executor,
                                   CommandBuffer::Builder then_builder) {
   DCHECK(executor->implementation() == parent_);
 
-  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
-  // every call to `If`.
-  SetIfConditionKernel set_if_condition(executor);
+  // Load kernels that updates condition handle value.
+  MultiKernelLoaderSpec spec(/*arity=*/2);
+  spec.AddInProcessSymbol(gpu::GetSetIfConditionKernel(), "set_if_condition");
 
-  {  // Load kernels that updates condition handle value.
-    MultiKernelLoaderSpec spec(/*arity=*/2);
-    spec.AddInProcessSymbol(gpu::GetSetIfConditionKernel(), "set_if_condition");
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_if_condition));
-  }
+  // TODO(b/324117563): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `If`.
+  TF_ASSIGN_OR_RETURN(SetIfConditionKernel set_if_condition,
+                      SetIfConditionKernel::Create(executor, spec));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     return CommandBuffer::Launch(set_if_condition, ThreadDim(), BlockDim(),
@@ -661,16 +657,15 @@ absl::Status GpuCommandBuffer::IfElse(StreamExecutor* executor,
                                       CommandBuffer::Builder else_builder) {
   DCHECK(executor->implementation() == parent_);
 
-  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
-  // every call to `IfElse`.
-  SetIfElseConditionKernel set_if_else_condition(executor);
+  // Load kernels that updates condition handle value.
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddInProcessSymbol(gpu::GetSetIfElseConditionKernel(),
+                          "set_if_else_condition");
 
-  {  // Load kernels that updates condition handle value.
-    MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(gpu::GetSetIfElseConditionKernel(),
-                            "set_if_else_condition");
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_if_else_condition));
-  }
+  // TODO(b/324117563): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `IfElse`.
+  TF_ASSIGN_OR_RETURN(SetIfElseConditionKernel set_if_else_condition,
+                      SetIfElseConditionKernel::Create(executor, spec));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     return CommandBuffer::Launch(set_if_else_condition, ThreadDim(), BlockDim(),
@@ -697,16 +692,15 @@ absl::Status GpuCommandBuffer::Case(
         "Case command supports only up to 8 branches, got: ", branches.size()));
   }
 
-  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
-  // every call to `Case`.
-  SetCaseConditionKernel set_case_condition(executor);
+  // Load kernels that updates condition handle value.
+  MultiKernelLoaderSpec spec(/*arity=*/10);
+  spec.AddInProcessSymbol(gpu::GetSetCaseConditionKernel(),
+                          "set_case_condition");
 
-  {  // Load kernels that updates condition handle value.
-    MultiKernelLoaderSpec spec(/*arity=*/10);
-    spec.AddInProcessSymbol(gpu::GetSetCaseConditionKernel(),
-                            "set_case_condition");
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_case_condition));
-  }
+  // TODO(b/324117563): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `Case`.
+  TF_ASSIGN_OR_RETURN(SetCaseConditionKernel set_case_condition,
+                      SetCaseConditionKernel::Create(executor, spec));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     int32_t num_handles = handles.size();
@@ -740,16 +734,14 @@ absl::Status GpuCommandBuffer::For(StreamExecutor* executor,
                                    CommandBuffer::Builder body_builder) {
   DCHECK(executor->implementation() == parent_);
 
-  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
-  // every call to `For`.
-  SetForConditionKernel set_for_condition(executor);
+  // Load kernels that updates condition handle value.
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddInProcessSymbol(gpu::GetSetForConditionKernel(), "set_for_condition");
 
-  {  // Load kernels that updates condition handle value.
-    MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(gpu::GetSetForConditionKernel(),
-                            "set_for_condition");
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_for_condition));
-  }
+  // TODO(b/324117563): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `For`.
+  TF_ASSIGN_OR_RETURN(SetForConditionKernel set_for_condition,
+                      SetForConditionKernel::Create(executor, spec));
 
   // Reset loop counter to zero.
   TF_RETURN_IF_ERROR(Memset(&loop_counter, uint32_t{0}, 1));
@@ -781,16 +773,15 @@ absl::Status GpuCommandBuffer::While(StreamExecutor* executor,
                                      CommandBuffer::Builder body_builder) {
   DCHECK(executor->implementation() == parent_);
 
-  // TODO(ezhulenev): Keep kernel in `GpuCommandBuffer` to avoid loading it on
-  // every call to `While`.
-  SetWhileConditionKernel set_while_condition(executor);
+  // Load kernels that updates condition handle value.
+  MultiKernelLoaderSpec spec(/*arity=*/2);
+  spec.AddInProcessSymbol(gpu::GetSetWhileConditionKernel(),
+                          "set_while_condition");
 
-  {  // Load kernels that updates condition handle value.
-    MultiKernelLoaderSpec spec(/*arity=*/2);
-    spec.AddInProcessSymbol(gpu::GetSetWhileConditionKernel(),
-                            "set_while_condition");
-    TF_RETURN_IF_ERROR(executor->GetKernel(spec, &set_while_condition));
-  }
+  // TODO(b/324117563): Keep kernel in `GpuCommandBuffer` to avoid loading it on
+  // every call to `While`.
+  TF_ASSIGN_OR_RETURN(SetWhileConditionKernel set_while_condition,
+                      SetWhileConditionKernel::Create(executor, spec));
 
   // Record condition commands into the parent command buffer.
   TF_RETURN_IF_ERROR(cond_builder(this));

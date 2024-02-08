@@ -1,7 +1,7 @@
 # Description: Utilities.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -347,6 +347,7 @@ cc_library(
         ":adaptive_shared_batch_scheduler",
         ":batch_scheduler",
         ":concat_split_util",
+        ":input_split_metadata",
         ":shared_batch_scheduler",
         ":threadsafe_status",
         ":warmup",
@@ -360,18 +361,22 @@ cc_library(
         "//tensorflow/core/common_runtime:request_cost",
         "//tensorflow/core/common_runtime:request_cost_accessor",
         "//tensorflow/core/common_runtime:request_cost_accessor_registry",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:criticality",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

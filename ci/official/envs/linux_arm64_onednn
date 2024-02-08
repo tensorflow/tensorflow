@@ -12,5 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-source ci/official/envs/linux_arm64_cross_compile
+source ci/official/envs/linux_arm64
 TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS  --test_env=TF_ENABLE_ONEDNN_OPTS=1"

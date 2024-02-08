@@ -40,8 +40,9 @@ class LoopTest : public HloTestBase {
   void SetUp() override {
     HloTestBase::SetUp();
 
-    printer_ = AffineMapPrinter(
-        {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"}, {"unroll_factor"});
+    printer_ =
+        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
+                         {"chunk_id", "unroll_id"});
   }
 
  protected:
@@ -86,19 +87,21 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
 
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
-              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[unroll_factor] -> (
-                (th_x * 4 + bl_x * 512 + unroll_factor) floordiv 60000,
-                ((th_x * 4 + bl_x * 512 + unroll_factor) floordiv 300) mod 200,
-                (th_x * 4 + bl_x * 512 + unroll_factor) mod 300)
-              domain:
-              th_x in [0, 127]
-              th_y in [0, 0]
-              th_z in [0, 0]
-              bl_x in [0, 1007]
-              bl_y in [0, 0]
-              bl_z in [0, 0]
-              unroll_factor in [0, 3]
-             )"));
+  (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+   ((th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) floordiv 60000) mod 100,
+   ((th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) floordiv 300) mod 200,
+   (th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) mod 300)
+  domain:
+  th_x in [0, 127]
+  th_y in [0, 0]
+  th_z in [0, 0]
+  bl_x in [0, 1007]
+  bl_y in [0, 0]
+  bl_z in [0, 0]
+  chunk_id in [0, 11]
+  unroll_id in [0, 3]
+  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+)"));
 }
 
 TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
@@ -124,15 +127,17 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
       loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
-                (th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (th_x)
-                domain:
-                th_x in [0, 19]
-                th_y in [0, 0]
-                th_z in [0, 0]
-                bl_x in [0, 0]
-                bl_y in [0, 0]
-                bl_z in [0, 0]
-  )"));
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
+              domain:
+              th_x in [0, 19]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 0]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              chunk_id in [0, 0]
+              unroll_id in [0, 0]
+            )"));
 }
 
 }  // namespace

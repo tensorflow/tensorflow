@@ -102,7 +102,8 @@ class SnapshotAssignmentManager {
       TF_GUARDED_BY(mu_);
 
   // A mapping from snapshot to the number of assigned workers.
-  absl::flat_hash_map<std::string, int64_t> snapshot_assignment_counts_;
+  absl::flat_hash_map<std::string, int64_t> snapshot_assignment_counts_
+      TF_GUARDED_BY(mu_);
 
   // The maximum number of snapshots that a worker can concurrently process at a
   // given point in time. This is a tradeoff between worker resource usage and

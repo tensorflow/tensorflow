@@ -703,6 +703,7 @@ cc_library(
 
 cc_library(
     name = "backend_compiler",
+    srcs = ["backend_compiler.cc"],
     hdrs = ["backend_compiler.h"],
     deps = [
         "//tensorflow/core/tfrt/runtime",

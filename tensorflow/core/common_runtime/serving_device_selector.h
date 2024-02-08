@@ -15,12 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_H_
 
+#include <cstdint>
 #include <deque>
-#include <memory>
-#include <vector>
 
+#include "absl/container/fixed_array.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -51,15 +52,94 @@ class DeviceReservation {
 // NOTE: This interface is experimental and subject to change.
 class ServingDeviceSelector {
  public:
-  // The state for a single device.
+  // Enumerates the cases of prefetch hit and miss.
+  enum class PrefetchResults { kPrefetchHit = 0, kPrefetchMiss };
+
+  // Tracks the running average of certain program execution time.
+  class RunningAverage {
+   public:
+    void Add(int64_t value) {
+      DCHECK_GE(value, 0);
+      sum_ += value;
+      ++count_;
+      latency_ = sum_ / count_;
+    }
+
+    int64_t Get() const { return latency_; }
+
+   private:
+    int64_t sum_ = 0;
+    int64_t count_ = 0;
+    int64_t latency_ = 0;
+  };
+
+  // Tracks the program execution information, including execution time.
+  class ExecutionInfo {
+   public:
+    explicit ExecutionInfo(int64_t num_prefetch_result = 1)
+        : running_average_(num_prefetch_result) {}
+
+    void AddTime(int64_t value,
+                 PrefetchResults result = PrefetchResults::kPrefetchHit) {
+      DCHECK_GE(value, 0);
+      const int index = static_cast<int>(result);
+      DCHECK_LT(index, running_average_.size());
+      running_average_.at(index).Add(value);
+    }
+
+    int64_t GetTime(
+        PrefetchResults result = PrefetchResults::kPrefetchHit) const {
+      const int index = static_cast<int>(result);
+      DCHECK_LT(index, running_average_.size());
+      return running_average_.at(index).Get();
+    }
+
+    // To be conservative when one of the path is missing.
+    int64_t MaybeGetValidTime(PrefetchResults result) const {
+      const auto miss_time = GetTime(PrefetchResults::kPrefetchMiss);
+      const auto hit_time = GetTime(PrefetchResults::kPrefetchHit);
+
+      if (miss_time != 0 && hit_time != 0) {
+        return result == PrefetchResults::kPrefetchMiss ? miss_time : hit_time;
+      } else {
+        auto dummy = std::max(miss_time, hit_time);
+        return dummy;
+      }
+    }
+
+   private:
+    // Records program average execution time, one for each prefetch result.
+    absl::FixedArray<RunningAverage> running_average_;
+  };
+
   struct DeviceState {
+    explicit DeviceState(int64_t priority_count = 1)
+        : enqueued_programs(priority_count),
+          scheduled_programs(priority_count) {}
     // TODO(b/295352859): Add more stats to track that are useful for the Policy
     // to use when selecting a device.
     struct ProgramInfo {
       absl::string_view fingerprint;
+      int32_t priority;
       int64_t req_id = -1;
+      ExecutionInfo* execution_info;
+      PrefetchResults prefetch_results;
     };
-    std::deque<ProgramInfo> scheduled_programs;
+    // A queue of enqueued programs, one for each priority level
+    absl::FixedArray<std::deque<ProgramInfo>> enqueued_programs;
+    // A queue of scheduled yet enqueued programs, one for each priority level.
+    // May or may not have fingerprint.
+    absl::FixedArray<std::deque<ProgramInfo>> scheduled_programs;
+    // Timestamp in nanoseconds of last started program.
+    int64_t last_started_ns = 0;
+    // Fingerprint of last enqueued high priority program.
+    absl::string_view last_fingerprint;
+    // The number of scheduled not yet enqueued programs with unknown
+    // fingerprints.
+    int32_t unknown_fingerprint_requests;
+    // Whether execution timer was reset, true iff a program is enqueued while
+    // all queues (for all priorities) were empty.
+    bool timer_reset = true;
   };
 
   // Struct of all tracked device states, which will be passed to Policy.

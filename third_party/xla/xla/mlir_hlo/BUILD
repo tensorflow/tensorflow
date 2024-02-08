@@ -1164,7 +1164,6 @@ cc_library(
         "analysis/test_userange_analysis.cc",
         "mhlo/analysis/test_shape_component_analysis.cc",
         "transforms/alloc_to_arg_pass.cc",
-        "transforms/buffer_packing.cc",
         "transforms/bufferize.cc",
         "transforms/bufferize_pass.cc",
         "transforms/collapse_parallel_loops_to_1d_pass.cc",

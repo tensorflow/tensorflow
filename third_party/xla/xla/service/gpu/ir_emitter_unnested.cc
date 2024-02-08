@@ -1437,6 +1437,92 @@ absl::Status IrEmitterUnnested::EmitNormThunk(mlir::Operation* op) {
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitFusedMHAThunk(
+    const HloCustomCallInstruction* instr) {
+  const HloInstruction* lhs_bmm1 = instr->operand(0);
+  const HloInstruction* rhs_bmm1 = instr->operand(1);
+  const HloInstruction* rhs_bmm2 = instr->operand(2);
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_bmm1_slice,
+                      GetAllocationSliceForHlo(lhs_bmm1));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_bmm1_slice,
+                      GetAllocationSliceForHlo(rhs_bmm1));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice rhs_bmm2_slice,
+                      GetAllocationSliceForHlo(rhs_bmm2));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      GetAllocationSliceForHlo(instr, {0}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSliceForHlo(instr, {1}));
+  BufferAllocation::Slice activation_slice;
+  bool has_activation = xla::ShapeUtil::TupleElementCount(instr->shape()) == 3;
+  if (has_activation) {
+    TF_ASSIGN_OR_RETURN(activation_slice, GetAllocationSliceForHlo(instr, {2}));
+  }
+
+  TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
+                      xla::gpu::GetCudnnfMHAKind(instr));
+  BufferAllocation::Slice mask_slice, bias_slice;
+  std::optional<Shape> mask_shape, bias_shape;
+  {
+    bool has_mask = kind == CudnnfMHAKind::kScaleMaskSoftmax ||
+                    kind == CudnnfMHAKind::kScaleMaskSoftmaxDropout ||
+                    kind == CudnnfMHAKind::kScaleBiasMaskSoftmax ||
+                    kind == CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout;
+    bool has_bias = kind == CudnnfMHAKind::kScaleBiasMaskSoftmax ||
+                    kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout ||
+                    kind == CudnnfMHAKind::kScaleBiasSoftmax ||
+                    kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout;
+
+    if (has_mask) {
+      const HloInstruction* mask = instr->operand(3);
+      TF_ASSIGN_OR_RETURN(mask_slice, GetAllocationSliceForHlo(mask));
+      mask_shape = mask->shape();
+      if (has_bias) {
+        const HloInstruction* bias = instr->operand(4);
+        TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(bias));
+        bias_shape = bias->shape();
+      }
+    } else if (has_bias) {
+      const HloInstruction* bias = instr->operand(3);
+      TF_ASSIGN_OR_RETURN(bias_slice, GetAllocationSliceForHlo(bias));
+      bias_shape = bias->shape();
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  const xla::gpu::CudnnfMHABackendConfig& config =
+      gpu_config.cudnn_fmha_backend_config();
+  Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
+  absl::InlinedVector<Shape, 2> output_shapes = {
+      ShapeUtil::GetSubshape(instr->shape(), {0})};
+  if (has_activation) {
+    output_shapes.push_back(ShapeUtil::GetSubshape(instr->shape(), {2}));
+  }
+
+  GpufMHADescriptor descriptor = {kind,
+                                  config,
+                                  config.is_flash_attention(),
+                                  config.is_causal_mask(),
+                                  lhs_bmm1->shape(),
+                                  rhs_bmm1->shape(),
+                                  rhs_bmm2->shape(),
+                                  intermediate_tensor_shape,
+                                  output_shapes,
+                                  config.bmm1_dot_dimension_numbers(),
+                                  config.bmm2_dot_dimension_numbers(),
+                                  mask_shape,
+                                  bias_shape};
+
+  TF_ASSIGN_OR_RETURN(GpufMHAConfig fmha_config,
+                      GpufMHAConfig::For(descriptor));
+  AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(fmha_config),
+      lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice, output_slice,
+      scratch_slice, mask_slice, bias_slice, activation_slice));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::fusedMHAOp;
@@ -4291,6 +4377,10 @@ absl::Status IrEmitterUnnested::EmitOp(
     return EmitNormThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::fusedMHAOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      const auto* instr = Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitFusedMHAThunk(instr);
+    }
     return EmitFusedMHAThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::fusedMHABackwardOp>(op)) {
@@ -4682,6 +4772,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       if (IsCustomCallToDnnNorm(*instr)) {
         return EmitNormThunk(custom_call);
+      }
+      if (IsFwdCustomCallTofMHA(*instr)) {
+        return EmitFusedMHAThunk(custom_call);
       }
 #endif  // GOOGLE_CUDA
       if (IsCustomCallToTopK(*instr)) {

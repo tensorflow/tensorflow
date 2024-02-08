@@ -952,6 +952,30 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfNegate) {
       GmockMatch(m::Negate(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
+  const char* kModuleStr = R"(
+    HloModule m
+    max_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] maximum(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[] parameter(0)
+      b = f32[1000,1000] broadcast(p), dimensions={}
+      ROOT reduce = f32[] reduce(b, f32[] constant(0)), dimensions={0,1}, to_apply=max_f32
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
+}
+
 // Test that Const + A is canonicalized to A + Const.
 TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   auto m = CreateNewVerifiedModule();
@@ -6275,6 +6299,30 @@ TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
               GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceDotReorderWithStrides) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2048,2] parameter(0)
+        b = f32[2,2048] parameter(1)
+        dot = f32[2048,2048] dot(a,b),
+              lhs_contracting_dims={1},
+              rhs_contracting_dims={0}
+        ROOT slice = f32[16,256] slice(dot), slice={[0:128:8],[0:2048:8]}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(module.get()).value());
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Slice(m::Parameter(1)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   const char* hlo_string = R"(
     HloModule module
@@ -8094,6 +8142,78 @@ TEST_F(AlgebraicSimplifierTest,
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtMaxA) {
+  // Gt(Max(a,b), a) -> Gt(b,a)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] maximum(a, b)
+      ROOT compare = pred[4] compare(m0, a), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtMaxB) {
+  // Gt(Max(a,b), b) -> Gt(a,b)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] maximum(a, b)
+      ROOT compare = pred[4] compare(m0, b), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtAMin) {
+  // Gt(a, Min(a,b)) -> Gt(a,b)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] minimum(a, b)
+      ROOT compare = pred[4] compare(a, m0), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareGtBMin) {
+  // Gt(b, Min(a,b)) -> Gt(b,a)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = f32[4] parameter(0)
+      b = f32[4] parameter(1)
+      m0 = f32[4] minimum(a, b)
+      ROOT compare = pred[4] compare(b, m0), direction=GT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))
+                     .WithComparisonDirection(ComparisonDirection::kGt)));
 }
 
 TEST_F(AlgebraicSimplifierTest, CompareIota) {

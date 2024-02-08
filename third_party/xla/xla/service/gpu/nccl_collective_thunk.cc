@@ -496,7 +496,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // rendezvous with other participants to make sure that all of them allocated
   // required state (internal to NCCL) and ready to continue. Going too far
   // ahead on one rank leads to deadlocks in NCCL.
-  if (!first_call_rendezvous_flag_.IsCompleted()) {
+  if (NeedFirstCallRendzevous() && !first_call_rendezvous_flag_.IsCompleted()) {
     TF_ASSIGN_OR_RETURN(
         NcclCliqueKey clique_key,
         GetNcclCliqueKey(*params.collective_params, config().replica_groups,

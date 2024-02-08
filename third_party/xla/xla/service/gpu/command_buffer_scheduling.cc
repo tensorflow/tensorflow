@@ -121,12 +121,6 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (config.contains(DebugOptions::CUSTOM_CALL)) {
-    if (hlo->custom_call_target() == "cu_threefry2x32") {
-      return true;
-    }
-  }
-
   return false;
 }
 

@@ -55,6 +55,7 @@ cc_library(
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",
+        "tf_restore_merging.cc",
         "tf_restore_splitting.cc",
     ],
     hdrs = [
@@ -115,6 +116,7 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "//tensorflow/core/tpu/kernels/xla:host_compute_ops",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

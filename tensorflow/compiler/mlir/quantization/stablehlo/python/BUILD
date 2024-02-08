@@ -67,6 +67,7 @@ pytype_strict_library(
 tf_py_strict_test(
     name = "quantize_model_test",
     srcs = ["integration_test/quantize_model_test.py"],
+    shard_count = 50,  # Parallelize the test to avoid timeouts.
     deps = [
         ":quantization",
         ":quantize_model_test_base",
@@ -87,6 +88,7 @@ tf_python_pybind_extension(
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
         "@pybind11",

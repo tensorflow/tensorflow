@@ -72,20 +72,10 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     const xla::ifrt::Client& ifrt_client) {
   tensorflow::tpu::TPUCompileMetadataProto metadata;
 
-  auto metadata_attr = op->getAttrOfType<mlir::StringAttr>(kMetadataAttrName);
   auto metadata_text_attr =
       op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
 
-  if (metadata_attr && !metadata_attr.getValue().empty()) {
-    // tpu_compile_metadata takes priority if exists.
-    VLOG(1) << "Parsing from attribute " << kMetadataAttrName << " : "
-            << metadata_attr.getValue().str();
-    if (!metadata.ParseFromString(metadata_attr.getValue().str())) {
-      return absl::InternalError(
-          absl::StrCat("Failed to parse tpu_compile_metadata attribute:",
-                       metadata_attr.getValue().str()));
-    }
-  } else if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
+  if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
     // Try __tpu_compile_metadata_text attribute. This only for debugging
     // purpose.
     VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
@@ -97,8 +87,8 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
           metadata_text_attr.getValue().str(), " cannot be parsed"));
     }
   } else {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Missing ", kMetadataAttrName, " and ", kMetadataTextAttrName));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing ", kMetadataTextAttrName));
   }
 
   VLOG(3) << "TpuCompileMetadata before shape is populated "
@@ -223,6 +213,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   Tf2HloResult result;
   result.mlir_hlo_module = xla::llvm_ir::CreateMlirModuleOp(module->getLoc());
   result.compile_metadata = std::move(compile_metadata);
+  result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(
       *result.mlir_hlo_module, &compilation_result.computation->proto()));

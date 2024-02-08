@@ -105,7 +105,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0, < 1.15',
+    'wrapt >= 1.11.0',
     # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
     'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
@@ -343,6 +343,11 @@ if '_tpu' in project_name:
       ).strftime('%Y%m%d'),
   )
   REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  CONSOLE_SCRIPTS.extend([
+      'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
+      ('start_grpc_tpu_service = '
+       'tensorflow.python.tools.grpc_tpu_worker_service:run'),
+  ])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'

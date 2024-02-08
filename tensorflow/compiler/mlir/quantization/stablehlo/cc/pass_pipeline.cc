@@ -20,10 +20,42 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir::quant::stablehlo {
+
+using ::stablehlo::quantization::PipelineConfig;
+using ::stablehlo::quantization::StaticRangePtqPreset;
+using ::tensorflow::quantization::CalibrationOptions;
+
+void AddPreCalibrationPasses(OpPassManager& pm,
+                             const CalibrationOptions& calibration_options) {
+  pm.addPass(createLiftQuantizableSpotsAsFunctionsPass());
+  pm.addNestedPass<func::FuncOp>(
+      CreateInsertCustomAggregationOpsPass(calibration_options));
+  pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
+  // StableHLO Quantizer currently uses TF's calibration passes. Serialize
+  // the StableHLO module as tf.XlaCallModule to run calibration.
+  AddCallModuleSerializationPasses(pm);
+}
+
+void AddPostCalibrationPasses(
+    OpPassManager& pm, const PipelineConfig& pipeline_config,
+    const StaticRangePtqPreset& static_range_ptq_preset) {
+  QuantizeCompositeFunctionsPassOptions options;
+  options.enable_per_channel_quantized_weight_ =
+      static_range_ptq_preset.enable_per_channel_quantized_weight();
+  pm.addNestedPass<func::FuncOp>(
+      CreateConvertCustomAggregationOpToQuantStatsPass());
+  pm.addPass(createQuantizeCompositeFunctionsPass(options));
+  if (pipeline_config.unpack_quantized_types()) {
+    AddStablehloQuantToIntPasses(pm);
+  }
+  AddCallModuleSerializationPasses(pm);
+}
 
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm) {
   pm.addPass(TF::CreateXlaCallModuleDeserializationPass());

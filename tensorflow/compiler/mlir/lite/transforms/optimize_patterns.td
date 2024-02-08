@@ -1530,14 +1530,7 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
    (BroadcastDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
    (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
 
-// Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
-def FuseTransposeIntoBatchMatMulRHS: Pat<
-  (TFL_BatchMatMulOp $lhs,
-    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp:$perm_value $p0)),
-    $adj_x, $adj_y, $asymmetric_quantize_inputs),
-  (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
-  [(AreLastTwoDimsTransposed $perm_value),
-   (IsBoolAttrEqual<"false"> $adj_y)]>;
+
 
 // Fuse redundant TFL_TransposeOp into TFL_BatchMatMulOp
 def FuseTransposeIntoBatchMatMulLHS: Pat<

@@ -270,11 +270,6 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
   return !node->IsAsync();
 }
 
-// Helper function for node traversal that returns only `DataService` nodes.
-inline bool IsDataServiceNode(const std::shared_ptr<Node> node) {
-  return absl::StartsWith(node->name(), kDataService);
-}
-
 // Helper function for node traversal that returns only asynchronous interleave
 // many nodes.
 inline bool IsAsyncInterleaveManyNode(const std::shared_ptr<Node> node) {
@@ -2445,9 +2440,11 @@ Model::ModelParameters Model::CollectTunableParameters(
 }
 
 void Model::MaybeSyncStateValuesToValues(std::shared_ptr<Node> snapshot) {
-  auto subtree_nodes =
-      snapshot->CollectNodes(TraversalOrder::BFS, IsDataServiceNode);
+  auto subtree_nodes = snapshot->CollectNodes(TraversalOrder::BFS, IsAnyNode);
   for (const auto& node : subtree_nodes) {
+    if (!absl::StartsWith(node->name(), kDataService)) {
+      continue;
+    }
     node->SyncStateValuesToParameterValues(kBufferSize);
   }
 }

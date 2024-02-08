@@ -21,9 +21,9 @@ limitations under the License.
 // dimensions (rank) for output tensor is DNNL_MAX_NDIMS = 12 in oneDNN.
 // If output tensor rank exceeds 12, we exit with reporting an error message.
 
-#if defined(INTEL_MKL)
-
 #define EIGEN_USE_THREADS
+
+#if defined(INTEL_MKL)
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/mkl/mkl_batch_matmul_helper.h"
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -200,9 +199,26 @@ class BatchMatMulMkl : public OpKernel {
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
-    matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
-                         out->flat<Toutput>().data(), *params,
-                         scratch_pad.Get(), this->fusion_data_);
+    if (fused_ops_.size() > 0) {
+      void* mul_data = nullptr;
+      void* add_data = nullptr;
+      if (fused_ops_.at(0) == "Mul") {
+        const Tensor& mul_tensor = ctx->input(2);
+        mul_data = static_cast<void*>(
+            const_cast<Toutput*>(mul_tensor.flat<Toutput>().data()));
+      }
+      if (fused_ops_.size() > 1 && fused_ops_.at(1) == "Add") {
+        const Tensor& add_tensor = ctx->input(3);
+        add_data = static_cast<void*>(
+            const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
+      }
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
+                           out->flat<Toutput>().data(), scratch_pad.Get(),
+                           mul_data, add_data);
+    } else {
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(), weight_data,
+                           out->flat<Toutput>().data(), scratch_pad.Get());
+    }
   }
 
   engine cpu_engine_ = engine(engine::kind::cpu, 0);
@@ -210,449 +226,89 @@ class BatchMatMulMkl : public OpKernel {
  protected:
   virtual void ExtendMklMatMulParams(OpKernelContext* ctx,
                                      MklMatMulParams& params) {}
-  std::vector<void*> fusion_data_;
+  std::vector<string> fused_ops_;
 
  private:
   bool adj_x_;
   bool adj_y_;
 };
 
-// OneDNN uses post-ops to implement different kind of fusions. The category of
-// each individual post-op can be inferred from the fused_ops attribute. The
-// following enum is used to identify list of required post-ops.
-namespace {
-
-enum class FusedComputationType {
-  kUndefined,
-  kMul,
-  kAdd,
-  kMulAdd,
-  kDequantize,
-  kMul_Dequantize,
-  kAdd_Dequantize,
-  kMulAdd_Dequantize,
-  kRequantize,
-  kMul_Requantize,
-  kAdd_Requantize,
-  kMulAdd_Requantize,
-};
-
-struct FusedComputationPattern {
-  FusedComputationType fused_computation;
-  std::vector<string> fused_ops;
-};
-
-}  // namespace
-enum class PostOpKind { kNone, kOutputScale, kMul, kAdd, kLinear };
-
-// FusedBatchMatMul has additional inputs, currently forcing all the operands
-// of fusion to have same type `U`.
 template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
-          /*type of additional tensors*/ typename U, bool v2_bcast>
+          bool v2_bcast>
 class FusedBatchMatMulMkl
     : public BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, v2_bcast> {
  public:
   explicit FusedBatchMatMulMkl(OpKernelConstruction* context)
       : BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, v2_bcast>(context) {
-    InitializeFusion(context);
+    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &this->fused_ops_));
+    OP_REQUIRES(context, !this->fused_ops_.empty(),
+                absl::InvalidArgumentError(
+                    "Fused BatchMatMul must have at least one fused op."));
+
+    int num_args;
+    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+
+    if (this->fused_ops_ == std::vector<string>{"Mul"} ||
+        this->fused_ops_ == std::vector<string>{"Mul", "Add"}) {
+      OP_REQUIRES(context, num_args == this->fused_ops_.size(),
+                  absl::InvalidArgumentError(
+                      "Fused BatchMatmul should have same number of additional "
+                      "inputs as the number of fusions"));
+    } else {
+      OP_REQUIRES(context, false,
+                  absl::UnimplementedError(
+                      absl::StrCat("Fusion is not implemented: [",
+                                   absl::StrJoin(this->fused_ops_, ","), "]")));
+    }
   }
 
   virtual ~FusedBatchMatMulMkl() {}
 
  protected:
-  struct PostOpInfo {
-    PostOpKind post_op_kind;
-    int input_idx = -1;  // Operand tensor index if needed by a post-op.
-  };
-
-  std::vector<PostOpInfo> post_op_info_list_;
-
-  // This function is called from constructor.
-  void InitializeFusion(OpKernelConstruction* context) {
-    std::vector<string> fused_ops;
-    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
-    OP_REQUIRES(context, !fused_ops.empty(),
-                absl::InvalidArgumentError(
-                    "Fused BatchMatMul must have at least one fused op."));
-
-    using FCT = FusedComputationType;
-    // TODO(intel-tf): Add more patterns when implemented. Refactor for
-    // arbitrary fusion sequence when oneDNN is performant.
-    std::vector<FusedComputationPattern> patterns{
-        {FCT::kMul, {"Mul"}},
-        {FCT::kAdd, {"Add"}},
-        {FCT::kMulAdd, {"Mul", "Add"}},
-    };
-    FusedComputationType fused_computation = FusedComputationType::kUndefined;
-    for (const auto& pattern : patterns) {
-      if (fused_ops == pattern.fused_ops) {
-        fused_computation = pattern.fused_computation;
-        break;
-      }
-    }
-
-    // Configure oneDNN post-ops. Refactor for arbitrary fusion sequence when
-    // oneDNN is performant.
-    switch (fused_computation) {
-      case FCT::kMul:
-        post_op_info_list_ = {{PostOpKind::kMul, 2}};
-        break;
-      case FCT::kAdd:
-        post_op_info_list_ = {{PostOpKind::kAdd, 2}};
-        break;
-      case FCT::kMulAdd:
-        post_op_info_list_ = {{PostOpKind::kMul, 2}, {PostOpKind::kAdd, 3}};
-        break;
-      default:
-        OP_REQUIRES_OK(context, absl::UnimplementedError(absl::StrCat(
-                                    "Fusion is not implemented: [",
-                                    absl::StrJoin(fused_ops, ","), "]")));
-    }
-
-    int num_args = 0;
-    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
-    this->fusion_data_.resize(num_args);
-  }
-
   virtual void ExtendMklMatMulParams(OpKernelContext* ctx,
                                      MklMatMulParams& params) {
-    int idx = 0;
-    for (const auto& post_op_info : this->post_op_info_list_) {
-      switch (post_op_info.post_op_kind) {
-        case PostOpKind::kMul: {
-          const Tensor& multiplicand_tensor =
-              ctx->input(post_op_info.input_idx);
-          // TODO(intel-tf): Relax restriction when oneDNN is performant for
-          // arbitrary shapes.
-          bool is_supported = multiplicand_tensor.NumElements() == 1 &&
-                              params.c_dims.size() == 4;
-          OP_REQUIRES(ctx, is_supported,
-                      absl::UnimplementedError(absl::StrCat(
-                          "Unimplemented multiplicand shape for Mul fusion: ",
-                          multiplicand_tensor.shape().DebugString())));
-          auto format_tag = memory::format_tag::abcd;
-          memory::data_type data_type = MklDnnType<U>();
-          memory::dims mul_dims(params.c_dims.size(), 1);
-          params.post_op_params.push_back(
-              {"mul", {}, mul_dims, data_type, format_tag});
-          void* multiplicand_data = static_cast<void*>(
-              const_cast<U*>(multiplicand_tensor.flat<U>().data()));
-          this->fusion_data_[idx++] = multiplicand_data;
-        } break;
-        case PostOpKind::kAdd: {
-          const Tensor& addend_tensor = ctx->input(post_op_info.input_idx);
-          // TODO(intel-tf): Relax restriction when oneDNN is performant for
-          // arbitrary shapes.
-          bool is_supported = params.c_dims.size() == 4 &&
-                              addend_tensor.dims() == params.c_dims.size();
-          OP_REQUIRES(ctx, is_supported,
-                      absl::UnimplementedError(absl::StrCat(
-                          "Unimplemented addend shape for Add fusion: ",
-                          addend_tensor.shape().DebugString())));
-          auto format_tag = memory::format_tag::abcd;
-          memory::data_type data_type = MklDnnType<U>();
-          memory::dims addend_dims = TFShapeToMklDnnDims(addend_tensor.shape());
-          params.post_op_params.push_back(
-              {"add", {}, addend_dims, data_type, format_tag});
-          void* addend_data = static_cast<void*>(
-              const_cast<U*>(addend_tensor.flat<U>().data()));
-          this->fusion_data_[idx++] = addend_data;
-        } break;
+    if (this->fused_ops_.size() > 0) {
+      const Tensor& scale_tensor = ctx->input(2);
+      OP_REQUIRES(ctx, scale_tensor.NumElements() == 1,
+                  absl::InvalidArgumentError("Scale tensor must be a scalar"));
+
+      memory::data_type data_type = MklDnnType<Toutput>();
+      memory::format_tag format_tag;
+      switch (params.c_dims.size()) {
+        case 3:
+          format_tag = memory::format_tag::abc;
+          break;
+        case 4:
+          format_tag = memory::format_tag::abcd;
+          break;
         default:
-          OP_REQUIRES_OK(ctx,
-                         absl::UnimplementedError("Unsupported post-op-kind."));
+          OP_REQUIRES(ctx, false, absl::UnimplementedError("Unimplemented"));
       }
-    }
-  }
-};
-
-template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
-          typename U>
-class QuantizedBatchMatMulOp
-    : public BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, /*v2_bcast*/ true> {
- public:
-  explicit QuantizedBatchMatMulOp(OpKernelConstruction* context)
-      : BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, true>(context) {
-    InitializeFusion(context);
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, true>::Compute(ctx);
-    if (std::is_same<Toutput, qint8>::value ||
-        std::is_same<Toutput, quint8>::value) {
-      Tensor* min_output = nullptr;
-      Tensor* max_output = nullptr;
-      // When output type is qint8 or quint8, the kernel is registered for
-      // Requantize fusion.
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, {}, &min_output));
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(2, {}, &max_output));
-      int output_min_idx = ctx->num_inputs() - 2;
-      int output_max_idx = ctx->num_inputs() - 1;
-      const float requested_min = ctx->input(output_min_idx).flat<float>()(0);
-      const float requested_max = ctx->input(output_max_idx).flat<float>()(0);
-      if (output_quant_mode_ == "SCALED") {
-        const float range_output =
-            std::max(std::abs(requested_min), std::abs(requested_max));
-        if (std::is_same<Toutput, qint8>::value) {
-          min_output->flat<float>()(0) = -range_output;
-          max_output->flat<float>()(0) = range_output;
-        } else {
-          min_output->flat<float>()(0) = 0;
-          max_output->flat<float>()(0) = range_output;
-        }
+      if (this->fused_ops_.at(0) == "Mul") {
+        memory::dims mul_dims(params.c_dims.size(), 1);
+        params.post_op_params.push_back(
+            {"mul", {}, mul_dims, data_type, format_tag});
       } else {
-        min_output->flat<float>()(0) = requested_min;
-        max_output->flat<float>()(0) = requested_max;
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Currently first fusion is supported only for Mul",
+                        ", but it is ", this->fused_ops_.at(0), " op.")));
       }
-    } else if (std::is_same<Toutput, float>::value ||
-               std::is_same<Toutput, bfloat16>::value) {
-      // Kernel is registered for Dequantization fusion. Nothing to do.
-    } else {
-      OP_REQUIRES_OK(ctx,
-                     absl::InvalidArgumentError("Unsupported output type."));
-    }
-  }
-
-  virtual ~QuantizedBatchMatMulOp() {}
-
- protected:
-  string input_quant_mode_;  // Both lhs and rhs are quantized with same mode.
-  string output_quant_mode_;
-
-  // Initialize minmax tensor indices with default values for the most common
-  // cases.
-  int lhs_min_idx_ = 2;
-  int lhs_max_idx_ = 3;
-  int rhs_min_idx_ = 4;
-  int rhs_max_idx_ = 5;
-
-  struct PostOpInfo {
-    PostOpKind post_op_kind;
-    struct OperandInfo {
-      int idx = -1;  // Operand tensor index if needed by a post-op.
-      // Indices of min and max value tensors, if the operand is quantized.
-      std::vector<int> min_max_indices;
-    } operand_info;
-    // Indices of output min and max value tensors. It is used when requantize
-    // is fused.
-    std::vector<int> min_max_indices;
-  };
-
-  std::vector<PostOpInfo> post_op_info_list_;
-
-  int num_operands_;  // Number of regular operands without minmax tensors.
-
-  void UpdateInputMinMaxIndices(int offset) {
-    lhs_min_idx_ += offset;
-    lhs_max_idx_ += offset;
-    rhs_min_idx_ += offset;
-    rhs_max_idx_ += offset;
-  }
-
-  void InitializeFusion(OpKernelConstruction* context) {
-    // Currently, tensor quantized with only SCALED mode is supported.
-    OP_REQUIRES_OK(context, context->GetAttr("input_quant_mode",
-                                             &this->input_quant_mode_));
-    OP_REQUIRES(context, input_quant_mode_ == "SCALED",
-                absl::UnimplementedError(
-                    "Input tensors are not quantized with SCALED mode."));
-    OP_REQUIRES_OK(context, context->GetAttr("output_quant_mode",
-                                             &this->output_quant_mode_));
-
-    std::vector<string> fused_ops;
-    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
-    if (fused_ops.empty())
-      OP_REQUIRES_OK(context,
-                     absl::InvalidArgumentError(
-                         "Fused BatchMatMul must have at least one fused op."));
-
-    using FCT = FusedComputationType;
-    // TODO(intel-tf): Add more patterns when implemented.
-    std::vector<FusedComputationPattern> patterns{
-        {FCT::kDequantize, {"Dequantize"}},
-        {FCT::kMul_Dequantize, {"Mul", "Dequantize"}},
-        {FCT::kAdd_Dequantize, {"Add", "Dequantize"}},
-        {FCT::kMulAdd_Dequantize, {"Mul", "Add", "Dequantize"}},
-        {FCT::kRequantize, {"Requantize"}},
-        {FCT::kMul_Requantize, {"Mul", "Requantize"}},
-        {FCT::kAdd_Requantize, {"Add", "Requantize"}},
-        {FCT::kMulAdd_Requantize, {"Mul", "Add", "Requantize"}},
-    };
-
-    FusedComputationType fused_computation = FusedComputationType::kUndefined;
-    for (const auto& pattern : patterns) {
-      if (fused_ops == pattern.fused_ops) {
-        fused_computation = pattern.fused_computation;
-        break;
-      }
-    }
-
-    // Configure oneDNN post ops
-    switch (fused_computation) {
-      case FCT::kDequantize: {
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}}};
-      } break;
-      case FCT::kRequantize: {
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kLinear, {}, {6, 7}}};
-      } break;
-      case FCT::kMul_Dequantize: {
-        this->UpdateInputMinMaxIndices(1);
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kMul, {2, {}}, {}}};
-        this->fusion_data_.resize(1);
-      } break;
-      case FCT::kMul_Requantize: {
-        this->UpdateInputMinMaxIndices(1);
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kMul, {2, {}}, {}},
-                              {PostOpKind::kLinear, {}, {7, 8}}};
-        this->fusion_data_.resize(1);
-      } break;
-      case FCT::kAdd_Dequantize: {
-        this->UpdateInputMinMaxIndices(1);
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kAdd, {2, {}}, {}}};
-        this->fusion_data_.resize(1);
-      } break;
-      case FCT::kAdd_Requantize: {
-        this->UpdateInputMinMaxIndices(1);
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kAdd, {2, {}}, {}},
-                              {PostOpKind::kLinear, {}, {7, 8}}};
-        this->fusion_data_.resize(1);
-      } break;
-      case FCT::kMulAdd_Dequantize: {
-        this->UpdateInputMinMaxIndices(2);
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kMul, {2, {}}, {}},
-                              {PostOpKind::kAdd, {3, {}}, {}}};
-        this->fusion_data_.resize(2);
-      } break;
-      case FCT::kMulAdd_Requantize: {
-        this->UpdateInputMinMaxIndices(2);
-        post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}},
-                              {PostOpKind::kMul, {2, {}}, {}},
-                              {PostOpKind::kAdd, {3, {}}, {}},
-                              {PostOpKind::kLinear, {}, {8, 9}}};
-        this->fusion_data_.resize(2);
-      } break;
-      default:
-        OP_REQUIRES(context, false,
-                    absl::UnimplementedError(
-                        absl::StrCat("Fusion is not implemented: [",
-                                     absl::StrJoin(fused_ops, ","), "]")));
-    }
-  }
-
-  void ExtendMklMatMulParams(OpKernelContext* ctx,
-                             MklMatMulParams& params) override {
-    int idx = 0;
-    for (const auto& post_op_info : post_op_info_list_) {
-      switch (post_op_info.post_op_kind) {
-        case PostOpKind::kMul: {
-          const Tensor& multiplicand_tensor =
-              ctx->input(post_op_info.operand_info.idx);
-          // TODO(intel-tf): Relax restriction when oneDNN is performant for
-          // arbitrary shapes.
-          bool is_supported = multiplicand_tensor.NumElements() == 1 &&
-                              params.c_dims.size() == 4;
-          OP_REQUIRES(ctx, is_supported,
-                      absl::UnimplementedError("Unimplemented"));
-          auto format_tag = memory::format_tag::abcd;
-          memory::data_type data_type = MklDnnType<U>();
-          memory::dims mul_dims(params.c_dims.size(), 1);
-          params.post_op_params.push_back(
-              {"mul", {}, mul_dims, data_type, format_tag});
-          void* multiplicand_data = static_cast<void*>(
-              const_cast<U*>(multiplicand_tensor.flat<U>().data()));
-          this->fusion_data_[idx++] = multiplicand_data;
-        } break;
-        case PostOpKind::kAdd: {
-          const Tensor& addend_tensor =
-              ctx->input(post_op_info.operand_info.idx);
-          // TODO(intel-tf): Relax restriction when oneDNN is performant for
-          // arbitrary shapes.
-          bool is_supported = params.c_dims.size() == 4 &&
-                              addend_tensor.dims() == params.c_dims.size();
-          OP_REQUIRES(ctx, is_supported,
-                      absl::UnimplementedError("Unimplemented."));
-          auto format_tag = memory::format_tag::abcd;
-          memory::data_type data_type = MklDnnType<U>();
-          memory::dims addend_dims = TFShapeToMklDnnDims(addend_tensor.shape());
-          params.post_op_params.push_back(
-              {"add", {}, addend_dims, data_type, format_tag});
-          void* addend_data = static_cast<void*>(
-              const_cast<U*>(addend_tensor.flat<U>().data()));
-          this->fusion_data_[idx++] = addend_data;
-        } break;
-        case PostOpKind::kOutputScale: {
-          const Tensor& lhs_min_tensor = ctx->input(lhs_min_idx_);
-          const Tensor& lhs_max_tensor = ctx->input(lhs_max_idx_);
-          const Tensor& rhs_min_tensor = ctx->input(rhs_min_idx_);
-          const Tensor& rhs_max_tensor = ctx->input(rhs_max_idx_);
-          // Currently, only per tensor quantization supported.
-          OP_REQUIRES(ctx,
-                      lhs_min_tensor.NumElements() == 1 &&
-                          lhs_max_tensor.NumElements() == 1 &&
-                          rhs_min_tensor.NumElements() == 1 &&
-                          rhs_max_tensor.NumElements() == 1,
-                      absl::UnimplementedError(
-                          "Only supported is per-tensor quantization."));
-
-          const float min_lhs = lhs_min_tensor.flat<float>()(0);
-          const float max_lhs = lhs_max_tensor.flat<float>()(0);
-          const float min_rhs = rhs_min_tensor.flat<float>()(0);
-          const float max_rhs = rhs_max_tensor.flat<float>()(0);
-
-          const float range_lhs =
-              (input_quant_mode_ == "MIN_FIRST")
-                  ? (max_lhs - min_lhs)
-                  : std::max(std::abs(min_lhs), std::abs(max_lhs));
-          const float range_rhs =
-              (input_quant_mode_ == "MIN_FIRST")
-                  ? (max_rhs - min_rhs)
-                  : std::max(std::abs(min_rhs), std::abs(max_rhs));
-          const float max_int8_lhs =
-              (std::is_same<Tlhs, quint8>::value) ? 255.0f : 127.0f;
-          const float max_int8_rhs =
-              (std::is_same<Trhs, quint8>::value) ? 255.0f : 127.0f;
-          const float lhs_scale = range_lhs / max_int8_lhs;
-          const float rhs_scale = range_rhs / max_int8_rhs;
-#ifndef ENABLE_ONEDNN_V3
-          const float output_scale = lhs_scale * rhs_scale;
-          params.post_op_params.push_back({"output_scale", { output_scale }});
-#else
-          const float dst_scale = 1.0;
-          params.post_op_params.push_back({"lhs_scale", {lhs_scale}});
-          params.post_op_params.push_back({"rhs_scale", {rhs_scale}});
-          params.post_op_params.push_back({"dst_scale", {dst_scale}});
-#endif  // !ENABLE_ONEDNN_V3
-        } break;
-        case PostOpKind::kLinear: {
-          auto output_min_idx = post_op_info.min_max_indices[0];
-          auto output_max_idx = post_op_info.min_max_indices[1];
-          const float min_output =
-              ctx->input(output_min_idx).template flat<float>()(0);
-          const float max_output =
-              ctx->input(output_max_idx).template flat<float>()(0);
-          const float max_int8_output =
-              (std::is_same<Toutput, quint8>::value) ? 255.0f : 127.0f;
-          const float range_output =
-              (output_quant_mode_ == "MIN_FIRST")
-                  ? max_output - min_output
-                  : std::max(std::abs(min_output), std::abs(max_output));
-          float req_scale = max_int8_output / range_output;
-          float req_shift = 0.0f;
-          if (output_quant_mode_ == "MIN_FIRST") {
-            req_shift = -min_output * max_int8_output / range_output;
-          }
-          params.post_op_params.push_back(
-              {"linear", {1.0, req_scale, req_shift}});
-        } break;
-        default:
-          OP_REQUIRES(ctx, false,
-                      absl::UnimplementedError("Unsupported post-op-kind."));
+      if (this->fused_ops_.size() > 1 && this->fused_ops_.at(1) == "Add") {
+        auto add_shape = ctx->input(3).shape();
+        OP_REQUIRES(ctx, add_shape.dims() == 4,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Add fusion expects add shape to have 4 dims, but got ",
+                        add_shape.dims())));
+        memory::dims add_dims = {add_shape.dim_size(0), add_shape.dim_size(1),
+                                 add_shape.dim_size(2), add_shape.dim_size(3)};
+        params.post_op_params.push_back(
+            {"add", {}, add_dims, data_type, format_tag});
+      } else {
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Currently second fusion is supported only for Add",
+                        ", but it is ", this->fused_ops_.at(1), " op.")));
       }
     }
   }
@@ -700,7 +356,7 @@ class MklMatMulOp : public BatchMatMulMkl<Device, T, T, T, USE_CUBLAS> {
       Name("_MklFusedBatchMatMulV2")          \
           .Device(DEVICE_CPU)                 \
           .TypeConstraint<TYPE>("T"),         \
-      FusedBatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, TYPE, true>)
+      FusedBatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, true>)
 
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
@@ -716,23 +372,6 @@ TF_CALL_half(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_MATMUL_MKL);
 #endif  // DNNL_AARCH64_USE_ACL
-
-#define REGISTER_QUANTIZED_KERNEL(U, T) \
-  REGISTER_KERNEL_BUILDER(              \
-      Name("_QuantizedBatchMatMul")     \
-          .Device(DEVICE_CPU)           \
-          .TypeConstraint<qint8>("T1")  \
-          .TypeConstraint<qint8>("T2")  \
-          .TypeConstraint<U>("U")       \
-          .TypeConstraint<T>("Tout"),   \
-      QuantizedBatchMatMulOp<CPUDevice, qint8, qint8, T, U>);
-
-REGISTER_QUANTIZED_KERNEL(float, float);
-REGISTER_QUANTIZED_KERNEL(float, qint8);
-REGISTER_QUANTIZED_KERNEL(float, quint8);
-REGISTER_QUANTIZED_KERNEL(bfloat16, bfloat16);
-REGISTER_QUANTIZED_KERNEL(bfloat16, qint8);
-REGISTER_QUANTIZED_KERNEL(bfloat16, quint8);
 
 }  // end namespace tensorflow
 #endif  // INTEL_MKL

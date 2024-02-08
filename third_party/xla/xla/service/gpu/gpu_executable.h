@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -37,8 +38,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
-#include "xla/service/gpu/runtime/annotation.h"
+#include "xla/service/gpu/runtime3/annotation.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_module_config.h"
@@ -188,8 +188,7 @@ class GpuExecutable : public Executable {
   // GPU execution completes.
   absl::Status ExecuteThunksOrXlaRuntime(
       const ServiceExecutableRunOptions* run_options,
-      const BufferAllocations& buffer_allocations, bool block_host_until_done,
-      NonAtomicallyUpgradeableRWLock& gpu_lock);
+      const BufferAllocations& buffer_allocations, bool block_host_until_done);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
@@ -248,13 +247,8 @@ class GpuExecutable : public Executable {
   // IrEmitter (null if XLA:GPU runtime is enabled).
   OwnedThunkSequence thunks_;
 
-  // A flag that signals if `thunks_` initialization is completed. Thunks
-  // initialization might allocate new control data structures on device, which
-  // can lead to deadlocks if executed concurrently with other replicas.
-  //
-  // We use rendezvous to guarantee that all participating threads complete
-  // thunk initialization before we start executing any of them.
-  RendezvousSingleFlag thunks_initialized_flag_;
+  // Additional execution streams requested by `thunks_`.
+  absl::flat_hash_set<ExecutionStreamId> execution_stream_ids_;
 
   std::string module_name_;
 

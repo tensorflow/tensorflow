@@ -31,6 +31,7 @@ namespace quant {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::IsNull;
 using ::testing::NotNull;
 using ::testing::Test;
 
@@ -318,12 +319,12 @@ TEST_F(CreateI32F32UniformQuantizedPerAxisTypeTest,
 
 class IsI8F32UniformQuantizedTypeTest : public Test {
  protected:
-  IsI8F32UniformQuantizedTypeTest() {
+  IsI8F32UniformQuantizedTypeTest() : builder_(&ctx_) {
     ctx_.loadDialect<quant::QuantizationDialect>();
   }
 
   MLIRContext ctx_;
-  OpBuilder builder_{&ctx_};
+  OpBuilder builder_;
 };
 
 TEST_F(IsI8F32UniformQuantizedTypeTest, I8F32UniformQuantizedTypeSucceeds) {
@@ -360,12 +361,12 @@ TEST_F(IsI8F32UniformQuantizedTypeTest, ExpressedTypeF32Succeeds) {
 
 class IsI8F32UniformQuantizedPerAxisTypeTest : public Test {
  protected:
-  IsI8F32UniformQuantizedPerAxisTypeTest() {
+  IsI8F32UniformQuantizedPerAxisTypeTest() : builder_(&ctx_) {
     ctx_.loadDialect<quant::QuantizationDialect>();
   }
 
   MLIRContext ctx_;
-  OpBuilder builder_{&ctx_};
+  OpBuilder builder_;
 };
 
 TEST_F(IsI8F32UniformQuantizedPerAxisTypeTest,
@@ -417,12 +418,12 @@ TEST_F(IsI8F32UniformQuantizedPerAxisTypeTest, ExpressedTypeF32Succeeds) {
 
 class IsI32F32UniformQuantizedTypeTest : public Test {
  protected:
-  IsI32F32UniformQuantizedTypeTest() {
+  IsI32F32UniformQuantizedTypeTest() : builder_(&ctx_) {
     ctx_.loadDialect<quant::QuantizationDialect>();
   }
 
   MLIRContext ctx_;
-  OpBuilder builder_{&ctx_};
+  OpBuilder builder_;
 };
 
 TEST_F(IsI32F32UniformQuantizedTypeTest, I32F32UniformQuantizedTypeSucceeds) {
@@ -468,14 +469,87 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, ExpressedTypeF32Succeeds) {
   EXPECT_TRUE(IsExpressedTypeF32(qi32_per_axis_type));
 }
 
-class IsSupportedByTfliteQuantizeOrDequantizeOpsTest : public Test {
+class IsI32F32UniformQuantizedPerAxisTypeTest : public Test {
  protected:
-  IsSupportedByTfliteQuantizeOrDequantizeOpsTest() {
+  IsI32F32UniformQuantizedPerAxisTypeTest() : builder_(&ctx_) {
     ctx_.loadDialect<quant::QuantizationDialect>();
   }
 
   MLIRContext ctx_;
-  OpBuilder builder_{&ctx_};
+  OpBuilder builder_;
+};
+
+TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest,
+       I32F32UniformQuantizedPerAxisTypeSucceeds) {
+  const UniformQuantizedPerAxisType qi32_per_axis_type =
+      quant::UniformQuantizedPerAxisType::get(
+          /*flags=*/QuantizationFlags::Signed, builder_.getI32Type(),
+          builder_.getF32Type(),
+          /*scales=*/{1.0},
+          /*zeroPoints=*/{0}, /*quantizedDimension=*/0,
+          /*storageTypeMin=*/-2147483647, /*storageTypeMax=*/2147483646);
+  EXPECT_TRUE(IsI32F32UniformQuantizedPerAxisType(qi32_per_axis_type));
+  EXPECT_FALSE(IsI32F32UniformQuantizedType(qi32_per_axis_type));
+}
+
+TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest,
+       I8F32UniformQuantizedTypeFails) {
+  const UniformQuantizedType qi8_type = quant::UniformQuantizedType::get(
+      /*flags=*/QuantizationFlags::Signed, builder_.getI8Type(),
+      builder_.getF32Type(),
+      /*scale=*/1.0, /*zeroPoint=*/0, /*storageTypeMin=*/-128,
+      /*storageTypeMax=*/127);
+  EXPECT_FALSE(IsI32F32UniformQuantizedPerAxisType(qi8_type));
+  EXPECT_FALSE(IsStorageTypeI32(qi8_type));
+  EXPECT_THAT(qi8_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
+              IsNull());
+}
+
+TEST_F(IsI32F32UniformQuantizedTypeTest, UniformQuantizedPerAxisTypeSucceeds) {
+  const UniformQuantizedPerAxisType qi32_per_axis_type =
+      quant::UniformQuantizedPerAxisType::get(
+          /*flags=*/QuantizationFlags::Signed, builder_.getI32Type(),
+          builder_.getF32Type(),
+          /*scales=*/{1.0},
+          /*zeroPoints=*/{0}, /*quantizedDimension=*/0,
+          /*storageTypeMin=*/-2147483647, /*storageTypeMax=*/2147483646);
+
+  EXPECT_THAT(
+      qi32_per_axis_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
+      NotNull());
+}
+
+TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest, StorageTypeI8Succeeds) {
+  const UniformQuantizedPerAxisType qi32_per_axis_type =
+      quant::UniformQuantizedPerAxisType::get(
+          /*flags=*/QuantizationFlags::Signed, builder_.getI32Type(),
+          builder_.getF32Type(),
+          /*scales=*/{1.0},
+          /*zeroPoints=*/{0}, /*quantizedDimension=*/0,
+          /*storageTypeMin=*/-2147483647, /*storageTypeMax=*/2147483646);
+
+  EXPECT_TRUE(IsStorageTypeI32(qi32_per_axis_type));
+}
+
+TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest, ExpressedTypeF32Succeeds) {
+  const UniformQuantizedPerAxisType qi32_per_axis_type =
+      quant::UniformQuantizedPerAxisType::get(
+          /*flags=*/QuantizationFlags::Signed, builder_.getI32Type(),
+          builder_.getF32Type(),
+          /*scales=*/{1.0},
+          /*zeroPoints=*/{0}, /*quantizedDimension=*/0,
+          /*storageTypeMin=*/-2147483647, /*storageTypeMax=*/2147483646);
+  EXPECT_TRUE(IsExpressedTypeF32(qi32_per_axis_type));
+}
+
+class IsSupportedByTfliteQuantizeOrDequantizeOpsTest : public Test {
+ protected:
+  IsSupportedByTfliteQuantizeOrDequantizeOpsTest() : builder_(&ctx_) {
+    ctx_.loadDialect<quant::QuantizationDialect>();
+  }
+
+  MLIRContext ctx_;
+  OpBuilder builder_;
 };
 
 TEST_F(IsSupportedByTfliteQuantizeOrDequantizeOpsTest, StorageTypeI8Succeeds) {

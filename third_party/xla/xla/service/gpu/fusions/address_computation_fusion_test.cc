@@ -12,19 +12,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/array3d.h"
-#include "xla/array4d.h"
 #include "xla/error_spec.h"
-#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class AddressComputationFusionTest : public HloTestBase {};
+class AddressComputationFusionTest : public HloTestBase {
+ public:
+  HloModuleConfig GetRefModuleConfig() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+
+  HloModuleConfig GetOptModuleConfig() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+};
 
 TEST_F(AddressComputationFusionTest, CublasGemmSimple) {
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
@@ -100,15 +114,8 @@ TEST_F(AddressComputationFusionTest, CublasGemmSimple) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
   })";
 
-  Array3D<bfloat16> arr0(2, 8, 8);  // bf16[2,8,8]
-  Array3D<bfloat16> arr1(2, 8, 8);  // bf16[2,8,8]
-  arr0.FillIota(static_cast<bfloat16>(1.0));
-  arr1.FillRandom(bfloat16(0.01f), 0.02);
-
-  auto a0 = LiteralUtil::CreateFromArray(arr0);
-  auto a1 = LiteralUtil::CreateFromArray(arr1);
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, {&a0, &a1}, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -189,15 +196,8 @@ TEST_F(AddressComputationFusionTest, CublasGemmWithWorkspace) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
   })";
 
-  Array3D<bfloat16> arr0(2, 8, 8);  // bf16[2,8,8]
-  Array3D<bfloat16> arr1(2, 8, 8);  // bf16[2,8,8]
-  arr0.FillRandom(bfloat16(0.01f), 0.02);
-  arr1.FillIota(static_cast<bfloat16>(10.0));
-
-  auto a0 = LiteralUtil::CreateFromArray(arr0);
-  auto a1 = LiteralUtil::CreateFromArray(arr1);
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, {&a0, &a1}, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -275,15 +275,8 @@ TEST_F(AddressComputationFusionTest, ContiguousSlice) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
   })";
 
-  Array3D<bfloat16> arr0(2, 8, 8);      // bf16[2,8,8]
-  Array4D<bfloat16> arr1(8, 8, 10, 8);  // bf16[8,8,10,8]
-  arr0.FillIota(static_cast<bfloat16>(1.0));
-  arr1.FillRandom(bfloat16(0.01f), 0.02);
-
-  auto a0 = LiteralUtil::CreateFromArray(arr0);
-  auto a1 = LiteralUtil::CreateFromArray(arr1);
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, {&a0, &a1}, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -361,15 +354,8 @@ TEST_F(AddressComputationFusionTest, ContiguousSliceNonDefaultLayout) {
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
   })";
 
-  Array3D<bfloat16> arr0(2, 8, 8);      // bf16[2,8,8]
-  Array4D<bfloat16> arr1(8, 8, 10, 8);  // bf16[8,8,10,8]
-  arr0.FillIota(static_cast<bfloat16>(1.0));
-  arr1.FillRandom(bfloat16(0.01f), 0.02);
-
-  auto a0 = LiteralUtil::CreateFromArray(arr0);
-  auto a1 = LiteralUtil::CreateFromArray(arr1);
-
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, {&a0, &a1}, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -500,7 +486,8 @@ TEST_F(AddressComputationFusionTest, OperandIsSlicedGetTupleElement) {
       }
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -585,7 +572,8 @@ TEST_F(AddressComputationFusionTest, ReversedOperandOrder) {
       }
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -715,7 +703,8 @@ TEST_F(AddressComputationFusionTest, SingleOperandComputation) {
       }
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
@@ -805,7 +794,8 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
       }
   })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
+  EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
+                                      GetOptModuleConfig(), error_spec,
                                       /*run_hlo_passes=*/false));
 }
 

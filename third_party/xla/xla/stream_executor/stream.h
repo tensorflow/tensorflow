@@ -225,36 +225,6 @@ class Stream {
   //
   // See DnnSupport::* for comments on the following methods.
 
-  template <typename InputType, typename OutputType>
-  absl::Status ConvolveWithAlgorithm(
-      dnn::ConvolutionKind kind, const dnn::BatchDescriptor &input_descriptor,
-      DeviceMemory<InputType> input_data,
-      const dnn::FilterDescriptor &filter_descriptor,
-      DeviceMemory<InputType> filter_data,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<OutputType> output_data,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      ScratchAllocator *scratch_allocator,
-      const dnn::AlgorithmConfig &algorithm_config,
-      dnn::ProfileResult *output_profile_result) {
-    DeviceMemory<uint8_t> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      TF_RETURN_IF_ERROR(dnn->PrepareForConvolution(
-          kind, this, input_descriptor, input_data, filter_descriptor,
-          filter_data, output_descriptor, output_data, convolution_descriptor,
-          algorithm_config, scratch_allocator, &algorithm_desc,
-          &scratch_memory));
-      return dnn->DoConvolve(kind, dnn::ToDataType<InputType>::value,
-                             dnn::ToDataType<OutputType>::value, this,
-                             input_descriptor, input_data, filter_descriptor,
-                             filter_data, output_descriptor, output_data,
-                             convolution_descriptor, algorithm_desc,
-                             scratch_memory, output_profile_result);
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
   template <typename InputT, typename ScaleT, typename SideInputT,
             typename BiasT, typename OutputT>
   absl::Status FusedConvolveWithAlgorithm(
@@ -293,44 +263,6 @@ class Stream {
       return dnn->CudnnReorderConvolutionFilterAndBias(
           this, filter_descriptor, filter_input, filter_output,
           std::move(bias_input), std::move(bias_output));
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  absl::Status ThenPoolForward(
-      const dnn::PoolingDescriptor &pooling_dimensions,
-      const NumericOptions &numeric_options,
-      const dnn::BatchDescriptor &input_dimensions,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      DeviceMemory<ElementType> *output_data,
-      ScratchAllocator *workspace_allocator = nullptr) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
-                                pooling_dimensions, numeric_options,
-                                input_dimensions, input_data, output_dimensions,
-                                *output_data, workspace_allocator);
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
-  template <typename ElementType>
-  absl::Status ThenPoolBackward(
-      const dnn::PoolingDescriptor &pooling_dimensions,
-      const NumericOptions &numeric_options,
-      const dnn::BatchDescriptor &input_dimensions,
-      const DeviceMemory<ElementType> &input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      const DeviceMemory<ElementType> &output_data,
-      const DeviceMemory<ElementType> &input_diff_data,
-      DeviceMemory<ElementType> *output_diff_data,
-      ScratchAllocator *workspace_allocator = nullptr) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoPoolBackward(
-          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
-          numeric_options, input_dimensions, input_data, output_dimensions,
-          output_data, input_diff_data, *output_diff_data, workspace_allocator);
     }
     return absl::UnimplementedError("DNN library is not found.");
   }
@@ -616,25 +548,6 @@ class Stream {
   // Otherwise returns an error describing why the blocking failed.
   absl::Status BlockHostUntilDone() TF_LOCKS_EXCLUDED(mu_);
 
-  // Warning! This method interacts with internal threads in
-  // sometimes-unpredictable ways and is intended for GPU-Executor-internal
-  // use
-  // only. Please check with a member of the FASTR team before making use of
-  // this method.
-  //
-  // Entrains onto the stream a function to be executed on the host at some
-  // point in the future.
-  // Async host callbacks DO NOT block the stream as device functions (or as
-  // synchronous host callbacks). No synchronization is possible with
-  // asynchronous callbacks; they are strictly fire-and-forget.
-  // This method is private due to the potential for undefined behavior with
-  // synchronization using OpenCL user events.
-  // The ONLY lifetime guarantee in these calls is that the StreamExecutor
-  // parameter will still be valid - this Stream may not be!
-  // Any callbacks requiring device API calls must use this method.
-  Stream &ThenEnqueueOnBackgroundThread(
-      std::function<void(StreamExecutor *)> task);
-
   // Returns the (opaque) platform-specific backing object. Ownership is not
   // transferred to the caller.
   internal::StreamInterface *implementation() { return implementation_.get(); }
@@ -811,7 +724,7 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
   TF_RETURN_IF_ERROR(
-      parent_->Launch(this, thread_dims, block_dims, kernel, *kernel_args));
+      parent_->Launch(this, thread_dims, block_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
@@ -822,7 +735,7 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        Args... args) {
   auto kernel_args = PackKernelArgs(shmem_bytes, args...);
   TF_RETURN_IF_ERROR(
-      parent_->Launch(this, thread_dims, block_dims, kernel, *kernel_args));
+      parent_->Launch(this, thread_dims, block_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
@@ -834,7 +747,7 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
   TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
-                                     cluster_dims, kernel, *kernel_args));
+                                     cluster_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
@@ -844,7 +757,7 @@ inline absl::Status Stream::ThenLaunch(
     int32_t shmem_bytes, const TypedKernel<Params...> &kernel, Args... args) {
   auto kernel_args = PackKernelArgs(shmem_bytes, args...);
   TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
-                                     cluster_dims, kernel, *kernel_args));
+                                     cluster_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 

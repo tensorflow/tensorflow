@@ -30,3 +30,10 @@ def static_range_ptq(
 ) -> Any: ...  # Status
 
 # LINT.ThenChange()
+
+# LINT.IfChange(populate_default_configs)
+def populate_default_configs(
+    user_provided_quantization_config_serialized: bytes,
+) -> bytes: ...  # QuantizationConfig
+
+# LINT.ThenChange()

@@ -296,11 +296,6 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
 }
 
 TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
-#if defined(__APPLE__)
-  // CellReader::Delta doesn't work on Mac OS. See b/323686684
-  return;
-#endif
-
   CellReader<monitoring::testing::Histogram> compilation_time(
       kCompilationTimeStreamzName);
 
@@ -310,8 +305,8 @@ TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
           kMlirModuleStr,
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED));
 
-  // Compilation time should have been non-zero
-  EXPECT_GT(compilation_time.Delta(kFullBridge).sum(), 0);
+  // Compilation time should have been updated.
+  EXPECT_GT(compilation_time.Delta(kFullBridge).num(), 0);
 }
 
 }  // namespace v2

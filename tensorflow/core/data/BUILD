@@ -531,6 +531,8 @@ cc_library(
         ":dataset_utils",
         ":root_dataset",
         ":serialization_utils",
+        ":tf_data_memory_logger",
+        ":tfdataz_metrics",
         ":unbounded_thread_pool",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",

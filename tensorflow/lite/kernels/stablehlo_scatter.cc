@@ -135,7 +135,7 @@ static TfLiteStatus GetComputationType(const Subgraph* computation_subgraph,
   if (computation_subgraph->execution_plan().size() > 1) {
     TF_LITE_KERNEL_LOG(context,
                        "Only one kernel allowed withing the stablehlo region. "
-                       "(%i) kernels found.\n",
+                       "(%zu) kernels found.\n",
                        computation_subgraph->execution_plan().size());
     return kTfLiteError;
   }

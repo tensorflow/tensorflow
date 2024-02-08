@@ -23,19 +23,24 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batch_kernel_test_util.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/version.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -151,6 +156,78 @@ class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
 
 class BatchFunctionKernelParallelWarmupTest
     : public ::testing::TestWithParam<bool> {};
+
+TEST_P(BatchFunctionKernelParallelWarmupTest, HandlesLargeBatchSplitting) {
+  // This test fails if it does not come before the others in the suite,
+  // because `SharedBatchScheduler::QueueOptions::input_batch_size_limit`
+  // does not get reset.
+  SessionMetadata session_metadata;
+  session_metadata.set_name("test_model");
+  session_metadata.set_version(123);
+  serving::WarmupStateRegistry::Key key(session_metadata.name(),
+                                        session_metadata.version());
+
+  int num_requests = 16;
+
+  {
+    auto per_model_data = std::make_unique<PerModelData>();
+    per_model_data->warmup_all_batch_sizes = true;
+    auto handle = serving::GetGlobalWarmupStateRegistry().Register(
+        key, std::move(per_model_data));
+
+    tsl::BlockingCounter blocking_counter(num_requests);
+    for (int i = 0; i < num_requests; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        BatchFunctionKernelParallelWarmupTestState test;
+        test.set_session_metadata(session_metadata);
+        TF_CHECK_OK(test.Init(/*enable_splitting=*/true,
+                              /*check_output_shape=*/true));
+        test.AddInputFromList<int64_t>(
+            TensorShape({16}),
+            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+        auto status = test.RunOpKernel();
+        ASSERT_FALSE(status.ok());
+        // This proves the kernel is executed with batch sizes other than 2.
+        EXPECT_TRUE(absl::StrContains(status.message(),
+                                      "is not compatible with expected shape"));
+        blocking_counter.DecrementCount();
+      });
+    }
+    blocking_counter.Wait();
+  }
+
+  {
+    EXPECT_FALSE(serving::GetGlobalWarmupStateRegistry().Lookup(key));
+    auto per_model_data = std::make_unique<PerModelData>();
+    per_model_data->warmup_all_batch_sizes = true;
+    auto handle = serving::GetGlobalWarmupStateRegistry().Register(
+        key, std::move(per_model_data));
+
+    tsl::BlockingCounter blocking_counter(num_requests);
+    for (int i = 0; i < num_requests; ++i) {
+      Env::Default()->SchedClosure([&]() {
+        BatchFunctionKernelParallelWarmupTestState test;
+        test.set_session_metadata(session_metadata);
+        // Error free when the EnsureShapeOp is replaced with an Identity op.
+        TF_CHECK_OK(
+            test.Init(/*enable_splitting=*/true, /*check_output_shape=*/false));
+        test.AddInputFromList<int64_t>(
+            TensorShape({16}),
+            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+        auto status = test.RunOpKernel();
+        TF_CHECK_OK(test.RunOpKernel());
+
+        test::ExpectTensorEqual<int64_t>(
+            *test.GetOutput(0),
+            test::AsTensor<int64_t>(
+                {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}));
+
+        blocking_counter.DecrementCount();
+      });
+    }
+    blocking_counter.Wait();
+  }
+}
 
 TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
   SessionMetadata session_metadata;

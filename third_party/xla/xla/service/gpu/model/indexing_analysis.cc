@@ -301,36 +301,53 @@ HloInstructionIndexing ComputeOutputToInputDotOpIndexing(
       {lhs_indexing_map, rhs_indexing_map});
 }
 
-HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
-    const HloPadInstruction* pad, MLIRContext* mlir_context) {
-  const Shape& output_shape = pad->shape();
-  int64_t output_rank = output_shape.rank();
+IndexingMap ComputeOutputToInputPadOpIndexingImpl(
+    absl::Span<const int64_t> output_dims,
+    absl::Span<const int64_t> padding_low,
+    absl::Span<const int64_t> padding_high,
+    absl::Span<const int64_t> padding_interior, MLIRContext* mlir_context) {
+  int64_t output_rank = output_dims.size();
 
-  const PaddingConfig& padding_config = pad->padding_config();
   std::vector<AffineExpr> exprs;
   std::vector<std::pair<AffineExpr, Range>> constraints;
   std::vector<Range> dimension_ranges;
   exprs.reserve(output_rank);
   constraints.reserve(output_rank);
-  for (int64_t dim = 0; dim < output_rank; ++dim) {
-    AffineExpr dim_expr = getAffineDimExpr(dim, mlir_context);
-    const auto& dim_config = padding_config.dimensions()[dim];
-    dimension_ranges.push_back(Range{
-        dim_config.edge_padding_low(),
-        output_shape.dimensions()[dim] - 1 - dim_config.edge_padding_high()});
-    if (dim_config.interior_padding() == 0) {
-      exprs.push_back(dim_expr + dim_config.edge_padding_low());
+  int64_t output_dim_id = 0;
+  for (const auto [output_dim, pad_low, pad_high, pad_interior] :
+       llvm::zip(output_dims, padding_low, padding_high, padding_interior)) {
+    AffineExpr dim_expr = getAffineDimExpr(output_dim_id, mlir_context);
+    dimension_ranges.push_back(Range{pad_low, output_dim - 1 - pad_high});
+    if (pad_interior == 0) {
+      exprs.push_back(dim_expr + pad_low);
     } else {
-      exprs.push_back(dim_expr.floorDiv(dim_config.interior_padding() + 1) +
-                      dim_config.edge_padding_low());
-      constraints.push_back({(dim_expr - dim_config.edge_padding_low()) %
-                                 (dim_config.interior_padding() + 1),
-                             Range{0, 0}});
+      exprs.push_back(dim_expr.floorDiv(pad_interior + 1) + pad_low);
+      constraints.push_back(
+          {(dim_expr - pad_low) % (pad_interior + 1), Range{0, 0}});
     }
+    ++output_dim_id;
   }
-  IndexingMap input_indexing_map(
+  return IndexingMap{
       AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
-      dimension_ranges, /*symbol_ranges = */ {}, absl::MakeSpan(constraints));
+      dimension_ranges, /*symbol_ranges = */ {}, absl::MakeSpan(constraints)};
+}
+
+HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
+    const HloPadInstruction* pad, MLIRContext* mlir_context) {
+  const Shape& output_shape = pad->shape();
+  int64_t rank = output_shape.rank();
+  SmallVector<int64_t> padding_low, padding_high, padding_interior;
+  padding_low.reserve(rank);
+  padding_high.reserve(rank);
+  padding_interior.reserve(rank);
+  for (const auto& dim_config : pad->padding_config().dimensions()) {
+    padding_low.push_back(dim_config.edge_padding_low());
+    padding_high.push_back(dim_config.edge_padding_high());
+    padding_interior.push_back(dim_config.interior_padding());
+  }
+  IndexingMap input_indexing_map = ComputeOutputToInputPadOpIndexingImpl(
+      output_shape.dimensions(), padding_low, padding_high, padding_interior,
+      mlir_context);
   IndexingMap padding_value_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
       output_shape.dimensions(), /*symbol_upper_bounds=*/{});
@@ -415,6 +432,80 @@ HloInstructionIndexing ComputeInputToOutputReduceOpIndexing(
     instr_indexing.indexing_maps[id].insert(inputs_indexing_map);
   }
   for (int64_t id = reduce->input_count(); id < reduce->operand_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(inits_indexing_map);
+  }
+  return instr_indexing;
+}
+
+// Indexing for reduce-window with dilations and non-trivial padding can be
+// represented as a composition of pad op and reduce-window that never goes out
+// of bounds.
+HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
+    const HloReduceWindowInstruction* reduce_window, int output_id,
+    MLIRContext* mlir_context) {
+  const Shape& input_shape = reduce_window->operand(0)->shape();
+  const Shape& output_shape = GetOutputShape(reduce_window, 0);
+  int64_t rank = input_shape.rank();
+
+  // Compute shape of the padded input and the indexing map of pad op required
+  // to pad the input.
+  SmallVector<int64_t> padding_low, padding_high, padding_interior,
+      padded_input_dimensions;
+  padding_low.reserve(rank);
+  padding_high.reserve(rank);
+  padding_interior.reserve(rank);
+  padded_input_dimensions.reserve(rank);
+  SmallVector<AffineExpr, 4> exprs;
+  std::vector<Range> dim_ranges, symbol_ranges;
+  exprs.reserve(rank);
+  dim_ranges.reserve(rank);
+  symbol_ranges.reserve(rank);
+  for (const auto& [dim_id, window_config] :
+       llvm::enumerate(reduce_window->window().dimensions())) {
+    padding_low.push_back(window_config.padding_low());
+    padding_high.push_back(window_config.padding_high());
+    // For some reason interior_padding in HLO pad is offset from base_dilations
+    // in HLO reduce-window by 1.
+    padding_interior.push_back(window_config.base_dilation() - 1);
+    padded_input_dimensions.push_back(input_shape.dimensions(dim_id) +
+                                      window_config.padding_low() +
+                                      window_config.padding_high() +
+                                      (input_shape.dimensions(dim_id) - 1) *
+                                          (window_config.base_dilation() - 1));
+    AffineExpr dim_expr = getAffineDimExpr(dim_id, mlir_context);
+    AffineExpr symbol_expr = getAffineSymbolExpr(dim_id, mlir_context);
+
+    exprs.push_back(symbol_expr + window_config.stride() * dim_expr);
+    dim_ranges.push_back(Range{0, output_shape.dimensions(dim_id) - 1});
+    symbol_ranges.push_back(Range{0, window_config.size() - 1});
+  }
+  // Indexing map for pad op that pads the input.
+  IndexingMap padded_input_indexing = ComputeOutputToInputPadOpIndexingImpl(
+      padded_input_dimensions, padding_low, padding_high, padding_interior,
+      mlir_context);
+  // Indexing map for reduce-window, that does not do any padding.
+  IndexingMap reduce_window_indexing_no_padding(
+      AffineMap::get(rank, rank, exprs, mlir_context), dim_ranges,
+      symbol_ranges);
+
+  // Composed indexing.
+  IndexingMap inputs_indexing = ComposeIndexingMaps(
+      reduce_window_indexing_no_padding, padded_input_indexing);
+  inputs_indexing.Simplify();
+  inputs_indexing.RemoveUnusedSymbols();
+
+  // Indexing map for the init value.
+  IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
+      AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
+      output_shape.dimensions(), /*symbol_upper_bounds=*/{});
+
+  HloInstructionIndexing instr_indexing;
+  instr_indexing.indexing_maps.resize(reduce_window->operand_count());
+  for (int64_t id = 0; id < reduce_window->input_count(); ++id) {
+    instr_indexing.indexing_maps[id].insert(inputs_indexing);
+  }
+  for (int64_t id = reduce_window->input_count();
+       id < reduce_window->operand_count(); ++id) {
     instr_indexing.indexing_maps[id].insert(inits_indexing_map);
   }
   return instr_indexing;
@@ -974,6 +1065,10 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeOutputToInputReduceOpIndexing(reduce, output_id, ctx);
+  }
+  if (auto reduce_window = DynCast<HloReduceWindowInstruction>(instr)) {
+    return ComputeOutputToInputReduceWindowOpIndexing(reduce_window, output_id,
+                                                      ctx);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
     return ComputeOutputToInputReshapeOpIndexing(reshape, ctx);

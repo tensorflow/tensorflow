@@ -359,8 +359,9 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
     const Graph& graph,
     const FunctionLibraryDefinition& function_library) const {
-  // Skip MLIR TPU Bridge if no TPU devices found.
-  if (device_set && !HasTPUDevice(*device_set))
+  // Skip MLIR Bridge if no potential XLA clusters are found.
+  if (!HasTpuReplicateAttr(graph, function_library) &&
+      !IsSingleCoreTpuGraph(graph, function_library))
     return MlirOptimizationPassState::Disabled;
   // We set `uses_uninitialized_resource_args` to false here because the first
   // phase of the bridge is not affected by uninitialized resource args.

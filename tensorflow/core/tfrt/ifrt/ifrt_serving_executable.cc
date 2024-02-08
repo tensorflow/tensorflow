@@ -111,28 +111,6 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedDevices(
   return devices;
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-CreateArrayFromHostTensorForSingleDevice(xla::ifrt::Client& ifrt_client,
-                                         const tensorflow::Tensor& tensor,
-                                         xla::ifrt::Device* device) {
-  TF_ASSIGN_OR_RETURN(auto dtype, ToIfrtDType(tensor.dtype()));
-
-  VLOG(2) << "Make single device array for buffer slice "
-          << " at " << tensor.data();
-  auto single_device_sharding =
-      xla::ifrt::SingleDeviceSharding::Create(device, xla::ifrt::MemoryKind());
-
-  return ifrt_client.MakeArrayFromHostBuffer(
-      tensor.data(), dtype, ToIfrtShape(tensor.shape()),
-      /*byte_strides=*/{}, std::move(single_device_sharding),
-      xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-      [tensor]() {
-        // Keep tensor alive
-        VLOG(2) << "Done with single device host buffer for slice "
-                << " at " << tensor.data();
-      });
-}
-
 }  // namespace
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
@@ -143,47 +121,9 @@ IfrtServingExecutable::ConvertTensorToArray(
   VLOG(2) << "Converting tensor of shape " << input_shape;
 
   TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
-  VLOG(3) << "IsTiled: " << hlo_sharding.IsTiled();
-  VLOG(3) << "IsReplicated: " << hlo_sharding.IsReplicated();
-  VLOG(3) << "IsTileMaximal: " << hlo_sharding.IsTileMaximal();
-  if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicated() &&
-      !hlo_sharding.IsTileMaximal()) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
-        hlo_sharding.ToString()));
-  }
 
-  VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
-  VLOG(1) << "Device list size: " << device_list.size();
-
-  if (device_list.size() == 1) {
-    if (hlo_sharding.IsTiled()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Tiled sharding", hlo_sharding.ToString(),
-                       " expect more than 1 device, but got 1 only"));
-    }
-    return CreateArrayFromHostTensorForSingleDevice(*ifrt_client_, tensor,
-                                                    device_list[0]);
-  }
-
-  // Replicate implies Maximal, but not vice versa. Only Maximal is single
-  // device.
-  if (!hlo_sharding.IsReplicated() && hlo_sharding.IsTileMaximal()) {
-    VLOG(1) << "Single device fast path for Maximal tiled tensor";
-    xla::ifrt::Device* device;
-    if (hlo_sharding.HasUniqueDevice()) {
-      int unique_device_id = hlo_sharding.GetUniqueDevice();
-      TF_ASSIGN_OR_RETURN(device, ifrt_client_->LookupDevice(unique_device_id));
-    } else {
-      device = device_list[0];
-    }
-    return CreateArrayFromHostTensorForSingleDevice(*ifrt_client_, tensor,
-                                                    device);
-  }
-
-  return MakeAssembledArrayFromHostBuffer(*ifrt_client_, tensor,
-                                          std::move(hlo_sharding), device_list,
-                                          thread_pool_device_);
+  return MakeArrayFromTensor(*ifrt_client_, tensor, device_list,
+                             std::move(hlo_sharding), thread_pool_device_);
 }
 
 absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>

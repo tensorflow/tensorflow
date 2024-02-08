@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
@@ -334,8 +333,7 @@ static GpuConvDescriptor GetConvDescriptor(
 template <CudnnConvKind kind>
 static absl::Status DoConv(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
-    State<ConvRunner> runner,
+    const DebugOptions* debug_options, State<ConvRunner> runner,
     // Arguments
     StridedMemrefView operand0, StridedMemrefView operand1,
     std::optional<FlatMemrefView> bias,
@@ -418,10 +416,6 @@ static absl::Status DoConv(
   // Do runtime conv autotuning.
   if (runtime_autotuning) {
 #if GOOGLE_CUDA
-    // Don't run autotuning concurrently on the same GPU.
-    NonAtomicallyUpgradeableRWLock::WriterLock writer_lock =
-        gpu_lock->UpgradeToWriterMutexLock();
-
     auto stream_exec = run_options->stream()->parent();
     auto allocator = run_options->allocator();
     AutotuneConfig config(DeviceConfig{stream_exec, allocator}, *debug_options);
@@ -482,8 +476,7 @@ static absl::Status DoConv(
 template <CudnnConvKind kind>
 static absl::Status ConvImpl(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
-    State<ConvRunner> runner,
+    const DebugOptions* debug_options, State<ConvRunner> runner,
     // Arguments
     StridedMemrefView operand0, StridedMemrefView operand1,
     std::optional<FlatMemrefView> bias,
@@ -504,19 +497,17 @@ static absl::Status ConvImpl(
     std::optional<se::dnn::ActivationMode> activation_mode = std::nullopt,
     std::optional<double> side_input_scale = std::nullopt,
     std::optional<double> leakyrelu_alpha = std::nullopt) {
-  return DoConv<kind>(run_options, debug_options, gpu_lock, runner, operand0,
-                      operand1, bias, side_input, {output}, scratch, uid,
-                      conv_dims, window_strides, padding, lhs_dilation,
-                      rhs_dilation, window_reversal, backend_config,
-                      feature_group_count, result_scale, activation_mode,
-                      side_input_scale, leakyrelu_alpha);
+  return DoConv<kind>(
+      run_options, debug_options, runner, operand0, operand1, bias, side_input,
+      {output}, scratch, uid, conv_dims, window_strides, padding, lhs_dilation,
+      rhs_dilation, window_reversal, backend_config, feature_group_count,
+      result_scale, activation_mode, side_input_scale, leakyrelu_alpha);
 }
 
 template <CudnnConvKind kind>
 static absl::Status ConvGraphImpl(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, NonAtomicallyUpgradeableRWLock* gpu_lock,
-    State<ConvRunner> runner,
+    const DebugOptions* debug_options, State<ConvRunner> runner,
     // Arguments
     StridedMemrefView operand0, StridedMemrefView operand1,
     CustomCall::RemainingArgs args, int64_t uid,
@@ -563,14 +554,13 @@ static absl::Status ConvGraphImpl(
         "Failed to get scratch buffer for convolution graph");
   }
 
-  return DoConv<kind>(run_options, debug_options, gpu_lock, runner, operand0,
-                      operand1, /*bias=*/{},
-                      /*side_input=*/{}, outputs, scratch.value(), uid,
-                      conv_dims, window_strides, padding, lhs_dilation,
-                      rhs_dilation, window_reversal, backend_config,
-                      feature_group_count, result_scale, /*activation_mode=*/{},
-                      /*side_input_scale=*/{}, /*leakyrelu_alpha=*/{},
-                      extra_operands, serialized_graph);
+  return DoConv<kind>(
+      run_options, debug_options, runner, operand0, operand1, /*bias=*/{},
+      /*side_input=*/{}, outputs, scratch.value(), uid, conv_dims,
+      window_strides, padding, lhs_dilation, rhs_dilation, window_reversal,
+      backend_config, feature_group_count, result_scale, /*activation_mode=*/{},
+      /*side_input_scale=*/{}, /*leakyrelu_alpha=*/{}, extra_operands,
+      serialized_graph);
 }
 
 //===----------------------------------------------------------------------===//
@@ -605,7 +595,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
         CustomCall::Bind("xla.gpu.conv")
             .UserData<const ServiceExecutableRunOptions*>()
             .UserData<const DebugOptions*>()
-            .UserData<NonAtomicallyUpgradeableRWLock*>()
             .State<ConvRunner>("uid")                   // runner
             .Arg<StridedMemrefView>()                   // operand0
             .Arg<StridedMemrefView>()                   // operand1
@@ -625,7 +614,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         CustomCall::Bind("xla.gpu.conv.fused")
             .UserData<const ServiceExecutableRunOptions*>()
             .UserData<const DebugOptions*>()
-            .UserData<NonAtomicallyUpgradeableRWLock*>()
             .State<ConvRunner>("uid")                   // runner
             .Arg<StridedMemrefView>()                   // operand0
             .Arg<StridedMemrefView>()                   // operand1
@@ -645,7 +633,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     BindConvAttributes(CustomCall::Bind("xla.gpu.conv.fused.side_input")
                            .UserData<const ServiceExecutableRunOptions*>()
                            .UserData<const DebugOptions*>()
-                           .UserData<NonAtomicallyUpgradeableRWLock*>()
                            .State<ConvRunner>("uid")  // runner
                            .Arg<StridedMemrefView>()  // operand0
                            .Arg<StridedMemrefView>()  // operand1
@@ -664,7 +651,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     BindConvAttributes(CustomCall::Bind("xla.gpu.conv.forward.graph")
                            .UserData<const ServiceExecutableRunOptions*>()
                            .UserData<const DebugOptions*>()
-                           .UserData<NonAtomicallyUpgradeableRWLock*>()
                            .State<ConvRunner>("uid")  // runner
                            .Arg<StridedMemrefView>()  // operand0
                            .Arg<StridedMemrefView>()  // operand1

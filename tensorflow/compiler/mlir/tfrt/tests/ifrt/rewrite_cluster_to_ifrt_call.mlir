@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -rewrite-cluster-to-ifrt-call=tpu-compile-metadata-debug %s | FileCheck %s
+// RUN: tf-tfrt-opt -split-input-file -rewrite-cluster-to-ifrt-call %s | FileCheck %s
 // TODO(b/316226111): the printer may not guarantee the same order of fields. Rewrite the checks to be less sensitive to proto serialization formats.
 // -----
 // Non-SPMD: one input and one output
@@ -11,7 +11,7 @@
 //
 // CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>)
 // CHECK-SAME: __tpu_compile_metadata_text = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { } is_bounded_dynamic_dim: false } retvals { sharding { } } num_replicas: 1 num_cores_per_replica: 1 "
-// CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64,  tpu_compile_metadata =
+// CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64
 // CHECK:      return
 
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1"], tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1704 : i32}} {
@@ -39,7 +39,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> (tensor<1x3xf32>) {
 //
 // CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>)
 // CHECK-SAME: __tpu_compile_metadata_text = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } is_bounded_dynamic_dim: false } num_replicas: 1 num_cores_per_replica: 2 device_assignment { replica_count: 1 computation_count: 2 computation_devices { replica_device_ids: 0 } computation_devices { replica_device_ids: 1 } } use_spmd_for_xla_partitioning: true "
-// CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64,  tpu_compile_metadata =
+// CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64
 // CHECK:      return
 
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1"], tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1704 : i32}} {
@@ -70,7 +70,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> () {
 // CHECK:    return
 //
 // CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> tensor<1x1xf32>
-// CHECK-SAME:      tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64, tpu_compile_metadata =
+// CHECK-SAME:      tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64
 // CHECK-NEXT:     %0 = "tf.MatMul"(%arg0, %arg1)
 // CHECK:          return
 
@@ -102,7 +102,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> (ten
 // CHECK:    return
 //
 // CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> tensor<1x1xf32>
-// CHECK-SAME:      tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64, tpu_compile_metadata =
+// CHECK-SAME:      tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64
 // CHECK-NEXT:     %0 = "tf.MatMul"(%arg0, %arg1)
 // CHECK:          return
 

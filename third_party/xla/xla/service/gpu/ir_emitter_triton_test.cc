@@ -121,6 +121,7 @@ absl::StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
 
   auto* computation =
       verified_module->GetComputationWithName(triton_fusion_name);
+  TF_RET_CHECK(computation != nullptr);
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(*computation));
 

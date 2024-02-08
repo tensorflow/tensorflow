@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -115,7 +115,7 @@ absl::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
 #if GOOGLE_CUDA
 // Maintains a cache of pointers to loaded kernels
 template <typename... Args>
-absl::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
+absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
     StreamExecutor* executor, absl::string_view kernel_name,
     absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
   using KernelPtrCacheKey =
@@ -123,8 +123,7 @@ absl::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
 
   static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
   static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
-      *new absl::flat_hash_map<KernelPtrCacheKey,
-                               std::shared_ptr<TypedKernel<Args...>>>();
+      *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
   CUcontext current_context = cuda::CurrentContextOrDie();
   KernelPtrCacheKey kernel_ptr_cache_key{current_context, kernel_name, ptx};
   absl::MutexLock lock(&kernel_ptr_cache_mutex);
@@ -132,14 +131,14 @@ absl::StatusOr<std::shared_ptr<TypedKernel<Args...>>> LoadKernelOrGetPtr(
   auto it = kernel_ptr_cache.find(kernel_ptr_cache_key);
   if (it == kernel_ptr_cache.end()) {
     TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<TypedKernel<Args...>> loaded,
+        TypedKernel<Args...> loaded,
         executor->CreateTypedKernel<Args...>(kernel_name, ptx, cubin_data));
     it =
         kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
   }
 
   CHECK(it != kernel_ptr_cache.end());
-  return it->second;
+  return &it->second;
 }
 #endif  // GOOGLE_CUDA
 

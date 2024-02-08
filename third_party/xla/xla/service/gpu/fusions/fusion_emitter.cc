@@ -54,10 +54,12 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -139,7 +141,8 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
   // This means that this code supports some launch grids that the parallel
   // loop emitter doesn't support. This is safe, since the latter CHECK fails
   // if its assumptions are not fulfilled.
-  mlir::AffineExpr linear_index = mlir::getAffineConstantExpr(0, ctx);
+  mlir::AffineExpr c0 = mlir::getAffineConstantExpr(0, ctx);
+  mlir::AffineExpr linear_index = c0;
   uint64_t stride = 1;
   for (int i = 0; i < 3; ++i) {
     auto coord = mlir::getAffineDimExpr(kIndexingMapThreadIdxDims[i], ctx) +
@@ -149,11 +152,12 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     linear_index = linear_index + linear_component;
     stride *= total_sizes[i];
   }
+  mlir::AffineExpr chunk_id = mlir::getAffineSymbolExpr(0, ctx);
+  mlir::AffineExpr unroll_elem_id = mlir::getAffineSymbolExpr(1, ctx);
 
-  if (unroll_factor > 1) {
-    linear_index =
-        linear_index * unroll_factor + mlir::getAffineSymbolExpr(0, ctx);
-  }
+  linear_index = linear_index * unroll_factor +
+                 chunk_id * unroll_factor * launch_dims.launch_bound() +
+                 unroll_elem_id;
 
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
   uint64_t divisor = 1;
@@ -173,14 +177,24 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
       {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
   };
   std::vector<Range> symbol_ranges;
-  if (unroll_factor > 1) {
-    symbol_ranges.push_back({0, unroll_factor - 1});
-  }
+  int64_t num_elements = ShapeUtil::ElementsIn(output_shape);
+  symbol_ranges.push_back(
+      {0, CeilOfRatio(num_elements,
+                      static_cast<int64_t>(launch_dims.launch_bound()) *
+                          unroll_factor) -
+              1});
+  symbol_ranges.push_back({0, unroll_factor - 1});
   IndexingMap indexing_map(
       mlir::AffineMap::get(/*dimCount=*/6,
-                           /*symbolCount=*/unroll_factor > 1 ? 1 : 0,
-                           output_dims, ctx),
+                           /*symbolCount=*/2, output_dims, ctx),
       dimension_ranges, symbol_ranges);
+  // Remove the unroll_elem_id symbol if unrolling divides num_elements.
+  if (num_elements % unroll_factor == 0) {
+    indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
+                               Range{0, num_elements - unroll_factor});
+  } else {
+    indexing_map.AddConstraint(linear_index, Range{0, num_elements - 1});
+  }
   indexing_map.Simplify();
   return indexing_map;
 }

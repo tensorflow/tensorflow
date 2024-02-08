@@ -90,6 +90,10 @@ bool IsI8F32UniformQuantizedPerAxisType(Type type);
 // 32-bit integer and expressed type is f32.
 bool IsI32F32UniformQuantizedType(Type type);
 
+// Returns true iff `type` is a uniform quantized per-axis (per-channel) type
+// whose storage type is 32-bit integer and expressed type is f32.
+bool IsI32F32UniformQuantizedPerAxisType(Type type);
+
 // Determines whether the storage type of a quantized type is supported by
 // `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
 bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type);

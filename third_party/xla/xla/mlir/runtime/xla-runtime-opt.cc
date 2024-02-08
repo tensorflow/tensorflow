@@ -18,9 +18,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "xla/mlir/math/transforms/passes.h"
 #include "xla/mlir/memref/transforms/passes.h"
+#include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/ir/tests/testlib.h"
 #include "xla/mlir/runtime/transforms/passes.h"
 

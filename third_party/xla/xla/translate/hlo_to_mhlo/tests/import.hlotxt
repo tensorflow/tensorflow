@@ -628,6 +628,18 @@ add {
   ROOT %custom-call = f32[?,?] custom-call(f32[?] %arg1, s64[2] %arg2), custom_call_target="mhlo.dynamic_reshape"
 }
 
+// CHECK-LABEL:  func private @test_custom_call_real_dynamic_slice
+// CHECK-SAME:  ([[ARG_0:%.*]]: tensor<?x3x224x224xf32>, [[ARG_1:%.*]]: tensor<4xi32>, [[ARG_2:%.*]]: tensor<4xi32>, [[ARG_3:%.*]]: tensor<4xi32>) -> tensor<?x3x224x224xf32>
+%test_custom_call_real_dynamic_slice(arg1: f32[?,3,224,224], arg2: s32[4], arg3: s32[4], arg4: s32[4]) -> f32[?,3,224,224] {
+  %Arg_0.1 = f32[?,3,224,224] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+  %Arg_2.3 = s32[4] parameter(2)
+  %Arg_3.4 = s32[4] parameter(3)
+
+  // CHECK:  mhlo.real_dynamic_slice [[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]] : (tensor<?x3x224x224xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<?x3x224x224xf32>
+  ROOT %custom-call.12 = f32[?,3,224,224] custom-call(f32[?,3,224,224] %Arg_0.1, s32[4] %Arg_1.2, s32[4] %Arg_2.3, s32[4] %Arg_3.4), custom_call_target="mhlo.real_dynamic_slice"
+}
+
 // CHECK-LABEL:  func private @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_div (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)

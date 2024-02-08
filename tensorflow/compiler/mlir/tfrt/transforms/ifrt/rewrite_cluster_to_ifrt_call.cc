@@ -214,19 +214,14 @@ class RewriteClusterToIfrtCallPass
     if (mlir::failed(GetTpuCompileMetadata(cluster_func, devices, &metadata))) {
       return signalPassFailure();
     }
+    std::string serialized_metadata;
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetSingleLineMode(true);
+    printer.PrintToString(metadata, &serialized_metadata);
 
-    cloned_ifrt_program->setAttr(
-        kMetadataAttrName, builder.getStringAttr(metadata.SerializeAsString()));
+    cloned_ifrt_program->setAttr(kMetadataTextAttrName,
+                                 builder.getStringAttr(serialized_metadata));
 
-    if (tpu_compile_metadata_debug_) {
-      std::string serialized_metadata;
-      tsl::protobuf::TextFormat::Printer printer;
-      printer.SetSingleLineMode(true);
-      printer.PrintToString(metadata, &serialized_metadata);
-
-      cloned_ifrt_program->setAttr(kMetadataTextAttrName,
-                                   builder.getStringAttr(serialized_metadata));
-    }
     cloned_ifrt_program.setName(ifrt_program_name);
 
     int64_t program_id = NewProgramId();

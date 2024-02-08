@@ -158,7 +158,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     std::unique_ptr<CoordinationClient> coord_client2 =
         absl::WrapUnique(NewGrpcCoordinationClient(
             grpc_server_->InProcessChannel(::grpc::ChannelArguments())));
-    auto error_fn = [](const Status& status) {
+    auto error_fn = [](const absl::Status& status) {
       LOG(ERROR) << "Coordination service agent in error status: " << status;
     };
     CoordinationServiceConfig coord_config;
