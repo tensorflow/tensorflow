@@ -185,6 +185,32 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_performance_model_base",
+    srcs = ["gpu_performance_model_base.cc"],
+    hdrs = ["gpu_performance_model_base.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fusion_analysis_cache",
+        ":gpu_hlo_cost_analysis",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:hlo_traversal",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu/fusions",
+        "//xla/service/gpu/fusions:fusion_emitter",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "gpu_performance_model",
     srcs = ["gpu_performance_model.cc"],
     hdrs = ["gpu_performance_model.h"],
@@ -194,6 +220,7 @@ cc_library(
         ":coalescing_analysis",
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
+        ":gpu_performance_model_base",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -212,6 +239,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:status",
     ] + if_cuda_is_configured(xla_nvml_deps()),
