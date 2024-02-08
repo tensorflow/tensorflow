@@ -158,4 +158,54 @@ ENTRY entry {
 INSTANTIATE_TEST_SUITE_P(LatencyHidingSchedulerTest, LatencyHidingSchedulerTest,
                          ::testing::Bool());
 
+using ProfileGuidedLatencyEstimatorTest = HloTestBase;
+
+TEST_F(ProfileGuidedLatencyEstimatorTest,
+       TestProfileGuidedLatencyEstimatorWithAsyncInstruction) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+add.1 {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  reduce-scatter-start = ((f32[16,64,256]{2,1,0}, f32[16,64,256]{2,1,0}), (f32[4,64,256]{2,1,0}, f32[4,64,256]{2,1,0})) reduce-scatter-start(p0, p1), channel_id=1, replica_groups={}, dimensions={0}, to_apply=add.1
+  reduce-scatter-done = (f32[4,64,256]{2,1,0}, f32[4,64,256]{2,1,0}) reduce-scatter-done(reduce-scatter-start)
+  ROOT gte = f32[4,64,256]{2,1,0} get-tuple-element(reduce-scatter-done), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::string profiled_instructions_text_proto = R"pb(
+    costs { name: "reduce-scatter" cost_us: 120.0 }
+  )pb";
+  ;
+  tensorflow::profiler::ProfiledInstructionsProto profiled_instructions_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      profiled_instructions_text_proto, &profiled_instructions_proto));
+
+  auto sched_config = GetDefaultSchedConfig();
+  auto latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+      sched_config, std::make_unique<ApproximateLatencyEstimator>(),
+      profiled_instructions_proto);
+  HloInstruction* rs_start =
+      FindInstruction(hlo_module.get(), "reduce-scatter-start");
+  HloInstruction* rs_done =
+      FindInstruction(hlo_module.get(), "reduce-scatter-done");
+  HloGraphNode rs_start_node = HloGraphNode(rs_start, 0);
+  HloGraphNode rs_done_node = HloGraphNode(rs_done, 1);
+
+  double latency =
+      latency_estimator->GetLatencyBetween(rs_start_node, rs_done_node);
+  EXPECT_EQ(latency, 120.0);
+}
+
 }  // namespace xla

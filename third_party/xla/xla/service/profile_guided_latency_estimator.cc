@@ -37,10 +37,27 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
   }
 
   auto it = instr_map_.find(from.GetInstr().name());
+  if (it == instr_map_.end() &&
+      (from.GetInstr().opcode() == HloOpcode::kAsyncStart ||
+       from.GetInstr().opcode() == HloOpcode::kAsyncDone)) {
+    absl::string_view wrapped_inst_name =
+        from.GetInstr().async_wrapped_instruction()->name();
+    VLOG(10) << "PGLE found async wrapped instruction: " << wrapped_inst_name
+             << " in " << from.GetInstr().name();
+    it = instr_map_.find(wrapped_inst_name);
+  }
+
   if (it == instr_map_.end()) {
     return latency_estimator_->GetLatencyBetween(from, target);
   }
+
   auto it2 = it->second.latencies.find(target.GetInstr().name());
+  if (it2 == it->second.latencies.end() &&
+      (target.GetInstr().opcode() == HloOpcode::kAsyncStart ||
+       target.GetInstr().opcode() == HloOpcode::kAsyncDone)) {
+    it2 = it->second.latencies.find(
+        target.GetInstr().async_wrapped_instruction()->name());
+  }
   if (it2 != it->second.latencies.end()) {
     VLOG(10) << "PGLE found latency between " << from.GetInstr().name()
              << " and " << target.GetInstr().name() << " in latency info";
