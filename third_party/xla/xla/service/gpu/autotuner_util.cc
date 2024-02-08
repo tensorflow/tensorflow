@@ -278,7 +278,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ std::unique_ptr<HloModule>
 AutotunerUtil::ExtractInstructionIntoNewModule(const HloInstruction& hlo) {
   auto new_hlo_module = std::make_unique<HloModule>(
-      "extracted", HloModuleConfig{},
+      std::string(hlo.name()), HloModuleConfig{},
       std::make_unique<CompilationEnvironments>(hlo.GetModule()->comp_envs()));
   int parameter_number = 0;
   HloComputation::Builder builder("entry_computation");
