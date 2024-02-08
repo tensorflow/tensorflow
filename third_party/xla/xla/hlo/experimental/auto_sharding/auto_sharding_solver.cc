@@ -309,6 +309,8 @@ AutoShardingSolverResult CallORToolsSolver(
 
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (request.s_follow(node_idx) >= 0) {
+      CHECK_EQ(request.s_len(node_idx),
+               request.s_len(request.s_follow(node_idx)));
       // Copies the variable of followed instruction to the following
       // instruction.
       s[node_idx] = s[request.s_follow(node_idx)];
