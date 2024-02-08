@@ -112,14 +112,13 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
                      buffer_allocations.GetDeviceAddress(result_buffers_[1])))
                : std::nullopt;
 
-  TF_RETURN_IF_ERROR(params.stream->CudnnReorderConvolutionFilterAndBias(
-      filter_descriptor_, filter_input, &filter_output, std::move(bias_input),
-      std::move(bias_output)));
-
-  if (!params.stream->ok()) {
-    return Internal("ConvolutionReorderThunk::ExecuteOnStream failed.");
+  auto dnn = params.stream->parent()->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InternalError("No DNN for stream.");
   }
-  return absl::OkStatus();
+  return dnn->CudnnReorderConvolutionFilterAndBias(
+      params.stream, filter_descriptor_, filter_input, &filter_output,
+      std::move(bias_input), std::move(bias_output));
 }
 
 se::dnn::FilterDescriptor ConvolutionReorderThunk::CreateFilterDescriptor(

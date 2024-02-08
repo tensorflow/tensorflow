@@ -28,6 +28,16 @@ namespace xla {
 namespace gpu {
 namespace {
 
+// Returns the DnnSupport object, if it exists.
+absl::StatusOr<se::dnn::DnnSupport*> GetDnnSupport(
+    stream_executor::Stream* stream) {
+  auto dnn = stream->parent()->AsDnn();
+  if (dnn == nullptr) {
+    return absl::InternalError("No DNN support for stream.");
+  }
+  return dnn;
+}
+
 using ::xla::runtime::CustomCall;
 using ::xla::runtime::FlatMemrefView;
 using ::xla::runtime::StridedMemrefView;
@@ -49,9 +59,10 @@ absl::Status ConvReorderFilterImpl(
     absl::Span<const int64_t> filter_dims) {
   auto input = se::DeviceMemory<int8_t>(GetDeviceAddress(input_view));
   auto output = se::DeviceMemory<int8_t>(GetDeviceAddress(output_view));
-
-  return run_options->stream()->CudnnReorderConvolutionFilterAndBias(
-      GetFilterDescriptor(filter_dims), input, &output, std::nullopt,
+  auto stream = run_options->stream();
+  TF_ASSIGN_OR_RETURN(auto dnn, GetDnnSupport(stream));
+  return dnn->CudnnReorderConvolutionFilterAndBias(
+      stream, GetFilterDescriptor(filter_dims), input, &output, std::nullopt,
       std::nullopt);
 }
 
@@ -67,9 +78,11 @@ absl::Status ConvReorderFilterAndBiasImpl(
   auto bias_input = se::DeviceMemory<float>(GetDeviceAddress(bias_input_view));
   auto bias_output =
       se::DeviceMemory<float>(GetDeviceAddress(bias_output_view));
+  auto stream = run_options->stream();
+  TF_ASSIGN_OR_RETURN(auto dnn, GetDnnSupport(stream));
 
-  return run_options->stream()->CudnnReorderConvolutionFilterAndBias(
-      GetFilterDescriptor(filter_dims), filter_input, &filter_output,
+  return dnn->CudnnReorderConvolutionFilterAndBias(
+      stream, GetFilterDescriptor(filter_dims), filter_input, &filter_output,
       std::make_optional(bias_input), std::make_optional(bias_output));
 }
 

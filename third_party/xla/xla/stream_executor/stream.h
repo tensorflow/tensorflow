@@ -220,25 +220,6 @@ class Stream {
   // must extend past the point at which it is marked complete!
   Stream &ThenRecordEvent(Event *event);
 
-  ////////////////
-  // DNN support
-  //
-  // See DnnSupport::* for comments on the following methods.
-
-  absl::Status CudnnReorderConvolutionFilterAndBias(
-      const dnn::FilterDescriptor &filter_descriptor,
-      const DeviceMemory<int8_t> &filter_input,
-      DeviceMemory<int8_t> *filter_output,
-      std::optional<const DeviceMemory<float>> bias_input,
-      std::optional<DeviceMemory<float>> bias_output) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->CudnnReorderConvolutionFilterAndBias(
-          this, filter_descriptor, filter_input, filter_output,
-          std::move(bias_input), std::move(bias_output));
-    }
-    return absl::UnimplementedError("DNN library is not found.");
-  }
-
   /////////////////
   // BLAS support
 
