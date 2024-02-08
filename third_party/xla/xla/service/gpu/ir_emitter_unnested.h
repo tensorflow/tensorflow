@@ -386,7 +386,7 @@ class IrEmitterUnnested : public IrEmitter {
   //   return;
   // }
   //   ```
-  absl::Status EmitSliceToDynamic(mlir::Operation* op);
+  absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
   absl::StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(

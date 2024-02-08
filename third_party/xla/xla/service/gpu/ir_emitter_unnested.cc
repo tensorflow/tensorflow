@@ -630,25 +630,25 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
-absl::Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
+absl::Status IrEmitterUnnested::EmitSliceToDynamic(
+    const HloCustomCallInstruction* instr) {
   // TODO(jurahul): Create an op to represent SliceToDynamic.
-  auto slice_to_dynamic = mlir::cast<mlir::lmhlo::CustomCallOp>(op);
   int unroll_factor = 1;
-  std::string ir_name = GetIrNameFromLoc(slice_to_dynamic.getLoc());
+  std::string ir_name = std::string(instr->name());
 
-  const Shape& input_shape = GetShape(slice_to_dynamic.getArgs().front());
+  const Shape& input_shape = instr->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
-  llvm::Type* index_ty = GetIndexTypeForKernel(
-      slice_to_dynamic, launch_dimensions.launch_bound(), &b_);
+  llvm::Type* index_ty =
+      GetIndexTypeForKernel(instr, launch_dimensions.launch_bound(), &b_);
   std::vector<llvm_ir::IrArray> input_arrays, output_arrays;
-  TF_ASSIGN_OR_RETURN(
-      std::tie(input_arrays, output_arrays),
-      BuildKernelThunkForNonFusionOp(slice_to_dynamic, launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::tie(input_arrays, output_arrays),
+                      BuildKernelThunkForNonFusionOp(instr, instr->operands(),
+                                                     launch_dimensions));
 
-  TF_RET_CHECK(slice_to_dynamic.getOutput().size() == 1);
-  const Shape& data_shape = GetShape(slice_to_dynamic.getOutput().front());
+  const Shape& data_shape = ShapeUtil::MakeStaticShape(instr->shape());
+  TF_RET_CHECK(data_shape.IsArray());
 
   // TODO(jurahul): data_shape here is the static shape of the output (which has
   // a dynamic shape in XLA). Currently, we are mapping that to a static shaped
@@ -670,7 +670,7 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   // Load dynamic dimensions from memory.
   std::vector<llvm::Value*> dynamic_dims;
   int alignment = raw_data_size % sizeof(int32_t);
-  for (int64_t i = 1; i < slice_to_dynamic.getArgs().size(); ++i) {
+  for (int64_t i = 1; i < instr->operand_count(); ++i) {
     llvm::Value* source_buffer = input_arrays[i].GetBasePointer();
     llvm::Type* source_buffer_pointee_type =
         input_arrays[i].GetBasePointeeType();
@@ -687,7 +687,7 @@ absl::Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   //     *dyn_dim1_size = *output[2];
   //   }
   KernelSupportLibrary{&b_}.If("is_thread_0", IsBlock0Thread0(&b_), [&] {
-    for (int64_t i = 1; i < slice_to_dynamic.getArgs().size(); ++i) {
+    for (int64_t i = 1; i < instr->operand_count(); ++i) {
       const int64_t dim_index = i - 1;
       llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
           b_.getInt8Ty(), dest_buffer,
@@ -4316,7 +4316,8 @@ absl::Status IrEmitterUnnested::EmitOp(
           Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
     }
     if (call.getCallTargetName() == "SliceToDynamic") {
-      return EmitSliceToDynamic(op);
+      return EmitSliceToDynamic(
+          Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
     }
     const llvm::StringRef call_target = call.getCallTargetName();
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -4796,6 +4797,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (custom_call->custom_call_target() == "PadToStatic") {
         return EmitPadToStatic(custom_call);
+      }
+      if (instr->custom_call_target() == "SliceToDynamic") {
+        return EmitSliceToDynamic(custom_call);
       }
       return EmitCustomCallThunk(custom_call);
     }
