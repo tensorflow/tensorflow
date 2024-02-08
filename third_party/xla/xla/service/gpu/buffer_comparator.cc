@@ -75,7 +75,7 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
   uint64_t buffer_size = current_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
+      ComparisonKernelT<ElementT> comparison_kernel,
       (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
                                    se::DeviceMemory<ElementT>, float, uint64_t,
                                    se::DeviceMemory<uint64_t>>(kernel_name,
@@ -88,7 +88,7 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
       CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
-      dim.thread_counts_per_block(), dim.block_counts(), *comparison_kernel,
+      dim.thread_counts_per_block(), dim.block_counts(), comparison_kernel,
       current_typed, expected_typed, static_cast<float>(kTolerance),
       buffer_size, out_param.cref()));
 

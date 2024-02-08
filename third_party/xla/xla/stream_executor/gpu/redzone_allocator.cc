@@ -326,7 +326,7 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   }
 
   TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<ComparisonKernelT> loaded_kernel,
+      ComparisonKernelT * loaded_kernel,
       (LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
                           DeviceMemory<uint64_t>>(
           executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));

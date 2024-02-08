@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -296,8 +297,8 @@ class Kernel {
   }
 
   void set_name(absl::string_view name);
-  const std::string &name() const { return name_; }
-  const std::string &demangled_name() const { return demangled_name_; }
+  std::string_view name() const { return name_; }
+  std::string_view demangled_name() const { return demangled_name_; }
 
  private:
   // The StreamExecutor that loads this kernel object.
@@ -321,13 +322,35 @@ class Kernel {
 // Typed kernel
 //===----------------------------------------------------------------------===//
 
-// Typed variant of Kernel, like a typed device function pointer.
+// Typed kernel is a typed smart-pointer-like wrapper around untyped Kernel.
 template <typename... Params>
-class TypedKernel : public Kernel {
+class TypedKernel {
  public:
   static constexpr size_t kNumberOfParameters = sizeof...(Params);
 
-  explicit TypedKernel(StreamExecutor *parent) : Kernel(parent) {}
+  // Creates a typed kernel on a given executor from a kernel specification.
+  static absl::StatusOr<TypedKernel> Create(StreamExecutor *executor,
+                                            const MultiKernelLoaderSpec &spec) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
+                        Kernel::Create(executor, spec));
+    return TypedKernel(std::move(kernel));
+  }
+
+  TypedKernel() = default;
+
+  Kernel &operator*() { return *kernel_; }
+  const Kernel &operator*() const { return *kernel_; }
+
+  Kernel *operator->() { return kernel_.get(); }
+  const Kernel *operator->() const { return kernel_.get(); }
+
+  operator bool() const { return static_cast<bool>(kernel_); }  // NOLINT
+
+ private:
+  explicit TypedKernel(std::unique_ptr<Kernel> kernel)
+      : kernel_(std::move(kernel)) {}
+
+  std::unique_ptr<Kernel> kernel_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -731,7 +754,7 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
 
   PackedParams::template CheckCompatibleStaticAssert<Args...>();
 
-  int64_t shmem_bytes = kernel.metadata().shared_memory_bytes().value_or(0);
+  int64_t shmem_bytes = kernel->metadata().shared_memory_bytes().value_or(0);
   return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
 }
 

@@ -255,7 +255,7 @@ inline absl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
                                           const BlockDim& blocks,
                                           Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
-  TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
+  TF_RETURN_IF_ERROR(Launch(threads, blocks, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 

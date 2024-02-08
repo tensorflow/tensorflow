@@ -293,7 +293,7 @@ class GpuCommandBuffer : public CommandBuffer {
   UpdateState update_state_;
 
   // Loaded instance of a no-op kernel used as command buffer barrier.
-  std::unique_ptr<NoOpKernel> noop_kernel_;
+  NoOpKernel noop_kernel_;
 };
 
 //===----------------------------------------------------------------------===//

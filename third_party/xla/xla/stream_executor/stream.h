@@ -724,7 +724,7 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
   TF_RETURN_IF_ERROR(
-      parent_->Launch(this, thread_dims, block_dims, kernel, *kernel_args));
+      parent_->Launch(this, thread_dims, block_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
@@ -735,7 +735,7 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        Args... args) {
   auto kernel_args = PackKernelArgs(shmem_bytes, args...);
   TF_RETURN_IF_ERROR(
-      parent_->Launch(this, thread_dims, block_dims, kernel, *kernel_args));
+      parent_->Launch(this, thread_dims, block_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
@@ -747,7 +747,7 @@ inline absl::Status Stream::ThenLaunch(ThreadDim thread_dims,
                                        Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
   TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
-                                     cluster_dims, kernel, *kernel_args));
+                                     cluster_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 
@@ -757,7 +757,7 @@ inline absl::Status Stream::ThenLaunch(
     int32_t shmem_bytes, const TypedKernel<Params...> &kernel, Args... args) {
   auto kernel_args = PackKernelArgs(shmem_bytes, args...);
   TF_RETURN_IF_ERROR(parent_->Launch(this, thread_dims, block_dims,
-                                     cluster_dims, kernel, *kernel_args));
+                                     cluster_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
 

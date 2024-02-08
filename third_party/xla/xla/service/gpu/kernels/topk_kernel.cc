@@ -90,7 +90,7 @@ absl::Status TypedTopK(se::Stream* stream, se::DeviceMemoryBase data,
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       se::ThreadDim(num_threads, 1, 1), se::BlockDim(batch_size, 1, 1),
-      shmem_size, *kernel, data_typed, num_elements, top_elements_typed,
+      shmem_size, kernel, data_typed, num_elements, top_elements_typed,
       top_indices_typed, k));
 
   return absl::OkStatus();

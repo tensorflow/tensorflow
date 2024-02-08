@@ -429,13 +429,9 @@ absl::Status ComputationIdCmd::Record(const Thunk::ExecuteParams& params,
         "Memset kernel not loaded on a command buffer executor");
   }
 
-  auto* memset32 = static_cast<
-      se::TypedKernel<int64_t, uint32_t, se::DeviceMemory<uint32_t>>*>(
-      memset_kernel);
-
-  return command_buffer->Launch(*memset32, se::ThreadDim(1), se::BlockDim(1),
-                                /*n=*/int64_t{1}, value,
-                                se::DeviceMemory<uint32_t>(dst));
+  auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
+  return command_buffer->Launch(se::ThreadDim(1), se::BlockDim(1),
+                                *memset_kernel, *args);
 }
 
 //===----------------------------------------------------------------------===//
