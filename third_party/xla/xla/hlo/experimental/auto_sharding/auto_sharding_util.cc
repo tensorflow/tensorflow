@@ -1429,7 +1429,8 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const Array<int64_t>& device_mesh,
                                  ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
-  if (operand->opcode() == HloOpcode::kOutfeed) {
+  if (operand->opcode() == HloOpcode::kOutfeed ||
+      operand->opcode() == HloOpcode::kSendDone) {
     return;
   }
 

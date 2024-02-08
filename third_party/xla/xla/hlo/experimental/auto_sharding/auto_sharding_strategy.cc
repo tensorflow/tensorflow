@@ -730,6 +730,27 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 strategy_group, replicated_penalty);
         break;
       }
+      case HloOpcode::kSend: {
+        strategy_group = CreateTupleStrategyGroup(instruction_id);
+        strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
+        for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+          std::unique_ptr<StrategyGroup> child_strategies =
+              CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                      strategy_groups);
+          AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i), cluster_env,
+                                strategy_map, child_strategies, 0);
+          child_strategies->tuple_element_idx = i;
+          strategy_group->childs.push_back(std::move(child_strategies));
+        }
+        break;
+      }
+      case HloOpcode::kSendDone: {
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                              strategy_group, 0);
+        break;
+      }
       case HloOpcode::kAfterAll: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
