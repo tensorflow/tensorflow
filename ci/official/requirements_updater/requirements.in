@@ -11,7 +11,7 @@ astor == 0.7.1
 typing_extensions == 4.8.0
 gast == 0.4.0
 termcolor == 2.3.0
-wrapt == 1.14.1
+wrapt == 1.16.0
 tblib == 2.0.0
 
 # Install tensorboard, and keras
