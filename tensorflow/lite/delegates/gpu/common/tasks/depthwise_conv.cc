@@ -101,9 +101,11 @@ std::string GetSrcXYCheck(const GpuInfo& gpu_info,
 }
 
 bool UseBuffersForWeights(const GpuInfo& gpu_info) {
-  if (gpu_info.IsApple() &&
-      gpu_info.apple_info.IsFamilyOrLower(AppleInfo::Family::kApple2)) {
-    return false;
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsA7GenerationGpu() ||
+        gpu_info.apple_info.IsA8GenerationGpu()) {
+      return false;
+    }
   }
   return !gpu_info.SupportsImages() || gpu_info.IsMali() ||
          gpu_info.IsApple() || gpu_info.IsAMD();
