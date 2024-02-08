@@ -51,6 +51,7 @@ apt-get install -y --no-install-recommends \
     clang \
     curl \
     ffmpeg \
+    gcc \
     git \
     libcurl4-openssl-dev \
     libtool \
@@ -58,6 +59,7 @@ apt-get install -y --no-install-recommends \
     libffi-dev \
     liblapack-dev \
     libblas-dev \
+    make \
     mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
@@ -76,6 +78,7 @@ apt-get install -y --no-install-recommends \
     wget \
     zip \
     zlib1g-dev
+
 
 # populate the database
 updatedb
