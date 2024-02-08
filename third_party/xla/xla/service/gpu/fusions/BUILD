@@ -108,6 +108,7 @@ cc_library(
         "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
         "//xla/service/gpu:ir_emitter_context",
