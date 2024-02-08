@@ -517,6 +517,7 @@ cc_library(
         ":stream_executor_headers",
         ":stream_executor_internal",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

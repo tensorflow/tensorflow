@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
@@ -55,18 +55,9 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 
 absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
     StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
-  auto kernel = std::make_unique<Kernel>(executor);
+  auto kernel = absl::WrapUnique(new Kernel(executor));
   TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
   return kernel;
-}
-
-Kernel::Kernel(Kernel &&from)
-    : parent_(from.parent_),
-      implementation_(std::move(from.implementation_)),
-      name_(std::move(from.name_)),
-      demangled_name_(std::move(from.demangled_name_)),
-      metadata_(from.metadata_) {
-  from.parent_ = nullptr;
 }
 
 Kernel::Kernel(StreamExecutor *parent)

@@ -239,20 +239,12 @@ class Kernel {
   static absl::StatusOr<std::unique_ptr<Kernel>> Create(
       StreamExecutor *executor, const MultiKernelLoaderSpec &spec);
 
-  // TODO(b/323534971): Delete move constructor.
-  Kernel(Kernel &&from);
-
-  // Constructs an "empty" (not-yet-loaded) kernel instance.
-  //
-  // parent is the StreamExecutor that will be responsible for loading the
-  // implementation of this kernel. It must not be null.
-  //
-  // TODO(b/323534971): Delete this constructor and always use factory method.
-  explicit Kernel(StreamExecutor *parent);
-
   // Releases resources associated with the kernel instance (i.e.
   // platform-specific implementation).
   ~Kernel();
+
+  Kernel(const Kernel &) = delete;
+  void operator=(const Kernel &) = delete;
 
   // Returns the number of parameters that this kernel accepts. (Arity refers to
   // nullary, unary, ...).
@@ -301,6 +293,8 @@ class Kernel {
   std::string_view demangled_name() const { return demangled_name_; }
 
  private:
+  explicit Kernel(StreamExecutor *parent);
+
   // The StreamExecutor that loads this kernel object.
   StreamExecutor *parent_;
 
@@ -313,9 +307,6 @@ class Kernel {
   KernelMetadata metadata_;
 
   KernelArgsPacking kernel_args_packing_;
-
-  Kernel(const Kernel &) = delete;
-  void operator=(const Kernel &) = delete;
 };
 
 //===----------------------------------------------------------------------===//
