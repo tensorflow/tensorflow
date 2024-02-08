@@ -1,13 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/AMDGPU/SIISelLowering.cpp b/llvm/lib/Target/AMDGPU/SIISelLowering.cpp
---- a/llvm/lib/Target/AMDGPU/SIISelLowering.cpp
-+++ b/llvm/lib/Target/AMDGPU/SIISelLowering.cpp
-@@ -12016,7 +12016,7 @@
- 
- static SDValue matchPERM(SDNode *N, TargetLowering::DAGCombinerInfo &DCI) {
-   SelectionDAG &DAG = DCI.DAG;
--  EVT VT = N->getValueType(0);
-+  [[maybe_unused]] EVT VT = N->getValueType(0);
-   SmallVector<ByteProvider<SDValue>, 8> PermNodes;
- 
-   // VT is known to be MVT::i32, so we need to provide 4 bytes.
