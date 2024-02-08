@@ -213,6 +213,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   Tf2HloResult result;
   result.mlir_hlo_module = xla::llvm_ir::CreateMlirModuleOp(module->getLoc());
   result.compile_metadata = std::move(compile_metadata);
+  result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(
       *result.mlir_hlo_module, &compilation_result.computation->proto()));

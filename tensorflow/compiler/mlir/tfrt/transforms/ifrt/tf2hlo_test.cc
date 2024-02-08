@@ -302,6 +302,47 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
   EXPECT_THAT(result->compile_metadata, EqualsProto(expected_compile_metadata));
 }
 
+// Multiple input and multiple out.
+TEST(Tf2HloTest, XlaCallHostCallback) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
+                                            mlir::ParserConfig(&context));
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  std::vector<tensorflow::Tensor> tensors;
+  tensorflow::Tensor x(DT_INT32, tensorflow::TensorShape({1}));
+  tensors.push_back(x);
+  tensorflow::Tensor y(DT_INT32, tensorflow::TensorShape({1}));
+  tensors.push_back(y);
+  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
+                               tensorflow::IdentityShapeRepresentationFn());
+
+  TF_ASSERT_OK(result.status());
+
+  ASSERT_EQ((*result).host_compute_metadata.device_to_host().size(), 1);
+  ASSERT_EQ(
+      (*result).host_compute_metadata.device_to_host().begin()->metadata_size(),
+      2);
+  ASSERT_EQ((*result).host_compute_metadata.host_to_device().size(), 0);
+}
+
 }  // namespace
 }  // namespace ifrt_serving
 }  // namespace tensorflow
