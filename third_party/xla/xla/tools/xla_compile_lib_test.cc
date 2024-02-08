@@ -89,6 +89,7 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithDevice)) {
   EXPECT_THAT(
       CompileExecutable(std::move(module_), "gpu", std::nullopt, result),
       IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithoutDevice)) {
@@ -98,14 +99,6 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithoutDevice)) {
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
-  CompilationResult result;
-  EXPECT_THAT(
-      CompileExecutable(std::move(module_), "gpu", std::nullopt, result),
-      IsOkAndHolds(Not(IsEmpty())));
-}
-
-TEST_F(XlaCompileLibTest,
-       DISABLED_ON_CPU(ReturnsOptimizedModuleWhenRequested)) {
   CompilationResult result;
   EXPECT_THAT(
       CompileExecutable(std::move(module_), "gpu", std::nullopt, result),

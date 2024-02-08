@@ -72,6 +72,11 @@ class AotCompilationResult {
     return Unimplemented("LoadExecutable unimplemented.");
   }
 
+  // Returns the optimized HLO module if one was computed and the implementation
+  // supports it.
+  virtual const HloModule* optimized_module() const = 0;
+  virtual std::unique_ptr<HloModule> consume_optimized_module() = 0;
+
  protected:
   AotCompilationResult() = default;
 };
