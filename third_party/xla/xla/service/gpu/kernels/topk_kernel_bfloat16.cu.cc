@@ -13,24 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_COMMON_H_
-#define XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_COMMON_H_
-
-#include <cstddef>
-
-// Contains shared declarations between topk_kernel.cc and topk_kernel.cu.cc
-// but avoids including ABSL, etc. which some CUDA compilers cannot
-// handle.
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/service/gpu/kernels/topk_kernel.cu.h"
 
 namespace xla::gpu {
 
-// We perform 2 32-way reductions, which means the largest number of threads per
-// block we support is 1024.
-static constexpr size_t kTopKMaxThreadsPerBlock = 1024;
-
-template <typename T, size_t K>
-void* GetTopKKernelForK(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 1>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 2>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 4>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 8>(int n);
+template void* GetTopKKernelForK<Eigen::bfloat16, 16>(int n);
 
 }  // namespace xla::gpu
-
-#endif  // XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_COMMON_H_

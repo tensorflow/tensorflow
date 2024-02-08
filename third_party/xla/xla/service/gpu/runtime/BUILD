@@ -1,15 +1,8 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
-load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-    "rocm_library",
-)
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
 )
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -316,133 +309,6 @@ cc_library(
 )
 
 cc_library(
-    name = "topk_kernel",
-    srcs = if_gpu_is_configured(["topk_kernel.cc"]),
-    hdrs = if_gpu_is_configured(["topk_kernel.h"]),
-    compatible_with = [],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gpu_kernel_helper",
-        ":support",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/runtime:memref_view",
-        "//xla/stream_executor",  # build_cleaner: keep
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "@com_google_absl//absl/numeric:bits",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":topk_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":topk_kernel_rocm",
-    ]),
-)
-
-cuda_library(
-    name = "topk_kernel_cuda",
-    srcs = if_cuda_is_configured(
-        [
-            "topk_kernel_bfloat16.cu.cc",
-            "topk_kernel_float.cu.cc",
-            "topk_kernel.cu.h",
-        ],
-    ),
-    hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),
-    compatible_with = [],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":gpu_kernel_helper",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-rocm_library(
-    name = "topk_kernel_rocm",
-    srcs = if_rocm_is_configured(
-        [
-            "topk_kernel_bfloat16.cu.cc",
-            "topk_kernel_float.cu.cc",
-            "topk_kernel.cu.h",
-        ],
-    ),
-    hdrs = if_rocm_is_configured(["topk_kernel_common.h"]),
-    compatible_with = [],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    deps = [
-        ":gpu_kernel_helper",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-xla_cc_test(
-    name = "topk_kernel_test",
-    srcs = if_gpu_is_configured(["topk_kernel_test.cc"]),
-    tags = tf_gpu_tests_tags(),
-    deps = [
-        ":gpu_kernel_helper",
-        ":topk_kernel",
-        "//xla:xla_data_proto_cc",
-        "//xla/stream_executor",  # build_cleaner: keep
-        "//xla/stream_executor:multi_platform_manager",
-        "//xla/stream_executor/gpu:gpu_init",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-        "//xla/stream_executor/gpu:gpu_timer_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "//xla/stream_executor/host:host_platform",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-xla_cc_test(
-    name = "topk_test",
-    srcs = ["topk_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    tags = tf_gpu_tests_tags(),
-    deps = [
-        ":topk",
-        "//xla:error_spec",
-        "//xla:shape_util",
-        "//xla:status",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
-        "//xla/service:hlo_pass",
-        "//xla/service:platform_util",
-        "//xla/service:topk_rewriter",
-        "//xla/service/gpu:topk_specializer",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
     name = "topk",
     srcs = if_gpu_is_configured(["topk.cc"]),
     hdrs = ["topk.h"],
@@ -450,7 +316,7 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     visibility = ["//visibility:public"],
-    deps = if_gpu_is_configured([":topk_kernel"]) + [
+    deps = [
         ":support",
         "//xla:executable_run_options",
         "//xla:shape_util",

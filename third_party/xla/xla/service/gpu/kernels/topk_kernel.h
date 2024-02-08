@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_H_
-#define XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_H_
+#ifndef XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_H_
+#define XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -43,4 +43,4 @@ absl::Status RunTopk(se::Stream* stream, PrimitiveType dtype,
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_H_
+#endif  // XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_H_

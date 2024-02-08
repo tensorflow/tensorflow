@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime/topk_kernel.h"
+#include "xla/service/gpu/kernels/topk_kernel.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "Eigen/Core"  // from @eigen_archive
-#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"

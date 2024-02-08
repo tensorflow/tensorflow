@@ -14,28 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 // This file contains bespoke and optimized implementation for TopK shapes. When
-// adding support for new shapes/dtypes, you also need to modify the rewritter
+// adding support for new shapes/dtypes, you also need to modify the rewriter
 // on topk_specializer.cc for these changes to be picked up.
 
-#include "xla/service/gpu/runtime/topk_kernel.h"
+#include "xla/service/gpu/kernels/topk_kernel.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/kernels/topk_kernel_common.h"
 #include "xla/service/gpu/runtime/gpu_kernel_helper.h"
-#include "xla/service/gpu/runtime/topk_kernel_common.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
-
 namespace {
 
 size_t NumThreads(size_t n, size_t k, size_t batch_size) {

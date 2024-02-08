@@ -5298,6 +5298,35 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "topk_test",
+    srcs = ["topk_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    tags = tf_gpu_tests_tags(),
+    deps = [
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:types",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:gpu_plugin",
+        "//xla/service:hlo_pass",
+        "//xla/service:platform_util",
+        "//xla/service:topk_rewriter",
+        "//xla/service/gpu:topk_specializer",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:verified_hlo_module",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "copy_fusion",
     srcs = ["copy_fusion.cc"],

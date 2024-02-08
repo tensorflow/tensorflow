@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_CU_H_
-#define XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_CU_H_
+#ifndef XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_CU_H_
+#define XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_CU_H_
 
 // This file contains bespoke and optimized implementation for TopK shapes. When
-// adding support for new shapes/dtypes, you also need to modify the rewritter
+// adding support for new shapes/dtypes, you also need to modify the rewriter
 // on topk_specializer.cc for these changes to be picked up.
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 
+#include "xla/service/gpu/kernels/topk_kernel_common.h"
 #include "xla/service/gpu/runtime/gpu_kernel_helper.h"
-#include "xla/service/gpu/runtime/topk_kernel_common.h"
 
 namespace xla::gpu {
 
@@ -245,7 +245,7 @@ __launch_bounds__(kTopKMaxThreadsPerBlock, 1) __global__
 template <typename T, size_t K>
 void* GetTopKKernelForK(int n) {
   // TODO(doak): Switch to uint32_t if we don't have an efficient
-  // implemementation for uint16_t.
+  // implementation for uint16_t.
   return n < std::numeric_limits<uint16_t>::max()
              ? reinterpret_cast<void*>(&Run<K, T, uint16_t>)
              : reinterpret_cast<void*>(&Run<K, T, uint32_t>);
@@ -253,4 +253,4 @@ void* GetTopKKernelForK(int n) {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_CU_H_
+#endif  // XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_CU_H_
