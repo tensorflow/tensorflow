@@ -8865,6 +8865,35 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
               op::Parameter(0));
 }
 
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDusFusionMayAlias) {
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {}: (0, {}, may-alias) }
+    fused_computation {
+      fused_p0 = s32[2,2] parameter(0)
+      fused_p1 = s32[1,2] parameter(1)
+      fused_p2 = s32[] parameter(2)
+      fused_p3 = s32[] parameter(3)
+      ROOT dus = s32[2,2] dynamic-update-slice(fused_p0, fused_p1, fused_p2, fused_p3)
+    }
+
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      c0 = s32[1,2] constant({{77, 77}})
+      c1 = s32[] constant(0)
+      bitcast1 = s32[2,2] bitcast(p0)
+      ROOT fusion = s32[2,2] fusion(bitcast1, c0, c1, c1), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), DefaultMemorySpaceOptions(),
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true
@@ -8929,19 +8958,15 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
   EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
-              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                            op::Parameter(0)));
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
-  // An in-place fusion that lives out should not be included as a use to the
-  // cross-program prefetch allocation. Due to a bug, we considered in-place
-  // update that feeds the ROOT of the entry computation as a valid use of the
-  // cross-program prefetch. This then would cause this live-out buffer to be
-  // placed in the alternate memory. We expect p0 to be cross-program prefetched
-  // but only for the dot operand and not the fusion operand.
+  // Input-output aliased buffers should not be cross-program prefetched since
+  // the update on the buffer will not be reflected on the next program
+  // execution (the data in the alternate memory would be stale).
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {0}: (0, {}, may-alias) }
     fused_computation {
@@ -8967,12 +8992,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
-  EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
-              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
-                            op::Parameter(0)));
-  EXPECT_THAT(FindInstruction(module.get(), "fusion")->operand(0),
-              op::Parameter(0));
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {

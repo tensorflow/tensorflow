@@ -234,6 +234,17 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const HloAliasAnalysis& alias_analysis,
                                      const Options& options) {
+  // Filter out values that alias with the entry computation root.
+  const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
+  const HloInstruction* root = alias_analysis.dataflow_analysis()
+                                   .module()
+                                   .entry_computation()
+                                   ->root_instruction();
+  for (const HloPosition& position : buffer.ComputePositions()) {
+    if (position.instruction == root) {
+      return false;
+    }
+  }
   std::vector<HloUse> uses =
       FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis);
   return value.defining_instruction()->parent() ==
