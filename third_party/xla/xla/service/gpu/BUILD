@@ -3174,7 +3174,6 @@ cc_library(
         "//xla/service:hlo_ordering",
         "//xla/service:hlo_proto_cc",
         "//xla/service:logical_buffer",
-        "//xla/service/gpu/runtime:executable",
         "//xla/service/gpu/runtime3:conditional_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
