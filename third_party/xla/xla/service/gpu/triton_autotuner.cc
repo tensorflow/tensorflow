@@ -331,9 +331,7 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
           continue;
         }
         for (int block_n : BLOCK_SIZES) {
-          // Exclude configs not supported by MMA layout v2.
-          if (block_n > limit.block_n ||
-              (mma_layout_v2 && (block_m * block_n / 256) % num_warps != 0)) {
+          if (block_n > limit.block_n) {
             continue;
           }
           for (int block_k : BLOCK_SIZES) {
@@ -405,14 +403,6 @@ std::vector<TritonGemmConfig> GetFixedMatmulAutotuneConfigs(
             Config(16, 64, 128, 16, 3, 4),
         },
         std::back_inserter(configs));
-    configs.erase(
-        std::remove_if(configs.begin(), configs.end(),
-                       [](const Config& config) {
-                         return (config.block_m * config.block_n / 256) %
-                                    config.num_warps !=
-                                0;
-                       }),
-        configs.end());
   }
   configs.erase(std::remove_if(configs.begin(), configs.end(),
                                [&](const Config& config) {
