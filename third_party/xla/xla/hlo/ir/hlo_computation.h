@@ -807,17 +807,13 @@ class HloComputation {
   HloInstruction* AsyncStart() const { return async_start_; }
 
   void AddAsyncStart(HloInstruction* async_instruction) {
-    CHECK(!IsCalledComputation());
+    // TODO: Add instruction type for async instructions.
+    CHECK(instruction_type() == InstructionType::kUnset);
     CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart);
     async_start_ = async_instruction;
   }
 
   void RemoveAsyncStart() { async_start_ = nullptr; }
-
-  // Returns if this computation is invoked by an Hlo instruction.
-  bool IsCalledComputation() const {
-    return IsFusionComputation() || IsCustomCallComputation();
-  }
 
   // Clear the unique ID of the computation so that it can be re-assigned, such
   // as for the purpose of compacting the unique IDs.
