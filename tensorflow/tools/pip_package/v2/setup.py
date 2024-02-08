@@ -98,7 +98,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0, < 1.15',
+    'wrapt >= 1.11.0',
     # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
     'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
