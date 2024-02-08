@@ -169,6 +169,30 @@ bool IsI32F32UniformQuantizedType(const Type type) {
   return true;
 }
 
+bool IsI32F32UniformQuantizedPerAxisType(const Type type) {
+  const UniformQuantizedPerAxisType quantized_per_axis_type =
+      type.dyn_cast_or_null<UniformQuantizedPerAxisType>();
+  if (!quantized_per_axis_type) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Expected a uniform quantized type. Got: " << type << ".\n");
+    return false;
+  }
+
+  if (!IsStorageTypeI32(quantized_per_axis_type)) {
+    LLVM_DEBUG(llvm::dbgs() << "Expected an i32 storage type. Got: "
+                            << quantized_per_axis_type << ".\n");
+    return false;
+  }
+
+  if (!IsExpressedTypeF32(quantized_per_axis_type)) {
+    LLVM_DEBUG(llvm::dbgs() << "Expected an f32 expressed type. Got: "
+                            << quantized_per_axis_type << ".\n");
+    return false;
+  }
+
+  return true;
+}
+
 // Determines whether the storage type of a quantized type is supported by
 // `tfl.quantize` or `tfl.dequantize` ops. ui8, i8 and i16 are supported.
 bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type) {
