@@ -2299,6 +2299,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaRecv",
       "XlaReduce",
       "XlaReducePrecision",
+      "XlaReduceScatter",
       "XlaReduceWindow",
       "XlaRemoveDynamicDimensionSize",
       "XlaReplicaId",
