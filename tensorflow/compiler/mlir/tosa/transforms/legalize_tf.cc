@@ -465,9 +465,9 @@ LogicalResult ConvertTFRealDivOp::matchAndRewrite(
   auto reciprocal_op = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), y.getType(), y);
 
-  auto mul_op = CreateMulOpAndInfer(rewriter, op, output_type, x,
-                                    reciprocal_op.getResult());
-
+  auto mul_op = CreateMulOpAndInfer(
+      rewriter, op, output_type, tf_div_op.getX(),
+      reciprocal_op.getResult());
   rewriter.replaceOp(op, {mul_op.getResult()});
 
   return success();
@@ -1364,7 +1364,7 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
       tensorflow::GetTypeFromTFTensorShape({1}, variance_type.getElementType());
   auto epsilon_attr =
       DenseFPElementsAttr::get(epsilon_type, {tf_batchnorm_op.getEpsilon()});
-  auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
+  Value epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, op->getLoc(), epsilon_type, epsilon_attr);
 
   Value op1_sub_input_mean = CreateOpAndInfer<tosa::SubOp>(
@@ -1380,8 +1380,8 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
   Value op4_mul_op1_op3 = CreateMulOpAndInfer(
       rewriter, op, output_type, op1_sub_input_mean, op3_rsqrt_op2);
 
-  Value op5_mul_op4_scale =
-      CreateMulOpAndInfer(rewriter, op, output_type, op4_mul_op1_op3, scale);
+  Value op5_mul_op4_scale = CreateMulOpAndInfer(
+      rewriter, op, output_type, op4_mul_op1_op3, scale);
 
   Value op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), output_type, op5_mul_op4_scale, offset);
@@ -1446,13 +1446,13 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   Value op3_rsqrt_op2 = CreateOpAndInfer<tosa::RsqrtOp>(
       rewriter, op->getLoc(), variance_type, op2_add_var_epsilon);
 
-  Value op4_mul_op1_op3 =
-      CreateMulOpAndInfer(rewriter, op, tf_batchnorm_op.getResult(0).getType(),
-                          op1_sub_input_mean, op3_rsqrt_op2);
+  Value op4_mul_op1_op3 = CreateMulOpAndInfer(
+      rewriter, op, tf_batchnorm_op.getResult(0).getType(),
+      op1_sub_input_mean, op3_rsqrt_op2);
 
   Value scale = tf_batchnorm_op.getScale();
-  Value op5_mul_op4_scale =
-      CreateMulOpAndInfer(rewriter, op, output_type, op4_mul_op1_op3, scale);
+  Value op5_mul_op4_scale = CreateMulOpAndInfer(
+      rewriter, op, output_type, op4_mul_op1_op3, scale);
 
   Value offset = tf_batchnorm_op.getOffset();
   Value op6_add_op5_offset = CreateOpAndInfer<tosa::AddOp>(

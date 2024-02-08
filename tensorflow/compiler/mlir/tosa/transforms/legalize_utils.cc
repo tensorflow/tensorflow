@@ -997,14 +997,13 @@ void TrimQuantizedIntegerRange(UniformQuantizedType dtype, int64_t& val_min,
   TrimQuantizedIntegerRangeMax(dtype, val_max);
 }
 
-tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op,
-                                Type result_ty, Value input1, Value input2,
-                                int8_t shift) {
+tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op, Type result_ty,
+    Value input1, Value input2, int8_t shift) {
   if (EqualizeRanks(rewriter, op->getLoc(), input1, input2).failed()) {
     // uncompatible broadcast shapes, no reshape is inserted
     // ResultsBroadcastableShape verify will handle this
   }
-   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_ty, input1,
+  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_ty, input1,
       input2, getConstTensor<int8_t>(rewriter, op, shift, {1}).value());
 }
 

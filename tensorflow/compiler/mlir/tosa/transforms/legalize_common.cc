@@ -4437,8 +4437,8 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
   Value mul_y = flattened_coeff_value.value();
   RankedTensorType mul_type = tensorflow::GetTypeFromTFTensorShape(
       indices_matrix_shape, indices_type.getElementType());
-  auto flattened_indices_mul_op =
-      CreateMulOpAndInfer(rewriter, op, mul_type, mul_x, mul_y);
+  auto flattened_indices_mul_op = CreateMulOpAndInfer(
+      rewriter, op, mul_type, mul_x, mul_y);
 
   // Sum up the products of the coefficients and coordinates
   auto flattened_indices_reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(

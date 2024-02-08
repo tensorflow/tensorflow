@@ -1035,9 +1035,9 @@ func.func @test_reshape_dynamic_ranked_output(%arg0: tensor<?x52x52x2xf32>) -> t
 // CHECK-LABEL: test_transpose
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 0, 1]> : tensor<3xi32>}>
 // CHECK: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
-func.func @test_transpose(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+func.func @test_transpose(%arg0: tensor<13x?x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[2, 0, 1]> : tensor<3xi32>
-  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<*xf32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<13x?x3xf32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -2819,12 +2819,12 @@ func.func @test_imag_non_complex(%arg0: tensor<1x8x9xf32>) -> (tensor<1x8x9xf32>
 
 // CHECK-LABEL: test_squared_difference_qi8
 // CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
-// CHECK-DAG: %[[VAR0:.*]] = tosa.rescale %arg0
-// CHECK-DAG: %[[VAR1:.*]] = tosa.rescale %arg1
-// CHECK-DAG: %[[VAR2:.*]] = tosa.sub %[[VAR0]], %[[VAR1]]
-// CHECK-DAG: %[[VAR3:.*]] = tosa.mul %[[VAR2]], %[[VAR2]], %[[SHIFT]]
-// CHECK-DAG: %[[VAR4:.*]] = tosa.rescale %[[VAR3]]
-// CHECK: return %[[VAR4]]
+// CHECK-DAG: %[[VAR2:.*]] = tosa.rescale %arg0
+// CHECK-DAG: %[[VAR3:.*]] = tosa.rescale %arg1
+// CHECK-DAG: %[[VAR4:.*]] = tosa.sub %[[VAR2]], %[[VAR3]]
+// CHECK-DAG: %[[VAR5:.*]] = tosa.mul %[[VAR4]], %[[VAR4]], %[[SHIFT]]
+// CHECK-DAG: %[[VAR6:.*]] = tosa.rescale %[[VAR5]]
+// CHECK: return %[[VAR6]]
 func.func @test_squared_difference_qi8(%arg0: tensor<1x197x768x!quant.uniform<i8:f32, 0.13317519426345825:1>>, %arg1: tensor<1x197x1x!quant.uniform<i8:f32, 0.004602269735187292:-4>>) -> tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>> {
   %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x197x768x!quant.uniform<i8:f32, 0.13317519426345825:1>>, tensor<1x197x1x!quant.uniform<i8:f32, 0.004602269735187292:-4>>) -> tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>>
   func.return %0 : tensor<1x197x768x!quant.uniform<i8:f32, 0.9029696583747864:-128>>

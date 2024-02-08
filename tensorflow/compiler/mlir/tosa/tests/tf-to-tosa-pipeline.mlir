@@ -93,7 +93,8 @@ func.func @test_sub(%arg0: tensor<1x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> te
 // -----
 
 // CHECK-LABEL: test_mul
-// CHECK: %[[VAR0:.*]] = tosa.mul %arg0, %arg1
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
+// CHECK: %[[VAR0:.*]] = tosa.mul %arg0, %arg1, %[[SHIFT]]
 func.func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Mul"(%arg0, %arg1)   : (tensor<13x21x3xf32>, tensor<13x1x3xf32>) -> tensor<13x21x3xf32>
   func.return %2 : tensor<13x21x3xf32>
@@ -159,7 +160,8 @@ func.func @test_relu6(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // CHECK-LABEL: test_leaky_relu
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<1x1xf32>}>
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<5.000000e-01> : tensor<1x1xf32>}>
-// CHECK-DAG: %[[VAR2:.*]] = tosa.mul %arg0, %[[VAR1]]
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
+// CHECK-DAG: %[[VAR2:.*]] = tosa.mul %arg0, %[[VAR1]], %[[SHIFT]]
 // CHECK-DAG: %[[VAR3:.*]] = tosa.greater_equal %arg0, %[[VAR0]]
 // CHECK: %[[VAR6:.*]] = tosa.select %[[VAR3]], %arg0, %[[VAR2]]
 func.func @test_leaky_relu(%arg0: tensor<4x4xf32>) -> tensor<4x4xf32> {
@@ -463,7 +465,8 @@ func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_square
-// CHECK: %[[VAR0:.*]] = tosa.mul %arg0, %arg0
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
+// CHECK: %[[VAR0:.*]] = tosa.mul %arg0, %arg0, %[[SHIFT]]
 func.func @test_square(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Square"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %2 : tensor<13x21x3xf32>
@@ -723,12 +726,13 @@ func.func @test_elu(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_softmax
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
 // CHECK-DAG: %[[VAR0:.*]] = tosa.reduce_max %arg0
 // CHECK-DAG: %[[VAR1:.*]] = tosa.sub %arg0, %[[VAR0]]
 // CHECK-DAG: %[[VAR2:.*]] = tosa.exp %[[VAR1]]
 // CHECK-DAG: %[[VAR3:.*]] = tosa.reduce_sum %[[VAR2]] {axis = 2 : i32}
 // CHECK-DAG: %[[VAR4:.*]] = tosa.reciprocal %[[VAR3]]
-// CHECK: %[[VAR5:.*]] = tosa.mul %[[VAR2]], %[[VAR4]]
+// CHECK: %[[VAR5:.*]] = tosa.mul %[[VAR2]], %[[VAR4]], %[[SHIFT]]
 func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Softmax"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %2 : tensor<13x21x3xf32>
@@ -737,10 +741,11 @@ func.func @test_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_log_softmax
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
 // CHECK-DAG: %[[VAR0:.*]] = tosa.exp %arg0
 // CHECK-DAG: %[[VAR1:.*]] = tosa.reduce_sum %[[VAR0]] {axis = 2 : i32}
 // CHECK-DAG: %[[VAR2:.*]] = tosa.reciprocal %[[VAR1]]
-// CHECK-DAG: %[[VAR3:.*]] = tosa.mul %[[VAR0]], %[[VAR2]]
+// CHECK-DAG: %[[VAR3:.*]] = tosa.mul %[[VAR0]], %[[VAR2]], %[[SHIFT]]
 // CHECK: %[[VAR4:.*]] = tosa.log %[[VAR3]]
 func.func @test_log_softmax(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.LogSoftmax"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
@@ -918,7 +923,7 @@ func.func @test_right_shift(%arg0: tensor<4x4xi32>, %arg1: tensor<1x1xi32>) -> t
 // -----
 
 // CHECK-LABEL: @test_one_hot
-// CHECK-SAME:    %[[ARG0_0:.*]]: tensor<4x4xi32>, %[[ARG1_0:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>
+// CHECK-SAME:      %[[ARG0_0:.*]]: tensor<4x4xi32>, %[[ARG1_0:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>
 // CHECK-DAG:     %[[CST1:.*]] = tosa.const_shape {value = dense<[16, 1, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK-DAG:     %[[CST2:.*]] = tosa.const_shape {value = dense<[16, 2, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK:         %[[RESHAPE_0:.*]] = tosa.reshape %[[ARG1_0]] {new_shape = array<i64: 1, 1, 1>}
@@ -943,13 +948,14 @@ func.func @test_one_hot(%arg0: tensor<4x4xi32>, %arg1: tensor<f32>, %arg2: tenso
 // CHECK-DAG: %[[VAR2:.*]] = "tosa.const"() <{value = dense<6.10360876E-5> : tensor<1x1x1xf32>}>
 // CHECK-DAG: %[[VAR3:.*]] = "tosa.const"() <{value = dense<16383.75> : tensor<1x1x1xf32>}>
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.const"() <{value = dense<5.000000e-01> : tensor<1x1x1xf32>}>
+// CHECK-DAG: %[[SHIFT:.*]] = "tosa.const"() <{value = dense<0> : tensor<1xi8>}>
 // CHECK-DAG: %[[VAR6:.*]] = tosa.minimum %arg0, %[[VAR1]]
 // CHECK-DAG: %[[VAR8:.*]] = tosa.maximum %[[VAR6]], %[[VAR0]]
 // CHECK-DAG: %[[VAR10:.*]] = tosa.sub %[[VAR8]], %[[VAR0]]
-// CHECK-DAG: %[[VAR12:.*]] = tosa.mul %[[VAR10]], %[[VAR3]]
+// CHECK-DAG: %[[VAR12:.*]] = tosa.mul %[[VAR10]], %[[VAR3]], %[[SHIFT]]
 // CHECK-DAG: %[[VAR14:.*]] = tosa.add %[[VAR12]], %[[VAR4]]
 // CHECK-DAG: %[[VAR15:.*]] = tosa.floor %[[VAR14]]
-// CHECK-DAG: %[[VAR17:.*]] = tosa.mul %[[VAR15]], %[[VAR2]]
+// CHECK-DAG: %[[VAR17:.*]] = tosa.mul %[[VAR15]], %[[VAR2]], %[[SHIFT]]
 // CHECK: %[[VAR19:.*]] = tosa.add %[[VAR17]], %[[VAR0]]
 func.func @test_fakequant_with_min_max_args(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.FakeQuantWithMinMaxArgs"(%arg0)  {max = 2.000000e+00 : f32, min = -2.000000e+00 : f32, narrow_range = false, num_bits = 16 : i64}  : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
@@ -994,11 +1000,11 @@ func.func @test_fused_batch_norm(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32
   // CHECK:  %[[SUB0:.+]] = tosa.sub %arg0, %[[RES0]]
   // CHECK:  %[[ADD0:.+]] = tosa.add %arg4, %[[ONE]]
   // CHECK:  %[[RSQR:.+]] = tosa.rsqrt %[[ADD0]]
-  // CHECK:  %[[RES1:.+]] = tosa.reshape %[[RSQR]] {new_shape = array<i64: 1, 1, 1, 8>}
+  // CHECK:  %[[RES1:.+]] = tosa.reshape %[[RSQR]]  {new_shape = array<i64: 1, 1, 1, 8>}
   // CHECK:  %[[MUL0:.+]] = tosa.mul %[[SUB0]], %[[RES1]]
-  // CHECK:  %[[RES1:.+]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 1, 1, 8>}
+  // CHECK:  %[[RES1:.+]] = tosa.reshape %arg1  {new_shape = array<i64: 1, 1, 1, 8>}
   // CHECK:  %[[MUL1:.+]] = tosa.mul %[[MUL0]], %[[RES1]]
-  // CHECK:  %[[RES2:.+]] = tosa.reshape %arg2 {new_shape = array<i64: 1, 1, 1, 8>}
+  // CHECK:  %[[RES2:.+]] = tosa.reshape %arg2  {new_shape = array<i64: 1, 1, 1, 8>}
   // CHECK:  %[[ADD1:.+]] = tosa.add %[[MUL1]], %[[RES2]]
   %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>)
 
