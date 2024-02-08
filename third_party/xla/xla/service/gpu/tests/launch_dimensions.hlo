@@ -33,7 +33,7 @@ ENTRY main {
 // CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test, is_scheduled=true
@@ -60,7 +60,7 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule ScalarBroadcast, is_scheduled=true
@@ -91,7 +91,7 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule SimpleFusion, is_scheduled=true
@@ -120,7 +120,7 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule LargeConstant, is_scheduled=true
@@ -267,7 +267,7 @@ ENTRY main {
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
 // CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule ScalarBroadcastFourInputs, is_scheduled=true
@@ -306,7 +306,7 @@ ENTRY main {
 // CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test, is_scheduled=true

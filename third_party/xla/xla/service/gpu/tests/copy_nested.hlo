@@ -14,7 +14,7 @@
 // CHECK:         br i1 %[[VAL_5]], label %[[VAL_6:.*]], label %[[VAL_7:.*]]
 // CHECK:       loop.loop_body:                                   ; preds = %[[VAL_1]]
 // CHECK-PTX:     %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_4]], 516096
-// CHECK-GCN:     %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_4]], 851968
+// CHECK-GCN:     %[[VAL_8:.*]] = add nuw nsw i32 %[[VAL_4]], 901120
 // CHECK-PTX:     store i32 %[[VAL_8]], ptr %[[VAL_0]], align 4
 // CHECK-GCN:     store i32 %[[VAL_8]], ptr addrspace(5) %[[VAL_0]], align 4
 // CHECK:         %[[VAL_9:.*]] = icmp eq i32 %[[VAL_4]], 0
@@ -25,7 +25,7 @@
 // CHECK:         %[[VAL_12:.*]] = mul nuw nsw i32 %[[VAL_10]], 128
 // CHECK:         %[[VAL_13:.*]] = add nuw nsw i32 %[[VAL_12]], %[[VAL_11]]
 // CHECK-PTX:     %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 129024
-// CHECK-GCN:     %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 212992
+// CHECK-GCN:     %[[VAL_14:.*]] = icmp ult i32 %[[VAL_13]], 225280
 // CHECK:         call void @llvm.assume(i1 %[[VAL_14]])
 // CHECK:         %[[VAL_15:.*]] = mul nuw nsw i32 %[[VAL_13]], 4
 // CHECK:         %[[VAL_16:.*]] = add nuw nsw i32 %[[VAL_15]], %[[VAL_4]]
