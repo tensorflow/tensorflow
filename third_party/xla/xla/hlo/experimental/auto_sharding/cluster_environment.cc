@@ -120,19 +120,6 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
                           mesh_beta_);
 }
 
-double ClusterEnvironment::DotCost(const Shape& lhs_shape,
-                                   const Shape& rhs_shape) const {
-  if (!auto_sharding_option_.allow_recompute_heavy_op) {
-    return kInfinityCost;
-  }
-
-  // TODO(zhuohan): When profiling data is not available, it is not easy to
-  // align the scale of compute cost and communication cost. Here we just use
-  // a simple heuristic to compute the compute cost with communication cost.
-  double num_bytes = GetBytes(lhs_shape) + GetBytes(rhs_shape);
-  return AllReduceCost(num_bytes, 0) + AllReduceCost(num_bytes, 1);
-}
-
 double ClusterEnvironment::CollectivePermuteCost(
     double num_bytes,
     const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const {

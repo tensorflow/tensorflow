@@ -21,11 +21,8 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
-// Attribute name of a serialized TpuCompileMetadataProto. This is backward
-// compatible.
-inline constexpr absl::string_view kMetadataAttrName = "tpu_compile_metadata";
 // Attribute name of a text TpuCompileMetadataProto. Note that the text proto is
-// not backward compatible and only used for debug.
+// not backward compatible and shall not be serialized.
 inline constexpr absl::string_view kMetadataTextAttrName =
     "__tpu_compile_metadata_text";
 

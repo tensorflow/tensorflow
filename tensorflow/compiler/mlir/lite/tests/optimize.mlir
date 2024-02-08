@@ -784,26 +784,6 @@ func.func @FuseReshapeAroundBMMRHS(%arg0: tensor<1x3x6x5x1024xf32>) -> tensor<1x
   // CHECK: return %0 : tensor<1x3x6x5x8192xf32>
 }
 
-// CHECK-LABEL: @FuseTransposeIntoBMM_RHS
-func.func @FuseTransposeIntoBMM_RHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x1440x1440xf32> {
-  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
-  %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<1x1440x256xf32>, tensor<3xi32>) -> tensor<1x256x1440xf32>
-  %33 = "tfl.batch_matmul"(%arg0, %32) {adj_x = false, adj_y = false} : (tensor<1x4x1440x256xf32>, tensor<1x256x1440xf32>) -> tensor<1x4x1440x1440xf32>
-  return %33 : tensor<1x4x1440x1440xf32>
-  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x1440x256xf32>, tensor<1x1440x256xf32>) -> tensor<1x4x1440x1440xf32>
-  // CHECK: return %0 : tensor<1x4x1440x1440xf32>
-}
-
-// CHECK-LABEL: @FuseTransposeIntoBMM_RHS2
-func.func @FuseTransposeIntoBMM_RHS2(%arg0: tensor<?x?x40xf32>,  %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
-  %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
-  %32 = "tfl.transpose"(%arg1, %cst_1) : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-  %33 = "tfl.batch_matmul"(%arg0, %32) {adj_x = false, adj_y = false} : (tensor<?x?x40xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %33 : tensor<?x?x?xf32>
-  // CHECK: %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<?x?x40xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  // CHECK: return %0 : tensor<?x?x?xf32>
-}
-
 // CHECK-LABEL: @FuseTransposeIntoBMM_LHS
 func.func @FuseTransposeIntoBMM_LHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tensor<1x1440x256xf32>) -> tensor<1x4x256x256xf32> {
   %cst_1 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
@@ -4031,6 +4011,17 @@ func.func @broadcast_to_ui32_with_dynamic_output(%arg0: tensor<1xi32>) -> tensor
 // CHECK-LABEL: @ConvertStridedSliceToSliceNeg
 func.func @ConvertStridedSliceToSliceNeg(%arg0: tensor<5x5x5x5xf32>) -> tensor<*xf32> {
   %44 = arith.constant dense<[5, 5, 5, 5]> : tensor<4xi32>
+  %45 = arith.constant dense<[1, 1, 1, 1]> : tensor<4xi32>
+  %46 = arith.constant dense<1> : tensor<4xi32>
+  %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<5x5x5x5xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
+  func.return %47 : tensor<*xf32>
+
+  // CHECK-NOT: %[[slice:.*]] = "tfl.slice"
+}
+
+// CHECK-LABEL: @StridedSliceToSliceBeginNeg
+func.func @StridedSliceToSliceBeginNeg(%arg0: tensor<5x5x5x5xf32>) -> tensor<*xf32> {
+  %44 = arith.constant dense<[-5, 0, 0, 0]> : tensor<4xi32>
   %45 = arith.constant dense<[1, 1, 1, 1]> : tensor<4xi32>
   %46 = arith.constant dense<1> : tensor<4xi32>
   %47 = "tfl.strided_slice"(%arg0, %44, %45, %46) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<5x5x5x5xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>

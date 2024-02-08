@@ -241,31 +241,31 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                        \
-  struct DynLoadShim__##__name {                                   \
-    static const char* kName;                                      \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;   \
-    static void* GetDsoHandle() {                                  \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();    \
-      return s.value();                                            \
-    }                                                              \
-    static FuncPtrT LoadOrDie() {                                  \
-      void* f;                                                     \
-      auto s = tsl::Env::Default()                                 \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);      \
-      CHECK(s.ok()) << "could not find " << kName                  \
-                    << " in miopen DSO; dlerror: " << s.message(); \
-      return reinterpret_cast<FuncPtrT>(f);                        \
-    }                                                              \
-    static FuncPtrT DynLoad() {                                    \
-      static FuncPtrT f = LoadOrDie();                             \
-      return f;                                                    \
-    }                                                              \
-    template <typename... Args>                                    \
-    miopenStatus_t operator()(Args... args) {                      \
-      return DynLoad()(args...);                                   \
-    }                                                              \
-  } __name;                                                        \
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char* kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void* GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void* f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in miopen DSO; dlerror: " << s.message();       \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    miopenStatus_t operator()(Args... args) {                            \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -4264,10 +4264,10 @@ absl::Status MIOpenSupport::DoPoolForward(
                                miopenFloat, pdesc);
       if (cache_hit) {
         // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
+        workspace = reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       } else {
-        wsp_mem = stream->AllocateOwnedArray<uint8>(workspace_size).value();
-        workspace = reinterpret_cast<uint8*>(wsp_mem->ptr()->opaque());
+        wsp_mem = stream->parent()->AllocateOwnedArray<uint8>(workspace_size);
+        workspace = reinterpret_cast<uint8*>(wsp_mem.ptr()->opaque());
         m_pooling_cache.insert(input_data.opaque(), input_dimensions,
                                output_dimensions, pooling_dimensions,
                                miopenFloat, wsp_mem, workspace_size,
@@ -4422,7 +4422,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
     if (cache_hit) {
       assert(pdesc != 0);
       workspace_ptr =
-          reinterpret_cast<uint8*>(pdesc->workspace->ptr()->opaque());
+          reinterpret_cast<uint8*>(pdesc->workspace.ptr()->opaque());
       VLOG(1) << "Pooling cache hit";
     } else {
       VLOG(1) << "Pooling cache miss";
@@ -4618,64 +4618,6 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     LOG(ERROR) << "failed to run miopenLRNBackward";
     return false;
   }
-  return true;
-}
-
-bool MIOpenSupport::DoDepthConcatenate(
-    Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float>* const> input_data,
-    DeviceMemory<float>* output_data) {
-  CHECK_EQ(input_dimensions.size(), input_data.size());
-
-  for (const auto& dimensions : input_dimensions) {
-    if (dimensions.layout() != dnn::DataLayout::kBatchDepthYX) {
-      LOG(ERROR) << "MIOpenSupport::DoDepthConcatenate currently only "
-                    "supports the kBatchDepthYX layout.";
-      return false;
-    }
-  }
-
-  if (input_dimensions.empty()) {
-    return true;  // Nothing to do.
-  }
-
-  dnn::BatchDescriptor output_dimensions =
-      dnn::BatchDescriptor::DepthConcatenateOutputDescriptor(input_dimensions);
-
-  const int64_t area = output_dimensions.width() * output_dimensions.height();
-  const auto index = [area](int64_t batch, int64_t depth, int64_t yx,
-                            int64_t max_depth) {
-    return (batch * max_depth + depth) * area + yx;
-  };
-
-  std::vector<float> output_host(output_dimensions.ElementCount());
-  std::vector<float> tmp;
-  int64_t depth_sum = 0;
-  for (size_t i = 0; i < input_data.size(); ++i) {
-    const auto& dimensions = input_dimensions[i];
-    tmp.resize(dimensions.ElementCount());
-    stream->ThenMemcpyD2H<float>(*input_data[i], absl::MakeSpan(tmp));
-    absl::Status block_status = stream->BlockHostUntilDone();
-    if (!block_status.ok()) {
-      LOG(ERROR) << "BlockHostUntilDone failed: " << block_status;
-      return false;
-    }
-
-    for (int64_t batch = 0; batch < output_dimensions.count(); ++batch) {
-      for (int64_t yx = 0; yx < area; ++yx) {
-        for (int64_t depth = 0; depth < dimensions.feature_map_count();
-             ++depth) {
-          LOG(INFO) << output_dimensions.ElementCount() << ' ' << batch << ' '
-                    << yx << ' ' << depth;
-          output_host[index(batch, depth + depth_sum, yx,
-                            output_dimensions.feature_map_count())] =
-              tmp[index(batch, depth, yx, dimensions.feature_map_count())];
-        }
-      }
-    }
-    depth_sum += dimensions.feature_map_count();
-  }
-  stream->ThenMemcpyH2D<float>(output_host, output_data);
   return true;
 }
 

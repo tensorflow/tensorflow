@@ -35,6 +35,11 @@ auto* persistent_cache_load_count = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/persistent_cache_load_count",
     "The number of times a binary is loaded from the persistent cache.");
 
+auto* aot_bef_mlir_load_count = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/core/aot_bef_mlir_load_count",
+    "The number of times BEF and MLIR are deserialized instead of generated "
+    "and used.");
+
 auto* graph_runs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_runs",
     "The number of graph executions used to collect "
@@ -721,6 +726,12 @@ void UpdatePersistentCacheLoadCount() {
   static auto* persistent_cache_load_count_cell =
       persistent_cache_load_count->GetCell();
   persistent_cache_load_count_cell->IncrementBy(1);
+}
+
+void UpdateAotBefMlirLoadCount() {
+  static auto* aot_bef_mlir_load_count_cell =
+      aot_bef_mlir_load_count->GetCell();
+  aot_bef_mlir_load_count_cell->IncrementBy(1);
 }
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {

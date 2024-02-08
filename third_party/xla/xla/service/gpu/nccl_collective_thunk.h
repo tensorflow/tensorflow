@@ -169,6 +169,16 @@ class NcclCollectiveThunk : public Thunk {
     return AsyncStreamKind::kCollective;
   }
 
+  // A collective thunk is normally an independent operation in a sense that
+  // different instances of the same collective thunk communicate each other.
+  // The only exception are SendThunk and RecvThunk. Assume two devices are
+  // executing a program contains the following instructions, the Recv from
+  // device 1 will release the Send from device 0. Adding first call
+  // rendezvous on the SendThunk would cause a runtime deadlock.
+  //  Send(src_target={0,1})
+  //  Recv(src_target={0,1})
+  virtual bool NeedFirstCallRendzevous() const { return true; }
+
  private:
   bool IsAsync() const { return async_events_ != nullptr; }
   int64_t GetStreamId() const {

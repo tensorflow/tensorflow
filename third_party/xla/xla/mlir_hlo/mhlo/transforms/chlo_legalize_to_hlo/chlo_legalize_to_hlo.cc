@@ -1961,7 +1961,6 @@ void populateDecomposeChloPatterns(MLIRContext *context,
                    ConvertNextAfterOp,
                    ConvertPolygammaOp,
                    ConvertSinhOp,
-                   BasisConvertTopKOp,  // TODO: Remove once TopKOp ready
                    ConvertZetaOp>(context);
   // clang-format on
 }

@@ -709,10 +709,6 @@ test:release_macos_x86 --config=release_macos_base
 # Test configs for macOS Arm64
 test:release_macos_arm64 --config=release_macos_base
 
-# TODO(zhurakovskyi): Update analysis_checker config:
-# replace `deps(//tensorflow/...)` with `deps(//...)` when b/279852433 is fixed.
-query:analysis_checker -- deps(//tensorflow/...)
-
 # TODO(kanglan): Update windows configs after b/289091160 is fixed
 build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true

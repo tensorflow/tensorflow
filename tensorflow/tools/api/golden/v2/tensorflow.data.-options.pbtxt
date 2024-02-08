@@ -48,6 +48,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "framework_type"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "threading"
     mtype: "<type \'property\'>"
   }

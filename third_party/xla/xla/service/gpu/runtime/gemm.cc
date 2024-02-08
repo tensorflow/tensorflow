@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
@@ -56,8 +55,7 @@ absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
                                  se::DeviceMemoryBase rhs_buffer,
                                  se::DeviceMemoryBase out_buffer,
                                  const Shape& output_shape, double beta,
-                                 const DebugOptions* debug_options,
-                                 NonAtomicallyUpgradeableRWLock* gpu_lock) {
+                                 const DebugOptions* debug_options) {
   VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
   TF_ASSIGN_OR_RETURN(
@@ -87,11 +85,6 @@ absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
       /*redzone_size=*/autotune_config.should_check_correctness()
           ? debug_options->xla_gpu_redzone_padding_bytes()
           : 0);
-
-  // Upgrade the reader lock for execution to a writer lock to protect runtime
-  // autotuning.
-  NonAtomicallyUpgradeableRWLock::WriterLock writer_lock =
-      gpu_lock->UpgradeToWriterMutexLock();
 
   TF_ASSIGN_OR_RETURN(
       AutotuneResult best_algorithm,
@@ -127,7 +120,6 @@ absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
 
 static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                              const DebugOptions* debug_options,
-                             NonAtomicallyUpgradeableRWLock* gpu_lock,
                              State<GemmConfig> state, StridedMemrefView lhs,
                              StridedMemrefView rhs, StridedMemrefView out,
                              StridedMemrefView workspace, int64_t algorithm,
@@ -160,9 +152,9 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   // deadlock.
   if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    auto status = DoRuntimeAutotuning(stream, gemm_config, lhs_data, rhs_data,
-                                      output_data, output_shape, beta,
-                                      debug_options, gpu_lock);
+    auto status =
+        DoRuntimeAutotuning(stream, gemm_config, lhs_data, rhs_data,
+                            output_data, output_shape, beta, debug_options);
     if (!status.ok()) {
       return absl::InternalError(status.ToString());
     }
@@ -192,7 +184,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     CustomCall::Bind("xla.gpu.gemm")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<const DebugOptions*>()
-        .UserData<NonAtomicallyUpgradeableRWLock*>()
         .State<GemmConfig>("uid")
         .Arg<StridedMemrefView>()  // lhs
         .Arg<StridedMemrefView>()  // rhs

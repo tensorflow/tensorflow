@@ -96,7 +96,6 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   void operator=(const CollectiveReduceV2Op&) = delete;
 };
 
-
 REGISTER_XLA_OP(Name("CollectiveReduceV2")
                     .CompileTimeConstantInput("group_key")
                     .CompileTimeConstantInput("group_size"),
@@ -105,5 +104,9 @@ REGISTER_XLA_OP(Name("CollectiveReduceV2")
 REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
                     .CompileTimeConstantInput("group_assignment"),
                 MlirXlaOpKernel);
+
+REGISTER_XLA_OP(
+    Name("XlaAllReduce").CompileTimeConstantInput("group_assignment"),
+    MlirXlaOpKernel);
 
 }  // namespace tensorflow

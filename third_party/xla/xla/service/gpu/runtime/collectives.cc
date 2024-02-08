@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/gpu/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/gpu/runtime3/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime3/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/runtime3/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/service_executable_run_options.h"
 

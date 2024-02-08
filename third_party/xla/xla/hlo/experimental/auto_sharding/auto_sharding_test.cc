@@ -432,7 +432,7 @@ ENTRY twomatmul {
                           ParseAndReturnVerifiedModule(hlo_string));
   AutoShardingOption option;
   option.enable = true;
-  option.allow_replicated_strategy_for_dot_and_conv = false;
+  option.allow_recompute_heavy_op = false;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
@@ -463,7 +463,7 @@ ENTRY twomatmul {
   // Test with replicated strategies on for dot
   TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo_string));
   option.enable = true;
-  option.allow_replicated_strategy_for_dot_and_conv = true;
+  option.allow_recompute_heavy_op = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};

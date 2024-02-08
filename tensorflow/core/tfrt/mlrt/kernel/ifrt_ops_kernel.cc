@@ -49,7 +49,7 @@ absl::Status IfrtLoadVariable(
   tensorflow::ifrt_serving::VariableDeviceShardingConfigProto sharding_config;
 
   if (!tensorflow::protobuf::TextFormat::ParseFromString(
-          std::string(sharding_config_proto_text), &sharding_config)) {
+          sharding_config_proto_text, &sharding_config)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Attribute: ", sharding_config_proto_text, " cannot be parsed"));
   }

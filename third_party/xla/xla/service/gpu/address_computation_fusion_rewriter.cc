@@ -118,6 +118,31 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   return captures;
 }
 
+absl::InlinedVector<HloInstruction*, 8> GetSortedMatched(
+    absl::Span<HloInstruction* const> matched) {
+  absl::InlinedVector<HloInstruction*, 8> sorted_matched;
+  absl::flat_hash_set<HloInstruction*> instructions_set(matched.begin(),
+                                                        matched.end());
+  absl::flat_hash_set<HloInstruction*> processed_set;
+  // Topologically sort `matched`
+  for (auto it = matched.rbegin(); it != matched.rend(); ++it) {
+    if (processed_set.contains(*it)) continue;
+    for (auto* operand : (*it)->operands()) {
+      if (!instructions_set.contains(operand)) {
+        continue;
+      }
+      if (!processed_set.contains(operand)) {
+        sorted_matched.emplace_back(operand);
+        processed_set.insert(operand);
+      }
+    }
+    sorted_matched.emplace_back(*it);
+    processed_set.insert(*it);
+  }
+
+  return sorted_matched;
+}
+
 absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, absl::Span<HloInstruction* const> matched,
     absl::Span<HloInstruction* const> captures) {
@@ -221,10 +246,10 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   HloSchedule& schedule = module->schedule();
   for (auto& kv : matches) {
     auto captures = GetPatternCaptures(kv.second);
-    std::reverse(kv.second.begin(), kv.second.end());
+    auto sorted = GetSortedMatched(kv.second);
 
     TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                        CreateFusionBody(module, kv.second, captures));
+                        CreateFusionBody(module, sorted, captures));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * fusion,
         CreateFusionInstruction(module, kv.first, captures, fusion_body));

@@ -53,6 +53,7 @@ class NcclSendThunk : public NcclCollectiveThunk {
   AsyncStreamKind GetAsyncStreamKind() const override {
     return AsyncStreamKind::kP2P;
   }
+  bool NeedFirstCallRendzevous() const override { return false; }
 
  private:
   const NcclP2PConfig config_;

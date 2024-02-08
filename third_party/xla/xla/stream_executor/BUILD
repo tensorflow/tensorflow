@@ -512,6 +512,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":device_memory",
+        ":kernel_spec",
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
@@ -521,6 +522,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
     ],
@@ -544,6 +546,7 @@ cc_library(
 
 transitive_hdrs(
     name = "stream_executor_install_hdrs",
+    tags = ["avoid_dep"],
     deps = [":stream_executor_headers"],
 )
 
@@ -557,6 +560,7 @@ cc_library(
         "stream_executor_pimpl.cc",
     ],
     hdrs = ["stream_executor_pimpl.h"],
+    tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
         ":blas",  # build_cleaner: keep

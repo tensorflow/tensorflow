@@ -42,9 +42,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  std::variant<GpuExecutable::OwnedThunkSequence,
-               GpuExecutable::OwnedGpuRuntimeProgram>
-      executable;
+  GpuExecutable::OwnedThunkSequence executable;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;

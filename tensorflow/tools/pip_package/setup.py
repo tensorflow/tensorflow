@@ -105,7 +105,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0, < 1.15',
+    'wrapt >= 1.11.0',
     # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
     'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
@@ -157,12 +157,13 @@ if collaborator_build:
       _VERSION + ';platform_system=="Windows"',
       # Starting with TF 2.16, Apple Silicon packages are uploaded directly
       # to the "tensorflow" project on PyPI. In order to not break users who
-      # are still using `tensorflow-macos`, we upload the installer wheel to
-      # "tensorflow-macos" and add "tensorflow" as its dependency. Please note
-      # that this will go away in TF 2.17 and `tensorflow-macos` will be
-      # considered deprecated. Nightly is left intentionally blank as no
-      # installer wheel is uploaded to `tf-nightly-macos`.
-      standard_or_nightly('tensorflow', '') + '==' +
+      # are still using `tensorflow-macos`, we upload an empty installer wheel
+      # to "tensorflow-macos" and add "tensorflow" as its dependency. Please
+      # note that this will go away in TF 2.17 and `tensorflow-macos` will be
+      # considered deprecated. Installer packages are not uploaded to
+      # `tf-nightly-macos`, `tf-nightly` is added below only to avoid breaking
+      # CI builds.
+      standard_or_nightly('tensorflow', 'tf-nightly') + '==' +
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
@@ -342,6 +343,11 @@ if '_tpu' in project_name:
       ).strftime('%Y%m%d'),
   )
   REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  CONSOLE_SCRIPTS.extend([
+      'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
+      ('start_grpc_tpu_service = '
+       'tensorflow.python.tools.grpc_tpu_worker_service:run'),
+  ])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'

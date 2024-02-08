@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/tracing.h"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -28,8 +29,8 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/runtime/logical_result.h"
 #include "xla/runtime/tracing.h"
-#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/support.h"
+#include "xla/service/gpu/runtime3/annotation.h"
 #include "tsl/profiler/lib/scoped_annotation_stack.h"
 
 namespace xla {
@@ -53,13 +54,12 @@ void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-thread_local const ModuleAnnotations* current_annotations{};
 thread_local std::string_view current_tracing_scope = {};
-}
+}  // namespace
 
 static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
   current_tracing_scope = annotation.hlo_op;
-  if (current_annotations) {
+  if (auto* current_annotations = GetCurrentModuleAnnotations()) {
     // We know which HloModule we belong to, and may have pre-prepared
     // annotation structs ready to use
     const auto it = current_annotations->kernels.find(annotation.hlo_op);
@@ -94,11 +94,6 @@ void RegisterTracingCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.trace.activity_end", End);
 }
 
-const ModuleAnnotations* SetCurrentModuleAnnotations(
-    const ModuleAnnotations* annotations) {
-  return std::exchange(current_annotations, annotations);
-}
-
 static void AppendTracingScopeAndModuleAnnotations(
     std::string* diagnostic, bool append_annotation_stack) {
   // Append the current trace which should help identifying original HLO
@@ -108,6 +103,7 @@ static void AppendTracingScopeAndModuleAnnotations(
                     "; current tracing scope: ", current_tracing_scope);
   }
 
+  auto* current_annotations = GetCurrentModuleAnnotations();
   if (!append_annotation_stack || current_annotations == nullptr) {
     return;
   }

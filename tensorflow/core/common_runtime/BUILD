@@ -1181,6 +1181,32 @@ cc_library(
 )
 
 cc_library(
+    name = "colocate_predecessor_trees_pass",
+    srcs = ["colocate_predecessor_trees_pass.cc"],
+    hdrs = ["colocate_predecessor_trees_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "local_device",
     srcs = ["local_device.cc"],
     hdrs = ["local_device.h"],
@@ -3481,7 +3507,10 @@ cc_library(
     srcs = ["serving_device_selector.cc"],
     hdrs = ["serving_device_selector.h"],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],

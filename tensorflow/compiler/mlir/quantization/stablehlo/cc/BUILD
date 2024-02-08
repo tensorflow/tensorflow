@@ -33,6 +33,29 @@ cc_library(
     ],
 )
 
+# OSS: This is a header-only target. Do NOT directly depend on `config_impl` unless it is necessary
+# (e.g. undefined symbol error), to avoid ODR violation.
+cc_library(
+    name = "config",
+    hdrs = ["config.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+    ],
+)
+
+# OSS: This is a impl target corresponding to `config`. Do NOT directly depend on `config_impl`
+# unless it is necessary (e.g. undefined symbol error), to avoid ODR violation.
+cc_library(
+    name = "config_impl",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+    ],
+)
+
 cc_library(
     name = "io",
     srcs = ["io.cc"],
@@ -188,6 +211,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
@@ -211,7 +237,6 @@ cc_library(
     deps = [
         ":component",
         ":pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -220,7 +245,6 @@ cc_library(
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",
@@ -265,7 +289,6 @@ cc_library(
     deps = [
         ":component",
         ":pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
@@ -273,7 +296,6 @@ cc_library(
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",

@@ -306,6 +306,12 @@ EOF
     echo "Look at the instructions for ':api_compatibility_test -- --update_goldens=True'"
 }
 
+# See b/279852433 (internal).
+# TODO(b/279852433) Replace deps(//tensorflow/...) with deps(//...)
+@test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
+    bazel query "deps(//tensorflow/...)" > /dev/null
+}
+
 teardown_file() {
     bazel shutdown
 }

@@ -192,15 +192,16 @@ absl::Status SnapshotStreamWriter::WriteChunks() {
 }
 
 bool SnapshotStreamWriter::ShouldWriteRecord() const {
-  {
-    mutex_lock l(mu_);
-    if (!completed_.ok()) {
-      return false;
-    }
+  mutex_lock l(mu_);
+  if (!completed_.ok() || end_of_sequence_) {
+    return false;
   }
   const absl::Time now = absl::FromUnixMicros(params_.env->NowMicros());
-  return !end_of_sequence_ &&
-         now < last_commit_time_ + params_.checkpoint_interval;
+  // Adjusts the checkpoint interval to speed up initial commits during startup.
+  // It will grow gradually from 5 min to the configured checkpoint interval.
+  const absl::Duration adjusted_checkpoint_interval = std::min(
+      params_.checkpoint_interval, absl::Minutes(0.5 * chunk_index_ + 5));
+  return now < last_commit_time_ + adjusted_checkpoint_interval;
 }
 
 absl::Status SnapshotStreamWriter::WriteRecord(ParallelTFRecordWriter& writer) {

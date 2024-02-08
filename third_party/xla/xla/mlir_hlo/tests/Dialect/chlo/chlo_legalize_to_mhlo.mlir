@@ -2284,15 +2284,7 @@ func.func @tan_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @top_k
 // CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
 func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {
-  // CHECK:      %[[IOTA:.*]] = "mhlo.iota"() {iota_dimension = 1 : i64}
-  // CHECK-NEXT: %[[SORT:.*]]:2 = "mhlo.sort"(%[[ARG]], %[[IOTA]]) ({
-  // CHECK-NEXT: ^{{.*}}(%[[LHS:.*]]: tensor<f32>, %[[RHS:.*]]: tensor<f32>, %{{.*}}: tensor<i32>, %{{.*}}: tensor<i32>):
-  // CHECK-NEXT:   %[[CMP:.*]] = mhlo.compare GT, %[[LHS]], %[[RHS]], TOTALORDER
-  // CHECK-NEXT:   mhlo.return %[[CMP]]
-  // CHECK-NEXT: }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  // CHECK-NEXT: %[[VAL:.*]] = "mhlo.slice"(%[[SORT]]#0) {limit_indices = dense<[16, 8]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
-  // CHECK-NEXT: %[[IDX:.*]] = "mhlo.slice"(%[[SORT]]#1) {limit_indices = dense<[16, 8]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
-  // CHECK-NEXT: return %[[VAL]], %[[IDX]]
+  // CHECK: %values, %indices = mhlo.topk(%arg0, k = 8, largest = true) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   %1:2 = chlo.top_k(%arg, k=8) : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
   func.return %1#0, %1#1 : tensor<16x8xf32>, tensor<16x8xi32>
 }
@@ -2303,28 +2295,7 @@ func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32
 // CHECK-SAME: ([[ARG:%.*]]: tensor<?x5x?xi1>
 // CHECK-SAME: -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
 func.func @dyn_top_k(%arg0: tensor<?x5x?xi1>) -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>) {
-  // CHECK-NEXT: [[DIM_0_I32:%.*]] = "mhlo.get_dimension_size"([[ARG]]) {dimension = 0 : i64} : (tensor<?x5x?xi1>) -> tensor<i32>
-  // CHECK-NEXT: [[DIM_0_I32x1:%.*]] = mhlo.reshape [[DIM_0_I32]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: [[DIM_1_I32:%.*]] = "mhlo.get_dimension_size"([[ARG]]) {dimension = 1 : i64} : (tensor<?x5x?xi1>) -> tensor<i32>
-  // CHECK-NEXT: [[DIM_1_I32x1:%.*]] = mhlo.reshape [[DIM_1_I32]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: [[DIM_2_I32:%.*]] = "mhlo.get_dimension_size"([[ARG]]) {dimension = 2 : i64} : (tensor<?x5x?xi1>) -> tensor<i32>
-  // CHECK-NEXT: [[DIM_2_I32x1:%.*]] = mhlo.reshape [[DIM_2_I32]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: [[IOTA_SHAPE:%.*]] = "mhlo.concatenate"([[DIM_0_I32x1]], [[DIM_1_I32x1]], [[DIM_2_I32x1]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
-  // CHECK-NEXT: [[K_I32:%.*]] = mhlo.constant dense<2> : tensor<i32>
-  // CHECK-NEXT: [[K_I32x1:%.*]] = mhlo.reshape [[K_I32]] : (tensor<i32>) -> tensor<1xi32>
-  // CHECK-NEXT: [[RESULT_SHAPE:%.*]] = "mhlo.concatenate"([[DIM_0_I32x1]], [[DIM_1_I32x1]], [[K_I32x1]]) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
-  // CHECK-NEXT: [[IOTA:%.*]] = "mhlo.dynamic_iota"([[IOTA_SHAPE]]) {iota_dimension = 2 : i64} : (tensor<3xi32>) -> tensor<?x5x?xi32>
-  // CHECK-NEXT: [[SORT:%.*]]:2 = "mhlo.sort"([[ARG]], [[IOTA]]) ({
-  // CHECK-NEXT: ^bb0([[ARG_1:%.*]]: tensor<i1>, [[ARG_2:%.*]]: tensor<i1>, [[ARG_3:%.*]]: tensor<i32>, [[ARG_4:%.*]]: tensor<i32>):
-  // CHECK-NEXT:   [[CMP:%.*]] = mhlo.compare  GT, [[ARG_1]], [[ARG_2]],  NOTYPE : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  // CHECK-NEXT:   mhlo.return [[CMP]] : tensor<i1>
-  // CHECK-NEXT: }) {dimension = 2 : i64, is_stable = true} : (tensor<?x5x?xi1>, tensor<?x5x?xi32>) -> (tensor<?x5x?xi1>, tensor<?x5x?xi32>)
-  // CHECK-NEXT: [[STARTS:%.*]] = mhlo.constant dense<0> : tensor<3xi64>
-  // CHECK-NEXT: [[LIMITS:%.*]] = mhlo.convert [[RESULT_SHAPE]] : (tensor<3xi32>) -> tensor<3xi64>
-  // CHECK-NEXT: [[STRIDES:%.*]] = mhlo.constant dense<1> : tensor<3xi64>
-  // CHECK-NEXT: [[VAL:%.*]] = mhlo.real_dynamic_slice [[SORT]]#0, [[STARTS]], [[LIMITS]], [[STRIDES]] : (tensor<?x5x?xi1>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi1>
-  // CHECK-NEXT: [[IDX:%.*]] = mhlo.real_dynamic_slice [[SORT]]#1, [[STARTS]], [[LIMITS]], [[STRIDES]] : (tensor<?x5x?xi32>, tensor<3xi64>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x5x2xi32>
-  // CHECK-NEXT: return [[VAL]], [[IDX]] : tensor<?x5x2xi1>, tensor<?x5x2xi32>
+  // CHECK: %values, %indices = mhlo.topk(%arg0, k = 2, largest = true) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
   %values, %indices = chlo.top_k(%arg0, k = 2) : tensor<?x5x?xi1> -> (tensor<?x5x2xi1>, tensor<?x5x2xi32>)
   return %values, %indices : tensor<?x5x2xi1>, tensor<?x5x2xi32>
 }

@@ -713,13 +713,11 @@ void IndexingMap::RemoveUnusedSymbols() {
     }
   }
   for (const auto& [expr, used_parameters] : candidates_to_remove) {
-    // Check again if all of the symbols are still "unused".
-    for (int64_t symbol_id : used_parameters.symbol_ids) {
-      if (!unused_symbols_bit_vector[symbol_id]) {
-        continue;
-      }
+    if (IsFunctionOfUnusedDimsAndSymbolsOnly(used_parameters,
+                                             unused_dims_bit_vector,
+                                             unused_symbols_bit_vector)) {
+      constraints_.erase(expr);
     }
-    constraints_.erase(expr);
   }
 
   // Compress `affine_map` using the updated `unused_symbols_bit_vector`.

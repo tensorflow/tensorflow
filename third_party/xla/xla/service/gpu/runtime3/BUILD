@@ -15,6 +15,30 @@ package_group(
 )
 
 #===-------------------------------------------------------------------------------------------===//
+# Runtime tracing libraries
+#===-------------------------------------------------------------------------------------------===//
+
+cc_library(
+    name = "annotation",
+    srcs = ["annotation.cc"],
+    hdrs = ["annotation.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/profiler/lib:nvtx_utils",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation_stack",
+    ],
+)
+
+#===-------------------------------------------------------------------------------------------===//
 # Command Buffer Integration
 #===-------------------------------------------------------------------------------------------===//
 
@@ -132,6 +156,7 @@ xla_test(
         "//xla:status",
         "//xla:types",
         "//xla/service:buffer_assignment",
+        "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
@@ -143,6 +168,7 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -240,7 +266,9 @@ xla_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 cc_library(
@@ -460,6 +488,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -528,6 +557,30 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "nccl_all_to_all_thunk",
+    srcs = ["nccl_all_to_all_thunk.cc"],
+    hdrs = ["nccl_all_to_all_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:nccl_api",
+        "//xla/service/gpu:nccl_collective_thunks",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",

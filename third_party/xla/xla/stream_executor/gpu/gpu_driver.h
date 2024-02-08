@@ -33,6 +33,10 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 
+#ifdef GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 namespace stream_executor {
 namespace gpu {
 
@@ -171,7 +175,7 @@ class GpuDriver {
       GpuContext* context, stream_executor::StreamPriority stream_priority);
 
   // Virtual memory support was added to CUDA in 10.2
-#if CUDA_VERSION >= 10020
+#if defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
 
   // Reserves a range of virtual device memory addresses via
   // cuMemAddressReserve. bytes must be a multiple of the host page size.
@@ -226,7 +230,7 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gfb50aac00c848fd7087e858f59bf7e2a
   static void UnmapMemory(GpuContext* context, GpuDevicePtr va, uint64_t bytes);
 
-#endif  // CUDA_VERSION >= 10200
+#endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
 
   // Given a device ordinal, returns a device handle into the device outparam,
   // which must not be null.

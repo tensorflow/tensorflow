@@ -50,6 +50,27 @@ struct MemrefInfoPOD {
   void* data;
 };
 
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+  MemrefInfoHandler result(new MemrefInfoPOD);
+
+  const auto& shape = literal->shape();
+  result->dtype = shape.element_type();
+  result->rank = shape.rank();
+  auto dimensions = shape.dimensions();
+  std::copy(dimensions.begin(), dimensions.end(),
+            absl::MakeSpan(result->dims).begin());
+
+  int64_t stride = 1;
+  for (int i : shape.layout().minor_to_major()) {
+    result->strides[i] = stride;
+    stride *= dimensions.at(i);
+  }
+
+  result->data = const_cast<void*>(literal->untyped_data());
+
+  return result;
+}
+
 StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
                                        const llvm_ir::IrArray& ir_array) {
   const Shape& shape = ir_array.GetShape();

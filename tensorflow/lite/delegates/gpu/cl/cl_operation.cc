@@ -24,10 +24,6 @@ namespace {
 std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   std::string result;
 
-  result += "#define FLT16_0123(V) V.s0123\n";
-  result += "#define FLT16_4567(V) V.s4567\n";
-  result += "#define FLT16_89ab(V) V.s89ab\n";
-  result += "#define FLT16_cdef(V) V.scdef\n";
   result += "#define GLOBAL_ID_0 get_global_id(0)\n";
   result += "#define GLOBAL_ID_1 get_global_id(1)\n";
   result += "#define GLOBAL_ID_2 get_global_id(2)\n";
@@ -165,9 +161,9 @@ absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
       GetCommonOpenCLDefines(operation_->GetPrecision()) + operation_->code_;
-  RETURN_IF_ERROR(cl_args_.Init(
-      creation_context.GetGpuInfo(),
-      creation_context.context, &operation_->args_, &operation_->code_));
+  RETURN_IF_ERROR(cl_args_.Init(creation_context.GetGpuInfo(),
+                                creation_context.context, &operation_->args_,
+                                &operation_->code_));
   operation_->args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,

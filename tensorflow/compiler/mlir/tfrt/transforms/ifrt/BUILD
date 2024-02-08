@@ -15,6 +15,8 @@ package_group(
         "//tensorflow/core/tfrt/saved_model/tests/...",
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
+        "//learning/pathways/serving/runtime/...",
+        "//learning/pathways/serving/tests/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
     ]),
@@ -53,6 +55,8 @@ cc_library(
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",
+        "tf_restore_merging.cc",
+        "tf_restore_splitting.cc",
     ],
     hdrs = [
         "tf_ifrt_passes.h",
@@ -67,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:tpu_metadata_utils",
@@ -111,6 +116,7 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "//tensorflow/core/tpu/kernels/xla:host_compute_ops",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

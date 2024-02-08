@@ -121,6 +121,7 @@ absl::StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
 
   auto* computation =
       verified_module->GetComputationWithName(triton_fusion_name);
+  TF_RET_CHECK(computation != nullptr);
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(*computation));
 
@@ -3677,7 +3678,7 @@ ENTRY e {
                   ->fused_instructions_computation()
                   ->root_instruction(),
               GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 32}, {1, 0}),
-                                m::Op().WithShape(BF16, {40, 32}, {1, 0}))
+                                m::Op().WithShape(BF16, {32, 40}, {1, 0}))
                              .WithShape(BF16, {16, 40}, {1, 0})));
 }
 

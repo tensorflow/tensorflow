@@ -649,7 +649,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();
   mlir::DialectRegistry registry;
-  RegisterMlirDialect(registry);
+  RegisterMlirDialect(registry, options_.compile_options.backend_compiler);
   // Disable multi-threading in lazy loading as the thread pool it uses is out
   // of our control and this affects serving performance.
   //
@@ -1151,9 +1151,13 @@ tensorflow::Status GraphExecutor::CompileGraph(
       .status();
 }
 
-void RegisterMlirDialect(mlir::DialectRegistry& registry) {
+void RegisterMlirDialect(mlir::DialectRegistry& registry,
+                         tensorflow::BackendCompiler* backend_compiler) {
   registry.insert<mlir::BuiltinDialect, mlir::func::FuncDialect>();
   mlir::RegisterAllTensorFlowDialects(registry);
+  if (backend_compiler) {
+    backend_compiler->GetDependentDialects(registry);
+  }
 }
 
 }  // namespace tfrt_stub

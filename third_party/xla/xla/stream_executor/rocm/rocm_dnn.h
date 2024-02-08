@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/include/miopen/miopen.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/plugin_registry.h"
 
@@ -420,11 +421,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceMemory<float>& normalized_variable_gradient,
       DeviceMemory<float>* raw_variable_gradient,
       ScratchAllocator* workspace_allocator = nullptr) override;
-
-  bool DoDepthConcatenate(
-      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      DeviceMemory<float>* output_data) override;
 
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.

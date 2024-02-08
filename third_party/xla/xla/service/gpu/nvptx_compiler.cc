@@ -640,8 +640,6 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       !options.is_autotuning_compilation);
   tsl::profiler::TraceMe activity("PTX->CUBIN",
                                   tsl::profiler::TraceMeLevel::kInfo);
-  // Pointers into compilation_cache_ where the ptx and (optional) cuBIN are
-  // stored.
   CompilationCacheValue* cache_value = nullptr;
   bool inserted = [&] {
     absl::MutexLock lock(&mutex_);

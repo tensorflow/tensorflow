@@ -42,11 +42,11 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
   explicit HostTracer(int host_trace_level);
   ~HostTracer() override;
 
-  tsl::Status Start() override;  // TENSORFLOW_STATUS_OK
+  absl::Status Start() override;  // TENSORFLOW_STATUS_OK
 
-  tsl::Status Stop() override;  // TENSORFLOW_STATUS_OK
+  absl::Status Stop() override;  // TENSORFLOW_STATUS_OK
 
-  tsl::Status CollectData(  // TENSORFLOW_STATUS_OK
+  absl::Status CollectData(  // TENSORFLOW_STATUS_OK
       tensorflow::profiler::XSpace* space) override;
 
  private:
@@ -68,7 +68,7 @@ HostTracer::HostTracer(int host_trace_level)
 
 HostTracer::~HostTracer() { Stop().IgnoreError(); }  // NOLINT
 
-tsl::Status HostTracer::Start() {  // TENSORFLOW_STATUS_OK
+absl::Status HostTracer::Start() {  // TENSORFLOW_STATUS_OK
   if (recording_) {
     return tsl::errors::Internal("TraceMeRecorder already started");
   }
@@ -84,7 +84,7 @@ tsl::Status HostTracer::Start() {  // TENSORFLOW_STATUS_OK
   return tsl::OkStatus();
 }
 
-tsl::Status HostTracer::Stop() {  // TENSORFLOW_STATUS_OK
+absl::Status HostTracer::Stop() {  // TENSORFLOW_STATUS_OK
   if (!recording_) {
     return tsl::errors::Internal("TraceMeRecorder not started");
   }
@@ -93,7 +93,7 @@ tsl::Status HostTracer::Stop() {  // TENSORFLOW_STATUS_OK
   return tsl::OkStatus();
 }
 
-tsl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
+absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
     tensorflow::profiler::XSpace* space) {
   VLOG(2) << "Collecting data to XSpace from HostTracer.";
   if (recording_) {

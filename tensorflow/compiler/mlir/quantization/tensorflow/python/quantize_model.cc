@@ -329,6 +329,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
     QuantizationConfig quantization_config{};
+    quantization_config.mutable_static_range_ptq_preset()
+        ->set_enable_per_channel_quantized_weight(
+            quantization_options.enable_per_channel_quantization());
     // When targeting server TPUs quantized types should be unpacked into
     // integer ops.
     quantization_config.mutable_pipeline_config()->set_unpack_quantized_types(

@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/runtime/jit_executable.h"
 #include "xla/runtime/module_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/collectives.h"
 #include "xla/service/gpu/runtime/conv.h"
 #include "xla/service/gpu/runtime/fft.h"
@@ -110,7 +109,6 @@ class GpuRuntimeExecutable {
                        const std::string& asm_text,
                        const std::vector<uint8_t>& binary,
                        const BufferAllocations& buffer_allocations,
-                       NonAtomicallyUpgradeableRWLock& gpu_lock,
                        const BufferAllocation* temp_alloc = nullptr);
 
   // Returns object file behind the runtime executable. This object file can

@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/diagnostics.h"
 #include "xla/runtime/type_id.h"
-#include "xla/service/gpu/runtime/annotation.h"
 
 namespace xla {
 namespace gpu {
@@ -29,9 +28,6 @@ namespace gpu {
 void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry);
 
 void RegisterTracingCustomCalls(runtime::DirectCustomCallRegistry& registry);
-
-const ModuleAnnotations* SetCurrentModuleAnnotations(
-    const ModuleAnnotations* annotations);
 
 // Appends to `diagnostic_engine` a handler that appends all emitted errors to
 // the `diagnostic` string. If `append_annotation_stack` is true, it will append

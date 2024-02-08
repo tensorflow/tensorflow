@@ -482,6 +482,45 @@ TEST_F(MatmulTest, DivisionByConstantWithEltwiseLinearF32) {
   )");
 }
 
+TEST_F(MatmulTest, TestF32NonConstantWeights) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32, entry_computation_layout={(f32[64,256,16]{2,1,0},f32[16,32]{1,0})->f32[64,256,32]{2,1,0}}
+
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[64,256,16]{2,1,0} parameter(0), parameter_replication={false}
+    arg.1 = f32[16,32]{1,0} parameter(1), parameter_replication={false}
+    ROOT onednn.matmul.0 = f32[64,256,32]{2,1,0} dot(arg.0, arg.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     %matmul.test.f32
+  ; CHECK-NOT: custom_call_target="__onednn$matmul_reorder",
+  ; CHECK:     custom-call(%{{[a-z,A-Z,0-9,\.]*}}, %arg.1), custom_call_target="__onednn$matmul",
+  )");
+}
+
+TEST_F(MatmulTest, TestF32ConstantWeights) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32, entry_computation_layout={(f32[64,256,16]{2,1,0})->f32[64,256,32]{2,1,0}}
+
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[64,256,16]{2,1,0} parameter(0), parameter_replication={false}
+    constant = f32[] constant(1)
+    arg.1 = f32[16,32]{1,0} broadcast(constant), dimensions={}
+    ROOT onednn.matmul.0 = f32[64,256,32]{2,1,0} dot(arg.0, arg.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+  ; CHECK:     %matmul.test.f32
+  ; CHECK-NOT: custom_call_target="__onednn$matmul_reorder",
+  ; CHECK:     custom-call(%{{[a-z,A-Z,0-9,\.]*}}, %constant{{[a-z,A-Z,0-9,\.]*}}), custom_call_target="__onednn$matmul",
+  )");
+}
+
 }  // namespace cpu
 }  // namespace xla
 

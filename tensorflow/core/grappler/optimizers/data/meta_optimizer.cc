@@ -38,7 +38,8 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 21> kTFDataOptimizations = {
+// clang-format off
+constexpr std::array<const char*, 22> kTFDataOptimizations = {
     "noop_elimination",
     "disable_intra_op_parallelism",
     "use_private_thread_pool",
@@ -54,12 +55,14 @@ constexpr std::array<const char*, 21> kTFDataOptimizations = {
     "parallel_batch",
     "slack",
     "autotune_buffer_sizes",
+    "seq_interleave_prefetch",
     "inject_prefetch",
     "inject_io_prefetch_eligible",
     "inject_io_prefetch",
     "disable_prefetch_legacy_autotune",
     "enable_gradient_descent",
     "make_deterministic"};
+// clang-format on
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.

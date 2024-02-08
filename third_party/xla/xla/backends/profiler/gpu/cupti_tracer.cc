@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/nvtx_utils.h"
 #include "tsl/platform/env.h"

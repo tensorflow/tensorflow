@@ -48,6 +48,11 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 
+#if TENSORFLOW_USE_ROCM
+// for TF_HIPBLASLT
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -161,6 +166,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitNormThunk(mlir::Operation* op);
   absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFusedMHAThunk(mlir::Operation* op);
+  absl::Status EmitFusedMHAThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

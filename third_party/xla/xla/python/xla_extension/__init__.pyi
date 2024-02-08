@@ -308,6 +308,8 @@ class DebugOptions:
   xla_gpu_cuda_data_dir: str
   xla_detailed_logging: bool
   xla_enable_dumping: bool
+  xla_gpu_dump_autotune_results_to: str
+  xla_gpu_load_autotune_results_from: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int

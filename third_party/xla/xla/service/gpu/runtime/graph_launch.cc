@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
 #include "xla/service/gpu/runtime/gemm.h"
@@ -520,8 +519,8 @@ static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
 
   if (!captured.ok()) {
     return Internal("CaptureGpuGraph failed (%s): %s",
-                         diagnostic.empty() ? "<no details>" : diagnostic,
-                         captured.status().ToString());
+                    diagnostic.empty() ? "<no details>" : diagnostic,
+                    captured.status().ToString());
   }
   return std::move(*captured);
 }
@@ -562,8 +561,8 @@ static absl::Status RunGraphOpByOp(
   concurrent_region_status->EnableConcurrentRegion();
   if (!executed.ok()) {
     return Internal("RunGraphOpByOp failed (%s): %s",
-                         diagnostic.empty() ? "<no details>" : diagnostic,
-                         executed.status().ToString());
+                    diagnostic.empty() ? "<no details>" : diagnostic,
+                    executed.status().ToString());
   }
   return absl::OkStatus();
 }
@@ -583,7 +582,6 @@ static absl::Status LaunchGraph(
     StreamExecutorGraphInstances::Snapshot* instances,
     CapturedFunctionExecutionCount::Snapshot* counts,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
-    NonAtomicallyUpgradeableRWLock* gpu_lock,
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
     CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -599,7 +597,7 @@ static absl::Status LaunchGraph(
   auto user_data = [&] {
     return CustomCall::UserData(run_options, debug_options, ptx, cubin,
                                 temp_buffer, kernels, convs, executable,
-                                gemm_config, gpu_lock, region_status);
+                                gemm_config, region_status);
   };
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<std::atomic<uint64_t>> * get_count,
@@ -717,7 +715,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<CapturedFunctionExecutionCount::Snapshot*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
-        .UserData<NonAtomicallyUpgradeableRWLock*>()
         .UserData<ConcurrentRegionStatus*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));

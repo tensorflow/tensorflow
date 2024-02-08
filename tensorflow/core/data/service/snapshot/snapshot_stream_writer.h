@@ -64,7 +64,9 @@ struct SnapshotWriterParams {
   // The maximum number of bytes in each chunk.
   ByteSize max_chunk_size = kDefaultMaxChunkSize;
 
-  // How often should checkpoints be written.
+  // How often should checkpoints be written at the steady state. We write
+  // checkpoints (and committing chunks) more frequently at the startup time to
+  // avoid starving training jobs during startup.
   absl::Duration checkpoint_interval = kDefaultCheckpointInterval;
 
   // If true, keep temporary files (e.g., checkpoints) after completing the

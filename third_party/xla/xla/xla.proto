@@ -446,6 +446,9 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
+  // If true, use XLA runtime for XLA:GPU backend.
+  bool xla_gpu_enable_address_computation_fusion = 105;
+
   reserved 233;  // was xla_gpu_enable_gpu2_runtime
   reserved 234;  // was xla_gpu_enable_gpu2_hal
 

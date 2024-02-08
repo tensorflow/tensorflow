@@ -22,11 +22,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -42,9 +44,11 @@ class FusionProcessDump {
   static absl::StatusOr<FusionProcessDump> LoadFromProto(
       const FusionProcessDumpProto& fusion_process_dump_proto);
 
+  const FusionProcessDumpProto& proto() { return fusion_process_dump_proto_; }
+
   HloModule* module() { return hlo_module_.get(); }
 
-  const FusionProcessDumpProto& proto() { return fusion_process_dump_proto_; }
+  const se::DeviceDescription& device_info() { return device_info_; }
 
   int64_t current_step_idx() { return current_step_idx_; }
 
@@ -54,6 +58,19 @@ class FusionProcessDump {
 
   // Returns the instruction with `name`.
   HloInstruction* GetInstructionWithName(absl::string_view name);
+
+  // Returns producer of the current step. Should not be null, since all step
+  // types have a producer.
+  HloInstruction* GetProducer();
+
+  // Returns a list of consumers of the current step. The list contains one
+  // instruction is the current step is fusion. The list is empty if the current
+  // step is `producer_ineligible`.
+  absl::InlinedVector<HloInstruction*, 2> GetConsumers();
+
+  // Returns result instruction of the last fusion step. Returns nullptr before
+  // the first fusion.
+  HloInstruction* GetLastFusion() { return last_fusion_; }
 
   // Returns current step. If current step is `fusion`, the `module` is in the
   // state *before* the fusion. Next call to `FusionProcessDump::Advance` will
@@ -91,6 +108,9 @@ class FusionProcessDump {
 
   // Index of the current step.
   int64_t current_step_idx_ = 0;
+
+  // Tracks result of the last fusion step.
+  HloInstruction* last_fusion_ = nullptr;
 };
 
 }  // namespace gpu
