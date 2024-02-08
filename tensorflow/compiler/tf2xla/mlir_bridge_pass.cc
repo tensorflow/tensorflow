@@ -107,6 +107,12 @@ bool HasTPUDevice(mlir::ModuleOp module) {
       });
 }
 
+bool HasDevice(mlir::ModuleOp module) {
+  mlir::TF::RuntimeDevices devices;
+  if (failed(GetDevicesFromOp(module.getOperation(), &devices))) return false;
+  return !devices.device_names().empty();
+}
+
 bool IsReplicatedGraph(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
     // TODO(b/223677572): Once the scope for new compilation and replication
@@ -148,8 +154,7 @@ bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
 }
 
 bool RunReplicatedBridge(mlir::ModuleOp module) {
-  if (HasTPUDevice(module) && IsReplicatedGraph(module)) return true;
-  return IsSingleCoreTPUGraph(module);
+  return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
 }
 
 bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
@@ -291,6 +296,11 @@ Status MlirBridgePass::Run(const std::string& function_name,
   if (IsReplicatedGraphWithoutDeviceType(module)) {
     replicated_graphs_without_device_type_counter->GetCell("v2")->IncrementBy(
         1);
+  }
+
+  if (!HasDevice(module)) {
+    LOG(INFO) << "No devices in " << function_name << "\n";
+    return absl::OkStatus();
   }
 
   if (HasTPUPartitionedCallOpInModule(module)) {
