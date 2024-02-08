@@ -119,7 +119,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   explicit CSRMatMulCPUOp(OpKernelConstruction* c)
       : CSRMatMulOp<CPUDevice, T>(c) {}
 
-  ~CSRMatMulCPUOp() override;
+  ~CSRMatMulCPUOp() override{};
 
   void Compute(OpKernelContext* ctx) final;
 
