@@ -1570,6 +1570,32 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
+  template <typename InputType, typename OutputType>
+  absl::Status ConvolveWithAlgorithm(
+      Stream* stream, ConvolutionKind kind,
+      const BatchDescriptor& input_descriptor,
+      DeviceMemory<InputType> input_data,
+      const FilterDescriptor& filter_descriptor,
+      DeviceMemory<InputType> filter_data,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<OutputType> output_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      const AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    DeviceMemory<uint8_t> scratch_memory;
+    AlgorithmDesc algorithm_desc;
+    TF_RETURN_IF_ERROR(PrepareForConvolution(
+        kind, stream, input_descriptor, input_data, filter_descriptor,
+        filter_data, output_descriptor, output_data, convolution_descriptor,
+        algorithm_config, scratch_allocator, &algorithm_desc, &scratch_memory));
+    return DoConvolve(kind, ToDataType<InputType>::value,
+                      ToDataType<OutputType>::value, stream, input_descriptor,
+                      input_data, filter_descriptor, filter_data,
+                      output_descriptor, output_data, convolution_descriptor,
+                      algorithm_desc, scratch_memory, output_profile_result);
+  }
+
   virtual absl::Status GetConvolveRunners(
       bool use_cudnn_frontend, ConvolutionKind kind, DataType input_type,
       DataType output_type, Stream* stream,
