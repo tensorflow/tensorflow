@@ -53,11 +53,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
-namespace {
-
-using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-using ::testing::Not;
+namespace debug_test {
 
 class NopPass : public mlir::PassWrapper<NopPass, mlir::OperationPass<>> {
  public:
@@ -83,6 +79,15 @@ class AlwaysFailPass
 
   void runOnOperation() override { signalPassFailure(); }
 };
+
+} // namespace debug_test
+
+namespace {
+
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using namespace tensorflow::debug_test;
 
 class InitPassManagerTest : public testing::Test {
  protected:
@@ -180,7 +185,7 @@ TEST_F(InitPassManagerTest, DumpToDir) {
         tsl::Env::Default(),
         tsl::io::JoinPath(
             dump_dir,
-            "00000000.main.tensorflow_anonymous_namespace_NopPass_after.mlir"),
+            "00000000.main.tensorflow_debug_test_NopPass_after.mlir"),
         &mlir_dump));
     EXPECT_THAT(mlir_dump, Not(IsEmpty()));
   }
@@ -190,7 +195,7 @@ TEST_F(InitPassManagerTest, DumpToDir) {
         tsl::Env::Default(),
         tsl::io::JoinPath(
             dump_dir,
-            "00000000.main.tensorflow_anonymous_namespace_NopPass_before.mlir"),
+            "00000000.main.tensorflow_debug_test_NopPass_before.mlir"),
         &mlir_dump));
     EXPECT_THAT(mlir_dump, Not(IsEmpty()));
   }
@@ -209,10 +214,10 @@ TEST_F(InitPassManagerTest, PrintIRBeforeEverything) {
 
   EXPECT_THAT(
       captured_out,
-      HasSubstr("IR Dump Before tensorflow::(anonymous namespace)::NopPass"));
+      HasSubstr("IR Dump Before tensorflow::debug_test::NopPass"));
   EXPECT_THAT(captured_out,
               Not(HasSubstr(
-                  "IR Dump After tensorflow::(anonymous namespace)::NopPass")));
+                  "IR Dump After tensorflow::debug_test::NopPass")));
 }
 
 TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
@@ -228,11 +233,11 @@ TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
 
   EXPECT_THAT(
       captured_out,
-      HasSubstr("IR Dump After tensorflow::(anonymous namespace)::MutatePass"));
+      HasSubstr("IR Dump After tensorflow::debug_test::MutatePass"));
   EXPECT_THAT(
       captured_out,
       Not(HasSubstr(
-          "IR Dump Before tensorflow::(anonymous namespace)::MutatePass")));
+          "IR Dump Before tensorflow::debug_test::MutatePass")));
 }
 
 TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
@@ -249,11 +254,11 @@ TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
 
   EXPECT_THAT(
       captured_out,
-      HasSubstr("IR Dump After tensorflow::(anonymous namespace)::MutatePass"));
+      HasSubstr("IR Dump After tensorflow::debug_test::MutatePass"));
   EXPECT_THAT(
       captured_out,
       HasSubstr(
-          "IR Dump Before tensorflow::(anonymous namespace)::MutatePass"));
+          "IR Dump Before tensorflow::debug_test::MutatePass"));
 }
 
 TEST_F(InitPassManagerTest, ElideLargeElementAttrs) {
