@@ -25,9 +25,64 @@ limitations under the License.
 #include <limits>
 
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
-#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#include "tsl/lib/math/math_util.h"
+
+#if GOOGLE_CUDA
+
+#define WAVEFRONT_SIZE 32
+#define FORCEINLINE __forceinline__
+
+#elif TENSORFLOW_USE_ROCM  // GOOGLE_CUDA
+
+#ifdef __AMDGCN_WAVEFRONT_SIZE
+#define WAVEFRONT_SIZE __AMDGCN_WAVEFRONT_SIZE
+#else
+#define WAVEFRONT_SIZE 64
+#endif
+#define FORCEINLINE __forceinline__
+
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla::gpu {
+
+enum class ShflType { kSync, kUp, kDown, kXor };
+
+template <ShflType Type, class NT>
+__device__ FORCEINLINE NT GpuShuffle(NT val, uint32_t idx,
+                                     uint32_t allmsk = 0xffffffffu) {
+  constexpr uint32_t SZ =
+      tsl::MathUtil::CeilOfRatio(sizeof(NT), sizeof(uint32_t));
+  union S {
+    NT v;
+    uint32_t d[SZ];
+  };
+  S in{val}, res{};
+
+#pragma unroll
+  for (uint32_t i = 0; i < SZ; i++) {
+#if GOOGLE_CUDA
+    if constexpr (Type == ShflType::kSync)
+      res.d[i] = __shfl_sync(allmsk, in.d[i], idx);
+    else if constexpr (Type == ShflType::kUp)
+      res.d[i] = __shfl_up_sync(allmsk, in.d[i], idx);
+    else if constexpr (Type == ShflType::kDown)
+      res.d[i] = __shfl_down_sync(allmsk, in.d[i], idx);
+    else if constexpr (Type == ShflType::kXor)
+      res.d[i] = __shfl_xor_sync(allmsk, in.d[i], idx);
+#elif TENSORFLOW_USE_ROCM  // ROcm does not support sync shuffle intrinsics
+    if constexpr (Type == ShflType::kSync)
+      res.d[i] = __shfl(in.d[i], idx);
+    else if constexpr (Type == ShflType::kUp)
+      res.d[i] = __shfl_up(in.d[i], idx);
+    else if constexpr (Type == ShflType::kDown)
+      res.d[i] = __shfl_down(in.d[i], idx);
+    else if constexpr (Type == ShflType::kXor)
+      res.d[i] = __shfl_xor(in.d[i], idx);
+#endif
+  }
+  return res.v;
+}
 
 // Default implementation for KV holder. Useful for testing while adding support
 // for a new type, but generally bitpacking those values is more efficient. See
@@ -191,7 +246,7 @@ struct TopK {
     for (int offset = num_lanes / 2; offset > 0; offset /= 2) {
 #pragma unroll
       for (int i = 0; i < K; i++) {
-        KVT kv = GpuShuffle<ShflType::Down>(tmp[i], offset);
+        KVT kv = GpuShuffle<ShflType::kDown>(tmp[i], offset);
         if (lane_id >= offset) continue;
         Push(tmp, kv);
       }
@@ -249,6 +304,11 @@ void* GetTopKKernelForK(int n) {
   return n < std::numeric_limits<uint16_t>::max()
              ? reinterpret_cast<void*>(&Run<K, T, uint16_t>)
              : reinterpret_cast<void*>(&Run<K, T, uint32_t>);
+}
+
+template <typename T>
+int32_t GetTopKWaveFrontSize() {
+  return WAVEFRONT_SIZE;
 }
 
 }  // namespace xla::gpu

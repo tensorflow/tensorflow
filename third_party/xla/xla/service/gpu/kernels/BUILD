@@ -136,9 +136,6 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/runtime:memref_view",
-        "//xla/service/gpu/runtime:gpu_kernel_helper",
-        "//xla/service/gpu/runtime:support",
         "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:platform",
         "//xla/stream_executor/gpu:gpu_stream_header",
@@ -146,6 +143,7 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -169,7 +167,8 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:types",
-        "//xla/service/gpu/runtime:gpu_kernel_helper",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "@local_tsl//tsl/lib/math:math_util",
     ],
 )
 
@@ -184,7 +183,8 @@ rocm_library(
     compatible_with = [],
     local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
-        "//xla/service/gpu/runtime:gpu_kernel_helper",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "@local_tsl//tsl/lib/math:math_util",
     ],
 )
 
@@ -196,7 +196,6 @@ xla_cc_test(
         ":topk_kernel",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-        "//xla/service/gpu/runtime:gpu_kernel_helper",
         "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor/gpu:gpu_init",
@@ -233,9 +232,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured([
-        "//xla/service/gpu/runtime:gpu_kernel_helper",
-    ]) + if_cuda_is_configured([
+    ] + if_cuda_is_configured([
         ":topk_kernel_cuda",
     ]) + if_rocm_is_configured([
         ":topk_kernel_rocm",

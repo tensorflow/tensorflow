@@ -17,14 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_H_
 
 #include <stddef.h>
-#include <stdint.h>
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {

@@ -103,44 +103,6 @@ using gpuEvent_t = hipEvent_t;
 
 #endif
 
-enum class ShflType { Sync, Up, Down, Xor };
-
-template <ShflType Type, class NT>
-__device__ FORCEINLINE NT GpuShuffle(NT val, uint32_t idx,
-                                     uint32_t allmsk = 0xffffffffu) {
-  constexpr uint32_t SZ =
-      tsl::MathUtil::CeilOfRatio(sizeof(NT), sizeof(uint32_t));
-  union S {
-    NT v;
-    uint32_t d[SZ];
-  };
-  S in{val}, res{};
-
-#pragma unroll
-  for (uint32_t i = 0; i < SZ; i++) {
-#if GOOGLE_CUDA
-    if constexpr (Type == ShflType::Sync)
-      res.d[i] = __shfl_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::Up)
-      res.d[i] = __shfl_up_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::Down)
-      res.d[i] = __shfl_down_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::Xor)
-      res.d[i] = __shfl_xor_sync(allmsk, in.d[i], idx);
-#elif TENSORFLOW_USE_ROCM  // ROcm does not support sync shuffle intrinsics
-    if constexpr (Type == ShflType::Sync)
-      res.d[i] = __shfl(in.d[i], idx);
-    else if constexpr (Type == ShflType::Up)
-      res.d[i] = __shfl_up(in.d[i], idx);
-    else if constexpr (Type == ShflType::Down)
-      res.d[i] = __shfl_down(in.d[i], idx);
-    else if constexpr (Type == ShflType::Xor)
-      res.d[i] = __shfl_xor(in.d[i], idx);
-#endif
-  }
-  return res.v;
-}
-
 }  // namespace gpu
 }  // namespace xla
 

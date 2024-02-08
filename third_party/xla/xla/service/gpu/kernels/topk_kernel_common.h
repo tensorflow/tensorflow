@@ -31,6 +31,9 @@ static constexpr size_t kTopKMaxThreadsPerBlock = 1024;
 template <typename T, size_t K>
 void* GetTopKKernelForK(int n);
 
+template <typename T>
+int32_t GetTopKWaveFrontSize();
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_KERNELS_TOPK_KERNEL_COMMON_H_
