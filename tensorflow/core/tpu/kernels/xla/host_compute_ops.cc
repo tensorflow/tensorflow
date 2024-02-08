@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -539,6 +540,7 @@ class RecvFromHostOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaHostCompute"), HostComputeOp);
 REGISTER_XLA_OP(Name("XlaSendToHost"), SendToHostOp);
 REGISTER_XLA_OP(Name("XlaRecvFromHost"), RecvFromHostOp);
+REGISTER_XLA_OP(Name("_XlaHostComputeMlir"), MlirXlaOpKernel);
 
 }  // anonymous namespace
 }  // namespace tensorflow
