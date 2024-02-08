@@ -706,13 +706,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportCustomCallAsOp(
             builder_->getI64TensorAttr(broadcast_dimensions))
         .getOperation();
   }
+  // Dynamic ops with no attributes
+  if (!custom_call->raw_backend_config_string().empty()) {
+    return Internal("backend_config attribute must be empty.");
+  }
   if (custom_call->custom_call_target() == "mhlo.dynamic_reshape") {
-    auto raw_backend_config = custom_call->raw_backend_config_string();
-    if (!raw_backend_config.empty()) {
-      return Internal("backend_config attribute should be empty.");
-    }
     return func_builder
         ->create<mlir::mhlo::DynamicReshapeOp>(loc, result_type, operands)
+        .getOperation();
+  }
+  if (custom_call->custom_call_target() == "mhlo.real_dynamic_slice") {
+    return func_builder
+        ->create<mlir::mhlo::RealDynamicSliceOp>(loc, result_type, operands)
         .getOperation();
   }
   return InvalidArgument("Unsupported MHLO op custom_call %s",
