@@ -157,6 +157,18 @@ FailureOr<int32_t> CastI64ToI32(int64_t value);
 FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
     ArrayRef<int64_t> int64_array);
 
+// Returns the first user of the given operation, optionally of the given
+// type if provided. If there is no user or user of type, return nullptr.
+template <typename T = Operation *>
+Operation *FindUserOfType(Operation *op) {
+  for (Operation *user : op->getUsers()) {
+    if (isa<T>(user)) {
+      return user;
+    }
+  }
+  return nullptr;
+}
+
 }  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_
