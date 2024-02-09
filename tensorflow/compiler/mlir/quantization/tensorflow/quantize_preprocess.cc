@@ -57,8 +57,6 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeDotToDotGeneralPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::stablehlo::createUnfuseMhloBatchNormPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeTorchIndexSelectToGatherPass());
 }
 

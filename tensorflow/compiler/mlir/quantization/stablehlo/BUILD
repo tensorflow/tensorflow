@@ -476,6 +476,7 @@ cc_library(
     srcs = [
         "passes/testing/test_post_calibration_component.cc",
         "passes/testing/test_pre_calibration_component.cc",
+        "passes/testing/test_tf_to_stablehlo_pass.cc",
     ],
     hdrs = [
         "passes/testing/passes.h",
@@ -488,6 +489,8 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pre_calibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "@com_google_absl//absl/status:statusor",
@@ -495,6 +498,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",
