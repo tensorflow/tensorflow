@@ -188,7 +188,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -210,7 +210,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Node* count = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -225,7 +225,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -237,11 +237,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 
@@ -264,13 +264,13 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       while (i_ < dataset()->count_) {
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
@@ -283,7 +283,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       }
       *end_of_sequence = true;
       input_impl_.reset();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -302,7 +302,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -319,7 +319,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -364,12 +364,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           // Otherwise, this iterator could loop infinitely.
           if (!has_data_service_input_) {
             input_impl_.reset();
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
         first_call_ = false;
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
@@ -397,7 +397,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -416,7 +416,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         first_call_ = false;
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

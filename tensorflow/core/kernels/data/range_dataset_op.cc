@@ -61,7 +61,7 @@ Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(output_dtypes[0]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t sgn(int64_t val) { return (0 < val) - (val < 0); }
@@ -142,23 +142,23 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
   Status GetNext(Tensor* split, bool* end_of_splits) override {
     int64_t next = counter_.GetNext(end_of_splits);
     if (*end_of_splits) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     *split = Tensor(DT_INT64, TensorShape{});
     split->scalar<int64_t>()() = next;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Reset() override {
     counter_.Reset();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Save(std::function<std::string(std::string)> key_name_fn,
               IteratorStateWriter* writer) override {
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(key_name_fn(kNext), counter_.Peek()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Restore(std::function<std::string(std::string)> key_name_fn,
@@ -166,7 +166,7 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
     int64_t next;
     TF_RETURN_IF_ERROR(reader->ReadScalar(key_name_fn(kNext), &next));
     counter_.SetNext(next);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override { return counter_.Cardinality(); }
@@ -216,15 +216,15 @@ class RangeDatasetOp::Dataset : public DatasetBase {
                                 split_providers) const override {
     split_providers->push_back(
         std::make_unique<RangeSplitProvider>(start_, stop_, step_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  Status CheckExternalState() const override { return absl::OkStatus(); }
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
@@ -250,7 +250,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         this, {start, stop, step},                                // Inputs
         {std::make_pair(kReplicateOnSplit, replicate_on_split)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -269,7 +269,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -280,13 +280,13 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         Tensor split;
         TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
         if (*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         value = split.scalar<int64_t>()();
       } else {
         value = counter_->GetNext(end_of_sequence);
         if (*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
       out_tensors->reserve(1);
@@ -313,7 +313,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(prefix(), kNext, counter_->Peek()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -329,7 +329,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNext, &next));
         counter_->SetNext(next);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::string SplitProviderKeyNameFn(const std::string& key) {
