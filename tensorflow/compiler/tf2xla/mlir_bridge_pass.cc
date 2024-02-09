@@ -343,7 +343,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
 
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-            module, tf2xla::v2::DeviceType::XLA_TPU_JIT, fallback_enabled,
+            module, /*run_replicated_bridge*/ true, fallback_enabled,
             function_name));
 
     TF_RETURN_IF_ERROR(
@@ -353,7 +353,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     VLOG(1) << "Running GPU/CPU Bridge";
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-            module, tf2xla::v2::DeviceType::XLA_GPU_JIT, fallback_enabled,
+            module, /*run_replicated_bridge*/ false, fallback_enabled,
             function_name));
 
     TF_RETURN_IF_ERROR(

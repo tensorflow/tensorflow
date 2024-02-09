@@ -238,7 +238,7 @@ Status ConvertTfMlirToRuntimeExecutable(
 
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-            module, tf2xla::v2::DeviceType::XLA_TPU_JIT,
+            module, /*run_replicated_bridge*/ true,
             /*is_in_fallback_enabled_mode=*/VLOG_IS_ON(1)));
 
     TF_RETURN_IF_ERROR(
@@ -257,7 +257,7 @@ Status ConvertTfMlirToRuntimeExecutable(
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-            module, tf2xla::v2::DeviceType::XLA_GPU_JIT,
+            module, /*run_replicated_bridge*/ false,
             /*is_in_fallback_enabled_mode=*/false));
 
     TF_RETURN_IF_ERROR(

@@ -82,14 +82,14 @@ class FunctionClusterTensorflowDialectTest : public ::testing::Test {
   OwningOpRef<mlir::ModuleOp> mlir_module_;
 };
 
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTfTPU) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTfReplicatedBridge) {
   CellReader<int64_t> compilation_status(kCompilationStreamz);
 
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*run_replicated_bridge*/ true,
+      /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
@@ -98,14 +98,15 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTfTPU) {
       compilation_status.Delta("tpu", "v2", "fallback_disabled", "success"), 1);
 }
 
-TEST_F(FunctionClusterTensorflowDialectTest, RunsOutsideCompilationTPU) {
+TEST_F(FunctionClusterTensorflowDialectTest,
+       RunsOutsideCompilationReplicatedBridge) {
   CellReader<int64_t> compilation_status(kCompilationStreamz);
 
   TF_ASSERT_OK(CreateMlirModule("outside_compilation.mlir"));
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*run_replicated_bridge*/ true,
+      /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
@@ -121,31 +122,14 @@ TEST_F(FunctionClusterTensorflowDialectTest, RunsOutsideCompilationTPU) {
       compilation_status.Delta("tpu", "v2", "fallback_disabled", "success"), 1);
 }
 
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFNonReplicatedBridge) {
   CellReader<int64_t> compilation_status(kCompilationStreamz);
 
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_CPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
-
-  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
-  ASSERT_TRUE(main);
-
-  EXPECT_EQ(
-      compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),
-      1);
-}
-
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
-  CellReader<int64_t> compilation_status(kCompilationStreamz);
-
-  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
-
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_GPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*run_replicated_bridge*/ false,
+      /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
@@ -160,9 +144,9 @@ TEST_F(FunctionClusterTensorflowDialectTest, LogsFallbackMode) {
 
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/true));
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*run_replicated_bridge*/ true,
+      /*is_in_fallback_enabled_mode=*/true));
 
   EXPECT_EQ(
       compilation_status.Delta("tpu", "v2", "fallback_enabled", "success"), 1);
