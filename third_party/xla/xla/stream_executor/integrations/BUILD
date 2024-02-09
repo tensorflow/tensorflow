@@ -68,8 +68,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
+        "//xla/stream_executor:memory_allocation",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/framework:allocator",
         "@local_tsl//tsl/framework:device_id",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

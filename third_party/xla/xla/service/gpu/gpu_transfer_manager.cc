@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_transfer_manager.h"
 
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -24,23 +24,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/IR/DataLayout.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/service/compiler.h"
+#include "xla/service/generic_transfer_manager.h"
+#include "xla/service/gpu/infeed_manager.h"
 #include "xla/service/gpu/outfeed_manager.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/host/host_platform_id.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -51,12 +53,6 @@ namespace gpu {
 GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
     : GenericTransferManager(id, pointer_size) {}
-
-GpuTransferManager::~GpuTransferManager() {
-  if (pinned_chunk_se_) {
-    pinned_chunk_se_->HostMemoryDeallocate(pinned_chunk_);
-  }
-}
 
 absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
@@ -77,11 +73,11 @@ void GpuTransferManager::EnsurePinnedBuffersAllocated(
   }
 
   pinned_chunk_se_ = executor;
-  pinned_chunk_ =
-      reinterpret_cast<char*>(executor->HostMemoryAllocate(kPinnedChunkBytes));
+  pinned_chunk_ = executor->HostMemoryAllocate(kPinnedChunkBytes);
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
-  for (char* buf = pinned_chunk_; buf < pinned_chunk_ + kPinnedChunkBytes;
+  char* base = reinterpret_cast<char*>(pinned_chunk_->opaque());
+  for (char* buf = base; buf < base + kPinnedChunkBytes;
        buf += kPinnedBufferBytes) {
     pinned_buffers_.push_back(buf);
   }
@@ -215,4 +211,5 @@ static bool InitModule() {
       stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
   return true;
 }
+
 static bool module_initialized = InitModule();

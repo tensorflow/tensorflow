@@ -16,13 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_GPU_GPU_TRANSFER_MANAGER_H_
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/literal.h"
 #include "xla/service/generic_transfer_manager.h"
-#include "xla/service/gpu/infeed_manager.h"
-#include "xla/service/transfer_manager.h"
-#include "xla/shape_tree.h"
-#include "xla/statusor.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -34,7 +40,6 @@ namespace gpu {
 class GpuTransferManager : public GenericTransferManager {
  public:
   GpuTransferManager(se::Platform::Id id, unsigned pointer_size);
-  ~GpuTransferManager() override;
 
   absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                        const LiteralSlice& literal) override;
@@ -96,7 +101,7 @@ class GpuTransferManager : public GenericTransferManager {
 
   // Chunk of pinned memory of size kPinnedChunkBytes.  The pointers in
   // pinned_buffers_ point into this chunk.  Lazily initialized.
-  char* pinned_chunk_ ABSL_GUARDED_BY(mu_) = nullptr;
+  std::unique_ptr<se::MemoryAllocation> pinned_chunk_ ABSL_GUARDED_BY(mu_);
 
   // Host buffers for reading dynamic shapes.  Each buffer has size
   // kPinnedBufferBytes.  Lazily initialized.

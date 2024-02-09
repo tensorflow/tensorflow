@@ -200,11 +200,11 @@ TEST_F(StreamExecutorTest, HostMemoryAllocate) {
   };
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(allocate_called);
-  void* mem = executor->HostMemoryAllocate(8);
-  ASSERT_NE(mem, nullptr);
+  auto mem = executor->HostMemoryAllocate(8);
+  ASSERT_NE(mem->opaque(), nullptr);
   ASSERT_TRUE(allocate_called);
   ASSERT_FALSE(deallocate_called);
-  executor->HostMemoryDeallocate(mem);
+  mem.reset();
   ASSERT_TRUE(deallocate_called);
 }
 

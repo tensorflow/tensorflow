@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,31 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor.h"
+
+#include <memory>
+
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 
-TEST(MemcpyTest, PinnedHostMemory) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
-  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
+  Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();
+  StreamExecutorConfig config(/*ordinal=*/0);
+  return platform->GetUncachedExecutor(config).value();
+}
 
-  auto d_ptr = executor->HostMemoryAllocate(sizeof(int));
-  DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
+TEST(StreamExecutorTest, HostMemoryAllocate) {
+  auto executor = NewStreamExecutor();
 
-  int h_ptr;
-  stream.ThenMemcpy(&h_ptr, d_mem, d_mem.size());
-  EXPECT_TRUE(stream.BlockHostUntilDone().ok());
+  auto allocation = executor->HostMemoryAllocate(1024);
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
 }
 
 }  // namespace stream_executor
-
-#endif  // GOOGLE_CUDA
