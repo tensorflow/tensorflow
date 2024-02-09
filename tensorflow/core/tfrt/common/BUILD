@@ -17,6 +17,7 @@ package_group(
     packages = [
         # copybara:uncomment "//learning/brain/experimental/dtensor/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/google/monitoring/...",
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
