@@ -20,13 +20,16 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -72,6 +75,12 @@ class ConditionalThunk : public Thunk {
  private:
   const ConditionalThunkConfig config_;
   const BufferAllocation::Slice branch_index_buffer_index_;
+
+  // Pinned host memory for transferring predicate value from device to host.
+  absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      predicates_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/conditional_thunk.h"
 
+#include <cstdint>
 #include <memory>
+#include <utility>
+#include <variant>
 
 #include "absl/status/status.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -55,6 +63,18 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   for (auto& branch_thunk : config_.branch_thunks) {
     TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
   }
+
+  absl::MutexLock lock(&mutex_);
+  if (auto it = predicates_.find(params.executor); it == predicates_.end()) {
+    auto allocation = params.executor->HostMemoryAllocate(
+        config_.branch_index_is_bool ? sizeof(bool) : sizeof(int32_t));
+    if (allocation->opaque() == nullptr) {
+      return absl::InternalError(
+          "Failed to allocate host memory for condition predicate");
+    }
+    predicates_.emplace(params.executor, std::move(allocation));
+  }
+
   return absl::OkStatus();
 }
 
@@ -62,28 +82,39 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
   // Copy the predicate value from device.
-  int32_t branch_index = -1;
-  bool pred = false;
+  auto branch_index_or_pred = [&]() -> std::variant<int32_t*, bool*> {
+    absl::MutexLock lock(&mutex_);
+    se::StreamExecutor* executor = stream.parent();
+    if (config_.branch_index_is_bool) {
+      return reinterpret_cast<bool*>(predicates_.at(executor)->opaque());
+    } else {
+      return reinterpret_cast<int32_t*>(predicates_.at(executor)->opaque());
+    }
+  }();
+
   se::DeviceMemoryBase branch_index_address =
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_index_);
   if (config_.branch_index_is_bool) {
-    stream.ThenMemcpy(&pred, branch_index_address, sizeof(bool));
+    stream.ThenMemcpy(std::get<bool*>(branch_index_or_pred),
+                      branch_index_address, sizeof(bool));
   } else {
-    stream.ThenMemcpy(&branch_index, branch_index_address, sizeof(int32_t));
+    stream.ThenMemcpy(std::get<int32_t*>(branch_index_or_pred),
+                      branch_index_address, sizeof(int32_t));
   }
 
-  absl::Status block_status = stream.BlockHostUntilDone();
-  if (!block_status.ok()) {
+  if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {
     return Internal("Failed to retrieve branch_index value on stream %p: %s.",
-                    &stream, block_status.message());
+                    &stream, blocked.message());
   }
-  if (config_.branch_index_is_bool) {
-    branch_index = pred ? 0 : 1;
-  } else {
-    // Handle default scenario for branch_index not in [0, num_branches).
-    if (branch_index < 0 || branch_index >= config_.branch_count) {
-      branch_index = config_.branch_count - 1;
-    }
+
+  int32_t branch_index = std::visit(
+      VariantVisitor{[](int32_t* branch_index) { return *branch_index; },
+                     [](bool* pred) { return *pred ? 0 : 1; }},
+      branch_index_or_pred);
+
+  // Handle default scenario for branch_index not in [0, num_branches).
+  if (branch_index < 0 || branch_index >= config_.branch_count) {
+    branch_index = config_.branch_count - 1;
   }
 
   // Execute the branch computation corresponding to the value of branch_index.
