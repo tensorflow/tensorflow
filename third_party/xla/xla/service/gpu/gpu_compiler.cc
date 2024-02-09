@@ -1268,7 +1268,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-    if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+    if (debug_options.xla_allow_excess_precision() &&
+        debug_options.xla_gpu_simplify_all_fp_conversions()) {
       sub_pipeline.AddPass<SimplifyFPConversions>(
           SimplifyFPConversions::Scope::kSimplifyAllConversions);
     }
@@ -1396,7 +1397,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
 
-  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+  if (debug_options.xla_allow_excess_precision() &&
+      debug_options.xla_gpu_simplify_all_fp_conversions()) {
     // This pass cleans up chains of compiler-generated converts
     // (i.e. f32 -> bf16 -> f32) that have been produced by the algebraic
     // simplifier by rearranging ops (i.e. by pushing broadcasts towards the

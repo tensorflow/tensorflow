@@ -43,7 +43,7 @@ class ConvertTest : public ClientLibraryTestBase {
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
-    mutable_debug_options()->set_xla_gpu_simplify_all_fp_conversions(false);
+    mutable_debug_options()->set_xla_allow_excess_precision(false);
   }
 };
 
