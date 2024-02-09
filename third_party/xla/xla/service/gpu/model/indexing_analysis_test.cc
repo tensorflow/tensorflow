@@ -1220,7 +1220,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                (d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8,
+                (d0, d1, d2) -> (d0 * 2 + d1 floordiv 2,
                                 (d1 * 4 + d2) mod 8)
                 domain:
                 d0 in [0, 1]
@@ -1239,7 +1239,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> ((d0 * 8 + d1) floordiv 16,
+                            (d0, d1) -> (d0 floordiv 2,
                                         ((d0 * 8 + d1) mod 16) floordiv 4,
                                         d1 mod 4)
                             domain:

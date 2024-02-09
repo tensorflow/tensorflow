@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -104,7 +105,7 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   auto rhs = range_evaluator_->ComputeExpressionRange(mod.getRHS());
 
   // a % b where b is always larger than a?
-  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.upper_bound) {
+  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
     return lhs_simplified;
   }
 
@@ -161,12 +162,19 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     return getAffineConstantExpr(a, mlir_context);
   }
 
+  Range no_multiplier_range{0, 0};
+  int64_t multiplier_gcd = -1;
   AffineExpr extracted = getAffineConstantExpr(0, mlir_context);
   auto new_dividend = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
     if (auto multiplier = GetConstantRhsMultiplier(expr)) {
       // (x * 7 + ...) / 3 -> can't extract. We could extract x * 2 and keep
       // one x, but we currently have no reason to do that.
       if (*multiplier % d != 0) {
+        if (multiplier_gcd == -1) {
+          multiplier_gcd = *multiplier;
+        } else {
+          multiplier_gcd = std::gcd(multiplier_gcd, *multiplier);
+        }
         return true;
       }
       int64_t factor = *multiplier / d;
@@ -174,6 +182,10 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
           extracted + mlir::cast<AffineBinaryOpExpr>(expr).getLHS() * factor;
       // Remove from dividend.
       return false;
+    } else {
+      auto range = range_evaluator_->ComputeExpressionRange(expr);
+      no_multiplier_range.lower_bound += range.lower_bound;
+      no_multiplier_range.upper_bound += range.upper_bound;
     }
 
     // Not a constant multiplier, keep in dividend.
@@ -184,6 +196,18 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   if (!new_dividend) {
     return extracted;
   }
+
+  if ((d % multiplier_gcd) == 0) {
+    if (no_multiplier_range.lower_bound >= 0 &&
+        no_multiplier_range.upper_bound < multiplier_gcd) {
+      // Remove everything that doesn't have a multiplier.
+      new_dividend = RewriteSumIf(new_dividend, [&](AffineExpr expr) {
+        auto mult = GetConstantRhsMultiplier(expr);
+        return mult.has_value();
+      });
+    }
+  }
+
   // If we removed nothing, return the original division.
   if (extracted == getAffineConstantExpr(0, mlir_context) &&
       new_dividend == div.getLHS()) {
@@ -277,9 +301,9 @@ AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
   if (nothing_changed) {
     return affine_map;
   }
-  return mlir::simplifyAffineMap(
-      AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
-                     results, affine_map.getContext()));
+  return Simplify(AffineMap::get(affine_map.getNumDims(),
+                                 affine_map.getNumSymbols(), results,
+                                 affine_map.getContext()));
 }
 
 // Computes intersection of two ranges.

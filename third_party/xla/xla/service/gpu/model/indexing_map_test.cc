@@ -363,10 +363,6 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
 }
 
-// TODO(b/313840171): Simplify `(d1 * 4 + d2) floordiv 8` to `d1 floordiv 2`.
-
-// TODO(b/313840171): Simplify `(d0 * 8 + d1) floordiv 16` to `d0 floordiv 2`.
-
 // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
 // `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
 
