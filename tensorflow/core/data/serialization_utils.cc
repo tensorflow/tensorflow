@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -599,19 +600,15 @@ tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
         "Failed to parse checkpoint tensor from proto.");
   }
 
-  int64_t num_tensors = t.dim_size(0);
-  auto serialized_vec = t.vec<Variant>();
-  std::vector<const VariantTensorData*> data;
-  data.reserve(num_tensors);
-  for (int i = 0; i < num_tensors; ++i) {
-    auto* w = serialized_vec(i).get<IteratorStateVariant>();
-    if (!w) {
-      return absl::InvalidArgumentError(
-          "Failed to access IteratorStateVariant inside checkpoint tensor");
-    }
-    data.push_back(w->GetData());
+  auto variant = t.scalar<Variant>()();
+  auto* w = variant.get<IteratorStateVariant>();
+  if (!w) {
+    return absl::InvalidArgumentError(
+        "Failed to access IteratorStateVariant inside checkpoint tensor");
   }
-  auto reader = std::make_unique<VariantTensorDataReader>(data);
+  const VariantTensorData* data = w->GetData();
+  auto reader = std::make_unique<VariantTensorDataReader>(
+      std::vector<const VariantTensorData*>{data});
   absl::flat_hash_map<std::string, int64_t> stats;
   for (const auto& [key, tensor] : reader->ReadAllTensors()) {
     stats[key] = tensor.TotalBytes();
