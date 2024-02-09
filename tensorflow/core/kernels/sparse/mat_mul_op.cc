@@ -40,6 +40,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_solvers.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 
 namespace tensorflow {

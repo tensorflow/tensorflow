@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_MAT_MUL_OP_H_
-#define TENSORFLOW_CORE_KERNELS_MAT_MUL_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_MAT_MUL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_MAT_MUL_OP_H_
 
 #define EIGEN_USE_THREADS
 
@@ -163,4 +163,4 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CORE_KERNELS_MAT_MUL_OP_H_
