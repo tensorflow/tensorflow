@@ -4109,6 +4109,7 @@ ENTRY main.92 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 6);
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
+  EXPECT_FLOAT_EQ(config.fmha_scale(), 2);
   EXPECT_EQ(config.is_flash_attention(), true);
   EXPECT_EQ(config.is_causal_mask(), false);
 }
