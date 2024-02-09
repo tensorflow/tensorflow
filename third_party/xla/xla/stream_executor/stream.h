@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
@@ -62,16 +61,7 @@ class DeviceMemoryBase;
 template <typename ElemT>
 class DeviceMemory;
 
-namespace dnn {
-class BatchDescriptor;
-class FilterDescriptor;
-class ConvolutionDescriptor;
-class ProfileResult;
-class AlgorithmDesc;
-}  // namespace dnn
-
 class StreamExecutor;
-class ScratchAllocator;
 
 namespace detail {
 
@@ -87,10 +77,6 @@ constexpr bool is_any_of() {
 }
 
 }  // namespace detail
-
-// Convert a type to the corresponding QuantizedActivationMode.
-template <typename ElementType>
-struct Quantization;
 
 // Represents a stream of dependent computations on a GPU device.
 //
@@ -600,12 +586,6 @@ class Stream {
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 
-  void SetErrorAndLogNoDnnSupport() {
-    SetError();
-    LOG(WARNING) << "attempting to perform DNN operation using StreamExecutor "
-                    "without DNN support";
-  }
-
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
 
@@ -704,24 +684,6 @@ inline absl::Status Stream::ThenLaunch(
                                      cluster_dims, *kernel, *kernel_args));
   return absl::OkStatus();
 }
-
-template <>
-struct Quantization<uint8_t> {
-  static constexpr dnn::QuantizedActivationMode kModeId =
-      dnn::QuantizedActivationMode::k8Bit;
-};
-
-template <>
-struct Quantization<uint16_t> {
-  static constexpr dnn::QuantizedActivationMode kModeId =
-      dnn::QuantizedActivationMode::k16Bit;
-};
-
-template <>
-struct Quantization<int32_t> {
-  static constexpr dnn::QuantizedActivationMode kModeId =
-      dnn::QuantizedActivationMode::k32Bit;
-};
 
 }  // namespace stream_executor
 
