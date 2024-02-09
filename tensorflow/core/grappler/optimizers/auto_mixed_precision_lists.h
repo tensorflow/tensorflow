@@ -107,11 +107,8 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
   }
 
  public:
-  AutoMixedPrecisionListsCuda(int cuda_version, int cudnn_version,
-                              bool run_fp16_on_cpu = false)
-      : cuda_version_(cuda_version),
-        cudnn_version_(cudnn_version),
-        run_fp16_on_cpu_(run_fp16_on_cpu) {}
+  AutoMixedPrecisionListsCuda(int cuda_version, int cudnn_version)
+      : cuda_version_(cuda_version), cudnn_version_(cudnn_version) {}
 
   gtl::FlatSet<string> AllowList() override {
     auto list = gtl::FlatSet<string>{
@@ -147,13 +144,13 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
 #if TENSORFLOW_USE_ROCM
     if (true) {
 #else
-    if (cuda_version_ >= 9010 || run_fp16_on_cpu_) {
+    if (cuda_version_ >= 9010) {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
 #endif
       list.insert("BatchMatMul");
       list.insert("BatchMatMulV2");
     }
-    if (cudnn_version_ >= 7602 || run_fp16_on_cpu_) {
+    if (cudnn_version_ >= 7602) {
       // Fp16 3D conv is slow before CUDNN 7.6.2.
       list.insert("Conv3D");
       list.insert("Conv3DBackpropFilter");
@@ -161,7 +158,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
-    if (cudnn_version_ >= 8000 || run_fp16_on_cpu_) {
+    if (cudnn_version_ >= 8000) {
       list.insert("DepthwiseConv2dNative");
       list.insert("DepthwiseConv2dNativeBackpropFilter");
       list.insert("DepthwiseConv2dNativeBackpropInput");
@@ -224,11 +221,6 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Tanh",
         "TanhGrad",
     };
-    if (run_fp16_on_cpu_) {
-      list.insert("Rsqrt");
-      list.insert("Square");
-      list.insert("SquaredDifference");
-    }
     UpdateList("INFERLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.
@@ -361,10 +353,6 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "Where",
         "ZerosLike",
     };
-    if (run_fp16_on_cpu_) {
-      list.insert("ResizeBilinear");
-      list.insert("ScatterNd");
-    }
     AddTensorListOps(&list);
     UpdateList("CLEARLIST", &list);
     return list;
@@ -373,12 +361,11 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
  private:
   int cuda_version_;
   int cudnn_version_;
-  bool run_fp16_on_cpu_;
 };
 
 class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
  public:
-  AutoMixedPrecisionListsMkl() {}
+  AutoMixedPrecisionListsMkl(AutoMixedPrecisionMode mode) : mode_(mode) {}
 
   // Only ops which are supported by MKL in bfloat16 should be added to the
   // allow list, infer list, or clear list.
@@ -417,13 +404,14 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "BiasAddGrad",
                                      "BiasAddV1",
                                      "Erf",
+                                     "Erfc",
                                      "FusedBatchNormV2",
                                      "FusedBatchNormGradV2",
                                      "FusedBatchNormV3",
                                      "FusedBatchNormGradV3",
+                                     "Inv",
                                      "LeakyRelu",
                                      "LeakyReluGrad",
-                                     "Mean",
                                      "Mul",
                                      "Sub",
                                      "Elu",
@@ -449,9 +437,12 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Sqrt",
                                      "Square",
                                      "SquaredDifference",
-                                     "Sum",
                                      "Tanh",
                                      "TanhGrad"};
+    if (mode_ != AutoMixedPrecisionMode::FP16_CPU) {
+      list.insert("Mean");
+      list.insert("Sum");
+    }
     UpdateList("INFERLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.
@@ -469,6 +460,10 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
     };
+    if (mode_ == AutoMixedPrecisionMode::FP16_CPU) {
+      list.insert("Mean");
+      list.insert("Sum");
+    }
     UpdateList("DENYLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.
@@ -505,6 +500,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Greater",
         "GreaterEqual",
         "Identity",
+        "IdentityN",
         "IsFinite",
         "IsInf",
         "IsNan",
@@ -576,6 +572,8 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
     UpdateList("CLEARLIST", &list);
     return list;
   }
+  private:
+  AutoMixedPrecisionMode mode_;
 };
 
 }  // end namespace grappler
