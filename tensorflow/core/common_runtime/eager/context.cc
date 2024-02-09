@@ -854,23 +854,41 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
       register_function->mutable_function_def()->mutable_node_def());
 
   auto remote_contexts = GetRemoteContexts();
-  for (const auto& target : remote_contexts) {
+  BlockingCounter counter(static_cast<int>(remote_contexts.size()));
+  bool is_streaming_enqueue = this->Executor().StreamingEnqueue();
+  for (int i = 0; i < remote_contexts.size(); i++) {
     core::RefCountPtr<eager::EagerClient> eager_client;
-    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
+    TF_RETURN_IF_ERROR(GetClient(remote_contexts[i], &eager_client));
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
-    eager_client->StreamingEnqueueAsync(
-        this->Executor().StreamingEnqueue(),
-        /*call_opts=*/nullptr, request.get(), response,
-        [request, response](const Status& status) {
-          if (!status.ok()) {
-            LOG(ERROR) << "Failed to register function remotely due to "
-                       << status.message()
-                       << "\nThis could happen if the remote target has been "
-                          "disconnected from the client.";
-          }
-          delete response;
-        });
+    // TODO(b/324156263) Need to change this by serializing first into a
+    // shared `ByteBuffer`. Otherwise, there's a risk that this change will
+    // cause OOMs on large clusters/with large functions by concurrently
+    // allocating serialized buffers for all of the destination endpoints.
+    if (!is_streaming_enqueue) {
+      Status status;
+      eager_client->EnqueueAsync(/*call_opts=*/nullptr, request.get(), response,
+                                 [&counter, &status](const Status& s) {
+                                   status.Update(s);
+                                   counter.DecrementCount();
+                                 });
+    } else {
+      eager_client->StreamingEnqueueAsync(
+          this->Executor().StreamingEnqueue(),
+          /*call_opts=*/nullptr, request.get(), response,
+          [request, response](const Status& status) {
+            if (!status.ok()) {
+              LOG(ERROR) << "Failed to register function remotely due to "
+                         << status.message()
+                         << "\nThis could happen if the remote target has been "
+                            "disconnected from the client.";
+            }
+            delete response;
+          });
+    }
+    if (!is_streaming_enqueue) {
+      counter.Wait();
+    }
   }
 #endif  // !IS_MOBILE_PLATFORM
   return absl::OkStatus();
