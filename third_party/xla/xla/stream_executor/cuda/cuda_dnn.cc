@@ -378,7 +378,7 @@ void PreloadCudnnSubLibs(PreloadCudnnType type) {
 #elif CUDNN_VERSION >= 8004
       cudnnOpsInferVersionCheck();
       cudnnCnnInferVersionCheck();
-#endif  // CUDNN >= 9000
+#endif  // CUDNN_VERSION >= 9000
       break;
     }
     case PreloadCudnnType::Rnn: {
