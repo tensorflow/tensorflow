@@ -253,16 +253,6 @@ struct AutotunerUtil {
   static absl::Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
-
-  // Extracts an HLO instruction into a new HLO module replacing its operands
-  // with parameter instructions.
-  static std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
-      const HloInstruction& hlo);
-
-  // Extracts an HLO computation into a new HLO module, using its clone as the
-  // root computation.
-  static std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
-      const HloComputation& computation);
 };
 
 }  // namespace gpu

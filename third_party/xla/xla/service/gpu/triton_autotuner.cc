@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/lib/core/bits.h"
@@ -412,7 +413,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const HloFusionInstruction* fusion, DebugOptions debug_opts,
     bool allow_filtering_kernels_spilling_registers) {
   std::unique_ptr<HloModule> new_module =
-      AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
+      ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
   debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
   // TODO(anlunx): Disable command buffers for now because it breaks triton
@@ -466,7 +467,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   const HloComputation* fusion_computation =
       fusion->called_computations().at(0);
   std::unique_ptr<HloModule> new_module =
-      AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
+      ExtractComputationIntoNewModule(*fusion_computation);
   new_module->mutable_config().set_debug_options(debug_opts);
 
   GemmRewriter rewriter(config.GetGpuComputeCapability());

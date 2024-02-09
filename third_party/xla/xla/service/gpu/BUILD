@@ -700,6 +700,7 @@ cc_library(
         "//xla:autotuning_proto_cc",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla/tools:hlo_decomposer_lib",
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
@@ -761,6 +762,7 @@ xla_test(
         "//xla/tests:test_utils",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tools:hlo_decomposer_lib",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",

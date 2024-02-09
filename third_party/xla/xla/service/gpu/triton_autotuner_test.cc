@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -88,9 +89,8 @@ ENTRY entry {
 })")
                                                   .value();
 
-  std::unique_ptr<HloModule> extracted_module =
-      AutotunerUtil::ExtractInstructionIntoNewModule(
-          *module->entry_computation()->root_instruction()->operand(0));
+  std::unique_ptr<HloModule> extracted_module = ExtractInstructionIntoNewModule(
+      *module->entry_computation()->root_instruction()->operand(0));
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
@@ -127,11 +127,10 @@ ENTRY entry {
                                                   .value();
 
   std::unique_ptr<HloModule> extracted_module =
-      AutotunerUtil::ExtractComputationIntoNewModule(
-          *module->entry_computation()
-               ->root_instruction()
-               ->operand(0)
-               ->fused_instructions_computation());
+      ExtractComputationIntoNewModule(*module->entry_computation()
+                                           ->root_instruction()
+                                           ->operand(0)
+                                           ->fused_instructions_computation());
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
