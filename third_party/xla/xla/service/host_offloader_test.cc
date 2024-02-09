@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -64,8 +65,9 @@ class HostOffloaderTest : public HloTestBase {
     for (const HloComputation* computation : module->computations()) {
       for (const HloInstruction* instruction : computation->instructions()) {
         if (instruction->IsCustomCall(
-                {HostOffloader::kPipelineForwardTarget,
-                 HostOffloader::kPipelineBackwardTarget})) {
+                {host_memory_offload_annotations::kMoveToHostCustomCallTarget,
+                 host_memory_offload_annotations::
+                     kMoveToDeviceCustomCallTarget})) {
           return true;
         }
       }

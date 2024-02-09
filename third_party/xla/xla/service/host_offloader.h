@@ -35,10 +35,6 @@ class HloCostAnalysis;
 // an error will be returned.
 class HostOffloader : public HloModulePass {
  public:
-  static constexpr absl::string_view kPipelineForwardTarget = "PipelineForward";
-  static constexpr absl::string_view kPipelineBackwardTarget =
-      "PipelineBackward";
-
   explicit HostOffloader(int64_t host_memory_space_color)
       : kHostMemorySpaceColor(host_memory_space_color) {}
   ~HostOffloader() override = default;

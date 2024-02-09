@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -148,7 +149,8 @@ StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
 }
 
 HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
-  while (!hlo->IsCustomCall(HostOffloader::kPipelineBackwardTarget)) {
+  while (!hlo->IsCustomCall(
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
     if (hlo->opcode() != HloOpcode::kReshape &&
         hlo->opcode() != HloOpcode::kBitcast) {
       break;
@@ -301,7 +303,8 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
   if (consuming_ds_user->opcode() != HloOpcode::kCustomCall) {
     return Internal("Dynamic-slice does not have a matching annotation.");
   }
-  if (consuming_ds_user->custom_call_target() != kPipelineBackwardTarget) {
+  if (consuming_ds_user->custom_call_target() !=
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
     return Internal(
         "Found custom-call is not the expected matching host offload "
         "annotation");
@@ -396,7 +399,8 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithCopy(
   if (consuming_copy_user->opcode() != HloOpcode::kCustomCall) {
     return Internal("Copy does not have a matching annotation.");
   }
-  if (consuming_copy_user->custom_call_target() != kPipelineBackwardTarget) {
+  if (consuming_copy_user->custom_call_target() !=
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
     return Internal(
         "Found custom-call is not the expected matching host offload "
         "annotation");
@@ -426,8 +430,10 @@ Status HostOffloader::MemoryOnlyOffloadInsertCopies(
   // Check that this buffer is finally an input to a load-from-host custom-call.
   TF_ASSIGN_OR_RETURN(
       HloInstruction * matching_annotation,
-      BufferHasPositionWithUser(unique_buffer,
-                                match::CustomCall({kPipelineBackwardTarget})));
+      BufferHasPositionWithUser(
+          unique_buffer,
+          match::CustomCall({host_memory_offload_annotations::
+                                 kMoveToDeviceCustomCallTarget})));
   if (matching_annotation == nullptr) {
     return Internal(
         "The offloaded data (from %s) never feeds into a matching \"load\" "
@@ -531,9 +537,12 @@ StatusOr<bool> HostOffloader::Run(
       if (instruction->opcode() != HloOpcode::kCustomCall) {
         continue;
       }
-      if (instruction->custom_call_target() == kPipelineForwardTarget) {
+      if (instruction->custom_call_target() ==
+          host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
         TF_RETURN_IF_ERROR(HandlePipelineForwardCustomCall(instruction));
-      } else if (instruction->custom_call_target() == kPipelineBackwardTarget) {
+      } else if (instruction->custom_call_target() ==
+                 host_memory_offload_annotations::
+                     kMoveToDeviceCustomCallTarget) {
         TF_RETURN_IF_ERROR(HandlePipelineBackwardCustomCall(instruction));
       }
     }
