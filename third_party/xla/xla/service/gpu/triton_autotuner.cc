@@ -292,6 +292,12 @@ constexpr std::array<int, 6> BLOCK_SIZES = {16, 32, 64, 128, 256, 512};
 constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
+// This is the number of blocks per cluster.
+//
+// Clusters have 3 dimensions (x,y,z) and only 1 <= x*y*z <= 16 are supported.
+// Triton doesn't support (3,3,1) and possibly other non-"power of 2" values.
+// It's possible that some other values may be(come) supported.
+constexpr std::array<int, 5> NUM_CTAS = {1, 2, 4, 8, 16};
 
 std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
@@ -301,6 +307,9 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
   std::vector<TritonGemmConfig> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
+  bool enable_hopper_optimizations =
+      debug_options.xla_gpu_enable_triton_hopper() &&
+      compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
 
   for (int num_warps : NUM_WARPS) {
     for (int num_stages : NUM_STAGES) {
@@ -326,8 +335,20 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
                                     GetSplitKLimit(block_k, limit.block_k))) {
                 continue;
               }
-              configs.push_back(TritonGemmConfig(
-                  block_m, block_n, block_k, split_k, num_stages, num_warps));
+              if (!enable_hopper_optimizations) {
+                configs.push_back(TritonGemmConfig(
+                    block_m, block_n, block_k, split_k, num_stages, num_warps));
+                continue;
+              }
+              // Arch >= Hopper autotuning.
+              // We only want to autotune this if it provides any speedup. So
+              // please think about that before adding it to the default
+              // autotuning parameters.
+              for (int num_ctas : NUM_CTAS) {
+                configs.push_back(TritonGemmConfig(block_m, block_n, block_k,
+                                                   split_k, num_stages,
+                                                   num_warps, num_ctas));
+              }
             }
           }
         }
@@ -635,6 +656,7 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
       const GemmConfigSet& gemm_config_set = key_value.second;
 
       for (const TritonGemmConfig& gemm_config : gemm_config_set.configs) {
+        VLOG(5) << "Compiling " << gemm_config.ToString();
         TF_ASSIGN_OR_RETURN(
             bool has_executable,
             compile(
