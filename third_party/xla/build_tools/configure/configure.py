@@ -398,7 +398,10 @@ def _parse_args():
 
   parser = argparse.ArgumentParser(allow_abbrev=False)
   parser.add_argument(
-      "--backend", type=Backend.from_str, choices=list(Backend), required=True
+      "--backend",
+      type=Backend.from_str,
+      choices=list(Backend),
+      required=True,
   )
   parser.add_argument(
       "--os", type=OS.from_str, choices=list(OS), default="linux"
@@ -430,16 +433,26 @@ def _parse_args():
   parser.add_argument("--tensorrt", action="store_true")
 
   # Path and version overrides
-  parser.add_argument("--clang_path")
-  parser.add_argument("--gcc_path")
-  parser.add_argument("--ld_library_path")
-  parser.add_argument("--lld_path")
+  path_help = "Optional: will be found on PATH if possible."
+  parser.add_argument("--clang_path", help=path_help)
+  parser.add_argument("--gcc_path", help=path_help)
+  parser.add_argument(
+      "--ld_library_path",
+      help=(
+          "Optional: will be automatically taken from the current environment"
+          " if flag is not set"
+      ),
+  )
+  parser.add_argument("--lld_path", help=path_help)
 
   # CUDA specific
-  parser.add_argument("--cublas_version")
-  parser.add_argument("--cuda_toolkit_path")
-  parser.add_argument("--cudnn_version")
-  parser.add_argument("--nccl_version")
+  find_cuda_config_help = (
+      "Optional: will be found using `find_cuda_config.py` if flag is not set."
+  )
+  parser.add_argument("--cublas_version", help=find_cuda_config_help)
+  parser.add_argument("--cuda_toolkit_path", help=find_cuda_config_help)
+  parser.add_argument("--cudnn_version", help=find_cuda_config_help)
+  parser.add_argument("--nccl_version", help=find_cuda_config_help)
 
   return parser.parse_args()
 
