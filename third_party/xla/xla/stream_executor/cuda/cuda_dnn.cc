@@ -2173,7 +2173,7 @@ static absl::Status PopulateProfileFromTimer(
       profile_result->set_scratch_size(*scratch_size);
     }
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 template <class T>
@@ -4312,7 +4312,7 @@ class OpGraph {
       }
       it->is_virtual = true;
     }
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<OpDescriptor> FindOpDescriptor(int uid) const {
@@ -4338,7 +4338,7 @@ class OpGraph {
       return tsl::errors::Internal("Unknown ID.");
     }
     it->sequence_index = index;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   bool Empty() const { return ops_.empty(); }
@@ -8402,7 +8402,7 @@ absl::Status CreateOpRunners(
 
   VLOG(4) << "\nReturned execution plans size: " << out_runners->size();
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -10104,7 +10104,7 @@ absl::Status CudnnSupport::CudnnReorderConvolutionFilterAndBias(
       /*reorderedBiasData=*/has_bias ? bias_output->opaque() : nullptr);
   RETURN_IF_CUDNN_ERROR(status);
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CudnnSupport::DoPrepareForCtcLoss(
