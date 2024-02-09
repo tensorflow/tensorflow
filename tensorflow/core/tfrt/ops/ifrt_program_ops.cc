@@ -25,6 +25,8 @@ REGISTER_OP("IfrtCall")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("program_id: int")
+    .Attr("variable_names: list(string)")
+    .Attr("variable_arg_indices: list(int)")
     .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .Doc(R"(
@@ -39,7 +41,14 @@ in their SavedModel and instead rely on Ifrt Serving's mechanism that
 automatically inserts this op with graph rewrite.
 
 program_id: int64 id that can be used to look up compiled programs from
-  `ServingExecutableRegistry`.
+ServingExecutableRegistry`.
+
+variable_names: names of variable tensors. A name can be used to look up
+corresponding loaded array of that variable tensor.
+
+variable_arg_indices: variable_arg_indices[k] indicates the position of tensor
+`variable_names[k]` in the argument list of the TPU program. This array must be
+in sorted ascending order.
 )");
 
 }  // namespace tfrt_stub

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,6 +35,9 @@ namespace tfrt_stub {
 
 IfrtCallOp::IfrtCallOp(tensorflow::OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("program_id", &program_id_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("variable_names", &variable_names_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr("variable_arg_indices", &variable_arg_indices_));
 }
 
 void IfrtCallOp::Compute(tensorflow::OpKernelContext* ctx) {
@@ -51,7 +55,9 @@ void IfrtCallOp::Compute(tensorflow::OpKernelContext* ctx) {
     inputs.push_back(ctx->input(i));
   }
 
-  absl::StatusOr<std::vector<Tensor>> results = executable_->Execute(inputs);
+  absl::StatusOr<std::vector<Tensor>> results =
+      executable_->Execute(inputs, absl::MakeSpan(variable_names_),
+                           absl::MakeSpan(variable_arg_indices_));
   OP_REQUIRES(ctx, results.ok(), results.status());
 
   tensorflow::OpOutputList outputs(ctx, 0, results->size());

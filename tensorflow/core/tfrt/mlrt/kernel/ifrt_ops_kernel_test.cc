@@ -186,7 +186,10 @@ TEST(KernelTest, IfrtLoadVariableOp) {
                   "IfrtModelContext");
 
   ASSERT_TRUE(ifrt_model_context.has_value());
-  EXPECT_THAT((*ifrt_model_context)->GetLoadedVariable(kVariableName).status(),
+  EXPECT_THAT((*ifrt_model_context)
+                  ->GetLoadedVariableRegistry()
+                  .GetLoadedVariable(kVariableName)
+                  .status(),
               ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
 
   std::vector<mlrt::Value> args;
@@ -212,8 +215,10 @@ TEST(KernelTest, IfrtLoadVariableOp) {
 
   TF_ASSERT_OK(execution_context.status());
 
-  TF_ASSERT_OK(
-      (*ifrt_model_context)->GetLoadedVariable(kVariableName).status());
+  TF_ASSERT_OK((*ifrt_model_context)
+                   ->GetLoadedVariableRegistry()
+                   .GetLoadedVariable(kVariableName)
+                   .status());
 }
 
 }  // namespace

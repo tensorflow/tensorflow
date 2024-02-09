@@ -64,7 +64,8 @@ absl::Status IfrtLoadVariable(
           *ifrt_model_context.GetClient(), variable, absl::MakeSpan(device_ids),
           hlo_sharding, ifrt_model_context.GetThreadPoolDevice()));
 
-  return ifrt_model_context.RegisterLoadedVariable(name, result_array);
+  return ifrt_model_context.GetLoadedVariableRegistry().RegisterLoadedVariable(
+      name, result_array);
 }
 
 struct MlrtIfrtLoadVariableKernel : mlrt::KernelFrame {

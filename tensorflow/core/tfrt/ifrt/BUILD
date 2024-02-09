@@ -29,6 +29,7 @@ cc_library(
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
+        ":ifrt_loaded_variable_registry",
         ":ifrt_tensor_utils",
         ":sharding_utils",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
@@ -77,11 +78,27 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_loaded_variable_registry",
+    srcs = ["ifrt_loaded_variable_registry.cc"],
+    hdrs = ["ifrt_loaded_variable_registry.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_xla//xla/python/ifrt",
+    ],
+)
+
+cc_library(
     name = "ifrt_model_context",
     srcs = ["ifrt_model_context.cc"],
     hdrs = ["ifrt_model_context.h"],
     deps = [
         ":ifrt_executable_registry",
+        ":ifrt_loaded_variable_registry",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -89,6 +106,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/concurrency:ref_count",
         "@local_xla//xla/python/ifrt",
     ],
@@ -182,30 +202,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "ifrt_model_context_test",
-    srcs = [
-        "ifrt_model_context_test.cc",
-    ],
-    tags = ["no_oss"],
-    deps = [
-        ":ifrt_model_context",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/concurrency:ref_count",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/python/ifrt",
-        "@local_xla//xla/python/ifrt:test_util",
-        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
-    ],
-)
-
-tf_cc_test(
     name = "ifrt_serving_executable_test",
     srcs = [
         "ifrt_serving_executable_test.cc",
@@ -215,7 +211,9 @@ tf_cc_test(
     ],
     tags = ["no_oss"],
     deps = [
+        ":ifrt_loaded_variable_registry",
         ":ifrt_serving_executable",
+        ":sharding_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
@@ -232,8 +230,10 @@ tf_cc_test(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",

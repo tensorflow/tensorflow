@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
@@ -54,12 +56,14 @@ class IfrtServingExecutable {
       mlir::OwningOpRef<mlir::ModuleOp> module,
       std::shared_ptr<xla::ifrt::Client> client,
       const Eigen::ThreadPoolDevice* thread_pool_device,
+      const IfrtLoadedVariableRegistry* ifrt_loaded_variable_registry,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
         module_(std::move(module)),
         ifrt_client_(std::move(client)),
         thread_pool_device_(*thread_pool_device),
+        ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
         shape_representation_fn_(std::move(shape_representation_fn)) {}
 
   // Movable but not copyable.
@@ -72,8 +76,11 @@ class IfrtServingExecutable {
   absl::string_view signature_name() const { return signature_name_; }
 
   // Executes the computation.
+  // variable_arg_indices are in sorted order.
   absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
-      absl::Span<const tensorflow::Tensor> inputs);
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const std::string> variable_names,
+      absl::Span<const int> variable_arg_indices);
 
   int num_executables() const {
     absl::MutexLock lock(&mutex_);
@@ -113,6 +120,7 @@ class IfrtServingExecutable {
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   const Eigen::ThreadPoolDevice& thread_pool_device_;
 
+  const IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry_;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   mutable absl::Mutex mutex_;
@@ -126,9 +134,10 @@ class IfrtServingExecutable {
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>
-  LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs);
+  LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes);
   absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
-  CreateExecutableSynchronously(absl::Span<const tensorflow::Tensor> inputs);
+  CreateExecutableSynchronously(
+      absl::Span<const DtypeAndShape> dtypes_and_shapes);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,

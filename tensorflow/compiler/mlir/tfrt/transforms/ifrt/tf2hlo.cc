@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -68,7 +67,7 @@ namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
 
 absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
-    mlir::func::FuncOp op, absl::Span<const tensorflow::Tensor> inputs,
+    mlir::func::FuncOp op, absl::Span<const DtypeAndShape> inputs,
     const xla::ifrt::Client& ifrt_client) {
   tensorflow::tpu::TPUCompileMetadataProto metadata;
 
@@ -91,8 +90,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
         absl::StrCat("Missing ", kMetadataTextAttrName));
   }
 
-  VLOG(3) << "TpuCompileMetadata before shape is populated "
-          << metadata.DebugString();
+  VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
     return absl::InternalError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
@@ -117,14 +115,14 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
           "Only support PARAMETER, but got ", metadata.args(i).kind()));
     }
 
-    if (metadata.args(i).dtype() != inputs[i].dtype()) {
+    if (metadata.args(i).dtype() != inputs[i].dtype) {
       return absl::InternalError(absl::StrCat("Dtype mismatched! Expected ",
                                               metadata.args(i).dtype(), " got ",
-                                              inputs[i].dtype()));
+                                              inputs[i].dtype));
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape().AsProto();
+    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
   }
 
   // Create a default device assignment if one is not given by the model.
@@ -145,7 +143,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 }  // namespace
 
 absl::StatusOr<Tf2HloResult> CompileTfToHlo(
-    mlir::ModuleOp module, absl::Span<const tensorflow::Tensor> inputs,
+    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn) {
   if (VLOG_IS_ON(1)) {
@@ -179,11 +177,11 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   TF_ASSIGN_OR_RETURN(tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
                       GetCompileMetadata(entry_fn, inputs, ifrt_client));
 
-  VLOG(1) << "Compilation metadata: " << compile_metadata.DebugString();
+  VLOG(1) << "Compilation metadata: " << compile_metadata;
 
   std::vector<TensorShape> arg_shapes;
   for (const auto& input : inputs) {
-    arg_shapes.push_back(input.shape());
+    arg_shapes.push_back(input.shape);
   }
 
   bool use_tuple_args = false;
