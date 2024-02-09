@@ -60,6 +60,7 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
+using ::mlir::quant::FindUserOfType;
 using ::mlir::quant::TryCast;
 using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::BroadcastInDimOp;
@@ -119,45 +120,27 @@ bool IsQuantizedTensorType(const Type type) {
 template <typename T>
 Operation* GetBroadcastedUserOp(Operation* op) {
   // Broadcast bias for known input shape.
-  auto broadcast_in_dims_op =
-      TryCast<BroadcastInDimOp>(op->getNextNode(),
-                                /*name=*/"broadcast_in_dims_op");
-  if (succeeded(broadcast_in_dims_op)) {
-    auto target_op = TryCast<T>((*broadcast_in_dims_op)->getNextNode(),
-                                /*name=*/"target_op");
-    if (succeeded(target_op)) {
-      return *target_op;
-    }
+  auto broadcast_in_dims_op = FindUserOfType<BroadcastInDimOp>(op);
+  if (broadcast_in_dims_op != nullptr) {
+    auto target_op = FindUserOfType<T>(broadcast_in_dims_op);
+    if (target_op != nullptr) return target_op;
   }
   // Broadcast bias for unknown input shape.
-  FailureOr<GetDimensionSizeOp> get_dimension_size_op =
-      TryCast<GetDimensionSizeOp>(op->getNextNode(),
-                                  /*name=*/"get_dimension_size_op");
-  if (failed(get_dimension_size_op)) {
-    return nullptr;
-  }
-  auto reshape_op = TryCast<ReshapeOp>((*get_dimension_size_op)->getNextNode(),
-                                       /*name=*/"reshape_op");
-  if (failed(reshape_op)) {
-    return nullptr;
-  }
-  auto concatenate_op = TryCast<ConcatenateOp>((*reshape_op)->getNextNode(),
-                                               /*name=*/"concatenate_op");
-  if (failed(concatenate_op)) {
-    return nullptr;
-  }
+  auto get_dimension_size_op = FindUserOfType<GetDimensionSizeOp>(op);
+  if (get_dimension_size_op == nullptr) return nullptr;
+
+  auto reshape_op = FindUserOfType<ReshapeOp>(get_dimension_size_op);
+  if (reshape_op == nullptr) return nullptr;
+
+  auto concatenate_op = FindUserOfType<ConcatenateOp>(reshape_op);
+  if (concatenate_op == nullptr) return nullptr;
+
   auto dynamic_broadcast_in_dim_op =
-      TryCast<DynamicBroadcastInDimOp>((*concatenate_op)->getNextNode(),
-                                       /*name=*/"dynamic_broadcast_in_dim_op");
-  if (failed(dynamic_broadcast_in_dim_op)) {
-    return nullptr;
-  }
-  auto target_op = TryCast<T>((*dynamic_broadcast_in_dim_op)->getNextNode(),
-                              /*name=*/"target_op");
-  if (failed(target_op)) {
-    return nullptr;
-  }
-  return *target_op;
+      FindUserOfType<DynamicBroadcastInDimOp>(concatenate_op);
+  if (dynamic_broadcast_in_dim_op == nullptr) return nullptr;
+
+  auto target_op = FindUserOfType<T>(dynamic_broadcast_in_dim_op);
+  return target_op;
 }
 
 // Checks if all inputs and outputs are quantized.
@@ -402,7 +385,7 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter,
 
   rewriter.setInsertionPointAfter(gemm_style_op);
 
-  Operation* next_op = gemm_style_op->getNextNode();
+  Operation* next_op = FindUserOfType<>(gemm_style_op);
 
   // If activation exists, omit clipping op.
   // Since out_scale and out_zp are computed based on clipped range,
