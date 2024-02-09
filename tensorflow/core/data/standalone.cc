@@ -157,7 +157,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                              tsl::core::RefCountPtr<Rendezvous>* r) {
         *r = tsl::core::RefCountPtr<Rendezvous>(
             new IntraProcessRendezvous(device_mgr));
-        return OkStatus();
+        return absl::OkStatus();
       }});
 
   string fetch_node = "";
@@ -192,7 +192,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   *result = absl::WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
-  return OkStatus();
+  return absl::OkStatus();
 }  // static
 
 Status Dataset::MakeIterator(
@@ -231,7 +231,7 @@ Status Dataset::MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
   *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
                                           serialization_ctx.release()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
