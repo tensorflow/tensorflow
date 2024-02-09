@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/curl/curl.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
 #include "tsl/platform/types.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
@@ -230,8 +232,8 @@ void CurlHttpRequest::SetDeleteRequest() {
       libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE"));
 }
 
-Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
-                                       size_t offset) {
+absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
+                                             size_t offset) {
   CheckNotSent();
   CheckMethodNotSet();
   is_method_set_ = true;
@@ -651,19 +653,29 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
       return OkStatus();
     }
     return errors::FailedPrecondition(
-        strings::StrCat(error_message, overflow_message));
+        absl::StrCat(error_message, overflow_message));
   }
-  // Domain resolution errors and certificate problems aren't going to improve
+  // Certificate problems and _certain DNS errors_ aren't going to improve
   // on retry, so we return a FailedPrecondition (as the caller must take action
   // before this can succeed).
-  if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
-    return errors::FailedPrecondition(
-        strings::StrCat(error_message, error_buffer));
+  if (code == CURLE_COULDNT_RESOLVE_HOST) {
+    // Special-case metadata requests as FAILED_PRECONDITION - see cl/289687412.
+    if (absl::StrContains(uri_, "://metadata") ||
+        absl::StrContains(uri_, "://metadata.google.internal")) {
+      return absl::FailedPreconditionError(
+          absl::StrCat(error_message, error_buffer));
+    }
+    // Any non-metadata DNS failures should be retried - see b/324613975.
+    return absl::UnavailableError(absl::StrCat(error_message, error_buffer));
+  }
+  if (code == CURLE_SSL_CACERT_BADFILE) {
+    return absl::FailedPreconditionError(
+        absl::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
-  return errors::Unavailable(
-      strings::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
+  return absl::UnavailableError(
+      absl::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 
 }  // namespace tsl
