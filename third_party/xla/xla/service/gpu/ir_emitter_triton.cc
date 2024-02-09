@@ -415,9 +415,11 @@ Value AddPtr(ImplicitLocOpBuilder& b, Value ptr, Value offset) {
   return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
 }
 
-Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
-                      const se::DeviceDescription& device_info,
-                      const HloInstruction& hlo, ValueRange inputs) {
+absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
+                                      absl::string_view libdevice_path,
+                                      const se::DeviceDescription& device_info,
+                                      const HloInstruction& hlo,
+                                      ValueRange inputs) {
   if (mlir::getElementTypeOrSelf(inputs[0]).isF32() ||
       mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
@@ -489,7 +491,8 @@ Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
                   mlir::mhlo::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     default:
-      LOG(FATAL) << "Unsupported operation " << hlo.ToString();
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));
   }
 }
 
@@ -901,7 +904,8 @@ absl::StatusOr<Value> EmitScope(
       for (const HloInstruction* operand : hlo->operands()) {
         operands.push_back(values[operand]);
       }
-      result = EmitElementwise(b, libdevice_path, device_info, *hlo, operands);
+      TF_ASSIGN_OR_RETURN(result, EmitElementwise(b, libdevice_path,
+                                                  device_info, *hlo, operands));
     } else if (hlo->opcode() == HloOpcode::kTuple) {
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
@@ -919,7 +923,8 @@ absl::StatusOr<Value> EmitScope(
                           EmitNestedFusion(b, libdevice_path, device_info,
                                            *fusion_instruction, values));
     } else {
-      LOG(FATAL) << hlo->ToString();
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported operation ", hlo->ToString()));
     }
     TF_RET_CHECK(values.insert({hlo, result}).second) << hlo->ToString();
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
@@ -1191,11 +1196,11 @@ struct MatMulLaunchConfig {
   matmul_dims.out_lhs_noncontracting_dim_idx = dot.shape().rank() - 2;
 
   auto* root = dot.parent()->root_instruction();
-  matmul_dims.n = analysis
-                      .IterSpec(TritonFusionAnalysis::Scope::OUTPUT, root,
-                                matmul_dims.out_rhs_noncontracting_dim_idx)
-                      ->at(0)
-                      .count;
+  auto iter_spec =
+      analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT, root,
+                        matmul_dims.out_rhs_noncontracting_dim_idx);
+  TF_RET_CHECK(iter_spec != nullptr);
+  matmul_dims.n = iter_spec->at(0).count;
   // Contracting dimension length.
   if (config.split_k > 1 &&
       dot.operand(0)->operand(0)->opcode() == HloOpcode::kPad) {
