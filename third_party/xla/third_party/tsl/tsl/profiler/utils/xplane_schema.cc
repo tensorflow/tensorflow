@@ -59,6 +59,8 @@ const absl::string_view kCounterEventsLineName = "_counters_";
 const absl::string_view kDeviceVendorNvidia = "Nvidia";
 const absl::string_view kDeviceVendorAMD = "AMD";
 
+const absl::string_view kTaskEnvPlaneName = "Task Environment";
+
 namespace {
 
 constexpr int kNumHostEventTypes =
