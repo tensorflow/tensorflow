@@ -241,7 +241,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
@@ -326,8 +326,8 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     StatusCallback done) {
   if (alloc_attrs.on_host()) {
     *to = from;
-    done(OkStatus());
-    return OkStatus();
+    done(absl::OkStatus());
+    return absl::OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
       Status err = errors::Internal("PluggableDevice copy from non-DMA ",
@@ -359,7 +359,7 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
 
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done), false /*sync_dst_compute*/);
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
