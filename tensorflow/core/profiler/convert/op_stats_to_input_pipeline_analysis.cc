@@ -659,7 +659,7 @@ bool InputAnalysis(double input_percent, double all_other_percent,
         "could be due to I/O or Python execution or both).");
     return true;
   } else {
-    // Defintely not input-bound.
+    // Definitely not input-bound.
     *input_classification = "device";
     *input_statement =
         absl::StrCat("Your program is NOT input-bound because only ",
