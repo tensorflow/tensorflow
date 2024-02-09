@@ -317,7 +317,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
     it->second->Ref();
     client->reset(it->second.get());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
