@@ -332,44 +332,6 @@ class Stream {
     return st;
   }
 
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemmStridedBatchedWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
-      int64_t stride_c, int batch_count, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm, const NumericOptions &numeric_options,
-      blas::ProfileResult *output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
-
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-    absl::Status st = blas->DoBlasGemmStridedBatchedWithAlgorithm(
-        this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, lda, stride_a, b,
-        blas::ToDataType<InputType>::value, ldb, stride_b, beta_ptr, c,
-        blas::ToDataType<OutputType>::value, ldc, stride_c, batch_count,
-        computation_type, algorithm, numeric_options, output_profile_result,
-        context);
-    if (output_profile_result) {
-      // The error is recorded in the profile.
-      return absl::OkStatus();
-    }
-    return st;
-  }
-
   template <typename T>
   using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;
 
