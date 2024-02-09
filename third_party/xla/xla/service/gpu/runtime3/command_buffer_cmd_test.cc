@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/buffer_assignment.h"
@@ -35,8 +37,10 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace xla::gpu {
 
@@ -299,7 +303,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
       {BufferAllocation::Slice(&alloc0, 0, 1024), MemoryAccess::kRead},
       {BufferAllocation::Slice(&alloc1, 0, 1024), MemoryAccess::kWrite}};
 
-  TracedCommandBuffer traced_cmd_buffer(buffers);
+  TracedCommandBuffer traced_cmd_buffer(buffers, /*capacity=*/2);
 
   se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
   se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));
@@ -335,6 +339,78 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
   ASSERT_NE(command_buffer0, command_buffer2);
   EXPECT_EQ(num_calls, 2);
+
+  // Check that we keep first command buffer in cache.
+  allocations = BufferAllocations({mem0, mem1}, 0, executor->GetAllocator());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer3,
+                          traced_cmd_buffer.GetOrTraceCommandBuffer(
+                              &allocations, executor, &stream, trace));
+  ASSERT_EQ(command_buffer0, command_buffer3);
+  EXPECT_EQ(num_calls, 2);
+
+  // Check that we trace a new graph when buffer allocation pattern is new.
+  allocations = BufferAllocations({mem0, mem0}, 0, executor->GetAllocator());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer4,
+                          traced_cmd_buffer.GetOrTraceCommandBuffer(
+                              &allocations, executor, &stream, trace));
+  ASSERT_NE(command_buffer4, command_buffer3);
+  ASSERT_NE(command_buffer4, command_buffer2);
+  EXPECT_EQ(num_calls, 3);
+
+  // Check that we still keep the previous graph in cache.
+  allocations = BufferAllocations({mem0, mem1}, 0, executor->GetAllocator());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer5,
+                          traced_cmd_buffer.GetOrTraceCommandBuffer(
+                              &allocations, executor, &stream, trace));
+  ASSERT_EQ(command_buffer0, command_buffer5);
+  EXPECT_EQ(num_calls, 3);
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  se::Stream stream(executor);
+  stream.Init();
+  CHECK(stream.ok());
+
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
+
+  CommandBufferCmd::BufferUsageVector buffers = {
+      {BufferAllocation::Slice(&alloc0, 0, 1024), MemoryAccess::kRead},
+      {BufferAllocation::Slice(&alloc1, 0, 1024), MemoryAccess::kWrite}};
+
+  se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
+  se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));
+
+  std::array<BufferAllocations, 4> allocations = {
+      BufferAllocations({mem0, mem1}, 0, executor->GetAllocator()),
+      BufferAllocations({mem1, mem0}, 0, executor->GetAllocator()),
+      BufferAllocations({mem0, mem0}, 0, executor->GetAllocator()),
+      BufferAllocations({mem1, mem1}, 0, executor->GetAllocator()),
+  };
+
+  int32_t index = 0;
+  TracedCommandBuffer traced_cmd_buffer(buffers);
+
+  auto trace = [](se::Stream*) { return absl::OkStatus(); };
+  absl::FunctionRef<absl::Status(se::Stream*)> trace_ref(trace);
+
+  for (auto s : state) {
+    TF_CHECK_OK(traced_cmd_buffer
+                    .GetOrTraceCommandBuffer(&allocations[index++ % 4],
+                                             executor, &stream, trace_ref)
+                    .status());
+  }
+}
+
+BENCHMARK(BM_GetOrTraceCommandBuffer);
 
 }  // namespace xla::gpu

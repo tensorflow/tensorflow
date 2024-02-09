@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
@@ -290,10 +291,13 @@ std::vector<bool> CommandBufferCmdSequence::barriers() const {
 //===----------------------------------------------------------------------===//
 
 TracedCommandBuffer::TracedCommandBuffer(
-    CommandBufferCmd::BufferUsageVector buffers) {
-  for (auto& buffer : buffers) {
-    allocs_indices_.insert(buffer.slice.index());
-  }
+    CommandBufferCmd::BufferUsageVector buffers, int64_t capacity)
+    : capacity_(capacity), entries_(capacity) {
+  // Collect unique buffer allocation indices in a set first and convert to
+  // vector as flat hash set iteration has measurable overheads.
+  absl::flat_hash_set<BufferAllocation::Index> allocs_indices;
+  for (auto& buffer : buffers) allocs_indices.insert(buffer.slice.index());
+  allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 }
 
 absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
@@ -301,21 +305,48 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace) {
   // Collect memory addresses for relevant allocations.
   absl::InlinedVector<se::DeviceMemoryBase, 4> allocs;
+  allocs.reserve(allocs_indices_.size());
   for (auto& index : allocs_indices_) {
-    allocs.push_back(buffer_allocation->GetDeviceAddress(index));
+    allocs.emplace_back(buffer_allocation->GetDeviceAddress(index));
   }
 
-  // If memory addresses are the same and we have a command buffer return it.
-  if (recorded_allocs_ == allocs && command_buffer_) {
-    return command_buffer_.get();
+  // Moves entry at `i` position to front and moves entries in `[0, i)` range
+  // one element to the right. Returns reference to the first entry.
+  auto shift_right = [&](size_t i) -> Entry& {
+    Entry entry = std::move(entries_[i]);
+    do {
+      entries_[i] = std::move(entries_[i - 1]);
+    } while (--i > 0);
+    return entries_[0] = std::move(entry);
+  };
+
+  for (size_t i = 0; i < capacity_; ++i) {
+    // Found entry for a given allocations, move it to front and return a
+    // pointer to cached command buffer.
+    if (ABSL_PREDICT_TRUE(absl::c_equal(entries_[i].recorded_allocs, allocs) &&
+                          entries_[i].command_buffer)) {
+      return i == 0 ? entries_[i].command_buffer.get()
+                    : shift_right(i).command_buffer.get();
+    }
+
+    // Create a new entry by calling a user-provided tracing function, move it
+    // to front and return a pointer to cached command buffer.
+    if (entries_[i].command_buffer == nullptr) {
+      TF_ASSIGN_OR_RETURN(entries_[i].command_buffer,
+                          se::CommandBuffer::Trace(executor, stream, trace));
+      entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
+      return i == 0 ? entries_[i].command_buffer.get()
+                    : shift_right(i).command_buffer.get();
+    }
   }
 
-  // Call command buffer tracing function passed by a user.
-  TF_ASSIGN_OR_RETURN(command_buffer_,
+  // Create a new entry by calling a user-provided tracing function, replace the
+  // last entry with it, move it to front and return a pointer to cached command
+  // buffer.
+  TF_ASSIGN_OR_RETURN(entries_[capacity_ - 1].command_buffer,
                       se::CommandBuffer::Trace(executor, stream, trace));
-  recorded_allocs_ = std::move(allocs);
-
-  return command_buffer_.get();
+  entries_[capacity_ - 1].recorded_allocs.assign(allocs.begin(), allocs.end());
+  return shift_right(capacity_ - 1).command_buffer.get();
 }
 
 //===----------------------------------------------------------------------===//

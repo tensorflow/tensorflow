@@ -273,23 +273,30 @@ class CommandBufferCmdSequence {
 //===----------------------------------------------------------------------===//
 
 // A cache for traced command buffers that will re-trace on change in buffer
-// allocations that are relevant for `buffers` passed to constructor.
+// allocations that are relevant for `buffers` passed to constructor. We use a
+// very simple most-recently-used cache of traced command buffers as in practice
+// subsequent calls to XLA executable tend to reuse the same allocations.
 class TracedCommandBuffer : public CommandBufferCmd::State {
  public:
-  explicit TracedCommandBuffer(CommandBufferCmd::BufferUsageVector buffers);
+  explicit TracedCommandBuffer(CommandBufferCmd::BufferUsageVector buffers,
+                               int64_t capacity = 16);
 
-  // Returns cached command buffer if buffer allocation for relevant allocations
-  // did not change from last run. Traces a new command buffer using user
-  // provided callback if buffer allocation changed from last run.
+  // Returns cached command buffer traced using the same buffer addresses or
+  // traces and caches a new command buffer using user provided callback.
   absl::StatusOr<se::CommandBuffer*> GetOrTraceCommandBuffer(
       const BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
       se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
  private:
-  absl::flat_hash_set<BufferAllocation::Index> allocs_indices_;
-  absl::InlinedVector<se::DeviceMemoryBase, 4> recorded_allocs_;
+  std::vector<BufferAllocation::Index> allocs_indices_;
 
-  std::unique_ptr<se::CommandBuffer> command_buffer_;
+  struct Entry {
+    std::vector<se::DeviceMemoryBase> recorded_allocs;
+    std::unique_ptr<se::CommandBuffer> command_buffer;
+  };
+
+  int64_t capacity_;
+  std::vector<Entry> entries_;
 };
 
 //===----------------------------------------------------------------------===//
