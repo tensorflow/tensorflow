@@ -156,8 +156,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     // This cannot be the "else" branch of the previous "if".
     if (backend_config.has_triton_gemm_config()) {
-      const TritonGemmConfig config =
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+      TF_ASSIGN_OR_RETURN(
+          const TritonGemmConfig config,
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
       if (config.split_k > 1) {
         TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, config));
       }
@@ -815,17 +816,20 @@ absl::StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   return best_triton;
 }
 
-absl::Status DumpAutotunedFusion(const AutotuneConfig& config,
+absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
                                  AutotunerCompileUtil& util,
                                  const AutotuneResult result,
                                  const HloFusionInstruction* fusion,
                                  int fusion_id) {
+  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_gemm_config,
+                      TritonGemmConfig::FromProto(result.triton()));
+  const se::DeviceDescription& device_desc =
+      autotune_config.GetExecutor()->GetDeviceDescription();
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       util.ExtractModule([&](const DebugOptions& debug_opts) {
         return TritonGemmAutotuneExtractor(
-            TritonGemmConfig::FromProto(result.triton()),
-            config.GetExecutor()->GetDeviceDescription(), fusion, debug_opts,
+            triton_gemm_config, device_desc, fusion, debug_opts,
             /*allow_filtering_kernels_spilling_registers=*/true);
       }));
   module->set_name(std::string(fusion->name()));

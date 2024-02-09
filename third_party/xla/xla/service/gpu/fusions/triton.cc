@@ -135,12 +135,13 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     if (fusion_kind == kTritonSoftmaxFusionKind) {
       launch_dimensions = *this->launch_dimensions();
 
-      auto& triton_config = *backend_config.mutable_triton_gemm_config();
-      triton_config.set_num_stages(1);
+      // This is a hack, we use TritonGemmConfig for Softmax too, but we ignore
+      // most parameters.
+      TritonGemmConfig config;
+      config.num_stages = 1;
       // Thread count per block is always a multiple of WarpSize.
-      triton_config.set_num_warps(launch_dimensions.num_threads_per_block() /
-                                  WarpSize());
-      TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
+      config.num_warps = launch_dimensions.num_threads_per_block() / WarpSize();
+      config.num_ctas = 1;
 
       TF_ASSIGN_OR_RETURN(auto analysis,
                           TritonFusionAnalysis::Execute(*hlo_computation));
@@ -170,8 +171,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(2);
       }
-      TritonGemmConfig config =
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+      TF_ASSIGN_OR_RETURN(
+          TritonGemmConfig config,
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
 
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));

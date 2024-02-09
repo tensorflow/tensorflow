@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/primitive_util.h"
@@ -805,16 +806,20 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 }  // namespace gpublas_lt
 
-/*static*/ TritonGemmConfig TritonGemmConfig::FromProto(
+/*static*/ StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
     const AutotuneResult::TritonGemmKey& proto) {
-  TritonGemmConfig config;
-  config.block_m = proto.block_m();
-  config.block_n = proto.block_n();
-  config.block_k = proto.block_k();
-  config.split_k = proto.split_k();
-  config.num_stages = proto.num_stages();
-  config.num_warps = proto.num_warps();
-  return config;
+  // Sanity check to avoid loading incomplete data.
+  TF_RET_CHECK(proto.block_m() > 0);
+  TF_RET_CHECK(proto.block_n() > 0);
+  TF_RET_CHECK(proto.block_k() > 0);
+  TF_RET_CHECK(proto.split_k() > 0);
+  TF_RET_CHECK(proto.num_stages() > 0);
+  TF_RET_CHECK(proto.num_warps() > 0);
+  TF_RET_CHECK(proto.num_ctas() > 0);
+
+  return TritonGemmConfig(proto.block_m(), proto.block_n(), proto.block_k(),
+                          proto.split_k(), proto.num_stages(),
+                          proto.num_warps(), proto.num_ctas());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -825,6 +830,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_split_k(split_k);
   key.set_num_stages(num_stages);
   key.set_num_warps(num_warps);
+  key.set_num_ctas(num_ctas);
   return key;
 }
 
@@ -832,7 +838,7 @@ std::string TritonGemmConfig::ToString() const {
   return absl::StrCat("{block_m:", block_m, ",block_n:", block_n,
                       ",block_k:", block_k, ",split_k:", split_k,
                       ",num_stages:", num_stages, ",num_warps:", num_warps,
-                      "}");
+                      ",num_ctas:", num_ctas, "}");
 }
 
 }  // namespace gpu

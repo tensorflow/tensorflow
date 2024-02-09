@@ -198,19 +198,23 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 struct TritonGemmConfig {
   constexpr TritonGemmConfig() = default;
   constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
-                             int num_stages, int num_warps)
+                             int num_stages, int num_warps, int num_ctas = 1)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
         split_k(split_k),
         num_stages(num_stages),
-        num_warps(num_warps) {}
+        num_warps(num_warps),
+        num_ctas(num_ctas) {}
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
   int split_k = 0;
   int num_stages = 0;
   int num_warps = 0;
+  // Number of blocks in a block cluster.
+  // TODO(b/324364473): Plumb this through correctly.
+  int num_ctas = 0;
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.
@@ -222,11 +226,14 @@ struct TritonGemmConfig {
  private:
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps);
+                           num_warps, num_ctas);
   }
 
  public:
-  static TritonGemmConfig FromProto(const AutotuneResult::TritonGemmKey& proto);
+  // Creates a TritonGemmConfig from the supplied proto, doing a simple sanity
+  // check.
+  static StatusOr<TritonGemmConfig> FromProto(
+      const AutotuneResult::TritonGemmKey& proto);
   AutotuneResult::TritonGemmKey ToProto() const;
 
   std::string ToString() const;

@@ -74,8 +74,8 @@ ENTRY e {
   p2 = f16[15,19]{1,0} parameter(2)
   p1 = s8[19,17]{1,0} parameter(1)
   p0 = f16[15,19]{1,0} parameter(0)
-  triton_gemm_dot1 = f16[15,17]{1,0} fusion(p3, p2), kind=kCustom, calls=triton_gemm_dot1, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}}"
-  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}}"
+  triton_gemm_dot1 = f16[15,17]{1,0} fusion(p3, p2), kind=kCustom, calls=triton_gemm_dot1, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\",\"num_ctas\":\"1\"}}}"
+  triton_gemm_dot0 = f16[15,17]{1,0} fusion(p1, p0), kind=kCustom, calls=triton_gemm_dot0, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\",\"num_ctas\":\"1\"}}}"
   ROOT tuple = (f16[15,17]{1,0}, f16[15,17]{1,0}) tuple(triton_gemm_dot0, triton_gemm_dot1)
 }
 
