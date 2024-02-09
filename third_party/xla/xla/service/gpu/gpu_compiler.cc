@@ -1431,6 +1431,15 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    TF_ASSIGN_OR_RETURN(
+        std::string autotune_results,
+        AutotunerUtil::SerializeAutotuneResultsForModule(
+            *hlo_module, autotune_config, /*as_textproto=*/true));
+    DumpToFileInDirOrStdout(*hlo_module, "", "autotune_results.pbtxt",
+                            autotune_results);
+  }
+
   return absl::OkStatus();
 }
 
