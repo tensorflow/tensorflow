@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/triton.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -211,6 +212,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     impl_fn->eraseFromParent();
 
     return {{kernel->getName().str(), launch_dimensions,
+             triton_wrapper_result.cluster_dim,
              triton_wrapper_result.shmem_bytes}};
   };
 
@@ -230,7 +232,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       fusion_op_or_hlo, entry->kernel_name, kernel_arguments.args(),
-      entry->launch_dimensions, entry->shmem_bytes));
+      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
 
   return result;
 #else

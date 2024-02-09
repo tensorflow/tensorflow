@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -72,7 +74,8 @@ class KernelThunk : public Thunk {
   KernelThunk(std::variant<mlir::Operation*, const HloInstruction*> op,
               std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
-              LaunchDimensions launch_dimensions, int64_t shmem_bytes);
+              LaunchDimensions launch_dimensions,
+              std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -114,6 +117,9 @@ class KernelThunk : public Thunk {
 
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;
+
+  // The cluster dimensions used to launch the kernel.
+  const std::optional<se::ClusterDim> cluster_dim_;
 
   int64_t shmem_bytes_;
 

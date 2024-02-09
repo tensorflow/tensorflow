@@ -109,6 +109,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -731,33 +732,28 @@ absl::StatusOr<Value> EmitScope(
   return values[instructions.back()];
 }
 
-absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
-                                  const se::CudaComputeCapability& cc,
-                                  const TritonGemmConfig& config) {
+// Create Triton pipeline.
+//
+// `out_cluster_info` must be kept alive at least until pm.run() is called.
+// It should be read after that. We have to pass the cluster dims to
+// LaunchDimensions. Triton currently uses this as an out-parameter to return
+// the cluster dims determined based on `config.num_ctas` and a heuristic. There
+// are some signs that show that this was intended to be used as an in-out
+// parameter which would give a hint to Triton which cluster dims we prefer to
+// use, but that's not the case currently.
+absl::Status CreateTritonPipeline(
+    mlir::OpPassManager& pm, const se::CudaComputeCapability& cc,
+    const TritonGemmConfig& config,
+    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 
   // Not supported for now.
   const bool enable_warp_specialization = false;
-  // This is the number of blocks per cluster.
-  //
-  // Clusters have 3 dimensions (x,y,z) and only 1 <= x*y*z <= 16 are supported.
-  // Triton doesn't support (3,3,1) and possibly other non-"power of 2" values.
-  // So the possible useful values of num_ctas are probably [1,2,4,8,16].
-  // Once clusters do something that helps us, we may want to autotune this.
-  const int num_ctas = 1;
   // If we ever set this to a non-null pointer, the object will have to live at
   // least until pm.run() is called.
   // TODO(b/316566238): Use TMA info collected here in XLA runtime.
   mlir::triton::gpu::TMAMetadataTy* const out_tma_infos = nullptr;
-  // If we ever set this to a non-null pointer, the object will have to live at
-  // least until pm.run() is called and then we will have to pass the cluster
-  // dims to LaunchDimensions. Triton currently uses this as an out-parameter to
-  // return the cluster dims determined based on num_ctas and a heuristic. There
-  // are some signs that show that this was intended to be used as an in-out
-  // parameter which would give a hint to Triton which cluster dims we prefer to
-  // use, but that's not the case currently.
-  mlir::triton::nvidia_gpu::ClusterInfo* const out_cluster_info = nullptr;
 
   // Based on make_ttir() in
   // @triton//:third_party/nvidia/backend/compiler.py
@@ -773,11 +769,11 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   // Based on make_ttgir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      config.num_warps, threadsPerWarp, num_ctas, ccAsInt));
+      config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(out_cluster_info));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(out_cluster_info));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
   pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
@@ -808,7 +804,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::createCSEPass());
   } else {
     pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                           num_ctas, ccAsInt));
+                                           config.num_ctas, ccAsInt));
   }
 
   pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass(
@@ -2179,7 +2175,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  if (!CreateTritonPipeline(pm, cc, config).ok()) {
+  mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
+  if (!CreateTritonPipeline(pm, cc, config, /*out*/ cluster_info).ok()) {
     return Internal("Failed to create Triton pipeline.");
   }
   if (log_stream.has_value()) {
@@ -2235,7 +2232,24 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     VerifyModule(*llvm_module);
   }
 
-  return {{shared_mem_bytes}};
+  // `cluster_info` must be read after pm.run().
+  std::optional<se::ClusterDim> cluster_dim;
+  if (config.num_ctas > 1) {
+    VLOG(3) << "num_ctas: " << config.num_ctas
+            << ", cluster_info: " << cluster_info.clusterDimX << ","
+            << cluster_info.clusterDimY << "," << cluster_info.clusterDimZ;
+    if (cluster_info.clusterDimX > 1 || cluster_info.clusterDimY > 1 ||
+        cluster_info.clusterDimZ > 1) {
+      cluster_dim =
+          se::ClusterDim(cluster_info.clusterDimX, cluster_info.clusterDimY,
+                         cluster_info.clusterDimZ);
+    }
+  } else {
+    TF_RET_CHECK(cluster_info.clusterDimX == 1 &&
+                 cluster_info.clusterDimY == 1 &&
+                 cluster_info.clusterDimZ == 1);
+  }
+  return {{shared_mem_bytes, cluster_dim}};
 }
 
 }  // namespace gpu

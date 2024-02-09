@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -89,6 +90,13 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
 absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
+                                   se::Stream* stream);
+
+// Runs loaded kernel on the stream with the provided arguments.
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   const se::ClusterDim& cluster_dim,
                                    se::Stream* stream);
 
 // Initializes `buffer` with random data on `stream`.

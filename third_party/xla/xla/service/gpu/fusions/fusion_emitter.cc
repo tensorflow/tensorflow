@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -109,7 +110,8 @@ absl::Status AnnotateKernelLaunchDimensions(
     AnnotateWithInt32Value("reqntidz", launch_dims.thread_counts_per_block().z,
                            kernel_name, llvm_module);
   }
-
+  // Maybe we want to set "reqnctapercluster" here, but not sure if needed or if
+  // LLVM supports that yet. Let's do that later when needed.
   return absl::OkStatus();
 }
 
@@ -337,6 +339,7 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
             // TODO(jreiffers): Return shmem_bytes from EmitKernel when
             // converting the Triton emitters to this infrastructure.
             return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
+                                           /*cluster_dim=*/std::nullopt,
                                            /*shmem_bytes=*/0};
           });
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
@@ -349,11 +352,11 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   if (ir_emitter_context.emit_ir_from_hlo()) {
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
         &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->shmem_bytes));
+        entry->cluster_dim, entry->shmem_bytes));
   } else {
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
         fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->shmem_bytes));
+        entry->cluster_dim, entry->shmem_bytes));
   }
 
   return result;

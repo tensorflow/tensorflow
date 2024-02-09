@@ -575,7 +575,10 @@ ReductionFusion::ReductionEmitter::BuildKernelThunkForFusion(
                                      fusion_.operand_count(), launch_dimensions,
                                      builder_));
             TF_RETURN_IF_ERROR(kernel_builder_fn(input_arrays, output_arrays));
-            return {{kernel->getName().str(), launch_dimensions}};
+            // Shared memory is allocated statically.
+            return {{kernel->getName().str(), launch_dimensions,
+                     /*cluster_dim=*/std::nullopt,
+                     /*shmem_bytes=*/0}};
           });
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
   if (cached) {
@@ -586,15 +589,12 @@ ReductionFusion::ReductionEmitter::BuildKernelThunkForFusion(
   if (ir_emitter_context_.emit_ir_from_hlo()) {
     return std::make_unique<KernelThunk>(
         &fusion_, entry->kernel_name, kernel_arguments.args(),
-        launch_dimensions,
-        // Shared memory is allocated statically.
-        /*shmem_bytes=*/0);
+        launch_dimensions, entry->cluster_dim, entry->shmem_bytes);
   }
 
   return std::make_unique<KernelThunk>(
       fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dimensions,
-      // Shared memory is allocated statically.
-      /*shmem_bytes=*/0);
+      entry->cluster_dim, entry->shmem_bytes);
 }
 
 absl::Status ReductionFusion::ReductionGroupEmitter::EmitExtraOutputsForReduce(

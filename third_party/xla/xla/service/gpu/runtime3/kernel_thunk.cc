@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -64,7 +66,8 @@ mlir::Value RemoveTransformingOperations(mlir::Value value) {
 KernelThunk::KernelThunk(
     std::variant<mlir::Operation*, const HloInstruction*> op,
     std::string kernel_name, absl::Span<const KernelArgument> kernel_arguments,
-    LaunchDimensions launch_dimensions, int64_t shmem_bytes)
+    LaunchDimensions launch_dimensions,
+    std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes)
     : Thunk(Kind::kKernel, std::holds_alternative<mlir::Operation*>(op)
                                ? Thunk::ThunkInfo::WithProfileAnnotation(
                                      std::get<mlir::Operation*>(op))
@@ -72,6 +75,7 @@ KernelThunk::KernelThunk(
                                      std::get<const HloInstruction*>(op))),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
+      cluster_dim_(std::move(cluster_dim)),
       shmem_bytes_(shmem_bytes) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
@@ -96,8 +100,10 @@ KernelThunk::KernelThunk(
 }
 
 std::string KernelThunk::ToStringExtra(int indent) const {
-  return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,
-                         launch_dimensions_.ToString());
+  return absl::StrFormat(
+      ", kernel = %s, launch dimensions = %s, cluster_dim = %s", kernel_name_,
+      launch_dimensions_.ToString(),
+      cluster_dim_.has_value() ? cluster_dim_->ToString() : "nullopt");
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
@@ -142,6 +148,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Load the kernel.
   se::StreamExecutor* executor = params.stream->parent();
   LaunchDimensions launch_dimensions;
+  std::optional<se::ClusterDim> cluster_dim;
   const se::Kernel* kernel = nullptr;
 
   {
@@ -150,6 +157,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;
     launch_dimensions = launch_dimensions_;
+    cluster_dim = cluster_dim_;
     kernel = it->second.get();
   }
 
@@ -166,8 +174,13 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     PrintBufferContents(params.stream, buffer_args);
   }
 
-  return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
-                               params.stream);
+  if (cluster_dim.has_value()) {
+    return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
+                                 cluster_dim.value(), params.stream);
+  } else {
+    return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
+                                 params.stream);
+  }
 }
 
 //===----------------------------------------------------------------------===//

@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -4023,6 +4022,7 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       op, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,
+      /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0));
 
   return {{inputs, outputs}};
@@ -4054,6 +4054,7 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       hlo, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,
+      /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0));
 
   return {{inputs, outputs}};

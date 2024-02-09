@@ -213,7 +213,6 @@ struct TritonGemmConfig {
   int num_stages = 0;
   int num_warps = 0;
   // Number of blocks in a block cluster.
-  // TODO(b/324364473): Plumb this through correctly.
   int num_ctas = 0;
 
   // When adding new members, please update all methods, such as ToTuple,
