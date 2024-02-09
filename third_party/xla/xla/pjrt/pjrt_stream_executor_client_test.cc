@@ -150,7 +150,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 
   EXPECT_FALSE(got_literal);
 
-  avr.emplace(tsl::OkStatus());
+  avr.emplace(absl::OkStatus());
   EXPECT_TRUE(future.IsReady());
 
   {
