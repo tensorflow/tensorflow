@@ -51,9 +51,6 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
 
-/// Creates a pass that tests the useranges of the UserangeAnalysis.
-std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
-
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createTestShapeComponentAnalysisPass();

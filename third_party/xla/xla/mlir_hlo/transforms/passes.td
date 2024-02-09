@@ -51,11 +51,6 @@ def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
   let dependentDialects = ["affine::AffineDialect"];
 }
 
-def TestUserange : Pass<"test-print-userange", "func::FuncOp"> {
-  let summary = "Test pass for checking userange intervals.";
-  let constructor = "createTestUserangePass()";
-}
-
 def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
                                       "func::FuncOp"> {
   let summary = "Test pass for analyzing shape components.";
