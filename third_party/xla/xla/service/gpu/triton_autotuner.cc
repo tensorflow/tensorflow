@@ -133,7 +133,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                   return absl::InternalError(absl::StrCat(
                       "Expect autotune result cache hit for deviceless "
                       "compilation (HLO: ",
-                      hlo->ToString()));
+                      hlo->ToString(), ")"));
                 }
                 return absl::InternalError("Expect autotune result cache hit.");
               }));
