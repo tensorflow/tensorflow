@@ -3263,7 +3263,7 @@ struct ConvolutionOpGeneralConversion
 
     // Finally, create the computation
     auto inferredMaps =
-        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs}, ctx);
 
     Value emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, reshapedResultShape, resultType.getElementType());
@@ -3578,7 +3578,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
     SmallVector<AffineMap, 4> inferredMaps(3, AffineMap::get(ctx));
     if (rank > 0)
       inferredMaps =
-          AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+          AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs}, ctx);
 
     SmallVector<AffineMap, 4> indexingMaps;
 
