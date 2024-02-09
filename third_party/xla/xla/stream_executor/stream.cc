@@ -497,25 +497,6 @@ Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
   return *this;
 }
 
-Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
-                                    dnn::DataType input_type,
-                                    const DeviceMemoryBase &input_data,
-                                    const dnn::BatchDescriptor &output_desc,
-                                    dnn::DataType output_type, float scale,
-                                    DeviceMemoryBase *output_data) {
-  VLOG_CALL(PARAM(input_desc), PARAM(input_type), PARAM(input_data),
-            PARAM(output_desc), PARAM(output_type), PARAM(scale),
-            PARAM(output_data));
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoTransformTensor(this, input_desc, input_type, input_data,
-                                      output_desc, output_type, scale,
-                                      output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
 Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
   return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
     std::move(cb)();

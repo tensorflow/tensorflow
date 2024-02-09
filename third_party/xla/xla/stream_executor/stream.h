@@ -484,15 +484,6 @@ class Stream {
   Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
                        uint64_t size);
 
-  // Enqueue onto the stream a operation that transforms a tensor.
-  // See DnnSupport::DoTransformTensor for more details.
-  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
-                              dnn::DataType input_type,
-                              const DeviceMemoryBase &input_data,
-                              const dnn::BatchDescriptor &output_desc,
-                              dnn::DataType output_type, float scale,
-                              DeviceMemoryBase *output_data);
-
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.
