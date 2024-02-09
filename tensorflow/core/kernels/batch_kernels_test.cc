@@ -125,7 +125,7 @@ class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
                                tsl::core::RefCountPtr<Rendezvous> *r) {
           *r = tsl::core::RefCountPtr<Rendezvous>(
               new IntraProcessRendezvous(device_mgr));
-          return OkStatus();
+          return absl::OkStatus();
         }});
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
