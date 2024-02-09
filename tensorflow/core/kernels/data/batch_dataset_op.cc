@@ -119,7 +119,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -145,7 +145,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
                                  parallel_copy_,
                                  /*allocation_callback=*/nullptr, out_tensors));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -163,7 +163,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, batch_size, drop_remainder},
                       {{kParallelCopy, parallel_copy}}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -188,7 +188,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
@@ -206,13 +206,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements.empty()) {
         DCHECK(*end_of_sequence);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (dataset()->drop_remainder_ &&
           batch_elements.size() < dataset()->batch_size_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Copy the retrieved batch elements into one output tensor per tuple
@@ -228,7 +228,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           /*allocation_callback=*/nullptr, out_tensors));
 
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -245,7 +245,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -259,7 +259,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
