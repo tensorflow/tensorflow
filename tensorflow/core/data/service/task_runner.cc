@@ -105,7 +105,7 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
   } else {
     out = std::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
@@ -123,14 +123,14 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
 
 Status FirstComeFirstServedTaskRunner::GetNext(GetElementResult& result) {
   TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FirstComeFirstServedTaskRunner::PrefetchFn() {
   while (true) {
     TF_RETURN_IF_ERROR(buffer_.Push(GetNextFromInputIterator()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void FirstComeFirstServedTaskRunner::RunPrefetchThread() {
@@ -189,7 +189,7 @@ Status CachingTaskRunner::GetNext(const GetElementRequest& req,
   TF_ASSIGN_OR_RETURN(std::shared_ptr<const GetElementResult> element,
                       cache_.Get(req.trainer_id()));
   result = element->Copy();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CachingTaskRunner::GetElementResultSequence::GetElementResultSequence(
@@ -248,7 +248,7 @@ Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
         "Requesting data for consumer index ", req.consumer_index(),
         ", but the task is configured for only ", num_consumers_, " consumers");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RoundRobinTaskRunner::PrepareFullRound(int64_t wait_us)
@@ -259,7 +259,7 @@ Status RoundRobinTaskRunner::PrepareFullRound(int64_t wait_us)
   TF_RETURN_IF_ERROR(prefetch_thread_.FillBuffer(wait_us, buffer_));
   round_skipped_ = buffer_.empty();
   new_round_cv_.notify_all();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RoundRobinTaskRunner::PreparePartialRound()
@@ -273,11 +273,11 @@ Status RoundRobinTaskRunner::PreparePartialRound()
   if (next_round_request.skipped_previous_round()) {
     VLOG(1) << "Skipping partial round";
     round_skipped_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(prefetch_thread_.FillBuffer(/*wait_us=*/-1, buffer_));
   round_skipped_ = false;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
@@ -333,7 +333,7 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
   if (round_skipped_) {
     VLOG(1) << worker_address_ << ": Buffer not ready, skipping round "
             << current_round_ << " for consumer " << req.consumer_index();
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto& buffer_result = buffer_[req.consumer_index()];
   result.element_index = buffer_result->index;
@@ -351,7 +351,7 @@ Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
             << req.round_index() << ". element size " << size;
   }
   result.components = std::move(element);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RoundRobinTaskRunner::Cancel() {
@@ -431,14 +431,14 @@ Status PrefetchThread::FillBuffer(int64_t wait_us,
   }
   if (buffer_.size() < round_size_) {
     DCHECK_GE(wait_us, 0);
-    return OkStatus();
+    return absl::OkStatus();
   }
   for (auto& elem : buffer_) {
     out.push_back(std::move(elem));
   }
   buffer_.clear();
   cv_.notify_all();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PrefetchThread::GetStatus() {

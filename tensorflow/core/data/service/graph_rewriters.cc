@@ -184,13 +184,13 @@ AutoShardRewriter::GetRewriteConfig() const {
 Status WorkerIndexResolver::ValidateWorker(
     absl::string_view worker_address) const {
   if (worker_addresses_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (absl::string_view config_address : worker_addresses_) {
     if (config_address == worker_address ||
         ShouldReplaceDynamicPort(config_address, worker_address)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
