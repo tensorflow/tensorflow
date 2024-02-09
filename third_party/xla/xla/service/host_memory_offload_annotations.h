@@ -24,8 +24,8 @@ namespace host_memory_offload_annotations {
 // External annotations:
 inline const absl::string_view kDevicePlacement = "annotate_device_placement";
 inline const absl::string_view kMemoryTargetHost = "pinned_host";
-inline const absl::string_view kMemoryTargetDeviceTpu = "tpu_hbm";
-inline const absl::string_view kMemoryTargetDeviceGpu = "gpu_hbm";
+inline const absl::string_view kMemoryTargetDeviceTpu = "device";
+inline const absl::string_view kMemoryTargetDeviceGpu = "device";
 
 // Internal annotations:
 // This are currently called PipelineForward/PipelineBackward, because they were

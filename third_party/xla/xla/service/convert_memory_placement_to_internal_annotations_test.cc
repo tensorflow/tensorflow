@@ -103,7 +103,7 @@ region_2.65 {
   select.84 = s32[] select(compare.82, add.83, get-tuple-element.67)
   dynamic-slice.85 = f32[1,16]{1,0} dynamic-slice(get-tuple-element.73, select.84, constant.76), dynamic_slice_sizes={1,16}
   reshape.86 = f32[16]{0} reshape(dynamic-slice.85)
-  custom-call.87 = f32[16]{0} custom-call(reshape.86), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="tpu_hbm"}
+  custom-call.87 = f32[16]{0} custom-call(reshape.86), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="device"}
   get-tuple-element.69 = f32[16,16]{1,0} get-tuple-element(arg_tuple.66), index=2
   get-tuple-element.68 = f32[16]{0} get-tuple-element(arg_tuple.66), index=1
   cosine.88 = f32[16]{0} cosine(get-tuple-element.68)
@@ -127,7 +127,7 @@ region_2.65 {
   select.79 = s32[] select(compare.77, add.78, get-tuple-element.67)
   dynamic-slice.80 = f32[1,16]{1,0} dynamic-slice(get-tuple-element.72, select.79, constant.76), dynamic_slice_sizes={1,16}
   reshape.81 = f32[16]{0} reshape(dynamic-slice.80)
-  custom-call.91 = f32[16]{0} custom-call(reshape.81), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="tpu_hbm"}
+  custom-call.91 = f32[16]{0} custom-call(reshape.81), custom_call_target="annotate_device_placement", frontend_attributes={_xla_buffer_placement="device"}
   cosine.92 = f32[16]{0} cosine(custom-call.91)
   reshape.103 = f32[1,16]{1,0} reshape(cosine.92)
   compare.104 = pred[] compare(get-tuple-element.67, constant.76), direction=LT
