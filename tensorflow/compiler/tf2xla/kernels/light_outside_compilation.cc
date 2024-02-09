@@ -374,7 +374,7 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
                    output_shape.IsTuple() ? xla::GetTupleElement(out, i) : out);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -552,7 +552,7 @@ Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
                          num_dimensions * sizeof(int32_t));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class FakeDeviceContext : public DeviceContext {
@@ -708,7 +708,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   }
 
   TF_RETURN_IF_ERROR(ctx.status());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,

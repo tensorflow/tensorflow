@@ -181,7 +181,7 @@ static Status ValidateShapes(XlaOpKernelContext* ctx,
           "Mismatch in resource of then and else branch for resource ", i);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/35949885): There is duplication here with the handling of the
