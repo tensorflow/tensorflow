@@ -347,6 +347,28 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "gpu_indexing_performance_model_test",
+    srcs = ["gpu_indexing_performance_model_test.cc"],
+    deps = [
+        ":gpu_hlo_cost_analysis",
+        ":gpu_indexing_performance_model",
+        ":gpu_performance_model_base",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "affine_map_printer",
     srcs = ["affine_map_printer.cc"],

@@ -67,7 +67,7 @@ int64_t GetIterationSpaceSize(const IndexingMap& indexing_map,
   auto get_ranges_iteration_space_size = [](const std::vector<Range>& ranges) {
     int64_t num_iters = 1;
     for (const Range& range : ranges) {
-      num_iters *= range.upper_bound - range.lower_bound;
+      num_iters *= range.upper_bound - range.lower_bound + 1;
     }
     return num_iters;
   };
@@ -122,7 +122,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     }
 
     if (n_bytes_total > 0) {
-      int64_t n_bytes_net = ShapeUtil::ElementsInRecursive(instr->shape());
+      int64_t n_bytes_net = shape_size_(instr->shape());
       auto element_type = instr->shape().element_type();
 
       read_time += ReadTimeWithDRAMHeuristic(*device_info_, num_blocks,
@@ -140,7 +140,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
       compute_time, memory_access_time,
       GpuPerformanceModelOptions::PriorityFusion());
 
-  return EstimateRunTimeData{flops, 0, 0, write_time, exec_time};
+  return EstimateRunTimeData{flops, bytes_written, num_threads, write_time,
+                             exec_time};
 }
 
 EstimateRunTimeData
