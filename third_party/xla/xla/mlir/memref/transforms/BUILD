@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
     ],
