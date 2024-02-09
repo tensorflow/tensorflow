@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
@@ -481,7 +482,7 @@ TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
 
-TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
+TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHostMetadata) {
   FakeLibCurl libcurl("get response", 0);
   libcurl.curl_easy_perform_result_ = CURLE_COULDNT_RESOLVE_HOST;
   libcurl.curl_easy_perform_error_message_ =
@@ -498,6 +499,27 @@ TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
       "Error executing an HTTP request: libcurl code 6 meaning "
       "'Couldn't resolve host name', error details: Could not resolve host "
       "'metadata'",
+      status.message());
+  EXPECT_EQ(0, http_request.GetResponseCode());
+}
+
+TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
+  FakeLibCurl libcurl("get response", 0);
+  libcurl.curl_easy_perform_result_ = CURLE_COULDNT_RESOLVE_HOST;
+  libcurl.curl_easy_perform_error_message_ =
+      "Could not resolve host 'storage.googleapis.com'";
+  CurlHttpRequest http_request(&libcurl);
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.end(), kTestContent.begin(), kTestContent.end());
+
+  http_request.SetUri("http://storage.googleapis.com/");
+  const auto& status = http_request.Send();
+  EXPECT_EQ(error::UNAVAILABLE, status.code());
+  EXPECT_EQ(
+      "Error executing an HTTP request: libcurl code 6 meaning "
+      "'Couldn't resolve host name', error details: Could not resolve host "
+      "'storage.googleapis.com'",
       status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
