@@ -291,23 +291,6 @@ constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
-// For arch >= Hopper autotuning.
-constexpr std::array<TritonGemmConfig::ClusterDims, 7> CLUSTER_DIMS = {
-    TritonGemmConfig::ClusterDims(1, 1, 1),
-    TritonGemmConfig::ClusterDims(2, 2, 1),
-    TritonGemmConfig::ClusterDims(2, 4, 1),
-    TritonGemmConfig::ClusterDims(4, 2, 1),
-    TritonGemmConfig::ClusterDims(4, 4, 1),
-    TritonGemmConfig::ClusterDims(2, 8, 1),
-    TritonGemmConfig::ClusterDims(8, 2, 1),
-};
-constexpr std::array<bool, 2> WARP_SPECIALIZATION = {false, true};
-
-// Currently we believe that num_ctas is inferable from cluster_dims.
-int InferNumCtas(TritonGemmConfig::ClusterDims cluster_dims) {
-  return cluster_dims.x * cluster_dims.y * cluster_dims.z;
-}
-
 std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability compute_capability, const int max_split_k,
@@ -316,9 +299,6 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
   std::vector<TritonGemmConfig> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
-  bool enable_hopper_optimizations =
-      debug_options.xla_gpu_enable_triton_hopper() &&
-      compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
 
   for (int num_warps : NUM_WARPS) {
     for (int num_stages : NUM_STAGES) {
@@ -344,21 +324,8 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
                                     GetSplitKLimit(block_k, limit.block_k))) {
                 continue;
               }
-              if (!enable_hopper_optimizations) {
-                configs.push_back(TritonGemmConfig(
-                    block_m, block_n, block_k, split_k, num_stages, num_warps));
-                continue;
-              }
-
-              // Arch >= Hopper autotuning.
-              for (bool enable_ws : WARP_SPECIALIZATION) {
-                for (TritonGemmConfig::ClusterDims cluster_dims :
-                     CLUSTER_DIMS) {
-                  configs.push_back(TritonGemmConfig(
-                      block_m, block_n, block_k, split_k, num_stages, num_warps,
-                      InferNumCtas(cluster_dims), cluster_dims, enable_ws));
-                }
-              }
+              configs.push_back(TritonGemmConfig(
+                  block_m, block_n, block_k, split_k, num_stages, num_warps));
             }
           }
         }

@@ -736,10 +736,28 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
                                   const TritonGemmConfig& config) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
-  mlir::triton::nvidia_gpu::ClusterInfo clusterInfo;
-  clusterInfo.clusterDimX = config.cluster_dims.x;
-  clusterInfo.clusterDimY = config.cluster_dims.y;
-  clusterInfo.clusterDimZ = config.cluster_dims.z;
+
+  // Not supported for now.
+  const bool enable_warp_specialization = false;
+  // This is the number of blocks per cluster.
+  //
+  // Clusters have 3 dimensions (x,y,z) and only 1 <= x*y*z <= 16 are supported.
+  // Triton doesn't support (3,3,1) and possibly other non-"power of 2" values.
+  // So the possible useful values of num_ctas are probably [1,2,4,8,16].
+  // Once clusters do something that helps us, we may want to autotune this.
+  const int num_ctas = 1;
+  // If we ever set this to a non-null pointer, the object will have to live at
+  // least until pm.run() is called.
+  // TODO(b/316566238): Use TMA info collected here in XLA runtime.
+  mlir::triton::gpu::TMAMetadataTy* const out_tma_infos = nullptr;
+  // If we ever set this to a non-null pointer, the object will have to live at
+  // least until pm.run() is called and then we will have to pass the cluster
+  // dims to LaunchDimensions. Triton currently uses this as an out-parameter to
+  // return the cluster dims determined based on num_ctas and a heuristic. There
+  // are some signs that show that this was intended to be used as an in-out
+  // parameter which would give a hint to Triton which cluster dims we prefer to
+  // use, but that's not the case currently.
+  mlir::triton::nvidia_gpu::ClusterInfo* const out_cluster_info = nullptr;
 
   // Based on make_ttir() in
   // @triton//:third_party/nvidia/backend/compiler.py
@@ -755,11 +773,11 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   // Based on make_ttgir() in
   // @triton//:third_party/nvidia/backend/compiler.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
-      config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
+      config.num_warps, threadsPerWarp, num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(out_cluster_info));
   pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(out_cluster_info));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
   pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
@@ -767,7 +785,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mlir::createCSEPass());
 
-  if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
+  if (cc.IsAtLeastHopper() && enable_warp_specialization) {
     // Triton currently doesn't support warp specialization for num_warps != 4.
     // TODO from Triton to add support here:
     // https://github.com/openai/triton/blob/1bc9c0ea67e4cbec2c77d4acde3173aa7d51c8f9/python/triton/compiler/backends/cuda.py#L119
@@ -790,7 +808,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::createCSEPass());
   } else {
     pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
-                                           config.num_ctas, ccAsInt));
+                                           num_ctas, ccAsInt));
   }
 
   pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass(
@@ -817,12 +835,10 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  // // TODO(b/316566238): Use TMA info collected here in XLA runtime.
-  mlir::triton::gpu::TMAMetadataTy tma_infos;
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt,
                                                   /*target=*/mlir::triton::NVVM,
-                                                  &tma_infos));
-  if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
+                                                  out_tma_infos));
+  if (cc.IsAtLeastHopper() && enable_warp_specialization) {
     pm.addPass(mlir::createLoopInvariantCodeMotionPass());
     pm.addPass(mlir::createCSEPass());
   }
