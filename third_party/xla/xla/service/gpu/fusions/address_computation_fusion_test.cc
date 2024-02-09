@@ -12,10 +12,36 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include <cstdint>
+#include <functional>
+#include <utility>
+
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+
+#define PLATFORM "CUDA"
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#define PLATFORM "ROCM"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -796,6 +822,158 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, GetRefModuleConfig(),
                                       GetOptModuleConfig(), error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
+static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
+                           ffi::BufferBase src, ffi::BufferBase dst) {
+  run_options->stream()->ThenMemcpyD2D(
+      &dst.data, src.data,
+      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
+          sizeof(float));
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
+                       ffi::Ffi::Bind()
+                           .Ctx<ServiceExecutableRunOptions>()
+                           .Arg<ffi::BufferBase>()  // src
+                           .Arg<ffi::BufferBase>()  // dst
+);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+                         kMemcpy);
+
+TEST_F(AddressComputationFusionTest, CustomCallSimple) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$memcpy",
+             /*operands=*/
+             {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
+                    {128}, {1})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
+                                      error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
+static absl::Status SubBuffers(const ServiceExecutableRunOptions* run_options,
+                               ffi::BufferBase src0, ffi::BufferBase src1,
+                               ffi::BufferBase src2, ffi::BufferBase src3,
+                               ffi::BufferBase src4, ffi::BufferBase dst0,
+                               ffi::BufferBase dst1, ffi::BufferBase dst2,
+                               ffi::BufferBase dst3, ffi::BufferBase dst4) {
+  //  src0:  param 0 at tuple index {0}, shape f32[128]
+  //  src1:  param 0 at tuple index {1}, shape f32[256]
+  //  src2:  param 1 at tuple index {0}, shape f32[1024]
+  //  src3:  param 1 at tuple index {1}, shape f32[8]
+  //  src4:  param 2, shape f32[4,8]
+  //
+  //  dst0:  result at tuple index {0}, shape f32[8]
+  //  dst1:  result at tuple index {1, 0}, shape f32[128]
+  //  dst2:  result at tuple index {1, 1}, shape f32[256]
+  //  dst3:  result at tuple index {2}, shape f32[1024]
+  //  dst4:  result at tuple index {3}, shape f32[4,8]
+
+  run_options->stream()->ThenMemcpyD2D(&dst0.data, src3.data,
+                                       8 * sizeof(float));
+  run_options->stream()->ThenMemcpyD2D(&dst1.data, src0.data,
+                                       128 * sizeof(float));
+  run_options->stream()->ThenMemcpyD2D(&dst2.data, src1.data,
+                                       256 * sizeof(float));
+  run_options->stream()->ThenMemcpyD2D(&dst3.data, src2.data,
+                                       1024 * sizeof(float));
+  run_options->stream()->ThenMemcpyD2D(&dst4.data, src4.data,
+                                       4 * 8 * sizeof(float));
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
+                       ffi::Ffi::Bind()
+                           .Ctx<ServiceExecutableRunOptions>()
+                           .Arg<ffi::BufferBase>()  // src0
+                           .Arg<ffi::BufferBase>()  // src1
+                           .Arg<ffi::BufferBase>()  // src2
+                           .Arg<ffi::BufferBase>()  // src3
+                           .Arg<ffi::BufferBase>()  // src4
+                           .Arg<ffi::BufferBase>()  // dst0
+                           .Arg<ffi::BufferBase>()  // dst1
+                           .Arg<ffi::BufferBase>()  // dst2
+                           .Arg<ffi::BufferBase>()  // dst3
+                           .Arg<ffi::BufferBase>()  // dst4
+);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers",
+                         PLATFORM, kSubBuffers);
+
+TEST_F(AddressComputationFusionTest, CustomCallWithTuple) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$subbuffers", /*operands=*/
+             {
+                 Tuple(&b,
+                       {
+                           Broadcast(ConstantR0WithType(&b, F32, 1), {128}),
+                           Broadcast(ConstantR0WithType(&b, F32, 2), {256}),
+                       }),
+                 Tuple(&b,
+                       {
+                           Broadcast(ConstantR0WithType(&b, F32, 3), {1024}),
+                           Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
+                       }),
+                 Slice(Broadcast(ConstantR0WithType(&b, F32, 5), {8, 8}),
+                       {0, 0}, {4, 8}, {1, 1}),
+             },
+             ShapeUtil::MakeTupleShape({
+                 ShapeUtil::MakeShape(F32, {8}),
+                 ShapeUtil::MakeTupleShape({
+                     ShapeUtil::MakeShape(F32, {128}),
+                     ShapeUtil::MakeShape(F32, {256}),
+                 }),
+                 ShapeUtil::MakeShape(F32, {1024}),
+                 ShapeUtil::MakeShape(F32, {4, 8}),
+             }),
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
+                                      error_spec,
                                       /*run_hlo_passes=*/false));
 }
 
