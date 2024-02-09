@@ -409,7 +409,7 @@ Status BatchResourceBase::RegisterInput(
                                                   &empty_output, cpu_alloc));
     }
     done_callback();
-    return OkStatus();
+    return absl::OkStatus();
   }
   OpInputList captured_tensors;
   const auto captured_status =
@@ -573,7 +573,7 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
@@ -671,7 +671,7 @@ Status BatchResourceBase::ConcatInputTensors(
     TF_RETURN_IF_ERROR(concat_status);
     concatenated_tensors->push_back(concatenated_tensor);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ Status BatchResourceBase::SplitInputTask(
@@ -769,7 +769,7 @@ Status BatchResourceBase::ConcatInputTensors(
                 std::back_inserter(output_task.inputs));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BatchResourceBase::SplitOutputTensors(
@@ -842,7 +842,7 @@ Status BatchResourceBase::SplitOutputTensors(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
@@ -1059,7 +1059,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
     index_flat(task_idx, 2) = offset + task.size();
     offset += task.size();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
@@ -1071,7 +1071,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   auto it = batcher_queues_.find(queue_name);
   if (it != batcher_queues_.end()) {
     *queue = it->second.get();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<BatcherQueueT> new_queue;
@@ -1097,7 +1097,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
