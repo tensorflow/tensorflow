@@ -705,6 +705,178 @@ bool IsPermutationNCHW(Value perm) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
+// Returns 1D 32-bit dense elements attribute with the given values.
+static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = mlir::RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
+                                        Builder *builder) {
+  RankedTensorType ty = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+// Get the number of leading 1s in the shape of the given input.
+// Ex. input_shape = [1 x 1 x 1 x 1 x 2 x 1] => 4
+// returns 0 if the input shape is not static.
+int GetNumLeadingOnes(ShapedType input_type) {
+  if (!input_type.hasStaticShape()) return 0;
+  auto input_shape = input_type.getShape();
+  int num_leading_broadcast_dims = 0;
+  for (int i = 0; i < input_shape.size(); ++i) {
+    if (input_shape[i] == 1) {
+      ++num_leading_broadcast_dims;
+    } else {
+      break;
+    }
+  }
+  return num_leading_broadcast_dims;
+}
+
+// Return the number of trailing 1s in the shape of the given input.
+// Ex. input_shape = [1 x 1 x 2 x 1] => 1
+// returns 0 if the input shape is not static.
+int GetNumTrailingOnes(ShapedType input_type) {
+  if (!input_type.hasStaticShape()) return 0;
+  auto input_shape = input_type.getShape();
+  int num_trailing_broadcast_dims = 0;
+  for (int i = input_shape.size() - 1; i >= 0; --i) {
+    if (input_shape[i] == 1) {
+      ++num_trailing_broadcast_dims;
+    } else {
+      break;
+    }
+  }
+  return num_trailing_broadcast_dims;
+}
+
+// Consider as Reshape(
+//               Broadcast(
+//                 Reshape(input, // input_shape=[1 x n]
+//                         inner_shape), // inner_shape=[1 x 1 x 1 x n x 1 x 1]
+//                 broadcast_shape), // broadcast_shape=[1 x 1 x 1 x n x m x 1]
+//               outer_shape))) // outer_shape=[1 x 1 x n*m]
+// Here the broadcast operation is used to create `m` repetetions of the `n`
+// elements in the origiginal tensor, making a total of `m*n` number of elements
+// in the final tensor that will then be reshaped to form something like
+// [1 x 1 x 1 x m*n] by the outermost reshape_op.
+// problem: The inefficiency here is that the innermost reshape_op and the
+// broadcast_op are introducing unnecessary leading and trailing 1s'.
+// fix: Remove the unnecessary 1s' in the inner reshape_op and broadcast_op.
+struct SqueezeReshapesAroundBroadcastOp
+    : public OpRewritePattern<TFL::BroadcastToOp> {
+  using OpRewritePattern<TFL::BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::BroadcastToOp tfl_broadcast_to_op,
+                                PatternRewriter &rewriter) const override {
+    auto loc = tfl_broadcast_to_op->getLoc();
+
+    // Match the
+    // Reshape(
+    //   Broadcast(
+    //     Reshape(input,inner_shape),
+    //     broadcast_shape),
+    //   outer_shape))) pattern.
+    if (!llvm::dyn_cast_or_null<TFL::ReshapeOp>(
+            tfl_broadcast_to_op.getInput().getDefiningOp()) ||
+        // Check that the broadcast_to op has only one use.
+        !tfl_broadcast_to_op.getOutput().hasOneUse() ||
+        !llvm::dyn_cast_or_null<TFL::ReshapeOp>(
+            *tfl_broadcast_to_op.getOutput().getUsers().begin())) {
+      return rewriter.notifyMatchFailure(
+          loc, "No Reshape->BroadcastTo->Reshape pattern found");
+    }
+
+    // Pattern is applied only if the broadcast_to shape has more than 5
+    // dimensions.
+    if (tfl_broadcast_to_op.getShape()
+            .getType()
+            .cast<ShapedType>()
+            .getNumElements() < 6) {
+      return rewriter.notifyMatchFailure(loc,
+                                         "Not supported broadcast_to shape");
+    }
+    auto inner_reshape_op = llvm::dyn_cast_or_null<TFL::ReshapeOp>(
+        tfl_broadcast_to_op.getInput().getDefiningOp());
+    auto inner_reshape_input = inner_reshape_op.getInput();
+    auto outer_reshape_op = llvm::dyn_cast_or_null<TFL::ReshapeOp>(
+        *tfl_broadcast_to_op.getOutput().getUsers().begin());
+
+    // Check that the outermost reshape_op in the pattern does not add
+    // additional elements to the final output tensor.
+    // TODO: b/323217483. This code needs to generalized to additional cases.
+    // For example- inner-shape = [1, 1, 1, 8, 1, 10],
+    // broadcast_shape = [1, 1, 1, 8, 16, 10] & outer_shape = [1, 1, 1, 1280, 1]
+    // And extend the pettern to handle dynamic shapes.
+    if (!inner_reshape_op.getOutput().getType().hasStaticShape() ||
+        !tfl_broadcast_to_op.getOutput().getType().hasStaticShape() ||
+        !outer_reshape_op.getOutput().getType().hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          loc, "Unsupported shapes. Currely only static shapes are supported");
+    }
+
+    if (!IsLastDimEqualToNumElements(inner_reshape_input.getType(),
+                                     inner_reshape_op.getOutput().getType()) ||
+        !IsLastDimEqualToNumElements(
+            outer_reshape_op.getOutput().getType(),
+            tfl_broadcast_to_op.getOutput().getType())) {
+      return rewriter.notifyMatchFailure(
+          loc, "Not supported Reshape->BroadcastTo->Reshape pattern");
+    }
+
+    // Calculate the number of extra leading and trailing 1s in the
+    // broadcast_op output.
+    auto broadcast_output_shapetype =
+        tfl_broadcast_to_op.getOutput().getType().cast<ShapedType>();
+    int num_leading_broadcast_dims =
+        GetNumLeadingOnes(broadcast_output_shapetype);
+    int num_trailing_broadcast_dims =
+        GetNumTrailingOnes(broadcast_output_shapetype);
+
+    // Get the new shape for the inner reshape_op after removing the extra 1s.
+    llvm::SmallVector<int32_t, 6> new_reshape_shape_i32{
+        inner_reshape_op.getOutput()
+            .getType()
+            .cast<RankedTensorType>()
+            .getShape()
+            .drop_back(num_trailing_broadcast_dims)
+            .drop_front(num_leading_broadcast_dims)};
+
+    Value new_reshape_shape_value = rewriter.create<arith::ConstantOp>(
+        inner_reshape_op->getLoc(),
+        GetI32ElementsAttr(new_reshape_shape_i32, &rewriter));
+
+    auto new_inner_reshape_op = rewriter.create<TFL::ReshapeOp>(
+        inner_reshape_op->getLoc(),
+        inner_reshape_input, new_reshape_shape_value);
+
+    // Create a new reshape_op to replace the old inner reshape_op.
+    rewriter.replaceOp(inner_reshape_op, new_inner_reshape_op.getResult());
+
+    // Get the new shape for the broadcast_op after removing the extra 1s.
+    llvm::SmallVector<int64_t, 6> new_broadcast_shape{
+        broadcast_output_shapetype.getShape()
+            .drop_back(num_trailing_broadcast_dims)
+            .drop_front(num_leading_broadcast_dims)};
+
+    Value new_broadcast_shape_value = rewriter.create<arith::ConstantOp>(
+        loc, GetI64ElementsAttr(new_broadcast_shape, &rewriter));
+
+    auto new_broadcast_to_op = rewriter.create<TFL::BroadcastToOp>(
+        loc, RankedTensorType::get(new_broadcast_shape, rewriter.getF32Type()),
+        new_inner_reshape_op.getOutput(), new_broadcast_shape_value);
+
+    // Create a new broadcast_op to replace the old broadcast_op.
+    rewriter.replaceOp(tfl_broadcast_to_op, new_broadcast_to_op.getResult());
+
+    return success();
+  }
+};
+
 // This pattern matches TFL::BroadcastToOp WITH TENSOR RANK <= 4 and replaces
 // it with a MulOp that multiplies the tensor by a splat constant with 1s.
 struct ConvertTFLBroadcastToMulOp
@@ -961,14 +1133,9 @@ struct Convert2DUpscalingToResizeNearestNeighor
     SmallVector<int64_t, 4> reshape_shape_in_int64(
         {1, image_size, image_size, feature_size});
 
-    auto reshape_shape_type =
-        RankedTensorType::get({static_cast<int32_t>(reshape_shape.size())},
-                              rewriter.getIntegerType(32));
-    auto reshape_shape_attr =
-        DenseIntElementsAttr::get(reshape_shape_type, reshape_shape);
-
     auto reshape_shape_const_op = rewriter.create<TFL::ConstOp>(
-        gather_nd_first->getLoc(), reshape_shape_attr);
+        gather_nd_first->getLoc(),
+        GetI32ElementsAttr(reshape_shape, &rewriter));
 
     auto reshape_op = rewriter.create<TFL::ReshapeOp>(
         gather_nd_first->getLoc(),
@@ -978,12 +1145,8 @@ struct Convert2DUpscalingToResizeNearestNeighor
 
     // Add TFL::resize_nearest_neighor op for 2x upscaling.
     SmallVector<int32_t, 2> size_vec = {image_size * 2, image_size * 2};
-    auto size_type = mlir::RankedTensorType::get(
-        {static_cast<int32_t>(size_vec.size())}, rewriter.getIntegerType(32));
-    auto size_attr = mlir::DenseIntElementsAttr::get(size_type, size_vec);
-
-    auto size_const_op =
-        rewriter.create<TFL::ConstOp>(gather_nd_first->getLoc(), size_attr);
+    auto size_const_op = rewriter.create<TFL::ConstOp>(
+        gather_nd_first->getLoc(), GetI32ElementsAttr(size_vec, &rewriter));
 
     auto resize = rewriter.create<TFL::ResizeNearestNeighborOp>(
         gather_nd_first->getLoc(), transpose_second.getResult().getType(),
@@ -1840,11 +2003,9 @@ struct ConvertTrivialTransposeOpToReshapeOp
       output_shape_values.push_back(
           ShapedType::isDynamic(dim) ? -1 : static_cast<int32_t>(dim));
     }
-    auto type = mlir::RankedTensorType::get(output_shape_values.size(),
-                                            rewriter.getIntegerType(32));
-    auto new_shape_attr =
-        mlir::DenseIntElementsAttr::get(type, output_shape_values);
-    auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
+
+    auto new_shape = rewriter.create<TF::ConstOp>(
+        loc, GetI32ElementsAttr(output_shape_values, &rewriter));
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
         transpose_op, transpose_op.getOutput().getType(),
@@ -2013,11 +2174,7 @@ struct FuseUnpackAndConcatToReshape
           ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
     }
     auto new_shape = rewriter.create<TFL::ConstOp>(
-        concat_op.getLoc(),
-        DenseIntElementsAttr::get(
-            RankedTensorType::get(new_shape_array_i32.size(),
-                                  rewriter.getIntegerType(32)),
-            new_shape_array_i32));
+        concat_op.getLoc(), GetI32ElementsAttr(new_shape_array_i32, &rewriter));
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
         concat_op, output_type, unpack_op.getInput(), new_shape);
@@ -2207,9 +2364,7 @@ struct FuseReshapeAndTransposeAroundBatchMatmul
             transpose_input.getType().getShape().begin() + 2,
             transpose_input.getType().getShape().end(), 1, std::multiplies()))};
     auto shape_constant = rewriter.create<ConstOp>(
-        batch_matmul.getLoc(),
-        DenseIntElementsAttr::get(
-            RankedTensorType::get(3, rewriter.getI32Type()), new_shape));
+        batch_matmul.getLoc(), GetI32ElementsAttr(new_shape, &rewriter));
     auto reshaped_input = rewriter.create<ReshapeOp>(
         batch_matmul.getLoc(), transpose_op.getInput(), shape_constant);
     rewriter.replaceOpWithNewOp<BatchMatMulOp>(
@@ -2271,10 +2426,7 @@ struct FuseTransposeReshapeIntoBatchMatmul
         reshape_op.getType().getShape().drop_front().end());
     new_shape.push_back(reshape_op.getType().getDimSize(0));
     auto shape_constant = rewriter.create<ConstOp>(
-        op.getLoc(), DenseIntElementsAttr::get(
-                         RankedTensorType::get(reshape_op.getType().getRank(),
-                                               rewriter.getI32Type()),
-                         new_shape));
+        op.getLoc(), GetI32ElementsAttr(new_shape, &rewriter));
     auto new_reshape = rewriter.create<ReshapeOp>(
         op.getLoc(), transpose_op.getInput(), shape_constant);
     rewriter.replaceOpWithNewOp<BatchMatMulOp>(
@@ -2502,8 +2654,8 @@ void OptimizePass::runOnOperation() {
   // binary ops.
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
-      .add<RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
-           ConvertTFLBroadcastToMulOp>(ctx);
+      .add<SqueezeReshapesAroundBroadcastOp, RemoveReshapeAfterFullyConnected,
+           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
