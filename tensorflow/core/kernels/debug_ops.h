@@ -181,7 +181,7 @@ class BaseDebugOp : public OpKernel {
   // Log an error if the publishing failed.
   Status PublishTensor(const Tensor& tensor, int64_t step_id = -1) {
     if (debug_urls_.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       Status status = DebugIO::PublishDebugTensor(
           *debug_watch_key_, tensor, Env::Default()->NowMicros(), debug_urls_,
