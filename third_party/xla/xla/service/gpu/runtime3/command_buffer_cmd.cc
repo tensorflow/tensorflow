@@ -336,7 +336,7 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
 inline constexpr std::string_view kMemset32Kernel = R"(
-.version 8.0
+.version 4.0
 .target sm_50
 .address_size 64
 
