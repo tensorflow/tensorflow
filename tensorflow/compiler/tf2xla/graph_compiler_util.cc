@@ -106,7 +106,7 @@ Status AddArgNodes(Graph* graph, const NodeMap& node_map,
       graph->RemoveEdge(edge);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Each fetch id identifies the positional output of some node.  For each fetch
@@ -138,7 +138,7 @@ Status AddRetvalNodes(Graph* graph, const NodeMap& node_map,
             .Finalize(graph, &retval_node));
     retval_nodes->insert(retval_node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // RewriteAndPruneGraph identifies input and output edges (named by the feed and
@@ -192,7 +192,7 @@ Status RewriteAndPruneGraph(
         ", missing feeds: ", absl::StrJoin(missing_feeds, ", "),
         ", missing fetches: ", absl::StrJoin(missing_fetches, ", "));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // CollectArgNodes collects _Arg nodes from the graph, and performs basic
@@ -224,7 +224,7 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
     }
     arg_nodes->push_back(index_node.second);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -243,7 +243,7 @@ Status CreateXlaArgs(const Graph& graph,
     TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PopulateXlaArgs(const tf2xla::Config& config,
@@ -306,7 +306,7 @@ Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   TF_RETURN_IF_ERROR(g->AddFunctionLibrary(flib_def.ToProto()));
 
   *graph = std::move(g);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow
