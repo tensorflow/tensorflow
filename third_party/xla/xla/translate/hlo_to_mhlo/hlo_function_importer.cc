@@ -639,7 +639,7 @@ Status HloFunctionImporter::ImportInstructions(
 
   CleanUpTupleOps(block, &builder);
 
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::ImportInstructions(
@@ -916,7 +916,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           instruction->source_target_pairs(), builder_));
       return ImportOldStyleAsyncStart<mlir::mhlo::CollectivePermuteOp>(
           attributes, operands, loc, result_type, func_builder,
-          "collective_permute_", [&](auto) { return ::tsl::OkStatus(); });
+          "collective_permute_", [&](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kCollectivePermuteDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1267,7 +1267,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
       return ImportOldStyleAsyncStart<mlir::mhlo::CopyOp>(
           attributes, operands, loc, result_type, func_builder, "copy_",
-          [](auto) { return ::tsl::OkStatus(); });
+          [](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kCopyDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1471,7 +1471,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllGatherOp>(
           attributes, operands, loc, result_type, func_builder, "all_gather_",
-          [](auto) { return ::tsl::OkStatus(); });
+          [](auto) { return absl::OkStatus(); });
     }
     case HloOpcode::kAllGatherDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1525,7 +1525,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             TF_RETURN_IF_ERROR(ImportAsRegion(
                 *instruction->to_apply(), &all_reduce_sync.getComputation(),
                 /*flatten_region_arg_tuple=*/true));
-            return ::tsl::OkStatus();
+            return absl::OkStatus();
           });
     }
     case HloOpcode::kAllReduceDone: {
@@ -2158,7 +2158,7 @@ Status HloFunctionImporter::GetMlirTypes(
                                            instruction->shape(), *builder_));
     types->push_back(ret_type);
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Value> HloFunctionImporter::GetMlirValue(
@@ -2313,7 +2313,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     const xla::Shape& shape,
     llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr) {
   if (shape.IsToken()) {
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   }
   if (shape.IsTuple()) {
     std::vector<mlir::Attribute> tuple_layouts;
@@ -2321,7 +2321,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
       TF_RETURN_IF_ERROR(
           ConvertShapeToMlirLayout(shape.tuple_shapes(i), flattened_attr));
     }
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   }
   if (shape.IsArray()) {
     const xla::Layout l = shape.layout();
@@ -2331,7 +2331,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     }
     llvm::ArrayRef<mlir::Attribute> array_ref(minor_to_major);
     flattened_attr.push_back(builder_->getArrayAttr(array_ref));
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   }
   return Internal("Couldn't convert layout.");
 }
