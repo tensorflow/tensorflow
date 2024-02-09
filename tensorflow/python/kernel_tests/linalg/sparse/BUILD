@@ -1,7 +1,7 @@
 # Tests of TensorFlow sparse linear algebra kernels using the Python API.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
@@ -126,7 +126,7 @@ cuda_py_strict_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "csr_sparse_matrix_dense_mat_mul_onednn_grad_test",
     size = "medium",
     srcs = ["csr_sparse_matrix_dense_mat_mul_grad_test.py"],

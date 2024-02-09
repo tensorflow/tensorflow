@@ -67,17 +67,18 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
                         const Tensor& dense_tensor_b, int* rank) {
     // Validate datatypes.
     if (sparse_matrix_a.dtype() != dense_tensor_b.dtype()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Input types don't match.  a.dtype == ",
           DataTypeString(sparse_matrix_a.dtype()),
-          " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype()));
+          " vs. b.dtype == ", DataTypeString(dense_tensor_b.dtype())));
     }
 
     // Validate the ranks.
     *rank = sparse_matrix_a.dims();
     if (*rank != dense_tensor_b.dims()) {
-      return errors::InvalidArgument("Ranks of a and b must match, saw: ", rank,
-                                     " vs. ", dense_tensor_b.dims(), ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Ranks of a and b must match, saw: ", *rank, " vs. ",
+                       dense_tensor_b.dims(), "."));
     }
 
     // Validate shapes.
@@ -85,10 +86,10 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
     const int64_t a_inner_dim = a_dense_shape(*rank - 1);
     const int64_t b_inner_dim = dense_tensor_b.dim_size(*rank - 2);
     if (a_inner_dim != b_inner_dim) {
-      return errors::InvalidArgument(
-          "Inner product dimensions of A and B do not agree.  Shapes are: ",
-          TensorShape(a_dense_shape), " vs. ",
-          dense_tensor_b.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Inner product dimensions of A and B do not agree. ",
+                       "Shapes are: ", TensorShape(a_dense_shape).DebugString(),
+                       " vs. ", dense_tensor_b.shape().DebugString()));
     }
 
     Status s = sparse_matrix_a.Validate();
@@ -147,11 +148,10 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
           lhs_datatype = dnnl::memory::data_type::f32;
           break;
         default:
-          OP_REQUIRES(
-              ctx, sparse_matrix_a->dtype() == DT_FLOAT,
-              errors::InvalidArgument(
-                  "MklSparseMatrixMatMulOp got an unexpected data type for "
-                  "sparse-matrix input."));
+          OP_REQUIRES(ctx, sparse_matrix_a->dtype() == DT_FLOAT,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "MklSparseMatrixMatMulOp got an unexpected data ",
+                          "type for sparse-matrix input.")));
       }
 
       // Get the oneDNN primitive.
@@ -200,11 +200,12 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
           sparse_matrix_a->col_indices().flat<int32_t>().data(),
           sparse_matrix_a->row_pointers().flat<int32_t>().data());
     } catch (dnnl::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
-          ctx, errors::Aborted("Operation received an exception:", error_msg));
+          ctx,
+          absl::AbortedError(absl::StrCat(
+              "Operation received an exception:", "Status: ",
+              std::to_string(e.status), ", message: ", string(e.message),
+              ", in file ", string(__FILE__), ":", std::to_string(__LINE__))));
     }
   }
 };
