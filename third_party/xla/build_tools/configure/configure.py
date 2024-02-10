@@ -94,6 +94,36 @@ def _find_executable_or_die(executable: str) -> str:
   return resolved_path_to_exe
 
 
+def _get_cuda_compute_capabilities_or_die() -> list[str]:
+  """Finds compute capabilities via nvidia-smi or rasies exception.
+
+  Returns:
+    list of unique, sorted strings representing compute capabilities:
+  Raises:
+    RuntimeError: if path to nvidia-smi couldn't be found.
+    subprocess.CalledProcessError: if nvidia-smi process failed.
+  """
+  try:
+    nvidia_smi = _find_executable_or_die("nvidia-smi")
+    nvidia_smi_proc = subprocess.run(
+        [nvidia_smi, "--query-gpu=compute_cap", "--format=csv,noheader"],
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    # Command above returns a newline separated list of compute capabilities
+    # with possible repeats. So we should unique them and sort the final result.
+    capabilities = sorted(set(nvidia_smi_proc.stdout.strip().split("\n")))
+    logging.info("Found CUDA compute capabilities: %s", capabilities)
+    return capabilities
+  except (RuntimeError, subprocess.CalledProcessError) as e:
+    logging.info(
+        "Could not find nvidia-smi, or nvidia-smi command failed. Please pass"
+        " capabilities directly using --cuda_compute_capabilities."
+    )
+    raise e
+
+
 def _get_clang_major_version(path_to_clang: str) -> int:
   """Gets the major version of the clang at `path_to_clang`.
 
@@ -190,6 +220,7 @@ class DiscoverablePathsAndVersions:
   # CUDA specific
   cublas_version: Optional[str] = None
   cuda_toolkit_path: Optional[str] = None
+  cuda_compute_capabilities: Optional[list[str]] = None
   cudnn_version: Optional[str] = None
   nccl_version: Optional[str] = None
 
@@ -215,6 +246,9 @@ class DiscoverablePathsAndVersions:
     if config.backend == Backend.CUDA:
       if config.cuda_compiler == CudaCompiler.CLANG:
         self.clang_path = self.clang_path or _find_executable_or_die("clang")
+
+      if not self.cuda_compute_capabilities:
+        self.cuda_compute_capabilities = _get_cuda_compute_capabilities_or_die()
 
       self._get_cuda_libraries_paths_and_versions_if_needed(config)
 
@@ -287,7 +321,6 @@ class XLAConfigOptions:
 
   # CUDA specific
   cuda_compiler: CudaCompiler
-  cuda_compute_capabilities: list[str]
   using_nccl: bool
   using_tensorrt: bool
 
@@ -354,7 +387,7 @@ class XLAConfigOptions:
       rc.append(f"build --action_env TF_CUBLAS_VERSION={dpav.cublas_version}")
       rc.append(
           "build --action_env"
-          f" TF_CUDA_COMPUTE_CAPABILITIES={','.join(self.cuda_compute_capabilities)}"
+          f" TF_CUDA_COMPUTE_CAPABILITIES={','.join(dpav.cuda_compute_capabilities)}"
       )
       rc.append(f"build --action_env TF_CUDNN_VERSION={dpav.cudnn_version}")
       rc.append(f"build --repo_env TF_NEED_TENSORRT={int(self.using_tensorrt)}")
@@ -421,7 +454,7 @@ def _parse_args():
   parser.add_argument(
       "--cuda_compute_capabilities",
       type=comma_separated_list,
-      default="7.5,7.5,7.5,7.5",
+      default=None,
   )
   parser.add_argument("--python_bin_path", default=sys.executable)
   parser.add_argument(
@@ -469,7 +502,6 @@ def main():
       os=args.os,
       host_compiler=args.host_compiler,
       cuda_compiler=args.cuda_compiler,
-      cuda_compute_capabilities=args.cuda_compute_capabilities,
       python_bin_path=args.python_bin_path,
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
@@ -482,6 +514,7 @@ def main():
           gcc_path=args.gcc_path,
           ld_library_path=args.ld_library_path,
           cublas_version=args.cublas_version,
+          cuda_compute_capabilities=args.cuda_compute_capabilities,
           cuda_toolkit_path=args.cuda_toolkit_path,
           cudnn_version=args.cudnn_version,
           nccl_version=args.nccl_version,
