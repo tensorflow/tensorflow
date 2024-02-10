@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/overflow_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_pass_fix.h"
@@ -142,15 +143,6 @@ std::optional<WhileLoopConfig> IsLoopUnrollable(HloInstruction* while_op) {
     return std::nullopt;
   }
 
-  // TODO(b/291146216): Handle this case later
-  if (ContainsInstrWithOpcode(while_op->while_body(),
-                              {HloOpcode::kAllReduce, HloOpcode::kAllGather})) {
-    VLOG(2) << "Not attempting to unroll " << while_op->name()
-            << " for now because it contains an all-reduce or an all-gather: "
-            << while_op->ToShortString();
-    return std::nullopt;
-  }
-
   if (while_op->operand(0)->opcode() != HloOpcode::kTuple) {
     VLOG(2) << "Not attempting to unroll " << while_op->name()
             << " because the operand is not a tuple: "
@@ -214,10 +206,25 @@ StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
   const HloInstruction* induction_var_hlo =
       while_op->operand(0)->operand(indvar_idx);
 
+  // We record the next channel id to utilize when unrolling loops with
+  // collective communication instructions. During unrolling a single iteration
+  // of the body, we can reuse the same unique_channel_id. For the later
+  // iterations, we obtain it again.
+  int64_t unique_channel_id = hlo_query::NextChannelId(*while_op->GetModule());
+
   // Go through the instructions in while body to get the instruction that
   // points to the induction var. Then replace it everywhere with the concrete
   // value.
   for (HloInstruction* body_inst : while_body_clone->instructions()) {
+    // We need to assign a unique channel_id for the collective ops that are
+    // unrolled within the while loop body or fusions containing collectives.
+    if (IsCollectiveWithChannelId(body_inst)) {
+      // To obtain the channel_id for the collective ops we only need to
+      // increment the `unique_channel_id` since it records the next available
+      // channel_id across the module.
+      body_inst->set_channel_id(unique_channel_id++);
+    }
+
     if (body_inst->opcode() != HloOpcode::kGetTupleElement) {
       continue;
     }
