@@ -46,7 +46,7 @@ Status Scalars(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("TestParams").Output("o: float").SetShapeFn(Scalars);
