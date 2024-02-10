@@ -422,8 +422,7 @@ absl::Status ExecuteThunks(
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    tsl::profiler::ScopedAnnotation annotation(
-        [&] { return thunk->profile_annotation(); });
+    tsl::profiler::ScopedAnnotation annotation(thunk->profile_annotation());
     VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
     if (NeedsAsyncCommsStream(*thunk)) {
       for (se::Stream* async_stream : async_comms_streams) {

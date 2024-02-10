@@ -32,11 +32,15 @@ struct ModuleAnnotation {
   explicit ModuleAnnotation(std::string_view module_name);
   explicit ModuleAnnotation(const HloModule& mod);
 
-  std::string_view longest_op_name_prefix() const;
-  nvtxStringHandle_t NvtxRegisteredTitle() const;
-  std::string_view Title() const;
+  std::string_view longest_op_name_prefix() const { return longest_prefix; }
+  explicit operator std::string_view() const { return title_str; }
 
  private:
+  friend void RangePush(nvtxDomainHandle_t domain,
+                        const ModuleAnnotation& annotation) {
+    tsl::profiler::RangePush(domain, annotation.title);
+  }
+
   std::string longest_prefix;
   std::string title_str;
   nvtxStringHandle_t title;
@@ -47,12 +51,16 @@ struct KernelAnnotation {
   KernelAnnotation(const ModuleAnnotation& module_annotation,
                    const HloInstruction& inst);
 
-  nvtxStringHandle_t NvtxRegisteredTitle() const;
-  std::string_view Title() const;
+  explicit operator std::string_view() const { return title_str; }
 
  private:
+  friend void RangePush(nvtxDomainHandle_t domain,
+                        const KernelAnnotation& annotation) {
+    tsl::profiler::RangePush(domain, annotation.title);
+  }
+
   std::string title_str;
-  nvtxStringHandle_t title{};
+  nvtxStringHandle_t title;
 };
 
 // Parsed/prepared information for an HloModule that gets propagated to NVTX

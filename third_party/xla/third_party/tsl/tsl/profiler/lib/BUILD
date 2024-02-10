@@ -276,18 +276,6 @@ cc_library(
     ]),
 )
 
-cc_library(
-    name = "scoped_annotation_stack",
-    hdrs = ["scoped_annotation_stack.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ] + if_not_android([
-        ":nvtx_utils",
-        "//tsl/profiler/backends/cpu:annotation_stack",
-    ]),
-)
-
 tsl_cc_test(
     name = "scoped_annotation_test",
     size = "small",
@@ -295,7 +283,6 @@ tsl_cc_test(
     visibility = ["//visibility:public"],
     deps = [
         ":scoped_annotation",
-        ":scoped_annotation_stack",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",

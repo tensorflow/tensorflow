@@ -34,24 +34,21 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-nvtxStringHandle_t RegisterString(const char* str) {
+nvtxStringHandle_t RegisterString(const std::string& str) {
 #if GOOGLE_CUDA
-  auto domain = tsl::profiler::nvtx::GetNVTXDomain();
+  auto domain = tsl::profiler::GetNVTXDomain();
   if (!domain) {
-    // NVTX not enabled, so don't bother registering strings with it
-    return {};
+    return {};  // NVTX not enabled, so don't registering strings.
   }
-  std::string buffer{};
   constexpr auto max_length = 65330;
-  if (auto const length = std::strlen(str); length >= max_length) {
-    // nvbugs 4340868
-    std::string_view suffix{"\n[truncated]\n"};
-    buffer.reserve(max_length);
-    buffer.assign(str, str + length - suffix.size());
-    buffer.append(suffix);
-    str = buffer.c_str();
+  if (str.size() <= max_length) {
+    return nvtxDomainRegisterStringA(*domain, str.c_str());
   }
-  return nvtxDomainRegisterStringA(*domain, str);
+  // nvbugs 4340868
+  std::string_view suffix{"\n[truncated]\n"};
+  std::string buffer(str.data(), max_length - suffix.size());
+  buffer.append(suffix);
+  return nvtxDomainRegisterStringA(*domain, buffer.c_str());
 #else
   return {};
 #endif
@@ -147,22 +144,12 @@ std::string MakeTitle(const HloModule& mod, std::string_view longest_prefix) {
 
 ModuleAnnotation::ModuleAnnotation(std::string_view module_name)
     : title_str(absl::StrFormat("XlaModule:#hlo_module=%s", module_name)),
-      title(RegisterString(title_str.c_str())) {}
+      title(RegisterString(title_str)) {}
 
 ModuleAnnotation::ModuleAnnotation(const HloModule& mod)
     : longest_prefix(GetLongestOpNamePrefix(mod)),
       title_str(MakeTitle(mod, longest_prefix)),
-      title(RegisterString(title_str.c_str())) {}
-
-std::string_view ModuleAnnotation::longest_op_name_prefix() const {
-  return longest_prefix;
-}
-
-std::string_view ModuleAnnotation::Title() const { return title_str; }
-
-nvtxStringHandle_t ModuleAnnotation::NvtxRegisteredTitle() const {
-  return title;
-}
+      title(RegisterString(title_str)) {}
 
 namespace {
 std::string MakeKernelName(std::string_view prefix,
@@ -194,13 +181,7 @@ KernelAnnotation::KernelAnnotation(const ModuleAnnotation& module_annotation,
                                    const HloInstruction& inst)
     : title_str(
           MakeKernelName(module_annotation.longest_op_name_prefix(), inst)),
-      title(RegisterString(title_str.c_str())) {}
-
-std::string_view KernelAnnotation::Title() const { return title_str; }
-
-nvtxStringHandle_t KernelAnnotation::NvtxRegisteredTitle() const {
-  return title;
-}
+      title(RegisterString(title_str)) {}
 
 ModuleAnnotations::ModuleAnnotations(std::string_view module_name)
     : top_level(module_name) {}
