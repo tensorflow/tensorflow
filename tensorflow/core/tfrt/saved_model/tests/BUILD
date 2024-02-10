@@ -457,6 +457,7 @@ gen_saved_model(
 gen_saved_model(
     model_name = "toy_v1",
     script = "gen_saved_model_v1",
+    version = "1",
 )
 
 gen_saved_model(
