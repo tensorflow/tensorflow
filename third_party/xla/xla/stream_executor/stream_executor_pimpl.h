@@ -186,7 +186,8 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  std::unique_ptr<HostMemoryAllocation> HostMemoryAllocate(uint64_t size);
+  absl::StatusOr<std::unique_ptr<HostMemoryAllocation>> HostMemoryAllocate(
+      uint64_t size);
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).

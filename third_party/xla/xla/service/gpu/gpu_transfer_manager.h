@@ -87,7 +87,7 @@ class GpuTransferManager : public GenericTransferManager {
   //
   // Lazy initialization works around this, because at that point we have a
   // stream, and therefore we have an already-initialized StreamExecutor.
-  void EnsurePinnedBuffersAllocated(se::StreamExecutor* executor)
+  absl::Status EnsurePinnedBuffersAllocated(se::StreamExecutor* executor)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static constexpr int64_t kPinnedChunkBytes = 128 * 1024;

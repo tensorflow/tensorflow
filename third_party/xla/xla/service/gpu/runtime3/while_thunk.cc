@@ -27,8 +27,10 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -61,11 +63,8 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
 
   absl::MutexLock lock(&mutex_);
   if (auto it = predicates_.find(params.executor); it == predicates_.end()) {
-    auto allocation = params.executor->HostMemoryAllocate(sizeof(bool));
-    if (allocation == nullptr) {
-      return absl::InternalError(
-          "Failed to allocate host memory for while loop predicate");
-    }
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> allocation,
+                        params.executor->HostMemoryAllocate(sizeof(bool)));
     predicates_.emplace(params.executor, std::move(allocation));
   }
 

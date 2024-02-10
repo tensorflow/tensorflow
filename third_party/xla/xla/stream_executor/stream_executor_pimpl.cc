@@ -291,11 +291,15 @@ absl::Status StreamExecutor::CollectiveMemoryDeallocate(void* location) {
   return implementation_->CollectiveMemoryDeallocate(location);
 }
 
-std::unique_ptr<HostMemoryAllocation> StreamExecutor::HostMemoryAllocate(
-    uint64_t size) {
+absl::StatusOr<std::unique_ptr<HostMemoryAllocation>>
+StreamExecutor::HostMemoryAllocate(uint64_t size) {
   void* buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
           << ") returns " << buffer << StackTraceIfVLOG10();
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
   return std::make_unique<HostMemoryAllocation>(buffer, size, implementation());
 }
 

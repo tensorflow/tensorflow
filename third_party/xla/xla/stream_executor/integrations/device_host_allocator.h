@@ -57,17 +57,17 @@ class DeviceHostAllocator : public tsl::SubAllocator {
 
     if (num_bytes > 0) {
       auto allocation = stream_exec_->HostMemoryAllocate(num_bytes);
-      if (allocation->opaque() == nullptr) {
+      if (!allocation.ok()) {
         LOG(WARNING) << "could not allocate pinned host memory of size: "
                      << num_bytes;
-        return ptr;
+        return nullptr;
       }
 
-      ptr = allocation->opaque();
+      ptr = (*allocation)->opaque();
       VisitAlloc(ptr, numa_node_, num_bytes);
 
       absl::MutexLock lock(&mutex_);
-      allocs_[ptr] = std::move(allocation);
+      allocs_[ptr] = std::move(*allocation);
     }
 
     return ptr;

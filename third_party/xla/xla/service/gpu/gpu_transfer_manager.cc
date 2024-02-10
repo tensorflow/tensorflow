@@ -66,14 +66,16 @@ absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
       executor, literal);
 }
 
-void GpuTransferManager::EnsurePinnedBuffersAllocated(
+absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
     se::StreamExecutor* executor) {
   if (pinned_chunk_ != nullptr) {
-    return;
+    return absl::OkStatus();
   }
 
+  TF_ASSIGN_OR_RETURN(pinned_chunk_,
+                      executor->HostMemoryAllocate(kPinnedChunkBytes));
   pinned_chunk_se_ = executor;
-  pinned_chunk_ = executor->HostMemoryAllocate(kPinnedChunkBytes);
+
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
   char* base = reinterpret_cast<char*>(pinned_chunk_->opaque());
@@ -81,6 +83,8 @@ void GpuTransferManager::EnsurePinnedBuffersAllocated(
        buf += kPinnedBufferBytes) {
     pinned_buffers_.push_back(buf);
   }
+
+  return absl::OkStatus();
 }
 
 absl::Status GpuTransferManager::ReadDynamicShapes(
@@ -143,7 +147,7 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
 
   {
     absl::MutexLock lock(&mu_);
-    EnsurePinnedBuffersAllocated(stream->parent());
+    TF_RETURN_IF_ERROR(EnsurePinnedBuffersAllocated(stream->parent()));
 
     for (const auto& src_dst : copies) {
       se::DeviceMemoryBase src = src_dst.first;

@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
@@ -30,7 +31,8 @@ TEST(MemcpyTest, PinnedHostMemory) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  auto d_ptr = executor->HostMemoryAllocate(sizeof(int));
+  TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
+                          executor->HostMemoryAllocate(sizeof(int)));
   DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
 
   int h_ptr;

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
@@ -32,7 +33,7 @@ static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
 TEST(StreamExecutorTest, HostMemoryAllocate) {
   auto executor = NewStreamExecutor();
 
-  auto allocation = executor->HostMemoryAllocate(1024);
+  TF_ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), 1024);
 }

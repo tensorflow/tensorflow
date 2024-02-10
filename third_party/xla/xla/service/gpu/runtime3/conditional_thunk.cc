@@ -28,8 +28,10 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -66,12 +68,10 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
 
   absl::MutexLock lock(&mutex_);
   if (auto it = predicates_.find(params.executor); it == predicates_.end()) {
-    auto allocation = params.executor->HostMemoryAllocate(
-        config_.branch_index_is_bool ? sizeof(bool) : sizeof(int32_t));
-    if (allocation->opaque() == nullptr) {
-      return absl::InternalError(
-          "Failed to allocate host memory for condition predicate");
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::MemoryAllocation> allocation,
+        params.executor->HostMemoryAllocate(
+            config_.branch_index_is_bool ? sizeof(bool) : sizeof(int32_t)));
     predicates_.emplace(params.executor, std::move(allocation));
   }
 
