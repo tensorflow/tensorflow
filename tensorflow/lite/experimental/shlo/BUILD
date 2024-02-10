@@ -16,3 +16,20 @@ cc_library(
     name = "tensor",
     hdrs = ["tensor.h"],
 )
+
+cc_library(
+    name = "bf16",
+    hdrs = ["bf16.h"],
+    deps = [":has_keyword"],
+)
+
+cc_library(
+    name = "f16",
+    hdrs = ["f16.h"],
+    deps = [":has_keyword"],
+)
+
+cc_library(
+    name = "has_keyword",
+    hdrs = ["has_keyword.h"],
+)
