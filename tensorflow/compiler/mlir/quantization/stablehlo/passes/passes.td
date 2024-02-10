@@ -127,11 +127,6 @@ def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-modu
   ];
 }
 
-def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
-  let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
-  let dependentDialects = ["TF::TensorFlowDialect"];
-}
-
 def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
   let summary = "Optimize the sub-optimal patterns after quantization.";
   let dependentDialects = ["mlir::stablehlo::StablehloDialect",];

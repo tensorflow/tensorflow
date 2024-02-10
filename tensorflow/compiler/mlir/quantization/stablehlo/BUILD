@@ -52,7 +52,6 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
         "passes/optimize_graph.cc",
-        "passes/populate_shape.cc",
         "passes/post_quantize.cc",
         "passes/prepare_quantize.cc",
         "passes/quantize.cc",
