@@ -76,7 +76,7 @@ Status RemoteMgr::GetTensorHandleImpl(
 
   *handle = iter->second;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::GetTensorHandle(
@@ -105,7 +105,7 @@ Status RemoteMgr::GetMirroredResourceShape(
 
   *handle = iter->second;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
@@ -121,7 +121,7 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
         "Found two different tensor handles with the same op_id:", *op_id,
         " and output_num:", *output_num));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::DeleteTensorHandle(
@@ -132,7 +132,7 @@ Status RemoteMgr::DeleteTensorHandle(
     if (iter != remote_tensor_handle_map_.end()) {
       iter->second->Unref();
       remote_tensor_handle_map_.erase(iter);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   {
@@ -140,7 +140,7 @@ Status RemoteMgr::DeleteTensorHandle(
     auto iter = mirrored_resource_shape_map_.find(remote_handle);
     if (iter != mirrored_resource_shape_map_.end()) {
       mirrored_resource_shape_map_.erase(iter);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return WithErrorSourcePayload(errors::InvalidArgument(
@@ -176,7 +176,7 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
       dtype_and_shape.shape.AsProto(dtype_and_shape_proto->mutable_shape());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
@@ -214,7 +214,7 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
