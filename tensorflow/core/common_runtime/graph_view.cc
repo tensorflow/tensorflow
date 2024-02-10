@@ -285,7 +285,7 @@ Status GraphView::Initialize(const Graph* g) {
     }
   }
   CHECK_EQ(ptr, space_ + total_bytes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
