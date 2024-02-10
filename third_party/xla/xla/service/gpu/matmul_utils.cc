@@ -616,11 +616,15 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
         output.batch_size, numeric_options, context);
   }
 
-  return stream->ThenBlasGemm(
-      lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
-      lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
-      rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
-      numeric_options, context);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
+  return blas->BlasGemm(stream, lhs.transpose, rhs.transpose, output.m,
+                        output.n, output.k, alpha, lhs.cast<Input>(),
+                        lhs.leading_dim_stride, rhs.cast<Input>(),
+                        rhs.leading_dim_stride, beta, &output_data,
+                        output.leading_dim_stride, numeric_options, context);
 }
 
 }  // namespace

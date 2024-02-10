@@ -219,49 +219,14 @@ class Stream {
                             blas::CallContext context) {
     InputType alpha{1.0};
     InputType beta{0.0};
-    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
-                        ldc, numeric_options, context);
-  }
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            ConstantType beta, DeviceMemory<OutputType> *c,
-                            int ldc, const NumericOptions &numeric_options,
-                            blas::CallContext context) {
-    static_assert(
-        detail::is_any_of<InputType, int8_t, Eigen::half, Eigen::bfloat16,
-                          float, double, std::complex<float>,
-                          std::complex<double>>(),
-        "Input can be int8_t, half, bf16, float, double, std::complex<float> "
-        "or "
-        "std::complex<double>");
-    static_assert(!std::is_same_v<InputType, Eigen::half> ||
-                      detail::is_any_of<ConstantType, float, Eigen::half>(),
-                  "If input is Eigen::half, constant has to be either "
-                  "Eigen::half or float");
-    static_assert(detail::is_any_of<InputType, int8_t, Eigen::half,
-                                    Eigen::bfloat16, ConstantType>(),
-                  "If input is not int8_t, Eigen::half, constant and input "
-                  "types have to match");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return absl::InternalError(
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    return blas->DoBlasGemm(
-        this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
-        alpha_ptr, a, lda, b, ldb, beta_ptr, c, ldc, numeric_options, context);
+    return blas->BlasGemm(this, transa, transb, m, n, k, alpha, a, lda, b, ldb,
+                          beta, c, ldc, numeric_options, context);
   }
 
   // TODO(reedwm): Update all callers to pass correct NumericOptions.
@@ -272,8 +237,15 @@ class Stream {
                             const DeviceMemory<InputType> &b, int ldb,
                             ConstantType beta, DeviceMemory<OutputType> *c,
                             int ldc, blas::CallContext context) {
-    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
-                        ldc, NumericOptions{}, context);
+    blas::BlasSupport *blas = parent()->AsBlas();
+    if (!blas) {
+      return absl::InternalError(
+          "Attempting to perform BLAS operation using "
+          "StreamExecutor without BLAS support");
+    }
+
+    return blas->BlasGemm(this, transa, transb, m, n, k, alpha, a, lda, b, ldb,
+                          beta, c, ldc, NumericOptions{}, context);
   }
 
   template <typename InputType, typename OutputType>
