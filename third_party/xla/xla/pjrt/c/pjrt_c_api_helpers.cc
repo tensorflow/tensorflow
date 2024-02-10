@@ -400,7 +400,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
           promise.Set(s);
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set(tsl::OkStatus());
+          promise.Set(absl::OkStatus());
         }
         ::pjrt::MakeEventDeleter(c_api)(c_event);
       });
@@ -564,7 +564,7 @@ xla::Status ValidateCreateOptions(
           it->second);
     }
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
@@ -590,7 +590,7 @@ xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
   if (actual_size > expected_size) {
     VLOG(2) << StructSizeErrorMsg(struct_name, expected_size, actual_size);
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {

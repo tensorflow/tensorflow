@@ -1272,7 +1272,7 @@ static xla::SendCallback CSendCallbackToCpp(
         std::unique_ptr<PJRT_Error> error(callback(
             &c_chunk, &c_callback_error, total_size_in_bytes, done, user_arg));
         if (error == nullptr) {
-          return tsl::OkStatus();
+          return absl::OkStatus();
         }
         return error->status;
       }};
