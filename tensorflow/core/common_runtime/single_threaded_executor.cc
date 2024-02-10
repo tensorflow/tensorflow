@@ -57,7 +57,7 @@ Status ValidateOpIsSafeForSyncExecution(
         ".  Perhaps your graph contains old-style control flow primitives? "
         "Try using tf.compat.v1.enable_control_flow_v2().");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -251,7 +251,7 @@ class SingleThreadedExecutorImpl : public Executor {
     } else {
       total_num_inputs_ = 0;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Run(const Args& args) override {
@@ -481,7 +481,7 @@ class SingleThreadedExecutorImpl : public Executor {
         delete val.tensor;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -582,7 +582,7 @@ class SingleThreadedExecutorRegistrar {
       Executor* ret;
       TF_RETURN_IF_ERROR(NewSingleThreadedExecutor(params, graph, &ret));
       out_executor->reset(ret);
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 };
@@ -595,7 +595,7 @@ Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
   auto impl = std::make_unique<SingleThreadedExecutorImpl>(params);
   TF_RETURN_IF_ERROR(impl->Initialize(graph));
   *executor = impl.release();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

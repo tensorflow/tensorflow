@@ -50,7 +50,7 @@ Status SendTensorsToRendezvous(
     TF_RETURN_IF_ERROR(
         rendezvous->Send(parsed, rendez_args, tensors_to_send[i], false));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecvOutputsFromRendezvousAsync(
@@ -59,7 +59,7 @@ void RecvOutputsFromRendezvousAsync(
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
     StatusCallback done) {
   if (keys.empty()) {
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
   if (!alloc_attrs.empty() && (keys.size() != alloc_attrs.size())) {
@@ -134,7 +134,7 @@ Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
                                      " was not valid.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow
