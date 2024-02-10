@@ -20,6 +20,7 @@ from absl.testing import parameterized
 
 from google.protobuf import text_format
 from tensorflow.core.config import flags
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import graph_pb2
@@ -1127,10 +1128,53 @@ class SavingOptionsTest(test.TestCase):
                 "NonControlInput:output:0",
                 "^ControlInput:output:0",
             ],
+            attr={
+                "regular_node_attr": attr_value_pb2.AttrValue(i=1),
+                "_non_regular_node_attr": attr_value_pb2.AttrValue(i=2),
+            }
         ),
         node_def_pb2.NodeDef(
             name="ConstNode",
             op="Const",
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNode",
+            op="CheckNumerics",
+            input=[
+                "NonControlInput:output:0",
+                "NonControlInputTwo:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "T": attr_value_pb2.AttrValue(i=4),
+                "NotT": attr_value_pb2.AttrValue(i=5),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNodeTwo",
+            op="CheckNumerics",
+            input=[
+                "NonControlInput:output:0",
+                "NonControlInputTwo:output:0",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "OnlyNotT": attr_value_pb2.AttrValue(i=6),
+            },
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintNode",
+            op="Print",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintV2Node",
+            op="PrintV2",
+            input=[
+                "NonControlInput:output:0",
+            ],
         ),
     ]
 
@@ -1142,10 +1186,48 @@ class SavingOptionsTest(test.TestCase):
                 "^NonControlInput",
                 "^ControlInput:output:0",
             ],
+            attr={
+                "_non_regular_node_attr": attr_value_pb2.AttrValue(i=2),
+            }
         ),
         node_def_pb2.NodeDef(
             name="ConstNode",
             op="Const",
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNode",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+                "^NonControlInputTwo",
+                "^ControlInput:output:0",
+            ],
+            attr={
+                "T": attr_value_pb2.AttrValue(i=4),
+            }
+        ),
+        node_def_pb2.NodeDef(
+            name="CheckNumericsNodeTwo",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+                "^NonControlInputTwo",
+                "^ControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintNode",
+            op="Identity",
+            input=[
+                "NonControlInput:output:0",
+            ],
+        ),
+        node_def_pb2.NodeDef(
+            name="PrintV2Node",
+            op="NoOp",
+            input=[
+                "^NonControlInput",
+            ],
         ),
     ]
 
