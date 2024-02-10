@@ -264,7 +264,7 @@ Status VerifyTypeMatch(const DataType& expected, const DataType& received,
                                    ": expected ", DataTypeString(expected),
                                    " but got ", DataTypeString(received), ".");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -277,7 +277,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -290,7 +290,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyShapeCompatible(const PartialTensorShape& expected,
@@ -300,7 +300,7 @@ Status VerifyShapeCompatible(const PartialTensorShape& expected,
                                    ": expected ", expected.DebugString(),
                                    " but got ", received.DebugString(), ".");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
@@ -314,7 +314,7 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
     TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
@@ -329,7 +329,7 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
         VerifyShapeCompatible(expected[i], received[i].shape(), i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
@@ -366,13 +366,13 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 Status IsFunctionStateful(const FunctionLibraryDefinition& library,
                           const FunctionDef& function_def) {
   if (!function_def.signature().is_stateful()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (const NodeDef& node_def : function_def.node_def()) {
     TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
@@ -384,7 +384,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
       IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (op_def->name() == "If") {
@@ -398,7 +398,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
     if (else_func != nullptr) {
       TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (op_def->name() == "While") {
@@ -412,7 +412,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
     if (body_func != nullptr) {
       TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return errors::FailedPrecondition(op_def->name(), " is stateful.");
@@ -449,7 +449,7 @@ Status DeterminismPolicy::FromString(const std::string& s,
     return errors::InvalidArgument("Unrecognized determinism policy: ", s);
   }
   *out = DeterminismPolicy(type);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DeterminismPolicy::DeterminismPolicy(bool is_deterministic) {
@@ -650,7 +650,7 @@ Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(value.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
@@ -683,7 +683,7 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
       batch->emplace_back(std::move(t));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WriteBatch(int64_t batch_size, int64_t num_elements,
@@ -708,7 +708,7 @@ Status WriteBatch(int64_t batch_size, int64_t num_elements,
                               strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadStatus(const string& iterator_prefix, const string& prefix,
@@ -726,9 +726,9 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
         &error_message));
     *status = Status(code, error_message);
   } else {
-    *status = OkStatus();
+    *status = absl::OkStatus();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WriteStatus(const string& iterator_prefix, const string& prefix,
@@ -741,7 +741,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
         std::string(status.message())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessBatch(int64_t batch_size, int64_t num_elements,
@@ -751,7 +751,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   if (num_elements == 0) {
     if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       *end_of_sequence = false;
       return status;
@@ -764,7 +764,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
   if (num_elements < batch_size) {
     if (drop_remainder) {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
     for (size_t i = 0; i < batch->size(); ++i) {
       TensorShape component_shape((*batch)[i].shape());
@@ -784,7 +784,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
     *output = std::move(*batch);
   }
   *end_of_sequence = false;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CopyBatch(CopyBatchParams params,
@@ -874,7 +874,7 @@ Status CopyBatch(CopyBatchParams params,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
