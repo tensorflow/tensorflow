@@ -118,7 +118,7 @@ class QuantizedConcatOp : public OpKernel {
       *output_min = overall_min;
       *output_max = overall_max;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t CalculateInputsDim(const TensorShape& input_shape,
@@ -171,7 +171,7 @@ class QuantizedConcatOp : public OpKernel {
       }
       *output_concat_dim += in.dims() > 0 ? in.dim_size(concat_dim) : 1;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Compute(OpKernelContext* context) override {
