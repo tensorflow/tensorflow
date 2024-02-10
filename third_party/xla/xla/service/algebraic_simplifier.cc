@@ -1122,6 +1122,15 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
   return false;
 }
 
+Status AlgebraicSimplifierVisitor::HandleAllToAll(HloInstruction* all_to_all) {
+  if (all_to_all->shape().IsArray() &&
+      Match(all_to_all->mutable_operand(0),
+            m::Broadcast(m::ConstantScalar()))) {
+    return ReplaceInstruction(all_to_all, all_to_all->mutable_operand(0));
+  }
+  return OkStatus();
+}
+
 Status AlgebraicSimplifierVisitor::HandleAnd(HloInstruction* logical_and) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(logical_and, m::And(m::Op(&lhs), m::Op(&rhs))));

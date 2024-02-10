@@ -318,6 +318,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleAdd(HloInstruction* add) override;
 
+  Status HandleAllToAll(HloInstruction* all_to_all) override;
+
   Status HandleAnd(HloInstruction* logical_and) override;
 
   Status HandleBitcast(HloInstruction* bitcast) override;
