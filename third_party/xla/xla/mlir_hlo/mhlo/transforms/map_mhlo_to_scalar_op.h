@@ -1076,7 +1076,7 @@ template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
     Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
     mhlo::LogisticOp::Adaptor adaptor, OpBuilder* b) {
-  // 1.0 / (1.0 - exp(-x))
+  // 1.0 / (1.0 + exp(-x))
   Value negX = mapMhloOpToStdScalarOp<mhlo::NegOp>(
       loc, resultTypes, resultTypes, {adaptor.getOperand()}, b);
   Value expNegX = mapMhloOpToStdScalarOp<mhlo::ExpOp>(loc, resultTypes,
