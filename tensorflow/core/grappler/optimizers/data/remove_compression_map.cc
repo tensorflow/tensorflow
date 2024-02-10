@@ -76,7 +76,7 @@ Status RemoveCompressionMap::OptimizeAndCollectStats(Cluster* cluster,
     compression_map_output.node->add_input(compression_map_node.input().Get(0));
     ++stats->num_changes;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(RemoveCompressionMap, "remove_compression_map");
