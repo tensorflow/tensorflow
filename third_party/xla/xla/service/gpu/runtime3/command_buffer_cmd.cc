@@ -350,6 +350,25 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
 }
 
 //===----------------------------------------------------------------------===//
+// TracedCommandBufferCmd
+//===----------------------------------------------------------------------===//
+
+absl::Status TracedCommandBufferCmd::AddTracedCommandBuffer(
+    const Thunk::ExecuteParams& params, StateManager& state,
+    se::CommandBuffer* command_buffer,
+    absl::FunctionRef<absl::Status(se::Stream*)> trace) {
+  auto traced_cmd = state.GetOrCreate<TracedCommandBuffer>(
+      this, [&] { return std::make_unique<TracedCommandBuffer>(buffers()); });
+
+  TF_ASSIGN_OR_RETURN(auto nested_cmd,
+                      traced_cmd->GetOrTraceCommandBuffer(
+                          params.buffer_allocations, params.stream->parent(),
+                          params.command_buffer_trace_stream, trace));
+
+  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+}
+
+//===----------------------------------------------------------------------===//
 // ComputationId
 //===----------------------------------------------------------------------===//
 
@@ -963,19 +982,11 @@ absl::Status GemmCmd::Record(const Thunk::ExecuteParams& params,
   VLOG(5) << "  Out: " << output_buffer_ << " (" << out.opaque() << ")";
   VLOG(5) << "  Workspace: " << workspace_ << " (" << workspace.opaque() << ")";
 
-  auto traced_cmd = state.GetOrCreate<TracedCommandBuffer>(
-      this, [&] { return std::make_unique<TracedCommandBuffer>(buffers()); });
-
-  TF_ASSIGN_OR_RETURN(
-      auto nested_cmd,
-      traced_cmd->GetOrTraceCommandBuffer(
-          params.buffer_allocations, params.stream->parent(),
-          params.command_buffer_trace_stream, [&](se::Stream* stream) {
-            return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
-                           stream);
-          }));
-
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return AddTracedCommandBuffer(
+      params, state, command_buffer, [&](se::Stream* stream) {
+        return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
+                       stream);
+      });
 }
 
 CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {

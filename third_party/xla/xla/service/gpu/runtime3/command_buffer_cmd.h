@@ -300,6 +300,22 @@ class TracedCommandBuffer : public CommandBufferCmd::State {
 };
 
 //===----------------------------------------------------------------------===//
+// TracedCommandBufferCmd
+//===----------------------------------------------------------------------===//
+
+// A base class for commands implemented as tracing of stream activities.
+class TracedCommandBufferCmd : public CommandBufferCmd {
+ protected:
+  // Creates a command buffer by calling a user-provided `trace` function and
+  // adds it as a nested command to `command_buffer`. Traced command buffers
+  // cached and reused in an instance of `TracedCommandBuffer` kept in `state`.
+  absl::Status AddTracedCommandBuffer(
+      const Thunk::ExecuteParams& params, StateManager& state,
+      se::CommandBuffer* command_buffer,
+      absl::FunctionRef<absl::Status(se::Stream*)> trace);
+};
+
+//===----------------------------------------------------------------------===//
 // ComputationIdCmd (ReplicaId and PartitionId)
 //===----------------------------------------------------------------------===//
 
@@ -607,7 +623,7 @@ class FreeCmd : public CommandBufferCmd {
 // GemmCmd
 //===----------------------------------------------------------------------===//
 
-class GemmCmd : public CommandBufferCmd {
+class GemmCmd : public TracedCommandBufferCmd {
  public:
   GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
           const BufferAllocation::Slice& rhs_buffer,
