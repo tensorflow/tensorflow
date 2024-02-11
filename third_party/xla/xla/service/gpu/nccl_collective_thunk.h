@@ -263,20 +263,11 @@ absl::StatusOr<NcclComm::Lock> GetNcclComm(
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t stream_id);
 
-// TODO(ezhulenev): This is a deprecated code path and should be removed after
-// all users in legacy XLA runtime are removed.
-absl::StatusOr<NcclComm::Lock> LockNcclComm(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization);
-
 struct DeviceBufferPair {
   PrimitiveType element_type;
   int64_t element_count;
   se::DeviceMemoryBase source_buffer;
   se::DeviceMemoryBase destination_buffer;
-  // TODO(b/320767790): Remove once memory space added to DeviceMemoryBase.
   int64_t source_memory_space;
   int64_t destination_memory_space;
 };

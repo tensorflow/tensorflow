@@ -371,11 +371,11 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    RunId run_id, OpId op_id, NcclCliqueKey clique_key,
+    RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     size_t num_local_participants, bool may_skip_rendezvous) {
   VLOG(2) << "Acquire NCCL clique " << clique_key.ToString() << "; run"
-          << run_id.ToString() << "; op" << op_id.value() << "; rank " << rank
+          << run_id.ToString() << "; rank " << rank
           << "; num_local_participants=" << num_local_participants
           << "; may_skip_rendezvous=" << may_skip_rendezvous;
 
@@ -414,40 +414,6 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
   // If NCCL clique is not found try to initialize a new one for a given key.
   return InitializeNcclClique(run_id, clique_key, clique_id_callback,
                               num_local_participants, rank);
-}
-
-absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
-    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
-    size_t num_local_participants,
-    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    int64_t stream_id, bool enable_clique_optimization) {
-  // Ensure that this group of threads have exclusive access to the clique to
-  // prevent threads from different groups locking communicators in the clique.
-  // The enable_clique_optimization value is only used for asynchronous
-  // collective stream currently. For synchronous collectives, we should always
-  // enable the optimization. For P2P stream, we currently have to always enable
-  // the optimization, because we initially implement this optimization to
-  // workaround an NCCL bug related to P2P operations.
-  NcclCliqueKey clique_key(std::move(participants), stream_id);
-
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<NcclClique::Lock> clique,
-      AcquireNcclClique(
-          run_id, op_id, clique_key, clique_id_callback, rank,
-          num_local_participants,
-          enable_clique_optimization ||
-              stream_id != GetStreamId(/*is_async=*/true,
-                                       AsyncStreamKind::kCollective)));
-
-  // Check that clique has a communicator for our rank.
-  auto communicator = (*clique)->comm(rank);
-  if (!communicator.has_value()) {
-    return absl::InternalError(absl::StrCat("Communicator for rank ", rank,
-                                            " not found in a NCCL clique ",
-                                            clique_key.ToString()));
-  }
-
-  return (*communicator)->Acquire();
 }
 
 }  // namespace xla::gpu

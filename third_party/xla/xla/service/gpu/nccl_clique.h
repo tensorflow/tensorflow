@@ -93,13 +93,6 @@ struct NcclComm : public Lockable<NcclApi::NcclCommHandle, NcclCommName> {
   explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
 };
 
-// Acquires an exclusive access to NCCL communicator owned by a NCCL clique.
-absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
-    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
-    size_t num_local_participants,
-    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    int64_t stream_id, bool enable_clique_optimization);
-
 //===----------------------------------------------------------------------===//
 // NcclClique
 //===----------------------------------------------------------------------===//
@@ -152,7 +145,7 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // owned by `num_local_participants` threads). XLA uses this lock to serialize
 // execution of all collective operations sharing a `clique_id`.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    RunId run_id, OpId op_id, NcclCliqueKey clique_key,
+    RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     size_t num_local_participants, bool may_skip_rendezvous);
 

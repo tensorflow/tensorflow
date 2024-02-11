@@ -252,51 +252,6 @@ absl::StatusOr<NcclComm::Lock> GetNcclComm(
   return collective_cliques.GetComm(std::move(clique_key), *rank);
 }
 
-// TODO(ezhulenev): This is a deprecated code path and should be removed after
-// all users in legacy XLA runtime are removed.
-absl::StatusOr<NcclComm::Lock> LockNcclComm(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization) {
-  GlobalDeviceId global_device_id = params.global_device_id;
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(global_device_id, *params.device_assn,
-                              replica_groups, group_mode));
-
-  if (IsGlobalNcclConfig() &&
-      (participants.size() != params.device_assn->replica_count())) {
-    return InvalidArgument(
-        "Partial replica groups are not allowed when using NCCL_COMM_ID "
-        "environment configuration.");
-  }
-
-  auto it = absl::c_find(participants, global_device_id);
-  TF_RET_CHECK(it != participants.end());
-  int rank = it - participants.begin();
-
-  std::vector<GlobalDeviceId> local_devices;
-  if (params.global_device_id_map) {
-    local_devices.reserve(params.global_device_id_map->size());
-    for (const auto& entry : *params.global_device_id_map) {
-      local_devices.push_back(entry.second);
-    }
-  }
-  size_t num_local_participants = GetNumLocalParticipants(
-      participants, params.global_device_id_map ? &local_devices : nullptr);
-
-  bool is_local = participants.size() == num_local_participants;
-  TF_ASSIGN_OR_RETURN(
-      const NcclCliqueIdCallback* clique_id_callback,
-      GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
-
-  return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
-                         num_local_participants, *clique_id_callback, rank,
-                         stream_id, enable_clique_optimization);
-}
-
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
