@@ -51,8 +51,8 @@ def normalize_tuple(value, n, name):
   """Transforms a single integer or iterable of integers into an integer tuple.
 
   Args:
-    value: The value to validate and convert. Could an int, or any iterable of
-      ints.
+    value: The value to validate and convert. Could be an int, or
+      any iterable of ints.
     n: The size of the tuple to be returned.
     name: The name of the argument being validated, e.g. "strides" or
       "kernel_size". This is only used to format error messages.
