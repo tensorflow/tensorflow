@@ -71,7 +71,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/service/gpu/runtime3/kernel_thunk.h"
+#include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"

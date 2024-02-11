@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/runtime3/annotation.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_parser.h"

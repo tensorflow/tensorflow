@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/runtime3/send_recv_thunk.h"
+#include "xla/service/gpu/runtime/send_recv_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
