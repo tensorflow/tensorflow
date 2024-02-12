@@ -22,22 +22,6 @@ cc_library(
 )
 
 cc_library(
-    name = "_empty_lib",
-    visibility = ["//visibility:public"],
-)
-
-# Minimal lib so that tools used for mobile compilation
-# don't have to depend on platformlib.
-cc_library(
-    name = "proto_parsing",
-    copts = tsl_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/protobuf:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "test_main",
     testonly = 1,
     linkstatic = 1,
