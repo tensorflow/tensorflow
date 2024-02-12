@@ -1311,8 +1311,7 @@ INSTANTIATE_TEST_SUITE_P(AutoMixedPrecisionTest, AutoMixedPrecisionParamTest,
                          ::testing::ValuesIn({
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
                            AutoMixedPrecisionMode::CUDA,
-#endif
-#if INTEL_MKL
+#elif INTEL_MKL
                            AutoMixedPrecisionMode::FP16_CPU
 #endif
                           }));
