@@ -1259,7 +1259,7 @@ TEST_F(IndexingAnalysisTest, PadOp) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                                        (d0, d1) -> (d0 floordiv 2 + 1, d1 + 4)
+                                        (d0, d1) -> (d0 floordiv 2 - 1, d1 - 4)
                                         domain:
                                         d0 in [1, 7]
                                         d1 in [4, 7]
@@ -1270,6 +1270,30 @@ TEST_F(IndexingAnalysisTest, PadOp) {
                                         domain:
                                         d0 in [0, 11]
                                         d1 in [0, 15]
+                                      )"))));
+}
+
+TEST_F(IndexingAnalysisTest, PadOpNoInterior) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2,8] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[10,8] pad(p0, p1), padding=1_7x0_0
+    }
+  )");
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                                        (d0, d1) -> (d0 - 1, d1)
+                                        domain:
+                                        d0 in [1, 2]
+                                        d1 in [0, 7]
+                                      )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                                        (d0, d1) -> ()
+                                        domain:
+                                        d0 in [0, 9]
+                                        d1 in [0, 7]
                                       )"))));
 }
 
@@ -1504,7 +1528,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1)[s0, s1] -> (d0 * 2 + s0 + 1, d1 + s1)
+                            (d0, d1)[s0, s1] -> (d0 * 2 + s0 - 1, d1 + s1)
                             domain:
                             d0 in [0, 6]
                             d1 in [0, 16]

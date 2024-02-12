@@ -319,9 +319,9 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
     AffineExpr dim_expr = getAffineDimExpr(output_dim_id, mlir_context);
     dimension_ranges.push_back(Range{pad_low, output_dim - 1 - pad_high});
     if (pad_interior == 0) {
-      exprs.push_back(dim_expr + pad_low);
+      exprs.push_back(dim_expr - pad_low);
     } else {
-      exprs.push_back(dim_expr.floorDiv(pad_interior + 1) + pad_low);
+      exprs.push_back(dim_expr.floorDiv(pad_interior + 1) - pad_low);
       constraints.push_back(
           {(dim_expr - pad_low) % (pad_interior + 1), Range{0, 0}});
     }
