@@ -508,6 +508,38 @@ class BlasSupport {
     return st;
   }
 
+  template <typename InputType, typename OutputType, typename ConstantType>
+  absl::Status BlasGemmStridedBatched(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64 n, uint64_t k, ConstantType alpha,
+      const DeviceMemory<InputType> &a, int lda, int64_t stride_a,
+      const DeviceMemory<InputType> &b, int ldb, int64_t stride_b,
+      ConstantType beta, DeviceMemory<OutputType> *c, int ldc, int64_t stride_c,
+      int batch_count, const NumericOptions &numeric_options,
+      blas::CallContext context) {
+    static_assert(
+        detail::is_any_of<InputType, int8_t, float, Eigen::half,
+                          Eigen::bfloat16, double, std::complex<float>,
+                          std::complex<double>>(),
+        "Unsupported input type");
+    static_assert(std::is_same_v<ConstantType, InputType> ||
+                      (detail::is_any_of<InputType, int8_t, Eigen::half,
+                                         Eigen::bfloat16>() &&
+                       std::is_same_v<ConstantType, float>),
+                  "Mismatched input and alpha/beta types");
+
+    void *alpha_ptr = &alpha;
+    void *beta_ptr = &beta;
+    float alpha_storage, beta_storage;
+    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
+                                    &beta_storage);
+
+    return DoBlasGemmStridedBatched(
+        stream, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
+        alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
+        stride_c, batch_count, numeric_options, context);
+  }
+
   // Solves a triangular matrix equation.
   //
   //     op(a) * x = alpha * b,

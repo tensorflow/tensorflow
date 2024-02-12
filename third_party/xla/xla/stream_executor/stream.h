@@ -21,13 +21,9 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_H_
 #define XLA_STREAM_EXECUTOR_STREAM_H_
 
-#include <complex>
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -35,7 +31,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
@@ -48,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -62,21 +56,6 @@ template <typename ElemT>
 class DeviceMemory;
 
 class StreamExecutor;
-
-namespace detail {
-
-// Helper to return if `T` is the same type as `First` or any or `Rest`.
-template <typename T>
-constexpr bool is_any_of() {
-  return false;
-}
-
-template <typename T, typename First, typename... Rest>
-constexpr bool is_any_of() {
-  return std::is_same_v<T, First> || is_any_of<T, Rest...>();
-}
-
-}  // namespace detail
 
 // Represents a stream of dependent computations on a GPU device.
 //
@@ -252,46 +231,6 @@ class Stream {
         context);
   }
 
-  template <typename T>
-  using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemmStridedBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
-      int64_t stride_c, int batch_count, const NumericOptions &numeric_options,
-      blas::CallContext context) {
-    static_assert(
-        detail::is_any_of<InputType, int8_t, float, Eigen::half,
-                          Eigen::bfloat16, double, std::complex<float>,
-                          std::complex<double>>(),
-        "Unsupported input type");
-    static_assert(std::is_same_v<ConstantType, InputType> ||
-                      (detail::is_any_of<InputType, int8_t, Eigen::half,
-                                         Eigen::bfloat16>() &&
-                       std::is_same_v<ConstantType, float>),
-                  "Mismatched input and alpha/beta types");
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    return blas->DoBlasGemmStridedBatched(
-        this, transa, transb, m, n, k, blas::ToDataType<InputType>::value,
-        alpha_ptr, a, lda, stride_a, b, ldb, stride_b, beta_ptr, c, ldc,
-        stride_c, batch_count, numeric_options, context);
-  }
-
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate or otherwise allocated and
@@ -450,29 +389,6 @@ class Stream {
   // be reused.
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
       ABSL_GUARDED_BY(mu_);
-
-  // Non-extended BLAS interface requires alpha/beta to be floats when input
-  // type is Eigen::half. However, for consistency purposes it is convenient
-  // for the interface to accept Eigen::half.
-  template <typename T>
-  void UpcastHalfToFloat(void **alpha_ptr, void **beta_ptr,
-                         float *alpha_storage, float *beta_storage) {
-    if (std::is_same<T, Eigen::half>::value) {
-      *alpha_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::half *>(*alpha_ptr));
-      *beta_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::half *>(*beta_ptr));
-      *alpha_ptr = alpha_storage;
-      *beta_ptr = beta_storage;
-    } else if (std::is_same<T, Eigen::bfloat16>::value) {
-      *alpha_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*alpha_ptr));
-      *beta_storage =
-          static_cast<float>(*reinterpret_cast<Eigen::bfloat16 *>(*beta_ptr));
-      *alpha_ptr = alpha_storage;
-      *beta_ptr = beta_storage;
-    }
-  }
 
   Stream(const Stream &) = delete;
   void operator=(const Stream &) = delete;

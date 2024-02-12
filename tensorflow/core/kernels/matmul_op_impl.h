@@ -829,8 +829,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                            GetNumericOptions(), call_context));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(
-            context, stream->ThenBlasGemmStridedBatched(
-                         blas_transpose_b, blas_transpose_a, n, m, k,
+            context, blas->BlasGemmStridedBatched(
+                         stream, blas_transpose_b, blas_transpose_a, n, m, k,
                          static_cast<Coefficient>(1.0), *b_ptrs[0],
                          adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                          adj_x || trans_x ? m : k, a_stride,
