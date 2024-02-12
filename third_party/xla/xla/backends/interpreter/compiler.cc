@@ -99,7 +99,6 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<QrExpander>();
   pipeline.AddPass<EighExpander>();
-  pipeline.AddPass<ComparisonExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
   pipeline.AddPass<BatchNormExpander>(
       /*rewrite_training_op=*/true,

@@ -243,7 +243,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
-        "@ml_dtypes//:int4",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 

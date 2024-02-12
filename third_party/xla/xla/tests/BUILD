@@ -287,6 +287,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:test_helpers",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/client:global_data",
@@ -793,6 +794,7 @@ xla_test(
         "//xla:array2d",
         "//xla:array3d",
         "//xla:array4d",
+        "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:statusor",
@@ -803,6 +805,8 @@ xla_test(
         "//xla/client:xla_builder",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:ml_dtypes",
+        "@ml_dtypes//:float8",
     ],
 )
 

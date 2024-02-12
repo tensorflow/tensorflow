@@ -753,7 +753,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
     // Comparison total order expander
-    pipeline.AddPass<ComparisonExpander>();
+    pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
 
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
