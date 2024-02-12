@@ -384,8 +384,17 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           // Find output shardings.
           switch (opcode) {
+            case HloOpcode::kSlice: {
+              bool is_1d_sharding =
+                  VectorGreaterThanOneElementCount(
+                      input_spec.tile_assignment().dimensions()) == 1;
+              output_spec = PropagateDimwiseShardingSlice(
+                  input_spec, operand->shape(), ins->shape(),
+                  is_1d_sharding ? cluster_env.device_mesh_1d_
+                                 : cluster_env.device_mesh_);
+              break;
+            }
             case HloOpcode::kPad:
-            case HloOpcode::kSlice:
             case HloOpcode::kConcatenate:
             case HloOpcode::kDynamicSlice:
             case HloOpcode::kDynamicUpdateSlice:
