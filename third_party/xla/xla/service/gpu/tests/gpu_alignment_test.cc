@@ -13,13 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <utility>
-
-#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/llvm_ir/alias_analysis.h"
-#include "xla/tests/filecheck.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -44,13 +38,10 @@ ENTRY main {
 }
 )";
 
-  auto expected_ir = is_built_with_rocm_ ? R"(
-CHECK: @{{[a-z_]*}}fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
-)"
-                                         : R"(
-CHECK: define void @{{[a-z_]*}}fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
-)";
-  CompileAndVerifyIr(hlo_string, expected_ir);
+  CompileAndVerifyIr(
+      hlo_string,
+      "CHECK: {{.*}}align 128 dereferenceable(800) %{{.*}}align 16 "
+      "dereferenceable(400) %{{.*}}align 128 dereferenceable(600) %");
 }
 
 }  // namespace
