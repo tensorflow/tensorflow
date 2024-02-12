@@ -627,6 +627,7 @@ tf_py_strict_test(
 cuda_py_strict_test(
     name = "matrix_inverse_op_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["matrix_inverse_op_test.py"],
     tags = ["optonly"],
     deps = [
