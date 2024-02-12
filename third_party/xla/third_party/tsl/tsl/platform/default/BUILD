@@ -1,5 +1,5 @@
 load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
-load("//tsl:tsl.default.bzl", "filegroup")
+load("//tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
@@ -205,6 +205,22 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "grpc_credentials",
+    srcs = ["grpc_credentials.cc"],
+    hdrs = ["//tsl/platform:grpc_credentials.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tsl/platform:logging",
+        "@com_google_absl//absl/log:check",
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(

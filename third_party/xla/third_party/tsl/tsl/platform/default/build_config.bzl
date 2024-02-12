@@ -830,6 +830,9 @@ def tf_logging_deps():
 def tf_error_logging_deps():
     return [clean_dep("//tsl/platform/default:error_logging")]
 
+def tsl_grpc_credentials_deps():
+    return [clean_dep("//tsl/platform/default:grpc_credentials")]
+
 def tf_resource_deps():
     return [clean_dep("//tsl/platform/default:resource")]
 
