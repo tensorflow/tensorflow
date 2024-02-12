@@ -336,10 +336,8 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
-        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
 )
 
@@ -499,7 +497,6 @@ cc_library(
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
-            "@local_tsl//tsl/platform/default/build_config:minimal",
             "@local_tsl//tsl/framework:fixedpoint_types",
             "//tensorflow/core/platform:types",
         ],
@@ -1143,7 +1140,7 @@ cc_library(
         ":portable_tensorflow_lib",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform/default/build_config:gtest",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
