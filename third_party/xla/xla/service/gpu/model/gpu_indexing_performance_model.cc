@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -147,6 +148,11 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
 EstimateRunTimeData
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
     const HloInstruction* producer) {
+  // Stand-alone bitcast is always no-op during runtime.
+  if (producer->opcode() == HloOpcode::kBitcast) {
+    return {0, 0, 0, absl::ZeroDuration(), absl::ZeroDuration()};
+  }
+
   auto fusion_analysis = AnalyzeFusion(*producer, *device_info_);
 
   return EstimateRunTimeForFusion(fusion_analysis);

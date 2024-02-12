@@ -83,6 +83,28 @@ ENTRY entry_computation {
   EXPECT_NEAR(absl::ToInt64Nanoseconds(runtime_data.exec_time), 267, 2);
 }
 
+TEST_F(GpuIndexingPerformanceModelTest, Bitcast) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = bf16[4,8,65,128]{3,2,1,0} parameter(0)
+  ROOT bitcast = bf16[8,4,65,128]{3,2,0,1} bitcast(param_0)
+}
+)"));
+
+  auto instruction =
+      module->entry_computation()->GetInstructionWithName("bitcast");
+
+  auto runtime_data =
+      indexing_cost_model_.EstimateRunTimeForInstruction(instruction);
+  EXPECT_EQ(runtime_data.flops, 0);
+  EXPECT_EQ(runtime_data.bytes_written, 0);
+  EXPECT_EQ(runtime_data.write_time, absl::ZeroDuration());
+  EXPECT_EQ(runtime_data.exec_time, absl::ZeroDuration());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
