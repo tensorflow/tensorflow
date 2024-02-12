@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/address_computation_fusion_rewriter.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -30,13 +31,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -49,6 +50,14 @@ namespace {
 bool IsNoOp(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
                           HloOpcode::kGetTupleElement>(hlo);
+}
+
+bool IsCustomCall(const HloInstruction* hlo) {
+  auto* custom_call = DynCast<HloCustomCallInstruction>(hlo);
+  if (custom_call == nullptr) return false;
+
+  return custom_call->api_version() ==
+         CustomCallApiVersion::API_VERSION_TYPED_FFI;
 }
 
 absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
@@ -143,6 +152,23 @@ absl::InlinedVector<HloInstruction*, 8> GetSortedMatched(
   return sorted_matched;
 }
 
+void CreateRootTuple(HloInstruction* root, HloComputation::Builder& builder) {
+  std::vector<HloInstruction*> elements;
+  elements.reserve(root->shape().tuple_shapes_size());
+  for (size_t i = 0; i < root->shape().tuple_shapes_size(); ++i) {
+    if (root->shape().tuple_shapes(i).IsTuple()) {
+      HloInstruction* gte = builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(root, i));
+      CreateRootTuple(gte, builder);
+      elements.push_back(builder.last_added_instruction());
+    } else {
+      elements.push_back(builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(root, i)));
+    }
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(elements));
+}
+
 absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, absl::Span<HloInstruction* const> matched,
     absl::Span<HloInstruction* const> captures) {
@@ -176,16 +202,8 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   }
 
   HloInstruction* root = builder.last_added_instruction();
-
-  // If the custom call requires a workspace we wrap the produced values with a
-  // root tuple of "real" result and a workspace.
   if (root->shape().IsTuple()) {
-    TF_RET_CHECK(root->shape().tuple_shapes_size() == 2);
-    HloInstruction* result =
-        builder.AddInstruction(HloInstruction::CreateGetTupleElement(root, 0));
-    HloInstruction* workspace =
-        builder.AddInstruction(HloInstruction::CreateGetTupleElement(root, 1));
-    builder.AddInstruction(HloInstruction::CreateTuple({result, workspace}));
+    CreateRootTuple(root, builder);
   }
 
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
@@ -233,7 +251,7 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if (IsLegacyCublasMatmul(*instr)) {
+      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr)) {
         auto sliced_operand_chains = GetSlicedOperandChains(instr);
         if (!(sliced_operand_chains.size() == 1 &&
               sliced_operand_chains.front() == instr)) {
