@@ -108,6 +108,26 @@ TEST_F(ShapeTest, EqualityTest) {
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
 }
 
+TEST_F(ShapeTest, IsInteger) {
+  EXPECT_FALSE(opaque_.IsInteger());
+  EXPECT_FALSE(token_.IsInteger());
+  EXPECT_TRUE(matrix_.IsInteger());
+  EXPECT_FALSE(tuple_.IsInteger());
+  EXPECT_FALSE(nested_tuple_.IsInteger());
+
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {1});
+  EXPECT_TRUE(u32_shape.IsInteger());
+
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {1});
+  EXPECT_FALSE(f32_shape.IsInteger());
+
+  Shape integer_tuple = ShapeUtil::MakeTupleShape({u32_shape, u32_shape});
+  EXPECT_TRUE(integer_tuple.IsInteger());
+
+  Shape mixed_type_tuple = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
+  EXPECT_FALSE(mixed_type_tuple.IsInteger());
+}
+
 TEST_F(ShapeTest, IsStatic) {
   EXPECT_TRUE(opaque_.is_static());
   EXPECT_TRUE(token_.is_static());
