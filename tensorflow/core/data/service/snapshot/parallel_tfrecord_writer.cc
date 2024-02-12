@@ -47,12 +47,12 @@ ParallelTFRecordWriter::ParallelTFRecordWriter(const std::string& file_prefix,
                                                tsl::Env* env,
                                                ByteSize max_file_size,
                                                int64_t num_write_threads,
-                                               int64_t buffer_size_per_thread)
+                                               int64_t buffer_size)
     : env_(env),
       file_prefix_(file_prefix),
       compression_(compression),
       max_file_size_(max_file_size),
-      buffer_size_(num_write_threads * buffer_size_per_thread) {
+      buffer_size_(buffer_size) {
   thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       env_, tsl::ThreadOptions{}, "write_tfrecord_thread", num_write_threads);
   for (int64_t i = 0; i < num_write_threads; ++i) {
