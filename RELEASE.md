@@ -1,87 +1,44 @@
 # Release 2.16.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 2.16.0
-
 ## TensorFlow
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
 *   TensorFlow Windows Build:
-
-    *   Clang is now the default compiler to build TensorFlow CPU wheels on the
-        Windows Platform starting with this release. The currently supported
-        version is LLVM/clang 17. The official Wheels-published on PyPI will be
-        based on Clang; however, users retain the option to build wheels using
-        the MSVC compiler following the steps mentioned in
-        https://www.tensorflow.org/install/source_windows as has been the case
-        before
+    *   Clang is now the default compiler to build TensorFlow CPU wheels on the Windows Platform starting with this release. The currently supported version is LLVM/clang 17. The official Wheels-published on PyPI will be based on Clang; however, users retain the option to build wheels using the MSVC compiler following the steps mentioned in https://www.tensorflow.org/install/source_windows as has been the case before
 
 ### Breaking Changes
 
-*   <DOCUMENT BREAKING CHANGES HERE>
-*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-*   `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be
-    set if `profiler` arg is set to `True`.
-
-    *   `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op.
-        Enabling the profiler now requires setting `profiler_outdir` in
-        `trace_on`.
+*   `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be set if `profiler` arg is set to `True`.
+    *   `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling the profiler now requires setting `profiler_outdir` in `trace_on`.
 
 *   `tf.estimator`
-
     *   The tf.estimator API is removed.
 
-*   Keras 3.0 will be the default Keras version. You may need to update your
-    script to use Keras 3.0.
+*   Keras 3.0 will be the default Keras version. You may need to update your script to use Keras 3.0.
 
-*   Please refer to the new Keras documentation for Keras 3.0
-    (https://keras.io/keras_3).
+*   Please refer to the new Keras documentation for Keras 3.0  (https://keras.io/keras_3).
 
 *   To continue using Keras 2.0, do the following.
 
 *   1.  Install tf-keras via pip install tf-keras~=2.16
 
-    1.  To switch tf.keras to use Keras 2 (tf-keras), set the environment
-        variable TF_USE_LEGACY_KERAS=1 directly or in your python program by
-        import os;os.environ["TF_USE_LEGACY_KERAS"]=1. Please note that this
-        will set it for all packages in your Python runtime program
+    1.  To switch tf.keras to use Keras 2 (tf-keras), set the environment variable TF_USE_LEGACY_KERAS=1 directly or in your python program by import os;os.environ["TF_USE_LEGACY_KERAS"]=1. Please note that this will set it for all packages in your Python runtime program
 
 *   1.  Change import of keras from tensorflow as follows
-*   import tensorflow.keras as keras and import keras to import tf_keras as
-    keras
-* **Apple Silicon users:** If you previously installed TensorFlow using
-    `pip install tensorflow-macos`, please update your installation method. Use
-    `pip install tensorflow` from now on. Starting with TF 2.17, the
-    `tensorflow-macos` package will no longer receive updates.
+*   import tensorflow.keras as keras and import keras to import tf_keras as keras
+* **Apple Silicon users:** If you previously installed TensorFlow using `pip install tensorflow-macos`, please update your installation method. Use `pip install tensorflow` from now on. Starting with TF 2.17, the `tensorflow-macos` package will no longer receive updates.
 
 ### Known Caveats
 
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
-*  Full aarch64 Linux and Arm64 macOS wheels are now published to the 
-  `tensorflow` pypi repository and no longer redirect to a separate package.
+*  Full aarch64 Linux and Arm64 macOS wheels are now published to the `tensorflow` pypi repository and no longer redirect to a separate package.
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
 *  Support for Python 3.12 has been added.
-*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now 
-   available for easier TPU based installs.
+*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now available for easier TPU based installs.
 *  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
 
 
 ### Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
 
 * `tf.lite`
     * Added support for `stablehlo.gather`.
@@ -92,73 +49,37 @@
     * Added boolean parameter support for `tfl.gather_nd`.
 
 * `tf.train.CheckpointOptions` and `tf.saved_model.SaveOptions`
-    * These now take in a new argument called `experimental_sharding_callback`.
-      This is a callback function wrapper that will be executed to determine how
-      tensors will be split into shards when the saver writes the checkpoint
-      shards to disk. `tf.train.experimental.ShardByTaskPolicy` is the default
-      sharding behavior, but `tf.train.experimental.MaxShardSizePolicy` can be
-      used to shard the checkpoint with a maximum shard file size. Users with
-      advanced use cases can also write their own custom
-      `tf.train.experimental.ShardingCallback`s.
+    * These now take in a new argument called `experimental_sharding_callback`. This is a callback function wrapper that will be executed to determine how tensors will be split into shards when the saver writes the checkpoint shards to disk. `tf.train.experimental.ShardByTaskPolicy` is the default sharding behavior, but `tf.train.experimental.MaxShardSizePolicy` can be used to shard the checkpoint with a maximum shard file size. Users with advanced use cases can also write their own custom `tf.train.experimental.ShardingCallback`s.
 
 * `tf.train.CheckpointOptions`
-    * Added `experimental_skip_slot_variables` (a boolean option) to skip
-    restoring of optimizer slot variables in a checkpoint.
+    * Added `experimental_skip_slot_variables` (a boolean option) to skip restoring of optimizer slot variables in a checkpoint.
 
 *   `tf.saved_model.SaveOptions`
 
-    * `SaveOptions` now takes a new argument called
-      `experimental_debug_stripper`. When enabled, this strips the debug nodes
-      from both the node defs and the function defs of the graph. Note that
-      this currently only strips the `Assert` nodes from the graph and
-      converts them into `NoOp`s instead.
+    * `SaveOptions` now takes a new argument called `experimental_debug_stripper`. When enabled, this strips the debug nodes from both the node defs and the function defs of the graph. Note that this currently only strips the `Assert` nodes from the graph and converts them into `NoOp`s instead.
 
 ## Keras
 
 *  `keras.layers.experimental.DynamicEmbedding`
     * Added `DynamicEmbedding` Keras layer
     * Added 'UpdateEmbeddingCallback`
-    * `DynamicEmbedding` layer allows for the continuous updating of the
-      vocabulary and embeddings during the training process. This layer
-      maintains a hash table to track the most up-to-date vocabulary based on
-      the inputs received by the layer and the eviction policy. When this layer
-      is used with an `UpdateEmbeddingCallback`, which is a time-based callback,
-      the vocabulary lookup tensor is updated at the time interval set in the
-      `UpdateEmbeddingCallback` based on the most up-to-date vocabulary hash
-      table maintained by the layer. If this layer is not used in conjunction
-      with `UpdateEmbeddingCallback` the behavior of the layer would be same as
-      `keras.layers.Embedding`.
+    * `DynamicEmbedding` layer allows for the continuous updating of the vocabulary and embeddings during the training process. This layer maintains a hash table to track the most up-to-date vocabulary based on the inputs received by the layer and the eviction policy. When this layer is used with an `UpdateEmbeddingCallback`, which is a time-based callback, the vocabulary lookup tensor is updated at the time interval set in the `UpdateEmbeddingCallback` based on the most up-to-date vocabulary hash table maintained by the layer. If this layer is not used in conjunction with `UpdateEmbeddingCallback` the behavior of the layer would be same as `keras.layers.Embedding`.
 *  `keras.optimizers.Adam`
-    * Added the option to set adaptive epsilon to match implementations with Jax
-      and PyTorch equivalents.
+    * Added the option to set adaptive epsilon to match implementations with Jax and PyTorch equivalents.
 
 ### Breaking Changes
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
 ### Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
 ### Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Aakar Dwivedi, Akhil Goel, Alexander Grund, Alexander Pivovarov, Andrew Goodbody, Andrey Portnoy, Aneta Kaczyńska, AnetaKaczynska, ArkadebMisra, Ashiq Imran, Ayan Moitra, Ben Barsdell, Ben Creech, Benedikt Lorch, Bhavani Subramanian, Bianca Van Schaik, Chao, Chase Riley Roberts, Connor Flanagan, David Hall, David Svantesson, David Svantesson-Yeung, dependabot[bot], Dr. Christoph Mittendorf, Dragan Mladjenovic, ekuznetsov139, Eli Kobrin, Eugene Kuznetsov, Faijul Amin, Frédéric Bastien, fsx950223, gaoyiyeah, Gauri1 Deshpande, Gautam, Giulio C.N, guozhong.zhuang, Harshit Monish, James Hilliard, Jane Liu, Jaroslav Sevcik, jeffhataws, Jerome Massot, Jerry Ge, jglaser, jmaksymc, Kaixi Hou, kamaljeeti, Kamil Magierski, Koan-Sin Tan, lingzhi98, looi, Mahmoud Abuzaina, Malik Shahzad Muzaffar, Meekail Zain, mraunak, Neil Girdhar, Olli Lupton, Om Thakkar, Paul Strawder, Pavel Emeliyanenko, Pearu Peterson, pemeliya, Philipp Hack, Pierluigi Urru, Pratik Joshi, radekzc, Rafik Saliev, Ragu, Rahul Batra, rahulbatra85, Raunak, redwrasse, Rodrigo Gomes, ronaghy, Sachin Muradi, Shanbin Ke, shawnwang18, Sheng Yang, Shivam Mishra, Shu Wang, Strawder, Paul, Surya, sushreebarsa, Tai Ly, talyz, Thibaut Goetghebuer-Planchon, Tj Xu, Tom Allsop, Trevor Morris, Varghese, Jojimon, weihanmines, wenchenvincent, Wenjie Zheng, Who Who Who, Yasir Ashfaq, yasiribmcon, Yoshio Soma, Yuanqiang Liu, Yuriy Chernyshov
 
 # Release 2.15.0.post1
 
