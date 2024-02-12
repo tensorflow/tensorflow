@@ -239,24 +239,6 @@ class Stream {
       blas::CallContext context) {
     OutputType alpha{1};
     OutputType beta{0};
-    return ThenBlasGemmWithAlgorithm(transa, transb, m, n, k, alpha, a, lda, b,
-                                     ldb, beta, c, ldc, computation_type,
-                                     algorithm, NumericOptions{},
-                                     output_profile_result, context);
-  }
-
-  template <typename InputType, typename OutputType, typename ConstantType>
-  absl::Status ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb, ConstantType beta,
-      DeviceMemory<OutputType> *c, int ldc,
-      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-      const NumericOptions &numeric_options,
-      blas::ProfileResult *output_profile_result, blas::CallContext context) {
-    TF_RETURN_IF_ERROR(
-        CheckTypesForExtendedBlas<InputType, OutputType, ConstantType>(
-            computation_type));
 
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
@@ -264,25 +246,10 @@ class Stream {
           "Attempting to perform BLAS operation using "
           "StreamExecutor without BLAS support");
     }
-
-    void *alpha_ptr = &alpha;
-    void *beta_ptr = &beta;
-    float alpha_storage, beta_storage;
-    UpcastHalfToFloat<ConstantType>(&alpha_ptr, &beta_ptr, &alpha_storage,
-                                    &beta_storage);
-
-    absl::Status st = blas->DoBlasGemmWithAlgorithm(
-        this, transa, transb, m, n, k, alpha_ptr, a,
-        blas::ToDataType<InputType>::value, lda, b,
-        blas::ToDataType<InputType>::value, ldb, beta_ptr, c,
-        blas::ToDataType<OutputType>::value, ldc, computation_type, algorithm,
-        numeric_options, output_profile_result, context);
-
-    if (output_profile_result) {
-      // The error is recorded in the profile.
-      return absl::OkStatus();
-    }
-    return st;
+    return blas->BlasGemmWithAlgorithm(
+        this, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+        computation_type, algorithm, NumericOptions{}, output_profile_result,
+        context);
   }
 
   template <typename T>
@@ -445,48 +412,6 @@ class Stream {
   std::variant<StreamPriority, int> priority() const;
 
  private:
-  // Checks whether types match before a call to extended BLAS version.
-  template <typename ABType, typename CType, typename ScaleType>
-  absl::Status CheckTypesForExtendedBlas(
-      blas::ComputationType computation_type) {
-    static_assert(
-        detail::is_any_of<ABType, Eigen::half, Eigen::bfloat16, float, double,
-                          int8_t, std::complex<float>, std::complex<double>>(),
-        "The only buffer types supported are: Eigen::half, float, "
-        "double, int8, std::complex<float> and std::complex<double>");
-    static_assert(
-        std::is_same_v<ScaleType, CType> ||
-            (std::is_same_v<ScaleType, float> &&
-             detail::is_any_of<CType, Eigen::half, Eigen::bfloat16>()),
-        "Mismatched alpha/beta and output types");
-
-    bool valid_computation_type = [computation_type] {
-      switch (computation_type) {
-        case blas::ComputationType::kF16:
-          return std::is_same_v<CType, Eigen::half>;
-        case blas::ComputationType::kF32:
-          return detail::is_any_of<CType, Eigen::half, Eigen::bfloat16, float,
-                                   std::complex<float>>();
-        case blas::ComputationType::kF64:
-          return detail::is_any_of<CType, double, std::complex<double>>();
-        case blas::ComputationType::kI32:
-          return std::is_same_v<CType, int32_t>;
-        case blas::ComputationType::kF16AsF32:   // fall-through
-        case blas::ComputationType::kBF16AsF32:  // fall-through
-        case blas::ComputationType::kTF32AsF32:
-          return detail::is_any_of<CType, float, std::complex<float>>();
-      }
-    }();
-
-    if (!valid_computation_type) {
-      return absl::InternalError(absl::StrCat(
-          "Invalid computation type ",
-          blas::ComputationTypeString(computation_type), " for output type: ",
-          blas::DataTypeString(blas::ToDataType<CType>::value)));
-    }
-    return absl::OkStatus();
-  }
-
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);
     return !status_.ok();

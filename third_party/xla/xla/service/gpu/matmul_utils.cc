@@ -559,14 +559,14 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   se::DeviceMemory<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
-  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
-      stream->parent()->AsBlas(), &workspace);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
+
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
 
   if (output.batch_size != 1) {
-    auto* blas = stream->parent()->AsBlas();
-    if (blas == nullptr) {
-      return absl::InternalError("No Blas support for stream");
-    }
     return blas->BlasGemmStridedBatchedWithAlgorithm(
         stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
         alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
@@ -575,9 +575,9 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
         output.batch_size, computation_type, algorithm, numeric_options,
         profile_result, context);
   } else {
-    return stream->ThenBlasGemmWithAlgorithm(
-        lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
-        lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
+    return blas->BlasGemmWithAlgorithm(
+        stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
+        alpha, lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
         rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
         computation_type, algorithm, numeric_options, profile_result, context);
   }
