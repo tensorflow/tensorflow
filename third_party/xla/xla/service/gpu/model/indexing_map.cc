@@ -162,6 +162,19 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
     return getAffineConstantExpr(a, mlir_context);
   }
 
+  // Rewrite `(a / b) / c` to `a / (b * c)` if `a >= 0` and `b` and `c` are
+  // constants.
+  if (lhs_simplified.getKind() == AffineExprKind::FloorDiv) {
+    auto lhs_div = mlir::cast<AffineBinaryOpExpr>(lhs_simplified);
+    auto lhs_lhs = range_evaluator_->ComputeExpressionRange(lhs_div.getLHS());
+    if (lhs_lhs.lower_bound >= 0) {
+      auto lhs_rhs = range_evaluator_->ComputeExpressionRange(lhs_div.getRHS());
+      if (lhs_rhs.IsPoint()) {
+        return lhs_div.getLHS().floorDiv(lhs_rhs.lower_bound * d);
+      }
+    }
+  }
+
   Range no_multiplier_range{0, 0};
   int64_t multiplier_gcd = -1;
   AffineExpr extracted = getAffineConstantExpr(0, mlir_context);
