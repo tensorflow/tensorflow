@@ -208,7 +208,7 @@ cc_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "cost_analysis_test",
     srcs = ["cost_analysis_test.cc"],
     deps = [
