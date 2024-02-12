@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
-namespace {
+namespace mlir_dump_test {
 
 class NoOpPass
     : public mlir::PassWrapper<NoOpPass, mlir::OperationPass<mlir::ModuleOp>> {
@@ -87,6 +87,12 @@ class ParentPass
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateParentPass() {
   return std::make_unique<ParentPass>();
 }
+
+}  // namespace mlir_dump_test
+
+namespace {
+
+using namespace tensorflow::quantization::mlir_dump_test;
 
 class EnableIrPrintingTest : public ::testing::Test {
  protected:
@@ -146,8 +152,8 @@ module{
 
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
       tsl::io::JoinPath(test_dir_,
-                        "dump_0001_tensorflow::quantization::(anonymous "
-                        "namespace)::NoOpPass_before.mlir")));
+                        "dump_0001_tensorflow::quantization::mlir_dump_test"
+                        "::NoOpPass_before.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(tsl::io::JoinPath(
       test_dir_, "dump_0002_Canonicalizer_func1_before.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(tsl::io::JoinPath(
@@ -175,12 +181,12 @@ TEST_F(EnableIrPrintingTest, NestedPassSuccessfullyRuns) {
 
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
       tsl::io::JoinPath(test_dir_,
-                        "dump_0001_tensorflow::quantization::(anonymous "
-                        "namespace)::ParentPass_before.mlir")));
+                        "dump_0001_tensorflow::quantization::mlir_dump_test"
+                        "::ParentPass_before.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
       tsl::io::JoinPath(test_dir_,
-                        "dump2_0001_tensorflow::quantization::(anonymous "
-                        "namespace)::NoOpPass_before.mlir")));
+                        "dump2_0001_tensorflow::quantization::mlir_dump_test"
+                        "::NoOpPass_before.mlir")));
 }
 }  // namespace
 }  // namespace quantization
