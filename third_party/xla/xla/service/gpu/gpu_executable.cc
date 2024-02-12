@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -292,8 +293,9 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
  private:
   // Keep all clique requests in an ordered container so that we acquire cliques
-  // in the same order for all participants and do not create a deadlock.
-  absl::btree_map<NcclCliqueKey, int64_t> cliques_;
+  // in the same order for all participants and do not create a deadlock. We use
+  // greater ordering to acquire largest cliques first.
+  absl::btree_map<NcclCliqueKey, int64_t, std::greater<NcclCliqueKey>> cliques_;
 };
 
 absl::Status MaybeSyncAndProfile(

@@ -1014,6 +1014,17 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "nccl_clique_key_test",
+    srcs = ["nccl_clique_key_test.cc"],
+    deps = [
+        ":nccl_clique_key",
+        "//xla/service:global_device_id",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "nccl_clique",
     srcs = ["nccl_clique.cc"],
