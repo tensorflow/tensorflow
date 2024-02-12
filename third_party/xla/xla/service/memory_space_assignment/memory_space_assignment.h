@@ -191,7 +191,6 @@ Useful logging and error messages
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -202,8 +201,8 @@ Useful logging and error messages
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/shape.h"
@@ -287,171 +286,6 @@ class PresetAssignments {
   std::string buffer_info_str_;
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
-};
-
-// A wrapper class around HloCostAnalysis with additional knowledge about the
-// bandwidths of different memory spaces.
-class MemorySpaceAssignmentCostAnalysis {
- public:
-  // An optional Cache object may be provided to some of the methods below to
-  // speed up the lookup.
-  struct Cache {
-    absl::flat_hash_map<const HloInstruction*, float> while_nest_multiplier;
-    absl::flat_hash_map<HloPosition, float> memory_boundedness;
-  };
-
-  // Function type that can be used to indicate which input/output values are in
-  // the alternate memory.
-  using IsInAlternateMemoryFun = absl::FunctionRef<bool(
-      std::optional<int> /*operand_num*/, const ShapeIndex& /*index*/,
-      const Shape& /*shape*/)>;
-
-  virtual ~MemorySpaceAssignmentCostAnalysis() = default;
-
-  static StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>> Create(
-      const HloCostAnalysis& cost_analysis, const Options& options,
-      const HloModule& module);
-
-  const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
-
-  // Returns a heuristic value that captures how much putting this tensor to the
-  // alternate memory would help if the op is memory bound, or otherwise how far
-  // off is the op to memory boundedness. The larger this number, the higher
-  // priority it will be placed in the alternate memory.
-  float GetAlternateMemoryBenefit(const HloInstruction& instruction,
-                                  float elapsed_time_due_to_alternate_mem,
-                                  Cache* cache = nullptr) const;
-  // Like above, return the benefit of putting the output tensor in the
-  // alternate memory.
-  float GetAlternateMemoryBenefit(const HloPosition& position,
-                                  Cache* cache = nullptr) const;
-  // Like above, return the benefit of putting the input tensor in the alternate
-  // memory.
-  float GetAlternateMemoryBenefit(const HloUse& use,
-                                  Cache* cache = nullptr) const;
-
-  // Returns a heuristic value of memory boundedness for the given
-  // BufferInterval.  The larger this number, the higher priority it will be
-  // placed in the alternate memory.
-  float GetMemoryBoundedness(
-      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
-      Cache* cache = nullptr) const;
-
-  // If enabled in Options::pipeline_overhead_window_size_mib, returns the
-  // overhead of accessing the default memory, in seconds. The source of the
-  // overhead is the software pipelining ovehead. The lowering of the operations
-  // typically use tiling to copy one window at a time from default memory, and
-  // perform compute:
-  //
-  // Pipeline overhead:                          <->
-  //                        +----+----+----+----+
-  // Copy from default mem: |    |    |    |    |
-  //                        +----+----+----+----+
-  //                            \    \    \    \
-  //                             \    \    \    \
-  //                              V    V    V    V
-  //                             +--+ +--+ +--+ +--+
-  // Compute:                    |  | |  | |  | |  |
-  //                             +--+ +--+ +--+ +--+
-  float GetDefaultMemoryAccessOverhead(
-      const HloInstruction& instruction,
-      absl::Span<const std::pair<int64_t, ShapeIndex>>
-          operands_in_alternate_mem = {},
-      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
-
-  // Returns the amount of time the default memory bandwidth is idle, while
-  // executing this instruction, in seconds.  This value can be multiplied with
-  // the default memory bandwidth to get the amount of bytes that are available
-  // to be copied to/from default memory during the execution of this
-  // instruction.
-  float GetDefaultMemoryBandwidthIdleTime(
-      const HloInstruction& instruction,
-      absl::Span<const std::pair<int64_t, ShapeIndex>>
-          operands_in_alternate_mem = {},
-      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
-
-  // Returns the bytes accessed from alternate memory.
-  float GetBytesAccessedFromAlternateMemory(
-      const HloInstruction& instruction,
-      absl::Span<const std::pair<int64_t, ShapeIndex>>
-          operands_in_alternate_mem = {},
-      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
-
-  // Returns the elapsed time in seconds due to compute only.
-  float GetInstructionElapsedDueToCompute(
-      const HloInstruction& instruction) const;
-
-  // Returns the elapsed time in seconds due to memory only. If
-  // operands_in_alternate_mem or outputs_in_alternate_mem is provided, it will
-  // assume that the corresponding operands or output will be in the alternate
-  // memory space. This is useful for calculating the benefit of placing the
-  // buffer in alternate memory.
-  float GetInstructionElapsedDueToMemory(
-      const HloInstruction& instruction,
-      absl::Span<const std::pair<int64_t, ShapeIndex>>
-          operands_in_alternate_mem = {},
-      absl::Span<const ShapeIndex> outputs_in_alternate_mem = {}) const;
-
-  // Like above, only the inputs/outputs indicated by is_in_alternate_mem are in
-  // the alternate memory.
-  float GetInstructionElapsedDueToMemory(
-      const HloInstruction& instruction,
-      IsInAlternateMemoryFun is_in_alternate_mem) const;
-
-  // Returns the estimated elapsed duration of the instruction in seconds.  It
-  // assumes all operands and outputs of the instruction are in the default
-  // memory.
-  virtual float GetInstructionElapsed(const HloInstruction& instruction) const;
-
-  // Returns the estimated elapsed duration of the instruction in seconds.  It
-  // assumes all operands and outputs of the instruction are in the default
-  // memory, except for the operands and outputs specified to be in the
-  // alternate memory.
-  virtual float GetInstructionElapsedInAlternateMemory(
-      const HloInstruction& instruction,
-      absl::Span<const std::pair<int64_t, ShapeIndex>>
-          operands_in_alternate_mem,
-      absl::Span<const ShapeIndex> outputs_in_alternate_mem) const;
-
-  // Like above, only the inputs/outputs indicated by is_in_alternate_mem are in
-  // the alternate memory.
-  float GetInstructionElapsedInAlternateMemory(
-      const HloInstruction& instruction,
-      IsInAlternateMemoryFun is_in_alternate_mem) const;
-
-  // Returns the elapsed time it would take to asynchronously copy the shape
-  // from default to alternate memory space (or vice versa).
-  virtual float GetAsyncCopyElapsed(const Shape& shape) const;
-
-  int64_t GetScheduleEndTime() const;
-
-  // Returns the number of nested computation levels this instruction resides
-  // in. If while_only is true, it returns the while loop nest level and 0
-  // means the instruction is not in a while loop.
-  int CalculateComputationNestLevel(const HloInstruction* instruction,
-                                    bool while_only) const;
-
-  const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
-  const Options& options() const { return options_; }
-
- protected:
-  MemorySpaceAssignmentCostAnalysis(
-      const HloCostAnalysis& cost_analysis, const Options& options,
-      std::unique_ptr<HloAliasAnalysis> alias_analysis,
-      std::unique_ptr<HloLiveRange> hlo_live_range,
-      std::unique_ptr<CallGraph> call_graph)
-      : cost_analysis_(cost_analysis),
-        options_(options),
-        alias_analysis_(std::move(alias_analysis)),
-        hlo_live_range_(std::move(hlo_live_range)),
-        call_graph_(std::move(call_graph)) {}
-
- private:
-  const HloCostAnalysis& cost_analysis_;
-  const Options& options_;
-  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  std::unique_ptr<HloLiveRange> hlo_live_range_;
-  std::unique_ptr<CallGraph> call_graph_;
 };
 
 // Abstract base class that memory space assignment uses to pick prefetch
@@ -603,8 +437,6 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t current_prefetch_time_;
 };
 
-// Forward Declaration of MemorySpaceAssignmentCostAnalysis
-class MemorySpaceAssignmentCostAnalysis;
 // Prefetch interval picker that uses cost analysis to overlap asynchronous
 // copies with independent computation. It uses min (independent computation
 // duration) / (asynchronous copy duration) ratio to guide whether the prefetch
@@ -622,8 +454,7 @@ class MemorySpaceAssignmentCostAnalysis;
 class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
  public:
   CostAnalysisPrefetchIntervalPicker(
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-      float min_overlap_to_async_copy_ratio,
+      const CostAnalysis& cost_analysis, float min_overlap_to_async_copy_ratio,
       float preferred_overlap_to_async_copy_ratio,
       float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes,
       const Shape* shape_override = nullptr);
@@ -689,7 +520,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // interval.
   std::vector<int> while_nest_level_change_;
 
-  const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
+  const CostAnalysis& cost_analysis_;
   float min_overlap_to_async_copy_ratio_;
   float preferred_overlap_to_async_copy_ratio_;
   float max_async_copy_elapsed_;
@@ -1503,8 +1334,13 @@ class MemoryBoundednessBufferIntervalComparator
     : public MemorySpaceAssignment::BufferIntervalComparator {
  public:
   MemoryBoundednessBufferIntervalComparator(
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-      MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache);
+      const CostAnalysis& cost_analysis,
+      CostAnalysis::Cache* cost_analysis_cache);
+
+  MemoryBoundednessBufferIntervalComparator(
+      const CostAnalysis& cost_analysis,
+      CostAnalysis::Cache* cost_analysis_cache,
+      MsaSortOrderOverrides msa_sort_order_overrides);
 
   ~MemoryBoundednessBufferIntervalComparator() override = default;
 
@@ -1521,8 +1357,12 @@ class MemoryBoundednessBufferIntervalComparator
   ComparisonTuple GetTuple(const BufferInterval& buffer_interval);
   int64_t GetLatestUseTime(const BufferInterval& buffer_interval);
   absl::flat_hash_map<const HloValue*, int64_t> buffer_to_latest_use_;
-  const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
-  MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache_;
+  const CostAnalysis& cost_analysis_;
+  CostAnalysis::Cache* cost_analysis_cache_;
+
+  // Config to override alternate memory assignment sorting order for filtered
+  // buffers.
+  MsaSortOrderOverrides msa_sort_order_overrides_;
 };
 
 // The default BufferIntervalComparator used for cross-program prefetching.
@@ -1578,7 +1418,7 @@ struct Options {
   PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
 
   // This object is used to determine the benefit of a particular allocation.
-  MemorySpaceAssignmentCostAnalysis* cost_analysis = nullptr;
+  CostAnalysis* cost_analysis = nullptr;
 
   // Size function for buffer values.
   BufferValue::SizeFunction size_fn;
@@ -1639,21 +1479,6 @@ struct Options {
   // greater than 0, repacker must be non-nullptr.
   int64_t max_repacks = 0;
 
-  // This variable is used by the cost analysis in estimating how many times
-  // each while loop will execute. Nested loops will be assumed to have
-  // executed pow(while_execution_count, nesting_level) times.
-  uint64_t xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
-
-  // This variable is used to scale the alternate memory benefit factor for
-  // large buffers. The default scaling function is sqrt.
-  std::string
-      xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers =
-          "SQRT";
-
-  float async_copy_bandwidth_bytes_per_second = 0.0f;
-
-  float alternate_mem_bandwidth_bytes_per_second = 0.0f;
-
   // The repacking algorithm to reduce fragmentation. Must be non-null if
   // max_repacks is greater than 0.
   MemorySpaceAssignmentRepacker* repacker = nullptr;
@@ -1699,9 +1524,6 @@ struct Options {
   // to sort allocated buffers.
   std::optional<std::vector<uint64_t>> autotuning_config = std::nullopt;
 
-  // Scales effective bandwidth for async copies. Valid range is (0, 1].
-  float async_copy_bandwidth_scaling_factor = 1.0;
-
   // If true, uses the earlier instance of the same instruction to use as
   // preferred prefetch start time.
   bool use_repeated_instance_for_preferred_prefetch_time = false;
@@ -1727,10 +1549,6 @@ struct Options {
       absl::Span<HloPosition>)>
       get_inefficient_allocation_sites_fn = nullptr;
 
-  // The window size used to calculate the pipeline overhead when HLO accesses
-  // the default memory, in MiB.
-  float pipeline_overhead_window_size_mib = 0;
-
   // Config to filter prefetches and update preferred prefetch times for the
   // filtered prefetches.
   PreferredPrefetchOverrides preferred_prefetch_overrides;
@@ -1750,10 +1568,6 @@ struct Options {
   // Option to always spill buffers from alternate memory to default memory
   // and prefetching back to alternate memory(if needed) just in time for use.
   bool always_spill_to_default_memory = false;
-
-  // Config to override alternate memory assignment sorting order for filtered
-  // buffers.
-  MsaSortOrderOverrides msa_sort_order_overrides;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -2034,7 +1848,7 @@ class MemoryBoundLoopOptimizer {
       const MemoryBoundLoopOptimizerOptions& options,
       const HloLiveRange& hlo_live_range,
       const HloAliasAnalysis& alias_analysis_,
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+      const CostAnalysis& cost_analysis,
       const BufferValue::SizeFunction& size_function);
 
   // Optimize the loop. Initialize must be called first.
@@ -2076,13 +1890,13 @@ class MemoryBoundLoopOptimizer {
     std::vector<int64_t> additional_memory_used;
   };
 
-  MemoryBoundLoopOptimizer(
-      int loop_start, int loop_end, uint64_t alternate_memory_size,
-      const MemoryBoundLoopOptimizerOptions& options,
-      const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis_,
-      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-      const BufferValue::SizeFunction& size_function);
+  MemoryBoundLoopOptimizer(int loop_start, int loop_end,
+                           uint64_t alternate_memory_size,
+                           const MemoryBoundLoopOptimizerOptions& options,
+                           const HloLiveRange& hlo_live_range,
+                           const HloAliasAnalysis& alias_analysis_,
+                           const CostAnalysis& cost_analysis,
+                           const BufferValue::SizeFunction& size_function);
 
   // Initializes the data structures used by the optimizer.
   Status Initialize();
@@ -2151,7 +1965,7 @@ class MemoryBoundLoopOptimizer {
   MemoryBoundLoopOptimizerOptions options_;
   const HloLiveRange& hlo_live_range_;
   const HloAliasAnalysis& alias_analysis_;
-  const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
+  const CostAnalysis& cost_analysis_;
   BufferValue::SizeFunction size_function_;
 
   absl::flat_hash_map<const HloInstruction*, int64_t> instructions_in_loop_;

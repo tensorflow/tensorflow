@@ -42,11 +42,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
@@ -65,6 +63,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/tuning_utils.h"
@@ -775,361 +774,8 @@ void TransformAllocationSequenceToSpill(
   XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
   SortAllocationSequence(allocations);
 }
+
 }  // namespace
-
-/*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
-MemorySpaceAssignmentCostAnalysis::Create(const HloCostAnalysis& cost_analysis,
-                                          const Options& options,
-                                          const HloModule& module) {
-  TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
-  TF_ASSIGN_OR_RETURN(auto hlo_live_range,
-                      HloLiveRange::Run(module.schedule(), *alias_analysis,
-                                        module.entry_computation()));
-  auto call_graph = CallGraph::Build(&module);
-  return absl::WrapUnique(new MemorySpaceAssignmentCostAnalysis(
-      cost_analysis, options, std::move(alias_analysis),
-      std::move(hlo_live_range), std::move(call_graph)));
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
-    const HloInstruction& instruction, float elapsed_time_due_to_alternate_mem,
-    MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
-  float elapsed_time_due_to_compute =
-      GetInstructionElapsedDueToCompute(instruction);
-  float elapsed_time_due_to_memory =
-      GetInstructionElapsedDueToMemory(instruction);
-  if (elapsed_time_due_to_memory > elapsed_time_due_to_compute) {
-    // Memory bound, return how much alternate memory is better.
-    float while_nest_multiplier;
-    if (cache) {
-      // If there is a cache provided, memoize the while nest multiplier.
-      auto it = cache->while_nest_multiplier.find(&instruction);
-      if (it != cache->while_nest_multiplier.end()) {
-        while_nest_multiplier = it->second;
-      } else {
-        while_nest_multiplier = IPow<float>(
-            options_.xla_tpu_memory_space_assignment_while_execution_count,
-            CalculateComputationNestLevel(&instruction,
-                                          /*while_only=*/true));
-        cache->while_nest_multiplier[&instruction] = while_nest_multiplier;
-      }
-    } else {
-      while_nest_multiplier = IPow<float>(
-          options_.xla_tpu_memory_space_assignment_while_execution_count,
-          CalculateComputationNestLevel(&instruction,
-                                        /*while_only=*/true));
-    }
-    return (elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem) *
-           while_nest_multiplier;
-  } else {
-    // TODO(b/317935037): Multiply with while nest multiplier and test for
-    // speedup.
-    // Compute bound, return how far off are we to memory boundedness.
-    return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
-  }
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
-    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
-    MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
-  if (cache) {
-    auto it =
-        cache->memory_boundedness.find(interval.buffer->defining_position());
-    if (it != cache->memory_boundedness.end()) {
-      return it->second;
-    }
-  }
-  float alternate_mem_benefit =
-      GetAlternateMemoryBenefit(interval.buffer->defining_position(), cache);
-
-  for (const HloBuffer* buffer : alias_analysis_->ComputeBuffersAt(
-           interval.buffer->defining_position().instruction,
-           interval.buffer->defining_position().index)) {
-    for (const HloValue* value : buffer->values()) {
-      for (const HloUse& use : value->GetUses()) {
-        // We look inside the called computations of while and conditional, so
-        // don't use the benefit of while and conditional directly.
-        if (use.instruction->opcode() == HloOpcode::kWhile ||
-            use.instruction->opcode() == HloOpcode::kConditional) {
-          continue;
-        }
-        float use_alternate_mem_benefit = GetAlternateMemoryBenefit(use, cache);
-        // If the benefit is positive (memory bound), add it to this buffer's
-        // benefit. If the benefit is negative (compute bound), calculate the
-        // maximum.
-        if (alternate_mem_benefit > 0 && use_alternate_mem_benefit > 0) {
-          alternate_mem_benefit += use_alternate_mem_benefit;
-        } else {
-          alternate_mem_benefit =
-              std::max(alternate_mem_benefit, use_alternate_mem_benefit);
-        }
-      }
-    }
-  }
-
-  // Penalize larger buffers by dividing the benefit by the square root of
-  // the size. Empirically, we observed this resulted in better performance
-  // compared to dividing by the size.
-  float memory_boundedness = 1;
-  if (options_
-          .xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers ==
-      "NO_SCALE") {
-    memory_boundedness = alternate_mem_benefit;
-  } else {
-    memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
-  }
-
-  if (cache) {
-    cache->memory_boundedness[interval.buffer->defining_position()] =
-        memory_boundedness;
-  }
-  return memory_boundedness;
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
-    const HloPosition& position,
-    MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
-  return GetAlternateMemoryBenefit(
-      *position.instruction,
-      GetInstructionElapsedDueToMemory(
-          *position.instruction,
-          /*operands_in_alternate_mem=*/{},
-          /*outputs_in_alternate_mem=*/{position.index}),
-      cache);
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
-    const HloUse& use, MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
-  return GetAlternateMemoryBenefit(
-      *use.instruction,
-      GetInstructionElapsedDueToMemory(
-          *use.instruction,
-          /*operands_in_alternate_mem=*/{std::make_pair(use.operand_number,
-                                                        use.operand_index)}),
-      cache);
-}
-
-int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
-    const HloInstruction* instruction, bool while_only) const {
-  int nest_level = 0;
-  const HloComputation* computation = instruction->parent();
-  while (!computation->IsEntryComputation()) {
-    auto& node = call_graph_->GetNode(computation);
-    auto callsites = node.caller_callsites();
-    CHECK(node.computation()->IsAsyncComputation() || callsites.size() == 1)
-        << "The module is not flattened!";
-    auto& callsite = callsites[0];
-    if (!while_only || callsite.instruction()->opcode() == HloOpcode::kWhile) {
-      ++nest_level;
-    }
-    computation = callsite.instruction()->parent();
-  }
-  return nest_level;
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetDefaultMemoryAccessOverhead(
-    const HloInstruction& instruction,
-    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
-    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  // Calculate the pipeline overhead of accessing the default memory. We use the
-  // maximum of the window size heuristic and the actual default memory bytes
-  // accessed multiplied with the compute as the overhead. So, the math is:
-  //
-  // overhead = compute_per_iteration
-  //          = compute_elapsed / num_iterations
-  //          = compute_elapsed / (bytes_accessed / window_size)
-  //          = (window_size / bytes_accessed) * compute_elapsed
-  const float window_size_bytes =
-      options_.pipeline_overhead_window_size_mib * 1024 * 1024;
-  const float bytes_accessed = cost_analysis_.bytes_accessed(instruction);
-  const float default_memory_bytes_accessed =
-      bytes_accessed -
-      GetBytesAccessedFromAlternateMemory(
-          instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  const float compute_elapsed = GetInstructionElapsedDueToCompute(instruction);
-  const float effective_window_size_bytes =
-      std::min(window_size_bytes, default_memory_bytes_accessed);
-  float overhead = 0;
-  if (bytes_accessed > 0) {
-    overhead = (effective_window_size_bytes / bytes_accessed) * compute_elapsed;
-  }
-  return overhead;
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetDefaultMemoryBandwidthIdleTime(
-    const HloInstruction& instruction,
-    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
-    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  const float default_memory_bytes_accessed =
-      cost_analysis_.bytes_accessed(instruction) -
-      GetBytesAccessedFromAlternateMemory(
-          instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  const float elapsed_due_to_default_mem =
-      default_memory_bytes_accessed /
-      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-  const float elapsed = GetInstructionElapsedInAlternateMemory(
-      instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  return elapsed - elapsed_due_to_default_mem;
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetBytesAccessedFromAlternateMemory(
-    const HloInstruction& instruction,
-    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
-    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  float bytes_accessed_from_alternate_mem = 0.0;
-  for (auto& operand : operands_in_alternate_mem) {
-    const float operand_bytes_accessed = cost_analysis_.operand_bytes_accessed(
-        instruction, operand.first, operand.second);
-    bytes_accessed_from_alternate_mem += operand_bytes_accessed;
-  }
-
-  for (auto& shape_idx : outputs_in_alternate_mem) {
-    const float output_bytes_accessed =
-        cost_analysis_.output_bytes_accessed(instruction, shape_idx);
-    bytes_accessed_from_alternate_mem += output_bytes_accessed;
-  }
-  return bytes_accessed_from_alternate_mem;
-}
-
-namespace {
-// Returns true on async instructions since we assume they are already
-// efficiently scheduled such that they are not in the critical path and appear
-// to take no time.
-bool ExcludeInstructionFromElapsed(const HloInstruction& instruction) {
-  return instruction.opcode() == HloOpcode::kAllGatherStart ||
-         instruction.opcode() == HloOpcode::kAllGatherDone ||
-         instruction.opcode() == HloOpcode::kAllReduceStart ||
-         instruction.opcode() == HloOpcode::kAllReduceDone ||
-         instruction.opcode() == HloOpcode::kAsyncStart ||
-         instruction.opcode() == HloOpcode::kAsyncDone ||
-         instruction.opcode() == HloOpcode::kCollectivePermuteStart ||
-         instruction.opcode() == HloOpcode::kCollectivePermuteDone ||
-         instruction.opcode() == HloOpcode::kCopyStart ||
-         instruction.opcode() == HloOpcode::kCopyDone;
-}
-}  // namespace
-
-float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToCompute(
-    const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  return std::max(
-      cost_analysis_.flop_count(instruction) /
-          cost_analysis_.per_second_rate(HloCostAnalysis::kFlopsKey),
-      cost_analysis_.transcendental_count(instruction) /
-          cost_analysis_.per_second_rate(HloCostAnalysis::kTranscendentalsKey));
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
-    const HloInstruction& instruction,
-    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
-    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  float total_bytes_accessed = cost_analysis_.bytes_accessed(instruction);
-  float bytes_accessed_from_alternate_mem = GetBytesAccessedFromAlternateMemory(
-      instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  float elapsed_due_to_alternate_mem =
-      bytes_accessed_from_alternate_mem /
-      options().alternate_mem_bandwidth_bytes_per_second;
-  float elapsed_due_to_default_mem =
-      (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
-      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
-    const HloInstruction& instruction,
-    IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  float total_bytes_accessed = cost_analysis_.bytes_accessed(instruction);
-  float bytes_accessed_from_alternate_mem = 0.0;
-  for (int operand_num = 0; operand_num < instruction.operand_count();
-       ++operand_num) {
-    ShapeUtil::ForEachSubshape(
-        instruction.operand(operand_num)->shape(),
-        [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
-            return;
-          }
-          if (is_in_alternate_mem(operand_num, index, subshape)) {
-            bytes_accessed_from_alternate_mem +=
-                cost_analysis_.operand_bytes_accessed(instruction, operand_num,
-                                                      index);
-          }
-        });
-  }
-  ShapeUtil::ForEachSubshape(instruction.shape(), [&](const Shape& subshape,
-                                                      const ShapeIndex& index) {
-    if (!subshape.IsArray()) {
-      return;
-    }
-    if (is_in_alternate_mem(/*operand_num=*/std::nullopt, index, subshape)) {
-      bytes_accessed_from_alternate_mem +=
-          cost_analysis_.output_bytes_accessed(instruction, index);
-    }
-  });
-  float elapsed_due_to_alternate_mem =
-      bytes_accessed_from_alternate_mem /
-      options().alternate_mem_bandwidth_bytes_per_second;
-  float elapsed_due_to_default_mem =
-      (total_bytes_accessed - bytes_accessed_from_alternate_mem) /
-      cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
-  return elapsed_due_to_alternate_mem + elapsed_due_to_default_mem;
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
-    const HloInstruction& instruction) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  float overhead = GetDefaultMemoryAccessOverhead(instruction);
-  return std::max(GetInstructionElapsedDueToCompute(instruction),
-                  GetInstructionElapsedDueToMemory(instruction) + overhead);
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
-    const HloInstruction& instruction,
-    absl::Span<const std::pair<int64_t, ShapeIndex>> operands_in_alternate_mem,
-    absl::Span<const ShapeIndex> outputs_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  float overhead = GetDefaultMemoryAccessOverhead(
-      instruction, operands_in_alternate_mem, outputs_in_alternate_mem);
-  return std::max(
-      GetInstructionElapsedDueToCompute(instruction),
-      GetInstructionElapsedDueToMemory(instruction, operands_in_alternate_mem,
-                                       outputs_in_alternate_mem) +
-          overhead);
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
-    const HloInstruction& instruction,
-    IsInAlternateMemoryFun is_in_alternate_mem) const {
-  if (ExcludeInstructionFromElapsed(instruction)) {
-    return 0.0f;
-  }
-  return std::max(
-      GetInstructionElapsedDueToCompute(instruction),
-      GetInstructionElapsedDueToMemory(instruction, is_in_alternate_mem));
-}
-
-float MemorySpaceAssignmentCostAnalysis::GetAsyncCopyElapsed(
-    const Shape& shape) const {
-  int64_t size_in_bytes = cost_analysis_.GetShapeSize(shape);
-  return static_cast<float>(size_in_bytes) /
-         (options().async_copy_bandwidth_bytes_per_second *
-          options().async_copy_bandwidth_scaling_factor);
-}
-
-int64_t MemorySpaceAssignmentCostAnalysis::GetScheduleEndTime() const {
-  return hlo_live_range_->schedule_end_time();
-}
 
 bool InstructionCountPrefetchIntervalPicker::CanAllocateInAlternateMemoryNoCopy(
     const Shape& shape, int64_t start_time, int64_t end_time) const {
@@ -1204,8 +850,7 @@ std::string InstructionCountPrefetchIntervalPicker::ToNoCopyDebugString(
 }
 
 CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
-    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-    float min_overlap_to_async_copy_ratio,
+    const CostAnalysis& cost_analysis, float min_overlap_to_async_copy_ratio,
     float preferred_overlap_to_async_copy_ratio,
     float max_overlap_to_mem_size_async_copy_ratio, int64_t mem_size_bytes,
     const Shape* shape_override)
@@ -1256,10 +901,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     instructions_elapsed_time[logical_time] =
-        elapsed_time *
-        IPow<float>(cost_analysis_.options()
-                        .xla_tpu_memory_space_assignment_while_execution_count,
-                    while_nest_level);
+        elapsed_time * cost_analysis_.GetWhileNestMultiplier(while_nest_level);
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -1295,10 +937,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     while_nest_level_change_.push_back(change_idx);
   }
   for (int i = 0; i <= max_while_nest_level; ++i) {
-    while_execution_counts_.push_back(
-        IPow<float>(cost_analysis_.options()
-                        .xla_tpu_memory_space_assignment_while_execution_count,
-                    i));
+    while_execution_counts_.push_back(cost_analysis_.GetWhileNestMultiplier(i));
   }
 }
 
@@ -2162,7 +1801,7 @@ MemoryBoundLoopOptimizer::Create(
     int loop_start, int loop_end, uint64_t alternate_memory_size,
     const MemoryBoundLoopOptimizerOptions& options,
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
-    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    const CostAnalysis& cost_analysis,
     const BufferValue::SizeFunction& size_function) {
   std::unique_ptr<MemoryBoundLoopOptimizer> optimizer =
       absl::WrapUnique(new MemoryBoundLoopOptimizer(
@@ -2176,7 +1815,7 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
     int loop_start, int loop_end, uint64_t alternate_memory_size,
     const MemoryBoundLoopOptimizerOptions& options,
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
-    const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+    const CostAnalysis& cost_analysis,
     const BufferValue::SizeFunction& size_function)
     : loop_start_(loop_start),
       loop_end_(loop_end),
@@ -2321,7 +1960,7 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
       // Keep track of bytes accessed by this value.
       if (loop_index || prev_iteration_index) {
         float bytes_accessed =
-            cost_analysis_.cost_analysis().output_bytes_accessed(
+            cost_analysis_.hlo_cost_analysis().output_bytes_accessed(
                 *position.instruction, position.index);
         pos_bytes += bytes_accessed;
         VLOG(3) << " accessed: " << bytes_accessed;
@@ -2352,7 +1991,7 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
       // Keep track of bytes accessed by this value.
       if (loop_index || next_iteration_index) {
         float bytes_accessed =
-            cost_analysis_.cost_analysis().operand_bytes_accessed(
+            cost_analysis_.hlo_cost_analysis().operand_bytes_accessed(
                 *use.instruction, use.operand_number, use.operand_index);
         use_bytes += bytes_accessed;
         VLOG(3) << " accessed: " << bytes_accessed;
@@ -4092,15 +3731,16 @@ AlternateMemoryBestFitHeap::GetInefficientAllocationSites(
           const HloPosition& defining_position =
               allocation->defining_position();
           int64_t accessed =
-              options_.cost_analysis->cost_analysis().output_bytes_accessed(
+              options_.cost_analysis->hlo_cost_analysis().output_bytes_accessed(
                   *defining_position.instruction, defining_position.index);
           VLOG(3) << "  pos: " << defining_position.ToString()
                   << ", accessed: " << accessed << " / " << size;
         }
         for (const HloUse& use : allocation->uses()) {
           int64_t accessed =
-              options_.cost_analysis->cost_analysis().operand_bytes_accessed(
-                  *use.instruction, use.operand_number, use.operand_index);
+              options_.cost_analysis->hlo_cost_analysis()
+                  .operand_bytes_accessed(*use.instruction, use.operand_number,
+                                          use.operand_index);
           VLOG(3) << "  use: " << use.ToString() << ", accessed: " << accessed
                   << " / " << size;
         }
@@ -4131,15 +3771,16 @@ AlternateMemoryBestFitHeap::GetInefficientAllocationSites(
       }
       if (position_memory_space == MemorySpace::kAlternate) {
         use_bytes +=
-            options_.cost_analysis->cost_analysis().output_bytes_accessed(
+            options_.cost_analysis->hlo_cost_analysis().output_bytes_accessed(
                 *allocation->defining_position().instruction,
                 allocation->defining_position().index);
       }
       if (allocation->memory_space() == MemorySpace::kAlternate) {
         for (const HloUse& use : allocation->uses()) {
           use_bytes +=
-              options_.cost_analysis->cost_analysis().operand_bytes_accessed(
-                  *use.instruction, use.operand_number, use.operand_index);
+              options_.cost_analysis->hlo_cost_analysis()
+                  .operand_bytes_accessed(*use.instruction, use.operand_number,
+                                          use.operand_index);
         }
       }
     }
@@ -5938,12 +5579,13 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
             << " use benefit = "
             << options_.cost_analysis->GetAlternateMemoryBenefit(
                    request.use->hlo_use);
-    VLOG(3) << "Definition bytes accessed = "
-            << options_.cost_analysis->cost_analysis().output_bytes_accessed(
-                   *defining_position.instruction, defining_position.index)
-            << ", use bytes accessed = "
-            << options_.cost_analysis->cost_analysis().operand_bytes_accessed(
-                   *use.instruction, use.operand_number, use.operand_index);
+    VLOG(3)
+        << "Definition bytes accessed = "
+        << options_.cost_analysis->hlo_cost_analysis().output_bytes_accessed(
+               *defining_position.instruction, defining_position.index)
+        << ", use bytes accessed = "
+        << options_.cost_analysis->hlo_cost_analysis().operand_bytes_accessed(
+               *use.instruction, use.operand_number, use.operand_index);
   }
 
   // There could be a requirement to pin this buffer to default memory either
@@ -7649,11 +7291,11 @@ float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
         options_.cost_analysis->GetInstructionElapsedInAlternateMemory(
             *instruction, operands_in_alternate_memory,
             outputs_in_alternate_memory);
-    float while_nest_multiplier = IPow<float>(
-        options_.xla_tpu_memory_space_assignment_while_execution_count,
-        options_.cost_analysis->CalculateComputationNestLevel(
-            instruction,
-            /*while_only=*/true));
+    float while_nest_multiplier =
+        options_.cost_analysis->GetWhileNestMultiplier(
+            options_.cost_analysis->CalculateComputationNestLevel(
+                instruction,
+                /*while_only=*/true));
     total_elapsed += while_nest_multiplier * instruction_elapsed;
   }
   return total_elapsed;
@@ -9157,11 +8799,21 @@ DefaultCrossProgramPrefetchBufferIntervalComparator::GetTuple(
 
 MemoryBoundednessBufferIntervalComparator::
     MemoryBoundednessBufferIntervalComparator(
-        const MemorySpaceAssignmentCostAnalysis& cost_analysis,
-        MemorySpaceAssignmentCostAnalysis::Cache* cost_analysis_cache)
+        const CostAnalysis& cost_analysis,
+        CostAnalysis::Cache* cost_analysis_cache)
     : MemorySpaceAssignment::BufferIntervalComparator(),
       cost_analysis_(cost_analysis),
       cost_analysis_cache_(cost_analysis_cache) {}
+
+MemoryBoundednessBufferIntervalComparator::
+    MemoryBoundednessBufferIntervalComparator(
+        const CostAnalysis& cost_analysis,
+        CostAnalysis::Cache* cost_analysis_cache,
+        MsaSortOrderOverrides msa_sort_order_overrides)
+    : MemorySpaceAssignment::BufferIntervalComparator(),
+      cost_analysis_(cost_analysis),
+      cost_analysis_cache_(cost_analysis_cache),
+      msa_sort_order_overrides_(msa_sort_order_overrides) {}
 
 std::string
 MemoryBoundednessBufferIntervalComparator::DescribeComparisonCriteria() const {
@@ -9204,7 +8856,7 @@ MemoryBoundednessBufferIntervalComparator::ComparisonTuple
 MemoryBoundednessBufferIntervalComparator::GetTuple(
     const BufferInterval& buffer_interval) {
   int64_t priority = GetBufferIntervalOverridePriority(
-      cost_analysis_.options().msa_sort_order_overrides, buffer_interval);
+      msa_sort_order_overrides_, buffer_interval);
   float inverse_memory_boundedness =
       -1.0 * cost_analysis_.GetMemoryBoundedness(buffer_interval,
                                                  cost_analysis_cache_);
