@@ -52,15 +52,15 @@ class LoopTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
-absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
+absl::StatusOr<std::unique_ptr<KernelFusionInterface>> GetFusion(
     const HloFusionAnalysis& analysis) {
   TF_ASSIGN_OR_RETURN(
       auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
-  auto fusion = dynamic_cast<LoopFusion*>(emitter.get());
+  auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
   TF_RET_CHECK(fusion != nullptr);
 
   emitter.release();
-  return std::unique_ptr<LoopFusion>{fusion};
+  return std::unique_ptr<KernelFusionInterface>{fusion};
 }
 
 TEST_F(LoopTest, ThreadIndexingUnrolled) {
@@ -81,15 +81,15 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
 
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-   ((th_x + bl_x * 128 + chunk_id * 129024) floordiv 15000) mod 100,
-   ((th_x + bl_x * 128 + chunk_id * 129024) floordiv 75) mod 200,
+   ((th_x floordiv 24 + chunk_id * 5376 + (bl_x * 16) floordiv 3) floordiv 625) mod 100,
+   ((th_x floordiv 3 + chunk_id * 43008 + (bl_x * 128) floordiv 3) floordiv 25) mod 200,
    (th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id) mod 300)
   domain:
   th_x in [0, 127]
@@ -122,7 +122,7 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
