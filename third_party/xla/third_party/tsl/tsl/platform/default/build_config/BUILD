@@ -38,34 +38,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gif",
-    copts = tsl_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@gif",
-    ],
-)
-
-cc_library(
-    name = "jpeg",
-    copts = tsl_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@libjpeg_turbo//:jpeg",
-    ],
-)
-
-cc_library(
-    name = "png",
-    copts = tsl_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@png",
-        "@zlib",
-    ],
-)
-
-cc_library(
     name = "test_main",
     testonly = 1,
     linkstatic = 1,

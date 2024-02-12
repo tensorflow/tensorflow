@@ -17,8 +17,6 @@ third_party/ducc/threading.h:
 third_party/eigen3/BUILD:
 third_party/eigen3/LICENSE:
 third_party/eigen3/eigen_archive.BUILD:
-third_party/gif.BUILD:
-third_party/gif_fix_strtok_r.patch:
 third_party/git/BUILD.tpl:
 third_party/git/BUILD:
 third_party/git/git_configure.bzl:
@@ -68,8 +66,6 @@ third_party/nccl/nccl_configure.bzl:
 third_party/nccl/system.BUILD.tpl:
 third_party/nvtx/BUILD:
 third_party/nvtx/LICENSE:
-third_party/png.BUILD:
-third_party/png_fix_rpi.patch:
 third_party/protobuf/BUILD:
 third_party/py/non_hermetic/BUILD.tpl:
 third_party/py/non_hermetic/BUILD:
