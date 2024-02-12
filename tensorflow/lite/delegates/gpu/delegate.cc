@@ -809,6 +809,10 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
   TfLiteStatus SetAttributes(TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node, int tensor_index,
                              const TfLiteAttributeMap* attrs) override;
+  TfLiteStatus SetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   const TfLiteAttributeMap* attrs) override;
+  TfLiteStatus GetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   TfLiteAttributeMap* attrs) override;
   TfLiteStatus Prepare(TfLiteOpaqueContext* context,
                        TfLiteOpaqueNode* node) override;
 
@@ -1066,6 +1070,18 @@ TfLiteStatus DelegateAsyncKernel::SetAttributesImpl(
   sync_type_by_tensor_index_[tensor_index] = sync_attrs.sync_type.value();
 
   return kTfLiteOk;
+}
+
+TfLiteStatus DelegateAsyncKernel::SetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs) {
+  // TODO(b/325338475): Implement the details for set attributes to buffer.
+  return kTfLiteDelegateError;
+}
+
+TfLiteStatus DelegateAsyncKernel::GetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, TfLiteAttributeMap* attrs) {
+  // TODO(b/325338475): Implement the details for get attributes from buffer.
+  return kTfLiteDelegateError;
 }
 
 TfLiteStatus DelegateAsyncKernel::Prepare(TfLiteOpaqueContext* opaque_context,

@@ -127,7 +127,6 @@ cc_library(
     name = "dispatch",
     hdrs = ["dispatch.h"],
     visibility = ["//tensorflow/lite/experimental/shlo:__subpackages__"],
-    deps = [":data_type"],
 )
 
 cc_test(

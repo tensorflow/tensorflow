@@ -46,6 +46,10 @@ bool IsUnsignedIntTensor(const Tensor& tensor) {
   return !tensor.IsQuantized() && IsUnsignedInteger(tensor.StorageType());
 }
 
+bool IsIntTensor(const Tensor& tensor) {
+  return !tensor.IsQuantized() && IsInteger(tensor.StorageType());
+}
+
 bool IsFloatTensor(const Tensor& tensor) {
   return !tensor.IsQuantized() && IsFloat(tensor.StorageType());
 }

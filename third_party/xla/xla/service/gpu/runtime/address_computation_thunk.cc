@@ -106,9 +106,9 @@ absl::Status AddressComputationThunk::Initialize(
 absl::Status AddressComputationThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& stream = *params.stream;
-  std::vector<se::DeviceMemoryBase> new_buffers(
-      embedded_thunk_arguments_.size(), se::DeviceMemoryBase());
   const BufferAllocations& orig_allocations = *params.buffer_allocations;
+  std::vector<se::DeviceMemoryBase> new_buffers(orig_allocations.size(),
+                                                se::DeviceMemoryBase());
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_base = [&] {
@@ -121,6 +121,8 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
       continue;
     }
 
+    // `orig_operand` will contain the original offset for slice
+    // `embedded_thunk_arguments_[i]` within `orig_allocations`
     se::DeviceMemoryBase orig_operand =
         orig_allocations.GetDeviceAddress(*embedded_thunk_arguments_[i]);
     if (offset_buffer_indices_[i] == std::nullopt) {
@@ -156,9 +158,8 @@ absl::Status AddressComputationThunk::ExecuteOnStream(
     // Compute new slice. No need to copy the content to new buffers as we can
     // reuse the original buffers since slices are contiguous.
     int64_t new_size = ShapeUtil::ByteSizeOf(dst_shape);
-    BufferAllocation::Slice orig_slice = *embedded_thunk_arguments_[i];
 
-    int64_t new_offset = orig_slice.offset();
+    int64_t new_offset = 0;
     for (auto [start, stride] :
          llvm::zip(slice_starts, *ShapeUtil::ByteStrides(src_shape))) {
       new_offset += start * stride;
