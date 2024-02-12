@@ -3,29 +3,21 @@
 // -----
 // Basic test: all variables tensors are for devices and sinked as named ifrt arrays
 //
-// CHECK-LABEL: func.func @restore_graph
-// CHECK-NEXT:  [[FILE:%.*]] = "tf.Const"
-// CHECK-NEXT:  [[SLICE:%.*]] = "tf.Const"
-// CHECK-NEXT:  [[NAME:%.*]] = "tf.Const"
-// CHECK-NEXT:  [[TENSOR:%.*]] = "tf.RestoreV2"([[FILE]], [[NAME]], [[SLICE]])
-// CHECK-NEXT:  "tf.IfrtLoadVariable"([[TENSOR]]) <{device_sharding_config_proto_text = "sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } device_ids: 0 device_ids: 1 ", name = "__y"}> : (tensor<3x1xf32>) -> ()
-// CHECK-NEXT:  return
 //
 // CHECK-LABEL:  func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
+// CHECK-NEXT:   [[HANDLE2:%.*]] = "tf.VarHandleOp"
+// CHECK-SAME:       __variable_array_name = "__y"
+// CHECK-SAME:       __variable_sharding_config_text = "sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } device_ids: 0 device_ids: 1 ",
+// CHECK-SAME:       __variable_used_by_device = true, __variable_used_by_host = false
+// CHECK-NEXT:   "tf.ReadVariableOp"([[HANDLE2]])
+// CHECK-SAME:       __variable_array_name = "__y"
+// CHECK-SAME:       __variable_sharding_config_text = "sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } device_ids: 0 device_ids: 1 ",
+// CHECK-SAME:       __variable_used_by_device = true, __variable_used_by_host = false
 // CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"(%arg0) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [0 : i32], variable_names = ["__y"]}>
 // CHECK-SAME:    : (tensor<1x3xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    return [[RES]] : tensor<1x1xf32>
 //
 module {
-  func.func @restore_graph() {
-    %cst = "tf.Const"() <{value = dense<"/variables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
-    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
-    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
-    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0)  : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
-    %1 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
-    "tf.AssignVariableOp"(%1, %0) <{validate_shape = false}> : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
-    return
- }
   func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
     %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
@@ -37,31 +29,21 @@ module {
 // -----
 // Variable tensor for host can still be used.
 //
-// CHECK-LABEL: func.func @restore_graph
-// CHECK:  [[TENSOR:%.*]] = "tf.RestoreV2"
-// CHECK-NEXT:  "tf.VarHandleOp"
-// CHECK-NEXT:  "tf.AssignVariableOp"
-// CHECK-NEXT:  "tf.IfrtLoadVariable"([[TENSOR]]) <{device_sharding_config_proto_text = "sharding { } device_ids: 0 device_ids: 1 ", name = "__y"}> : (tensor<3x1xf32>) -> ()
-// CHECK-NEXT:  return
-//
 // CHECK-LABEL:  func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
 // CHECK-LABEL:  "tf.VarHandleOp"
+// CHECK-SAME:        __variable_array_name = "__y"
+// CHECK-SAME:        __variable_sharding_config_text = "sharding { } device_ids: 0 device_ids: 1 "
+// CHECK-SAME:        __variable_used_by_device = true, __variable_used_by_host = true
 // CHECK-LABEL:  "tf.ReadVariableOp"
+// CHECK-SAME:        __variable_array_name = "__y"
+// CHECK-SAME:        __variable_sharding_config_text = "sharding { } device_ids: 0 device_ids: 1 "
+// CHECK-SAME:        __variable_used_by_device = true, __variable_used_by_host = true
 // CHECK-LABEL:  "tf.MatMul"
 // CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"(%arg0) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32], variable_names = ["__y"]}>
 // CHECK-SAME:    : (tensor<1x3xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    return [[RES]] : tensor<1x1xf32>
 //
 module {
-  func.func @restore_graph() {
-    %cst = "tf.Const"() <{value = dense<"/variables"> : tensor<!tf_type.string>}> : () -> tensor<!tf_type.string>
-    %cst_0 = "tf.Const"() <{value = dense<""> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
-    %cst_1 = "tf.Const"() <{value = dense<"y"> : tensor<1x!tf_type.string>}> : () -> tensor<1x!tf_type.string>
-    %0 = "tf.RestoreV2"(%cst, %cst_1, %cst_0) : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>) -> tensor<3x1xf32>
-    %1 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
-    "tf.AssignVariableOp"(%1, %0) <{validate_shape = false}> : (tensor<!tf_type.resource<tensor<3x1xf32>>>, tensor<3x1xf32>) -> ()
-    return
- }
   func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
     %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>

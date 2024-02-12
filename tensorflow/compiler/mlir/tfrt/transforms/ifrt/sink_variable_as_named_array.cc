@@ -133,66 +133,48 @@ class SinkVariableAsNamedArrayPass
     // TODO(b/319045348): sink VarHandle to pair with ReadVariableOp.
     // Forward traversal on every user of defining ReadVariableOps to determine
     // if a variable tensor is used in host or exclusively on tpu cluster.
-    // If `ReadVariableOp`'s result is exclusively used by tpu cluster, it can
-    // be removed.
+    // Annotate ReadVariableOp and its defining VarHandle with finding and
+    // sharding config for later usage.
     for (auto& [name, variable_config] : variable_config_by_name) {
       bool used_by_host = false;
       for (auto& read_variable_op : variable_config.read_variable_op) {
         if (!read_variable_op->use_empty()) {
           used_by_host = true;
-        } else {
-          // Remove ReadVariableOp and its associated VarHandleOp.
-          mlir::Value variable_definition = read_variable_op.getOperand();
-          auto var_handle =
-              GetDefiningOp<mlir::TF::VarHandleOp>(variable_definition);
-          if (!var_handle) {
-            read_variable_op.emitError()
-                << "cannot find VarHandle op for ReadVariableOp in the current "
-                   "function body.";
-            return signalPassFailure();
-          }
-          read_variable_op.erase();
-
-          if (var_handle->use_empty()) {
-            var_handle.erase();
-          }
         }
       }
       variable_config.used_by_host = used_by_host;
-    }
 
-    // Lower AssignVariableOp to IfrtLoadVariableOp.
-    mlir::WalkResult walk_result =
-        module.walk([&](mlir::TF::AssignVariableOp assign_variable_op) {
-          mlir::Value variable_definition = assign_variable_op.getResource();
-          auto var_handle =
-              GetDefiningOp<mlir::TF::VarHandleOp>(variable_definition);
-          if (!var_handle) {
-            assign_variable_op->emitError()
-                << "AssignVariableOp has no defining VarHandleOp.";
-            return mlir::WalkResult::interrupt();
-          }
+      // Annotate ReadVariableOp and VarHandle.
+      for (auto& read_variable_op : variable_config.read_variable_op) {
+        auto var_handle =
+            GetDefiningOp<mlir::TF::VarHandleOp>(read_variable_op.getOperand());
+        if (!var_handle) {
+          read_variable_op.emitError()
+              << "cannot find VarHandle op for ReadVariableOp in the current "
+                 "function body.";
+          return signalPassFailure();
+        }
 
-          std::string variable_tensor_name = GetVariableTensorName(var_handle);
-          if (auto it = variable_config_by_name.find(variable_tensor_name);
-              it != variable_config_by_name.end()) {
-            builder.setInsertionPointAfter(assign_variable_op);
-            builder.create<mlir::TF::IfrtLoadVariableOp>(
-                assign_variable_op->getLoc(), assign_variable_op.getValue(),
-                it->second.device_sharding_config, variable_tensor_name);
+        read_variable_op->setAttr(kVariableUsedByHostAttr,
+                                  builder.getBoolAttr(used_by_host));
+        var_handle->setAttr(kVariableUsedByHostAttr,
+                            builder.getBoolAttr(used_by_host));
+        read_variable_op->setAttr(kVariableUsedByDeviceAttr,
+                                  builder.getBoolAttr(true));
+        var_handle->setAttr(kVariableUsedByDeviceAttr,
+                            builder.getBoolAttr(true));
+        read_variable_op->setAttr(kVariableArrayNameAttr,
+                                  builder.getStringAttr(name));
+        var_handle->setAttr(kVariableArrayNameAttr,
+                            builder.getStringAttr(name));
 
-            if (!it->second.used_by_host) {
-              assign_variable_op->erase();
-              if (var_handle->use_empty()) {
-                var_handle.erase();
-              }
-            }
-          }
-          return mlir::WalkResult::advance();
-        });
-
-    if (walk_result.wasInterrupted()) {
-      return signalPassFailure();
+        read_variable_op->setAttr(
+            kVariableShardingConfigTextAttr,
+            builder.getStringAttr(variable_config.device_sharding_config));
+        var_handle->setAttr(
+            kVariableShardingConfigTextAttr,
+            builder.getStringAttr(variable_config.device_sharding_config));
+      }
     }
   }
 

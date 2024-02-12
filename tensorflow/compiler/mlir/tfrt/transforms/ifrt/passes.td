@@ -29,23 +29,33 @@ def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::Mo
  }
 
 def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::ModuleOp"> {
-  let summary = "Sink variable tensor for tpu device as named IFRT array";
+  let summary = "Sink variable tensor for tpu device as named IFRT array for tf.IfrtCall";
 
   let description = [{
-    This pass converts applicable `tf.AssignVariableOp` to `tf.IfrtLoadVariableOp`. 
+    This pass sinks variable tensor argument to `tf.IfrtCall` as variable_arg_indices
+    and variable_names attributes.
 
-    A `tf.AssignVariableOp` can be lowered to `tf.IfrtLoadVariableOp` if its variable tensor
-    is used as an input to `tf.IfrtCall` TPU program. Additionally, the corresponding tensor
-    will be sunk as an attribute from `tf.IfrtCall`'s argument list because the runtime
-    ensures that `tf.IfrtCall` kernel can bind the IFRT array by its name as input to the TPU
-    program.
+    The runtime ensures that `tf.IfrtCall` kernel can bind the IFRT array by
+    its name as input to the TPU program.
 
-    If a variable tensor is exclusively used for TPU devices, then its defining
-    `tf.VarHandleOp`, `tf.ReadVariableOp` will be pruned.
-  }];
+    This pass also annotate variable ops with sharding information.
+
+ }];
 
   let constructor = "CreateSinkVariableAsNamedArrayPass()";
 }
+
+def LowerToIfrtLoadVariablePass: Pass<"lower-to-ifrt-load-variable", "mlir::ModuleOp"> {
+  let summary = "Lower to IfrtLoadVariable";
+
+  let description = [{
+    This pass converts applicable variable tensor to a named IFRT array 
+    through inserting proper `tf.IfrtLoadVariableOp`. 
+ }];
+
+  let constructor = "CreateLowerToIfrtLoadVariablePass()";
+}
+
 
 def TfRestoreSplittingPass
     : Pass<"tf-restore-splitting", "mlir::func::FuncOp"> {

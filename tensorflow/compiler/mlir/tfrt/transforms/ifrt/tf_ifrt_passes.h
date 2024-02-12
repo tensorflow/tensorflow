@@ -31,9 +31,14 @@ namespace ifrt_serving {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateRewriteClusterToIfrtCallPass();
 
-// Creates a pass that lowers ReadVariableOp to IfrtLoadVariableOp.
+// Creates a pass that sinks variable tensor argument to `tf.IfrtCall` as named
+// arrays.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSinkVariableAsNamedArrayPass();
+
+// Creates a pass that lowers ReadVariableOp to IfrtLoadVariableOp.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateLowerToIfrtLoadVariablePass();
 
 // Creates a pass that splits `tf.RestoreV2` ops.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

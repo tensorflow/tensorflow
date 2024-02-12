@@ -26,6 +26,22 @@ namespace ifrt_serving {
 inline constexpr absl::string_view kMetadataTextAttrName =
     "__tpu_compile_metadata_text";
 
+// Attribute indicating whether a variable is used by TPU. If a variable does
+// not have this attribute, then it is NOT used by TPU.
+inline constexpr absl::string_view kVariableUsedByDeviceAttr =
+    "__variable_used_by_device";
+// Attribute indicating whether a variable is used by host. If a variable does
+// not have this attribute, then it can be used by host.
+inline constexpr absl::string_view kVariableUsedByHostAttr =
+    "__variable_used_by_host";
+// Name of a variable as loaded IFRT array .
+inline constexpr absl::string_view kVariableArrayNameAttr =
+    "__variable_array_name";
+
+// Attribute of a text `VariableDeviceShardingConfigProto`.
+inline constexpr absl::string_view kVariableShardingConfigTextAttr =
+    "__variable_sharding_config_text";
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow
 

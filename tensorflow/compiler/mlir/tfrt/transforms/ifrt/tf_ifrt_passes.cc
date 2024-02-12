@@ -27,10 +27,12 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {
@@ -69,6 +71,23 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
 
   pm.addPass(CreateRewriteClusterToIfrtCallPass());
+
+  // Sink VarHandle with ReadVariableOp: subsequent SinkVariableAsNamedArrayPass
+  // rely on the co-existence of VarHandle and ReadVariable in the same
+  // function.
+  // First, we inline all the function calls. This will sink VarHandle
+  // with ReadVariable in most cases. Then SinkInvariantOpsPass will sink
+  // VarHandle to a few special Ops that inliner does not handle.
+  // TODO(b/319045348): the bridge before this pipeline already does some
+  // inlining. Consider removing this inliner.
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
+
+  // Sink variable tensor as named array in IFRT.
+  pm.addPass(CreateSinkVariableAsNamedArrayPass());
+  // Lower to IFRT load variable. Depends on annotation from
+  // SinkVariableAsnamedArrayPass.
+  pm.addPass(CreateLowerToIfrtLoadVariablePass());
 }
 
 }  // namespace
