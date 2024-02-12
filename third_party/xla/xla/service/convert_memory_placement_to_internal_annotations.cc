@@ -45,9 +45,7 @@ StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
             it->second == host_memory_offload_annotations::kMemoryTargetHost;
         const bool is_to_device_case =
             (it->second ==
-                 host_memory_offload_annotations::kMemoryTargetDeviceTpu ||
-             it->second ==
-                 host_memory_offload_annotations::kMemoryTargetDeviceGpu);
+             host_memory_offload_annotations::kMemoryTargetDevice);
         if (!is_to_host_case && !is_to_device_case) {
           continue;
         }
