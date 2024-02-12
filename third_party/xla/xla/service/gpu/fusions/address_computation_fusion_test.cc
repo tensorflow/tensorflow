@@ -977,6 +977,53 @@ TEST_F(AddressComputationFusionTest, CustomCallWithTuple) {
                                       /*run_hlo_passes=*/false));
 }
 
+static absl::Status NoOp(const ServiceExecutableRunOptions* run_options,
+                         ffi::BufferBase operand) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
+                       ffi::Ffi::Bind()
+                           .Ctx<ServiceExecutableRunOptions>()
+                           .Arg<ffi::BufferBase>()  // operand
+);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
+                         kNoOp);
+
+TEST_F(AddressComputationFusionTest, NilTuple) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$noop",
+             /*operands=*/
+             {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
+                    {128}, {1})},
+             ShapeUtil::MakeNil(),
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
+                                      error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

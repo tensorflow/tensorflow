@@ -202,7 +202,9 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   }
 
   HloInstruction* root = builder.last_added_instruction();
-  if (root->shape().IsTuple()) {
+  // Create a root tuple if the root is a tuple to make sure there's a buffer
+  // assigned for each of the elements. Make sure the tuple is not nil first.
+  if (root->shape().IsTuple() && root->shape().tuple_shapes_size() > 0) {
     CreateRootTuple(root, builder);
   }
 
