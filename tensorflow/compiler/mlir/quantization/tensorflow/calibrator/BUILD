@@ -1,5 +1,6 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 # Placeholder: load py_proto_library
 load(
@@ -235,16 +236,15 @@ tf_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "pywrap_calibration",
     srcs = ["pywrap_calibration.cc"],
-    pytype_srcs = ["pywrap_calibration.pyi"],
+    data = ["pywrap_calibration.pyi"],
     deps = [
         ":calibration_statistics_proto_cc",
         ":calibrator_singleton",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],

@@ -5,8 +5,7 @@ load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tsl:tsl.bzl",
     "clean_dep",
-    "if_not_windows",
-    "if_tsl_link_protobuf",
+    "if_not_windows"
 )
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 
@@ -461,14 +460,15 @@ def tf_proto_library_cc(
         )
 
         native.cc_library(
-            name = cc_name,
-            deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_tsl_link_protobuf([name + "_cc_impl"]),
-            testonly = testonly,
-            visibility = visibility,
-        )
-        native.cc_library(
             name = cc_name + "_impl",
             deps = [s + "_impl" for s in cc_deps],
+        )
+
+        native.cc_library(
+            name = cc_name,
+            deps = cc_deps + ["@com_google_protobuf//:protobuf_headers", cc_name + "_impl"],
+            testonly = testonly,
+            visibility = visibility,
         )
 
         return
@@ -478,10 +478,7 @@ def tf_proto_library_cc(
         protolib_name = name,
         testonly = testonly,
         srcs = srcs,
-        cc_libs = cc_libs + if_tsl_link_protobuf(
-            ["@com_google_protobuf//:protobuf"],
-            ["@com_google_protobuf//:protobuf_headers"],
-        ),
+        cc_libs = cc_libs + ["@com_google_protobuf//:protobuf"],
         copts = if_not_windows([
             "-Wno-unknown-warning-option",
             "-Wno-unused-but-set-variable",
@@ -740,31 +737,14 @@ def tf_protobuf_deps():
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
 
-# Link protobuf, unless the tsl_link_protobuf build flag is explicitly set to false.
-def tsl_protobuf_deps():
-    return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
-
-# When tsl_protobuf_header_only is true, we need to add the protobuf library
-# back into our binaries explicitly.
+# TODO(vam): remoe as it does not do anything anymore
 def tsl_cc_test(
         name,
         deps = [],
         **kwargs):
     native.cc_test(
         name = name,
-        deps = deps + if_tsl_link_protobuf(
-            [],
-            [
-                clean_dep("@com_google_protobuf//:protobuf"),
-                # TODO(ddunleavy) remove these and add proto deps to tests
-                # granularly
-                clean_dep("//tsl/protobuf:error_codes_proto_impl_cc_impl"),
-                clean_dep("//tsl/protobuf:histogram_proto_cc_impl"),
-                clean_dep("//tsl/protobuf:status_proto_cc_impl"),
-                clean_dep("//tsl/profiler/protobuf:xplane_proto_cc_impl"),
-                clean_dep("//tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
-            ],
-        ),
+        deps = deps,
         **kwargs
     )
 

@@ -4,6 +4,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -878,37 +879,21 @@ tf_py_strict_test(
     ],
 )
 
-tf_pybind_cc_library_wrapper(
-    name = "pywrap_saved_model_headers",
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/cc/saved_model:constants",
-        "//tensorflow/cc/saved_model:fingerprinting",
-        "//tensorflow/cc/saved_model:metrics",
-    ] + if_google([
-        "//tensorflow/tools/proto_splitter:merge",
-    ]),
-)
-
-tf_python_pybind_extension(
+pybind_extension(
     name = "pywrap_saved_model",
     srcs = [
         "pywrap_saved_model.cc",
         "pywrap_saved_model_constants.cc",
         "pywrap_saved_model_fingerprinting.cc",
         "pywrap_saved_model_metrics.cc",
-    ] + if_google([
-        "pywrap_saved_model_merger.cc",
-    ]),
-    hdrs = [
         "pywrap_saved_model_constants.h",
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ] + if_google([
+        "pywrap_saved_model_merger.cc",
         "pywrap_saved_model_merger.h",
     ]),
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "pywrap_saved_model/__init__.pyi",
         "pywrap_saved_model/constants.pyi",
         "pywrap_saved_model/fingerprinting.pyi",
@@ -919,6 +904,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/checkpoint:__subpackages__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         # placeholder for index annotation deps
@@ -935,7 +921,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",

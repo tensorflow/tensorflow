@@ -5,6 +5,8 @@ load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
+
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -64,11 +66,10 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_tfprof",
     srcs = ["tfprof_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_tfprof.pyi",
     ],
     deps = [
@@ -79,38 +80,38 @@ tf_python_pybind_extension(
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_utils",
-    srcs = ["util_wrapper.cc"],
-    hdrs = ["util.h"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "util_wrapper.cc",
+        "util.h"
+    ],
+    data = [
         "_pywrap_utils.pyi",
     ],
     deps = [
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_nest",
-    srcs = ["nest_wrapper.cc"],
-    hdrs = ["nest.h"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "nest_wrapper.cc",
+        "nest.h"
+    ],
+    data = [
         "_pywrap_nest.pyi",
     ],
     deps = [
+        ":cpp_nest",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
@@ -130,12 +131,13 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_kernel_registry",
-    srcs = ["kernel_registry_wrapper.cc"],
-    hdrs = ["kernel_registry.h"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "kernel_registry_wrapper.cc",
+        "kernel_registry.h"
+    ],
+    data = [
         "_pywrap_kernel_registry.pyi",
     ],
     deps = [
@@ -145,15 +147,15 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_stat_summarizer",
-    srcs = ["stat_summarizer_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "stat_summarizer_wrapper.cc"
+    ],
+    data = [
         "_pywrap_stat_summarizer.pyi",
     ],
     deps = [
@@ -165,61 +167,61 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/memory",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/util:stats_calculator_portable",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_tensor_float_32_execution",
-    srcs = ["tensor_float_32.cc"],
-    hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
+    srcs = [
+        "tensor_float_32.cc",
+        "//tensorflow/core/platform:tensor_float_32_hdr"
+    ],
     compatible_with = get_compatible_with_portable(),
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_tensor_float_32_execution.pyi",
     ],
     deps = [
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_determinism",
-    srcs = ["determinism.cc"],
-    hdrs = ["//tensorflow/core/util:determinism_hdr"],
+    srcs = [
+        "determinism.cc",
+        "//tensorflow/core/util:determinism_hdr"
+    ],
     compatible_with = get_compatible_with_portable(),
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_determinism.pyi",
     ],
     deps = [
         "//tensorflow/core/util:determinism_hdr_lib",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_util_port",
-    srcs = ["port_wrapper.cc"],
-    hdrs = ["//tensorflow/core/util:port_hdrs"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "port_wrapper.cc",
+        "//tensorflow/core/util:port_hdrs"
+    ],
+    data = [
         "_pywrap_util_port.pyi",
     ],
     deps = [
         "//tensorflow/core/util:port",
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_transform_graph",
-    srcs = ["transform_graph_wrapper.cc"],
-    hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "transform_graph_wrapper.cc",
+        "//tensorflow/tools/graph_transforms:transform_graph_hdrs"
+    ],
+    data = [
         "_pywrap_transform_graph.pyi",
     ],
     deps = [
@@ -229,14 +231,13 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_checkpoint_reader",
-    srcs = ["py_checkpoint_reader_wrapper.cc"],
-    hdrs = [
+    srcs = [
+        "py_checkpoint_reader_wrapper.cc",
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
@@ -245,8 +246,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_checkpoint_reader.pyi",
     ],
     deps = [
@@ -260,7 +260,6 @@ tf_python_pybind_extension(
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
-        "@pybind11",
     ],
 )
 
@@ -431,18 +430,21 @@ py_strict_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_tf_stack",
-    srcs = ["tf_stack.cc"],
-    hdrs = [
+    srcs = [
+        "tf_stack.cc",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         # Using header directly is required to avoid ODR violations.
         "stack_trace.h",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_tf_stack.pyi",
+    ],
+    private_deps = [
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
@@ -454,9 +456,6 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
     ] + if_static([
         ":stack_trace",
     ]),
@@ -507,23 +506,21 @@ cc_library(
     textual_hdrs = ["function_parameter_canonicalizer.h"],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
-    testonly = True,
-    srcs = ["function_parameter_canonicalizer_binding_for_test.cc"],
-    hdrs = [
+#    testonly = True,
+    srcs = [
+        "function_parameter_canonicalizer_binding_for_test.cc",
         "function_parameter_canonicalizer.h",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_function_parameter_canonicalizer_binding_for_test.pyi",
     ],
     deps = [
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/types:span",
-        "@pybind11",
     ],
 )
 
@@ -1097,18 +1094,16 @@ tf_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "fast_module_type",
     srcs = ["fast_module_type.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "fast_module_type.pyi",
     ],
     deps = [
         "//tensorflow/core/platform:logging",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@pybind11",
     ],
 )
 
@@ -1117,9 +1112,13 @@ tf_py_strict_test(
     srcs = ["fast_module_type_test.py"],
     python_version = "PY3",
     deps = [
+#        "//tensorflow/python:_pywrap_tensorflow",
         ":fast_module_type",
         "//tensorflow/python/platform:client_testlib",
     ],
+#    env = {
+#        "PYWRAP_TARGET": "//tensorflow/python:_pywrap_tensorflow"
+#    }
 )
 
 tf_py_strict_test(
@@ -1214,23 +1213,23 @@ tf_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "pywrap_xla_ops",
-    srcs = ["tf2xla_opset_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/compiler/tf2xla:tf2xla_opset_hdrs",
+    srcs = [
+        "tf2xla_opset_wrapper.cc",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "pywrap_xla_ops.pyi",
     ],
     deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_opset",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/status:statusor",
-        "@pybind11",
+    ],
+    private_deps = [
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
+    ]
 )
 
 py_strict_library(

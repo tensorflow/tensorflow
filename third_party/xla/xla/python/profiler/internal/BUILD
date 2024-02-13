@@ -42,7 +42,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/lib:traceme_for_pybind",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@pybind11",
     ],
 )

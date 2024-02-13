@@ -3,6 +3,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -107,18 +108,16 @@ tf_cc_test(
 )
 
 # TODO(b/221223841): Get rid of if_static, it's nonstandard.
-tf_python_pybind_extension(
+pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],
     data = [
         "runtime_client_pybind.pyi",
     ],
-    enable_stub_generation = True,
     deps = [
         ":runtime_client_headers",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
-        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/framework:function_proto_cc",

@@ -2,6 +2,7 @@ load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,19 +30,10 @@ cc_library(
     alwayslink = 1,
 )
 
-# Necessary for the pywrap inclusion below. Combining targets does not work
-# properly.
-tf_pybind_cc_library_wrapper(
-    name = "cost_analyzer_headers",
-    deps = [
-        ":cost_analyzer_lib",
-    ],
-)
-
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_cost_analyzer",
-    srcs = ["cost_analyzer_wrapper.cc"],
-    hdrs = [
+    srcs = [
+        "cost_analyzer_wrapper.cc",
         "cost_analyzer.h",
         "//tensorflow/cc:pywrap_required_hdrs",
         "//tensorflow/core/grappler:pywrap_required_hdrs",
@@ -50,12 +42,11 @@ tf_python_pybind_extension(
         "//tensorflow/core/public:session.h",
         "//tensorflow/core/public:session_options.h",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_cost_analyzer.pyi",
     ],
     deps = [
-        ":cost_analyzer_headers",
+        ":cost_analyzer_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -63,7 +54,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11",
     ],
 )
 
@@ -80,15 +70,14 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_model_analyzer",
-    srcs = ["model_analyzer_wrapper.cc"],
-    hdrs = [
+    srcs = [
+        "model_analyzer_wrapper.cc",
         "model_analyzer.h",
         "//tensorflow/core/grappler:pywrap_required_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_model_analyzer.pyi",
     ],
     deps = [
@@ -97,7 +86,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11",
     ],
 )
 
@@ -113,18 +101,17 @@ py_strict_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_tf_item",
-    srcs = ["item_wrapper.cc"],
-    hdrs = [
+    srcs = [
+        "item_wrapper.cc",
         "//tensorflow/cc:pywrap_required_hdrs",
         "//tensorflow/core/grappler:pywrap_required_hdrs",
         "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
         "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_tf_item.pyi",
     ],
     deps = [
@@ -134,7 +121,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11",
     ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
 )
 
@@ -199,21 +185,22 @@ py_strict_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_tf_cluster",
-    srcs = ["cluster_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/cc:pywrap_required_hdrs",
-        "//tensorflow/core/grappler:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
-        "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
+    srcs = [
+        "cluster_wrapper.cc",
+#        "//tensorflow/cc:pywrap_required_hdrs",
+#        "//tensorflow/core/grappler:pywrap_required_hdrs",
+#        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+#        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+#        "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_tf_cluster.pyi",
     ],
     deps = [
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -222,7 +209,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/types:span",
-        "@pybind11",
     ],
 )
 
@@ -266,10 +252,10 @@ py_strict_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_tf_optimizer",
-    srcs = ["tf_optimizer_wrapper.cc"],
-    hdrs = [
+    srcs = [
+        "tf_optimizer_wrapper.cc",
         "//tensorflow/cc:pywrap_required_hdrs",
         "//tensorflow/core/grappler:pywrap_required_hdrs",
         "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
@@ -277,8 +263,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
         "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_tf_optimizer.pyi",
     ],
     deps = [
@@ -289,9 +274,10 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
+    private_deps = [
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ]
 )
 
 tf_py_strict_test(
@@ -582,16 +568,16 @@ cuda_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_graph_analyzer",
-    srcs = ["graph_analyzer_tool_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "graph_analyzer_tool_wrapper.cc",
+    ],
+    data = [
         "_pywrap_graph_analyzer.pyi",
     ],
     deps = [
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
-        "@pybind11",
     ],
 )
 

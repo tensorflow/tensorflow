@@ -9,6 +9,8 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
+
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -177,10 +179,10 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "pywrap_function_lib",
     srcs = ["pywrap_function_lib.cc"],
-    pytype_srcs = ["pywrap_function_lib.pyi"],
+    data = ["pywrap_function_lib.pyi"],
     visibility = ["//visibility:private"],
     deps = [
         ":py_function_lib",
@@ -191,16 +193,17 @@ tf_python_pybind_extension(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
-        "@pybind11",
     ],
 )
 
 # Exports python symbols via pybind11.
-tf_python_pybind_extension(
+pybind_extension(
     name = "pywrap_quantize_model",
-    srcs = ["pywrap_quantize_model.cc"],
-    hdrs = ["quantize_model.h"],
-    pytype_srcs = ["pywrap_quantize_model.pyi"],
+    srcs = [
+        "pywrap_quantize_model.cc",
+        "quantize_model.h",
+    ],
+    data = ["pywrap_quantize_model.pyi"],
     # All deps must be header-only.
     deps = [
         ":py_function_lib",
@@ -215,7 +218,6 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",

@@ -4071,7 +4071,7 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":conv_grad_shape_utils",
-        ":cwise_lib",
+#        ":cwise_lib",
         ":fill_functor",
         ":fused_eigen_output_kernels",
         ":loose_headers",

@@ -39,23 +39,14 @@ def tf_additional_license_deps():
 def tf_additional_tpu_ops_deps():
     return []
 
-# Include specific extra dependencies when building statically, or
-# another set of dependencies otherwise. If "macos" is provided, that
-# dependency list is used when using the framework_shared_object config
-# on MacOS platforms. If "macos" is not provided, the "otherwise" list is
-# used for all framework_shared_object platforms including MacOS.
+# TODO(vam): Remove, as it does not do anything anymore
 def if_static(extra_deps, otherwise = [], macos = []):
-    ret = {
-        str(Label("//tsl:framework_shared_object")): otherwise,
-        "//conditions:default": extra_deps,
-    }
-    if macos:
-        ret[str(Label("//tsl:macos_with_framework_shared_object"))] = macos
-    return select(ret)
+    _ignore = otherwise  # unused argument
+    _ignore = macos  # unused argument
+    return extra_deps
 
 def if_static_and_not_mobile(extra_deps, otherwise = []):
     return select({
-        str(Label("//tsl:framework_shared_object")): otherwise,
         str(Label("//tsl:android")): otherwise,
         str(Label("//tsl:ios")): otherwise,
         "//conditions:default": extra_deps,

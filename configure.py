@@ -1452,9 +1452,6 @@ def main():
       'Build with oneDNN and Compute Library for the Arm Architecture (ACL).')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
   config_info_line('numa', 'Build with NUMA support.')
-  config_info_line(
-      'dynamic_kernels',
-      '(Experimental) Build kernels into separate shared objects.')
   config_info_line('v1', 'Build with TensorFlow 1 API instead of TF 2 API.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')

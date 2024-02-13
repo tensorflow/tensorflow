@@ -3842,9 +3842,9 @@ cuda_py_strict_test(
     name = "sobol_ops_test",
     size = "small",
     srcs = ["sobol_ops_test.py"],
-    kernels = [
-        "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
-    ],
+#    kernels = [
+#        "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
+#    ],
     main = "sobol_ops_test.py",
     tags = [
         "no_oss",  # TODO(b/149565560)

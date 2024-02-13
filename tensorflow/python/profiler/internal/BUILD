@@ -1,6 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -97,36 +98,33 @@ cuda_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
-    copts = tf_profiler_copts(),
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_traceme.pyi",
     ],
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         "@local_xla//xla/python/profiler/internal:traceme_wrapper",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
-    copts = tf_profiler_copts(),
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_profiler.pyi",
     ],
     visibility = [
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         ":profiler_pywrap_impl",
@@ -134,10 +132,9 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler/convert:repository",
         "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/types:variant",
-        "@pybind11",
     ],
 )
 
@@ -172,9 +169,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",

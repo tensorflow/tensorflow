@@ -1,6 +1,7 @@
 # python/lib/core package
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_python_pybind_extension")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -176,17 +177,15 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_py_func",
     srcs = ["py_func_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_py_func.pyi",
     ],
     deps = [
-        "//tensorflow/python:py_func_lib",
+        "//tensorflow/python/lib/core:py_func_lib",
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 

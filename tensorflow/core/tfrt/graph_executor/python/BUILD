@@ -1,6 +1,7 @@
 # This package loads pybind11 dependencies to ensure compatibility with Python API.
 # Files affected: graph_execution_options
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,12 +18,10 @@ package_group(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_graph_execution_options",
     srcs = ["graph_execution_options.cc"],
-    enable_stub_generation = True,
-    module_name = "_pywrap_graph_execution_options",
-    pytype_srcs = [
+    data = [
         "_pywrap_graph_execution_options.pyi",
     ],
     deps = [
@@ -32,7 +31,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/tfrt/saved_model",
         "//tensorflow/core/tfrt/saved_model:saved_model_aot_compile",
         "//third_party/python_runtime:headers",
-        "@pybind11",
         "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )

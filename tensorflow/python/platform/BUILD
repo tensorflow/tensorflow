@@ -7,6 +7,7 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 visibility = [
     "//tensorflow:__subpackages__",
@@ -183,35 +184,31 @@ tf_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_stacktrace_handler",
-    srcs = ["stacktrace_handler_wrapper.cc"],
-    hdrs = [
+    srcs = [
+        "stacktrace_handler_wrapper.cc",
         "//tensorflow/core/platform:stacktrace_handler_hdrs",
         "@local_tsl//tsl/platform:stacktrace_handler_hdrs",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_stacktrace_handler.pyi",
     ],
     deps = [
         "//third_party/python_runtime:headers",
         "@local_tsl//tsl/platform:stacktrace_handler_hdrs_lib",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_cpu_feature_guard",
     srcs = ["cpu_feature_guard_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_cpu_feature_guard.pyi",
     ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
         "//third_party/python_runtime:headers",
-        "@pybind11",
     ],
 )
 
@@ -377,16 +374,16 @@ tf_py_strict_test(
 
 pybind_extension(
     name = "_pywrap_tf2",
-    srcs = ["enable_tf2.cc"],
-    hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    srcs = [
+        "enable_tf2.cc",
+        "//tensorflow/core/platform:enable_tf2_hdr"
+    ],
+    data = [
         "_pywrap_tf2.pyi",
     ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:enable_tf2_utils",
-        "@pybind11",
     ],
 )

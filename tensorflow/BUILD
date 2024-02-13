@@ -647,46 +647,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# Crosses between framework_shared_object and a bunch of other configurations
-# due to limitations in nested select() statements.
-config_setting(
-    name = "framework_shared_object",
-    define_values = {"framework_shared_object": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "macos_x86_64_with_framework_shared_object",
-    define_values = {
-        "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "macos_arm64_with_framework_shared_object",
-    define_values = {
-        "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
-    },
-    visibility = ["//visibility:public"],
-)
-
-selects.config_setting_group(
-    name = "macos_with_framework_shared_object",
-    match_any = [
-        ":macos_x86_64_with_framework_shared_object",
-        ":macos_arm64_with_framework_shared_object",
-    ],
-)
-
 # Config setting that is satisfied when TensorFlow is being built with CUDA
 # support through e.g. `--config=cuda` (or `--config=cuda_clang` in OSS).
 alias(
@@ -751,16 +711,6 @@ bool_setting(
     name = "oss_setting",
     build_setting_default = if_oss(True, False),
     visibility = ["//visibility:private"],
-)
-
-# Setting to use when loading kernels dynamically
-config_setting(
-    name = "dynamic_loaded_kernels",
-    define_values = {
-        "dynamic_loaded_kernels": "true",
-        "framework_shared_object": "true",
-    },
-    visibility = ["//visibility:public"],
 )
 
 config_setting(

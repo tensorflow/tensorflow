@@ -472,7 +472,6 @@ def tf_copts(
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
         select({
-            clean_dep("//tensorflow:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
         }) +
         select({
@@ -644,27 +643,6 @@ def _rpath_user_link_flags(name):
         "//conditions:default": [
             "-Wl,%s" % (_make_search_paths("$ORIGIN", levels_to_root),),
         ],
-    })
-
-# Helper function for the per-OS tensorflow libraries and their version symlinks
-def tf_shared_library_deps():
-    return select({
-        clean_dep("//tensorflow:macos_with_framework_shared_object"): [
-            clean_dep("//tensorflow:libtensorflow.dylib"),
-            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION),
-        ],
-        clean_dep("//tensorflow:macos"): [],
-        clean_dep("//tensorflow:windows"): [
-            clean_dep("//tensorflow:tensorflow.dll"),
-            clean_dep("//tensorflow:tensorflow_dll_import_lib"),
-        ],
-        clean_dep("//tensorflow:framework_shared_object"): [
-            clean_dep("//tensorflow:libtensorflow.so"),
-            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION),
-        ],
-        "//conditions:default": [],
     })
 
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
@@ -998,12 +976,7 @@ def tf_cc_binary(
             name = name_os,
             copts = default_copts + copts,
             srcs = srcs,
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep + if_static(
-                extra_deps = [],
-                otherwise = [
-                    clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
-                ],
-            ),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep,
             tags = tags,
             data = depset(data + added_data_deps),
             linkopts = linkopts + _rpath_linkopts(name_os),
@@ -2246,7 +2219,6 @@ def tf_custom_op_py_library(
         deps = [],
         **kwargs):
     _ignore = [kernels]
-    _make_tags_mutable(kwargs)
     _plain_py_library(
         name = name,
         data = dso,
@@ -2436,37 +2408,25 @@ def pywrap_tensorflow_macro_opensource(
 # Export open source version of pywrap_tensorflow_macro under base name as well.
 pywrap_tensorflow_macro = pywrap_tensorflow_macro_opensource
 
-# This macro is for running python tests against system installed pip package
-# on Windows.
-#
-# py_test is built as an executable python zip file on Windows, which contains all
-# dependencies of the target. Because of the C++ extensions, it would be very
-# inefficient if the py_test zips all runfiles, plus we don't need them when running
-# tests against system installed pip package. So we'd like to get rid of the deps
-# of py_test in this case.
-#
-# In order to trigger the tests without bazel clean after getting rid of deps,
-# we introduce the following :
-# 1. When --define=no_tensorflow_py_deps=true, the py_test depends on a marker
-#    file of the pip package, the test gets to rerun when the pip package change.
-#    Note that this only works on Windows. See the definition of
-#    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
-# 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
-def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rule = _plain_py_test, **kwargs):
+def py_test(
+        deps = [],
+        exec_properties = None,
+        kernels = [],
+        test_rule = _plain_py_test,
+        env = {},
+        **kwargs):
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
-    _make_tags_mutable(kwargs)
+    test_env = {
+        "PYWRAP_TARGET": "//tensorflow/python:_pywrap_tensorflow"
+    }
+    test_env.update(env)
+    actual_deps = deps.to_list() if hasattr(deps, "to_list") else deps
     test_rule(
-        deps = select({
-            "//conditions:default": deps,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
-        }),
-        data = data + select({
-            "//conditions:default": kernels,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }),
+        deps = actual_deps + [test_env["PYWRAP_TARGET"]],
         exec_properties = exec_properties,
+        env = test_env,
         **kwargs
     )
 
@@ -2486,7 +2446,6 @@ def py_binary(name, deps = [], **kwargs):
     )
 
     # Python version placeholder
-    _make_tags_mutable(kwargs)
     _plain_py_binary(
         name = name,
         deps = select({
@@ -2498,18 +2457,7 @@ def py_binary(name, deps = [], **kwargs):
 
 def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
-    _make_tags_mutable(kwargs)
     _plain_py_library(name = name, **kwargs)
-
-# Tensorflow uses rules_python 0.0.1, and in that version of rules_python,
-# the rules require the tags value to be a mutable list because they
-# modify it in-place. Later versions of rules_python don't have this
-# requirement.
-def _make_tags_mutable(kwargs):
-    if "tags" in kwargs and kwargs["tags"] != None:
-        # The value might be a frozen list, which looks just like
-        # a regular list. So always make a copy.
-        kwargs["tags"] = list(kwargs["tags"])
 
 def tf_py_test(
         name,

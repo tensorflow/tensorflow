@@ -1,0 +1,1 @@
+exports_files(["pybind_extension.py.tpl"])

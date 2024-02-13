@@ -96,13 +96,6 @@ def if_google(google_value, oss_value = []):
     """
     return oss_value  # copybara:comment_replace return google_value
 
-# TODO(jakeharmon): Use this to replace if_static
-def if_tsl_link_protobuf(if_true, if_false = []):
-    return select({
-        "//conditions:default": if_true,
-        clean_dep("//tsl:tsl_protobuf_header_only"): if_false,
-    })
-
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
@@ -282,7 +275,6 @@ def tsl_copts(
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
         select({
-            clean_dep("//tsl:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
         }) +
         select({

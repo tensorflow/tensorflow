@@ -25,8 +25,7 @@ load(
     "tf_stream_executor_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
-    "tsl_cc_test",
-    "tsl_protobuf_deps",
+    "tsl_cc_test"
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
@@ -256,7 +255,8 @@ cc_library(
     deps = [
         ":platform",
         ":types",
-    ] + tsl_protobuf_deps(),
+        "@com_google_protobuf//:protobuf",
+    ],
 )
 
 cc_library(

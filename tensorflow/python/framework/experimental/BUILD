@@ -6,18 +6,18 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
 )
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_unified_api",
     srcs = ["unified_api.cc"],
-    enable_stub_generation = True,
-    features = ["-layering_check"],
-    pytype_srcs = [
+#    features = ["-layering_check"],
+    data = [
         "_unified_api.pyi",
     ],
     deps = [
@@ -27,14 +27,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
-    features = ["-layering_check"],
+#    features = ["-layering_check"],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -42,15 +41,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_math_ops",
     srcs = ["math_ops.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_math_ops.pyi",
     ],
     deps = [
@@ -62,15 +59,13 @@ tf_python_pybind_extension(
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_nn_ops",
     srcs = ["nn_ops.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_nn_ops.pyi",
     ],
     deps = [
@@ -82,7 +77,6 @@ tf_python_pybind_extension(
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
-        "@pybind11",
     ],
 )
 

@@ -5,6 +5,7 @@ load(
     "tf_python_pybind_extension",
 )
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package_group(
     name = "internal_visibility_allowlist_package",
@@ -81,10 +82,10 @@ tf_py_strict_test(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "pywrap_quantization",
     srcs = ["pywrap_quantization.cc"],
-    pytype_srcs = ["pywrap_quantization.pyi"],
+    data = ["pywrap_quantization.pyi"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
@@ -99,7 +100,6 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",

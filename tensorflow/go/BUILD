@@ -1,11 +1,6 @@
 # Description:
 # Go API for TensorFlow.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_shared_library_deps",
-)
-
 package(
     default_visibility = ["//visibility:private"],
 )

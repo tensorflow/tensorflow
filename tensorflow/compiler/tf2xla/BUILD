@@ -1467,21 +1467,16 @@ tf_cuda_cc_test(
     ],
 )
 
-filegroup(
-    name = "tf2xla_opset_hdrs",
-    srcs = [
-        "tf2xla_opset.h",
-    ],
-    visibility = ["//tensorflow/python/util:__pkg__"],
-)
-
 cc_library(
     name = "tf2xla_opset",
     srcs = [
         "tf2xla_opset.cc",
     ],
     hdrs = ["tf2xla_opset.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
+    ],
     deps = [
         ":tf2xla_util",
         ":xla_op_registry",

@@ -51,15 +51,6 @@
 # cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
 #
-# Note that :framework and :lib have incomplete transitive dependencies (they
-# declare but do not define some symbols) if framework_shared_object=True
-# (meaning there is an explicit framework shared object). Missing symbols are
-# included in //tensorflow:libtensorflow_framework.so. This split supports
-# custom op registration; see comments on
-# //tensorflow:libtensorflow_framework.so. It does mean that TensorFlow cc_test
-# and cc_binary rules will not build. Using tf_cc_test and tf_cc_binary (from
-# //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
-# build targets.
 
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -612,6 +603,7 @@ cc_library(
         "//tensorflow/core/kernels:sdca_ops",
         "//tensorflow/core/kernels:searchsorted_op",
         "//tensorflow/core/kernels:set_kernels",
+        "//tensorflow/core/kernels:sobol_op",
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:stateful_random_ops",
@@ -662,26 +654,15 @@ cc_library(
     ]) + tf_tpu_dependencies() + tf_dtensor_tpu_dependencies(),
 )
 
-cc_library(
-    name = "dynamic_kernels_impl",
-    visibility = [":__subpackages__"],
-    deps = [
-        "//tensorflow/core/kernels:sobol_op",
-    ],
-)
+
 
 cc_library(
     name = "all_kernels",
     visibility = ["//visibility:public"],
-    deps = if_dynamic_kernels(
-        [],
-        otherwise = [":dynamic_kernels_impl"],
-    ) + [
+    deps = [
         # TODO(gunan): Split this up and load the resulting kernels dynamically once
         # the dependency issues are resolved.
         ":all_kernels_impl",
-        # TODO(gunan): Work on the API between these and rest of TF and make
-        # these also dynamically loading.
         "//tensorflow/core/kernels:dataset_ops",  # Depends on grappler
         "//tensorflow/core/kernels:list_kernels",  # Depends on variant_op_registry.h
         "//tensorflow/core/kernels:map_kernels",
@@ -1612,6 +1593,7 @@ tf_cuda_library(
         ],
     ),
     alwayslink = 1,
+#    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 cc_library(

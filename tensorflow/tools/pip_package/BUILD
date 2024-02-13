@@ -89,10 +89,6 @@ filegroup(
     srcs = ["xla_build/CMakeLists.txt"],
 )
 
-# Add dynamic kernel dso files here.
-DYNAMIC_LOADED_KERNELS = [
-    "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
-]
 
 COMMON_PIP_DEPS = [
     ":licenses",
@@ -257,10 +253,6 @@ sh_binary(
                "//tensorflow:windows": [
                    "//tensorflow/python:pywrap_tensorflow_import_lib_file",
                ],
-               "//conditions:default": [],
-           }) +
-           select({
-               "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
                "//conditions:default": [],
            }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]) + [
         "//tensorflow:tf_python_api_gen_v2",

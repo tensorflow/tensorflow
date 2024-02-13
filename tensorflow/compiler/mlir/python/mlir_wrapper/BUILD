@@ -1,26 +1,21 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-tf_python_pybind_extension(
-    name = "mlir_wrapper",
+cc_library(
+    name = "mlir_wrapper_lib",
     srcs = [
         "attrs.cc",
         "basic_classes.cc",
         "builders.cc",
-        "mlir_wrapper.cc",
-        "mlir_wrapper.h",
         "ops.cc",
         "types.cc",
     ],
-    enable_stub_generation = True,
-    pytype_srcs = [
-        "mlir_wrapper.pyi",
-    ],
-    visibility = ["//visibility:public"],
+    hdrs = ["mlir_wrapper.h",],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -31,15 +26,27 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
+    name = "mlir_wrapper",
+    srcs = [
+        "mlir_wrapper.cc",
+    ],
+    data = [
+        "mlir_wrapper.pyi",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":mlir_wrapper_lib",
+    ],
+)
+
+pybind_extension(
     name = "filecheck_wrapper",
     srcs = ["filecheck_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "filecheck_wrapper.pyi",
     ],
     visibility = ["//visibility:public"],
@@ -48,6 +55,5 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:FileCheckLib",
         "@llvm-project//llvm:Support",
-        "@pybind11",
     ],
 )

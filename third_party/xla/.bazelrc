@@ -28,7 +28,6 @@
 #     short_logs:       Only log errors during build, skip warnings.
 #     verbose_logs:     Show all compiler warnings during build.
 #     monolithic:       Build all TF C++ code into a single shared object.
-#     dynamic_kernels:  Try to link all kernels dynamically (experimental).
 #     dbg:              Build with debug info
 #
 # TF version options;
@@ -74,12 +73,6 @@
 #     release_cpu_windows:             Toolchain and CUDA options for Windows CPU builds.
 
 # Default build options. These are applied first and unconditionally.
-
-# For projects which use TensorFlow as part of a Bazel build process, putting
-# nothing in a bazelrc will default to a monolithic build. The following line
-# opts in to modular op registration support by default.
-build --define framework_shared_object=true
-build --define tsl_protobuf_header_only=true
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
@@ -195,8 +188,6 @@ build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
 # By default, TensorFlow will build with a dependence on
 # //tensorflow:libtensorflow_framework.so.
-build:monolithic --define framework_shared_object=false
-build:monolithic --define tsl_protobuf_header_only=false
 build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
 # Please note that MKL on MacOS is still not supported.
@@ -274,7 +265,6 @@ build:dbg --copt -DDEBUG_BUILD
 
 # Config to build TF TPU
 build:tpu --define=with_tpu_support=true
-build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
@@ -290,10 +280,6 @@ build:noaws --define=no_aws_support=true
 build:nogcp --define=no_gcp_support=true
 build:nohdfs --define=no_hdfs_support=true
 build:nonccl --define=no_nccl_support=true
-
-# Modular TF build options
-build:dynamic_kernels --define=dynamic_loaded_kernels=true
-build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
 # Don't trigger --config=<host platform> when cross-compiling.
 build:android --noenable_platform_specific_config

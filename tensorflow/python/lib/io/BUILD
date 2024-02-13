@@ -3,6 +3,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_oss")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 # copybara:uncomment_begin(google-only)
 # load("//third_party/zlib:BUILD_defs.bzl", "brittle_test_relying_on_stable_zlib_output")
@@ -18,11 +19,10 @@ package(
     licenses = ["notice"],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_file_io",
     srcs = ["file_io_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_file_io.pyi",
     ],
     deps = [
@@ -31,15 +31,13 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@pybind11",
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "_pywrap_record_io",
     srcs = ["record_io_wrapper.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "_pywrap_record_io.pyi",
     ],
     deps = [
@@ -52,7 +50,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/memory",
-        "@pybind11",
     ],
 )
 

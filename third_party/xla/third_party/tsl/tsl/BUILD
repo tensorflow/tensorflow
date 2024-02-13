@@ -43,54 +43,6 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-# Crosses between framework_shared_object and a bunch of other configurations
-# due to limitations in nested select() statements.
-config_setting(
-    name = "framework_shared_object",
-    define_values = {"framework_shared_object": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "macos_x86_64_with_framework_shared_object",
-    define_values = {
-        "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "macos_arm64_with_framework_shared_object",
-    define_values = {
-        "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
-    },
-    visibility = ["//visibility:public"],
-)
-
-selects.config_setting_group(
-    name = "macos_with_framework_shared_object",
-    match_any = [
-        ":macos_x86_64_with_framework_shared_object",
-        ":macos_arm64_with_framework_shared_object",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-# This should be removed after Tensorflow moves to cc_shared_library
-config_setting(
-    name = "tsl_protobuf_header_only",
-    define_values = {"tsl_protobuf_header_only": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",

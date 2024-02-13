@@ -1,5 +1,6 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
 
 visibility = ["//tensorflow/core/function:__subpackages__"]
 
@@ -26,17 +27,15 @@ cc_library(
     ],
 )
 
-tf_python_pybind_extension(
+pybind_extension(
     name = "test_pass_pybind",
     testonly = 1,
     srcs = ["test_pass_pybind.cc"],
-    enable_stub_generation = True,
-    pytype_srcs = [
+    data = [
         "test_pass_pybind.pyi",
     ],
     deps = [
         ":test_pass_cc",
-        "@pybind11",
     ],
 )
 
