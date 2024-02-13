@@ -315,12 +315,22 @@ Status BatchResourceBase::RegisterWarmupInputs(
     int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
     const CreateBatchTaskFn& create_batch_task_fn,
     AsyncOpKernel::DoneCallback done) {
+  auto shared_status = std::make_shared<ThreadSafeStatus>();
+  auto create_batch_task_fn_share_status = [&create_batch_task_fn,
+                                            &shared_status]() {
+    auto batch_task = create_batch_task_fn();
+    if (!batch_task.ok()) {
+      return batch_task;
+    }
+    (*batch_task)->status = shared_status;
+    return batch_task;
+  };
   auto warmup_counter =
       std::make_shared<absl::BlockingCounter>(allowed_batch_sizes_.size());
   // Enqueue warmup batches.
   for (int i = 0; i < allowed_batch_sizes_.size(); ++i) {
     Status status = RegisterInput(
-        guid, context, batcher_queue_name, create_batch_task_fn,
+        guid, context, batcher_queue_name, create_batch_task_fn_share_status,
         [warmup_counter = warmup_counter.get()]() {
           warmup_counter->DecrementCount();
         },
@@ -328,11 +338,13 @@ Status BatchResourceBase::RegisterWarmupInputs(
     if (!status.ok()) return status;
   }
   // Enqueue real batch if the other batches were enqueued successfully.
-  return RegisterInput(guid, context, batcher_queue_name, create_batch_task_fn,
-                       [warmup_counter, done = done]() {
-                         warmup_counter->Wait();
-                         done();
-                       });
+  return RegisterInput(
+      guid, context, batcher_queue_name, create_batch_task_fn_share_status,
+      [warmup_counter, context, shared_status, done = std::move(done)]() {
+        warmup_counter->Wait();
+        context->SetStatus(shared_status->status());
+        done();
+      });
 }
 
 Status BatchResourceBase::RegisterInput(
@@ -421,10 +433,24 @@ Status BatchResourceBase::RegisterInput(
     }
   }
   batch_components->context = context;
-  batch_components->done_callback = std::move(done_callback);
   batch_components->split_index = 0;
   batch_components->output = std::make_shared<TensorMatrix>();
-  batch_components->status = std::make_shared<ThreadSafeStatus>();
+  if (!batch_components->status) {
+    // A shared status has already been injected if `RegisterWarmupInputs`
+    // was called. If not, create the `ThreadSafeStatus` and tie the setting
+    // of the kernel context's status to this shared status.
+    batch_components->status = std::make_shared<ThreadSafeStatus>();
+    batch_components->done_callback = [done_callback = std::move(done_callback),
+                                       shared_status = batch_components->status,
+                                       context = context]() {
+      context->SetStatus(shared_status->status());
+      done_callback();
+    };
+  } else {
+    // Otherwise `RegisterWarmupInputs` was called and already setup the
+    // `done_callback` and `status` correctly for this `BatchTask`.
+    batch_components->done_callback = std::move(done_callback);
+  }
   batch_components->forced_warmup_batch_size = forced_warmup_batch_size;
 
   std::unique_ptr<RequestCostAccessor> request_cost_accessor =
@@ -713,7 +739,6 @@ Status BatchResourceBase::ConcatInputTensors(
             op_kernel_context->set_output(i, std::move(output_tensor));
           }
         }
-        op_kernel_context->SetStatus(status->status());
         done_callback();
       };
   IncrementalBarrier barrier(split_task_done_callback);
@@ -882,17 +907,15 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
       WithContext wc(batch->task(i).propagated_context);
-      if (batch->task(i).is_partial && !status.ok()) {
-        // Prefer a more helpful error message.
+      if (!status.ok()) {
         if (!absl::StrContains(
                 status.message(),
                 "Function was cancelled before it was started")) {
           batch->mutable_task(i)->status->Update(status);
         } else {
+          // Do not propagate this error; Prefer a more helpful error message.
           LOG(ERROR) << "ERROR!!!! " << status.message();
         }
-      } else {
-        batch->mutable_task(i)->context->SetStatus(status);
       }
       batch->mutable_task(i)->done_callback();
     }
