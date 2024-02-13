@@ -58,11 +58,13 @@ class WhileLoopUnrollerTest : public HloTestBase {
  public:
   void UnrollAndCompare(std::unique_ptr<HloModule> module,
                         absl::Span<Literal* const> arguments,
-                        int64_t unroll_factor = -1) {
+                        int64_t unroll_factor = -1, bool wrap_in_loop = false) {
     Literal before_unroll = ExecuteAndTransfer(module->Clone(), arguments);
     VLOG(2) << "before unroll value: " << before_unroll.ToString();
 
-    EXPECT_TRUE(WhileLoopUnroller(unroll_factor).Run(module.get()).value());
+    EXPECT_TRUE(WhileLoopUnroller(unroll_factor, wrap_in_loop)
+                    .Run(module.get())
+                    .value());
 
     Literal after_unroll = ExecuteAndTransfer(std::move(module), arguments);
     VLOG(2) << "after unroll value: " << after_unroll.ToString();
@@ -347,7 +349,8 @@ WhileLoopUnrollerTest::MakeModuleWithSimpleLoopAllReduce(int num_iters) {
 }
 
 TEST_F(WhileLoopUnrollerTest, SimpleLoopUnroll) {
-  UnrollAndCompare(MakeModuleWithSimpleLoop(/*num_iters=*/5), {});
+  UnrollAndCompare(MakeModuleWithSimpleLoop(/*num_iters=*/5), {}, -1, false);
+  UnrollAndCompare(MakeModuleWithSimpleLoop(/*num_iters=*/5), {}, -1, true);
 }
 
 TEST_F(WhileLoopUnrollerTest, SimpleLoopNotRoot) {
@@ -378,7 +381,10 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopNotRoot) {
     ROOT result = s32[3]{0} get-tuple-element(while), index=1
   }
   )";
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {});
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   false);
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   true);
 }
 
 TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
@@ -516,13 +522,10 @@ TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  // UnrollAndCompare(module->Clone(), {}, -1);
-
   // Unroll the first loop
   TF_ASSERT_OK_AND_ASSIGN(
       bool unrolled1,
-      Unroll(module->entry_computation()->GetInstructionWithName("while1"),
-             -1));
+      Unroll(module->entry_computation()->GetInstructionWithName("while1")));
   EXPECT_TRUE(unrolled1);
 
   // There should be no call instructions after unrolling either loops since we
@@ -537,8 +540,7 @@ TEST_F(WhileLoopUnrollerTest, UnrollMutipleLoops) {
   // Unroll the second loop
   TF_ASSERT_OK_AND_ASSIGN(
       bool unrolled2,
-      Unroll(module->entry_computation()->GetInstructionWithName("while2"),
-             -1));
+      Unroll(module->entry_computation()->GetInstructionWithName("while2")));
   EXPECT_TRUE(unrolled2);
   std::vector<HloInstruction*> call_instrs_2;
   for (auto* comp : module->MakeComputationPostOrder()) {
@@ -563,7 +565,6 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopNonZeroInit) {
   SimpleLoop.condition {
     loop_var.2 = (s64[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s64[] get-tuple-element(loop_var.2), index=0
-    /* number of iterations is 10 */
     constant.2 = s64[] constant(10)
     ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
@@ -576,7 +577,10 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopNonZeroInit) {
     ROOT result = s32[3]{0} get-tuple-element(while), index=1
   }
   )";
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {});
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   false);
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   true);
 }
 
 TEST_F(WhileLoopUnrollerTest, SimpleLoopS16IndVar) {
@@ -606,7 +610,10 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopS16IndVar) {
       SimpleLoop.condition, body=SimpleLoop.body
   }
   )";
-  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {});
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   false);
+  UnrollAndCompare(ParseAndReturnVerifiedModule(hlo_string).value(), {}, -1,
+                   true);
 }
 
 TEST_F(WhileLoopUnrollerTest, LoopWithControlDep) {
@@ -651,17 +658,26 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopPartialUnroll) {
 TEST_F(WhileLoopUnrollerTest, IndirectBodyInc) {
   std::unique_ptr<HloModule> module =
       MakeModuleWithLoopBodyIndirectInc(/*num_iters=*/5);
-  UnrollAndCompare(std::move(module), {});
+  UnrollAndCompare(MakeModuleWithLoopBodyIndirectInc(/*num_iters=*/5), {}, -1,
+                   false);
+  UnrollAndCompare(MakeModuleWithLoopBodyIndirectInc(/*num_iters=*/5), {}, -1,
+                   true);
 }
 
 TEST_F(WhileLoopUnrollerTest, NestedIndirectBodyInc) {
   std::unique_ptr<HloModule> module =
       MakeModuleWithNestedLoopBodyIndirectInc(/*num_iters=*/5);
-  UnrollAndCompare(std::move(module), {});
+  UnrollAndCompare(MakeModuleWithNestedLoopBodyIndirectInc(/*num_iters=*/5), {},
+                   -1, false);
+  UnrollAndCompare(MakeModuleWithNestedLoopBodyIndirectInc(/*num_iters=*/5), {},
+                   -1, true);
 }
 
 TEST_F(WhileLoopUnrollerTest, WhileFeedingWhile) {
-  UnrollAndCompare(MakeModuleWithWhileFeedingAnotherWhile(/*num_iters=*/5), {});
+  UnrollAndCompare(MakeModuleWithWhileFeedingAnotherWhile(/*num_iters=*/5), {},
+                   -1, false);
+  UnrollAndCompare(MakeModuleWithWhileFeedingAnotherWhile(/*num_iters=*/5), {},
+                   -1, true);
 }
 
 TEST_F(WhileLoopUnrollerTest, LoopWithCollective) {

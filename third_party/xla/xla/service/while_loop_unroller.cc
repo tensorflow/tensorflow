@@ -28,8 +28,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/service/while_loop_analysis.h"
 #include "xla/service/while_loop_constant_sinking.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -194,6 +197,20 @@ std::optional<WhileLoopConfig> IsLoopUnrollable(HloInstruction* while_op) {
   return config;
 }
 
+std::unique_ptr<HloInstruction> GetConstantWithPrimitiveType(PrimitiveType type,
+                                                             int64_t value) {
+  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+      [&](auto literal_constant) -> std::unique_ptr<HloInstruction> {
+        if constexpr (primitive_util::IsIntegralType(literal_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<literal_constant>;
+          return HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0(static_cast<NativeT>(value)));
+        }
+        LOG(FATAL) << "literal is of non-integral type";
+      },
+      type);
+}
+
 // Helper function that replaces a single iteration of a while loop with
 // induction variable equal to induction_value.
 StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
@@ -203,8 +220,8 @@ StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
   std::unique_ptr<HloComputation> while_body_clone =
       while_op->while_body()->Clone(absl::StrCat(induction_value));
 
-  const HloInstruction* induction_var_hlo =
-      while_op->operand(0)->operand(indvar_idx);
+  HloInstruction* induction_var_hlo =
+      while_op->mutable_operand(0)->mutable_operand(indvar_idx);
 
   // We record the next channel id to utilize when unrolling loops with
   // collective communication instructions. During unrolling a single iteration
@@ -248,22 +265,8 @@ StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
           // Found the induction var as an operand of body instruction.
           if (indvar_use_operand == body_inst) {
             std::unique_ptr<HloInstruction> constant =
-                primitive_util::PrimitiveTypeSwitch<
-                    std::unique_ptr<HloInstruction>>(
-                    [&](auto literal_constant)
-                        -> std::unique_ptr<HloInstruction> {
-                      if constexpr (primitive_util::IsIntegralType(
-                                        literal_constant)) {
-                        using NativeT =
-                            primitive_util::NativeTypeOf<literal_constant>;
-                        return HloInstruction::CreateConstant(
-                            LiteralUtil::CreateR0(
-                                static_cast<NativeT>(induction_value)));
-                      }
-                      LOG(FATAL) << "literal is of non-integral type";
-                    },
-                    induction_var_hlo->shape().element_type());
-
+                GetConstantWithPrimitiveType(
+                    induction_var_hlo->shape().element_type(), induction_value);
             // Assign the same shape of the old instruction to the new
             // instruction.
             *constant->mutable_shape() = body_inst->shape();
@@ -277,11 +280,47 @@ StatusOr<std::unique_ptr<HloComputation>> UnrollSingleIterationOfTrivialLoop(
   return while_body_clone;
 }
 
-StatusOr<bool> UnrollInternal(HloInstruction* while_op, int64_t unroll_factor,
-                              WhileLoopConfig config) {
+// Helper function to create a condition for a single iteration while loop in
+// the form of 'i <= init_value' where i is the induction variable.
+std::unique_ptr<HloComputation> MakeSingleIterWhileCond(
+    HloInstruction* while_op, int64_t induction_idx, int64_t init_value) {
+  auto condition_builder =
+      HloComputation::Builder(absl::StrCat("unrolled-cond-", while_op->name()));
+
+  auto param_instruction = condition_builder.AddParameter(
+      while_op->while_condition()->parameter_instruction(0)->Clone());
+
+  CHECK_OK(param_instruction);
+
+  HloInstruction* indvar_instruction = condition_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(*param_instruction, induction_idx));
+
+  auto init_value_constant =
+      condition_builder.AddInstruction(GetConstantWithPrimitiveType(
+          indvar_instruction->shape().element_type(), init_value));
+
+  return condition_builder.Build(
+      condition_builder.AddInstruction(HloInstruction::CreateCompare(
+          ShapeUtil::MakeShape(PrimitiveType::PRED, {}), indvar_instruction,
+          init_value_constant, ComparisonDirection::kLe)));
+}
+
+absl::Status InitialFeasibilityCheck(HloInstruction* while_op,
+                                     WhileLoopConfig config,
+                                     int64_t unroll_factor) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
 
-  VLOG(3) << "Trying to unroll " << while_op->ToShortString();
+  // While loop must have a single tuple operand.
+  CHECK_EQ(while_op->operands().size(), 1);
+  if (while_op->operands().size() != 1) {
+    return FailedPrecondition(
+        "%s",
+        absl::StrCat("Cannot unroll while loop. While loop must have a single "
+                     "tuple operand, instead has more than one operand: ",
+                     while_op->operands().size()));
+  }
+
+  VLOG(5) << "Trying to unroll " << while_op->ToShortString();
 
   // TODO(b/288130138): For now, we only support full unrolling. Will add
   // partial unrolling if needed.
@@ -325,6 +364,12 @@ StatusOr<bool> UnrollInternal(HloInstruction* while_op, int64_t unroll_factor,
                                while_op->while_body()->instruction_count(),
                            " vs ", kUnrollExpandFactorThreshold));
   }
+  return absl::OkStatus();
+}
+
+StatusOr<bool> UnrollInternal(HloInstruction* while_op, WhileLoopConfig config,
+                              int64_t unroll_factor) {
+  TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
 
   VLOG(3) << "Unrolling while instruction " << while_op->ToShortString()
           << " with body instruction count "
@@ -333,12 +378,7 @@ StatusOr<bool> UnrollInternal(HloInstruction* while_op, int64_t unroll_factor,
   HloModule* module = while_op->GetModule();
   HloComputation* computation = while_op->parent();
   HloInstruction* unrolled_body_call_op;
-  std::vector<HloInstruction*> call_operands;
-
-  // While loop must have a single tuple operand.
-  CHECK_EQ(while_op->operands().size(), 1);
-
-  call_operands.emplace_back(while_op->operands().at(0));
+  std::vector<HloInstruction*> call_operands = {while_op->operands().at(0)};
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -352,7 +392,57 @@ StatusOr<bool> UnrollInternal(HloInstruction* while_op, int64_t unroll_factor,
     call_operands.clear();
     call_operands.emplace_back(unrolled_body_call_op);
   }
-  CHECK_OK(computation->ReplaceInstruction(while_op, unrolled_body_call_op));
+  TF_RETURN_IF_ERROR(
+      computation->ReplaceInstruction(while_op, unrolled_body_call_op));
+
+  // Needed for the nested while loops in which the outer loop has been
+  // unrolled which leaves the call graph non-flat.
+  TF_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
+  return true;
+}
+
+StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
+                                     WhileLoopConfig config,
+                                     int64_t unroll_factor) {
+  TF_RETURN_IF_ERROR(InitialFeasibilityCheck(while_op, config, unroll_factor));
+
+  VLOG(3) << "Unrolling (wrapped) while instruction "
+          << while_op->ToShortString() << " with body instruction count "
+          << while_op->while_body()->instruction_count();
+
+  HloModule* module = while_op->GetModule();
+  HloComputation* computation = while_op->parent();
+  HloInstruction* unrolled_body_call_op;
+
+  auto body_builder =
+      HloComputation::Builder(absl::StrCat("unrolled-body-", while_op->name()));
+  StatusOr<HloInstruction*> p = body_builder.AddParameter(
+      while_op->while_body()->parameter_instruction(0)->Clone());
+
+  std::vector<HloInstruction*> call_operands = {p.value()};
+  for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
+    CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
+
+    HloComputation* unrolled_body = module->AddEmbeddedComputation(
+        UnrollSingleIterationOfTrivialLoop(while_op, config.induction_var_idx,
+                                           i)
+            .value());
+    unrolled_body_call_op =
+        body_builder.AddInstruction(HloInstruction::CreateCall(
+            while_op->shape(), call_operands, unrolled_body));
+    call_operands.clear();
+    call_operands.emplace_back(unrolled_body_call_op);
+  }
+  HloComputation* new_body =
+      module->AddEmbeddedComputation(body_builder.Build(unrolled_body_call_op));
+  HloComputation* new_cond = module->AddEmbeddedComputation(
+      MakeSingleIterWhileCond(while_op, config.induction_var_idx, config.init));
+
+  HloInstruction* new_while_op =
+      computation->AddInstruction(HloInstruction::CreateWhile(
+          while_op->shape(), new_cond, new_body, while_op->mutable_operand(0)));
+
+  CHECK_OK(computation->ReplaceInstruction(while_op, new_while_op));
 
   // Needed for the nested while loops in which the outer loop has been
   // unrolled which leaves the call graph non-flat.
@@ -383,7 +473,8 @@ absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
   return while_loop_configs;
 }
 
-StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor) {
+StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor,
+                      bool wrap_in_trivial_loop) {
   bool changed = false;
   HloModule* module = while_op->GetModule();
 
@@ -398,8 +489,14 @@ StatusOr<bool> Unroll(HloInstruction* while_op, int64_t unroll_factor) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(bool unrolled,
-                      UnrollInternal(while_op, unroll_factor, config.value()));
+  bool unrolled = false;
+  if (wrap_in_trivial_loop) {
+    TF_ASSIGN_OR_RETURN(unrolled, UnrollInternalWrapped(
+                                      while_op, config.value(), unroll_factor));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        unrolled, UnrollInternal(while_op, config.value(), unroll_factor));
+  }
 
   // We need to inline the calls created for unrolling since later passes rely
   // on the calls to be inlined.
@@ -442,9 +539,15 @@ StatusOr<bool> WhileLoopUnroller::Run(
   VLOG(3) << "Number of while instructions in the module to unroll: "
           << unrollable_while_ops.size();
 
+  bool unrolled = false;
   for (auto& [while_op, config] : unrollable_while_ops) {
-    TF_ASSIGN_OR_RETURN(bool unrolled,
-                        UnrollInternal(while_op, unroll_factor_, config));
+    if (wrap_in_trivial_loop_) {
+      TF_ASSIGN_OR_RETURN(
+          unrolled, UnrollInternalWrapped(while_op, config, unroll_factor_));
+    } else {
+      TF_ASSIGN_OR_RETURN(unrolled,
+                          UnrollInternal(while_op, config, unroll_factor_));
+    }
     changed |= unrolled;
   }
 
