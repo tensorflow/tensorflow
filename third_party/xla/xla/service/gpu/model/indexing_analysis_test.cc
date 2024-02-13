@@ -1259,7 +1259,10 @@ TEST_F(IndexingAnalysisTest, PadOp) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                                        (d0, d1) -> (d0 floordiv 2 - 1, d1 - 4)
+                                        (d0, d1) -> (
+                                          (d0 - 1) floordiv 2,
+                                          d1 - 4
+                                        )
                                         domain:
                                         d0 in [1, 7]
                                         d1 in [4, 7]

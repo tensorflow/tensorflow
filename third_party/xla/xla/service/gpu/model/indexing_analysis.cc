@@ -321,7 +321,7 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
     if (pad_interior == 0) {
       exprs.push_back(dim_expr - pad_low);
     } else {
-      exprs.push_back(dim_expr.floorDiv(pad_interior + 1) - pad_low);
+      exprs.push_back((dim_expr - pad_low).floorDiv(pad_interior + 1));
       constraints.push_back(
           {(dim_expr - pad_low) % (pad_interior + 1), Range{0, 0}});
     }
