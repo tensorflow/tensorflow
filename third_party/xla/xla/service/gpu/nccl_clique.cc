@@ -268,7 +268,7 @@ struct InitializationState {
 
 }  // namespace
 
-static InitializationGuard::Lock LockInitializationGuard() {
+static InitializationGuard::Lock AcquireInitializationGuard() {
   static auto* guard = new InitializationGuard();
   return guard->Acquire();
 }
@@ -303,12 +303,11 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // Creates initialization state for participating ranks.
   auto create_initialization_state = [&](absl::Span<const int32_t* const> ranks)
       -> absl::StatusOr<InitializationState> {
+    VLOG(3) << "Acquire initialization guard for clique "
+            << clique_key.ToString();
+    auto lock = AcquireInitializationGuard();
     TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(clique_key));
-    VLOG(3) << "Created unique clique id (hash): " << absl::HashOf(clique_id)
-            << " and acquire initialization guard lock";
-    auto lock = LockInitializationGuard();
-    VLOG(3) << "Acquired initialization guard lock for clique id (hash): "
-            << absl::HashOf(clique_id);
+    VLOG(3) << "Created unique clique id (hash): " << absl::HashOf(clique_id);
     return InitializationState(clique_id, ranks, std::move(lock));
   };
 
