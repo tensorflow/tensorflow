@@ -41,8 +41,13 @@ StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
         if (it == frontend_attributes.map().end()) {
           continue;
         }
+        // XLA currently does not differentiate between pinned and unpinned host
+        // memory.
         const bool is_to_host_case =
-            it->second == host_memory_offload_annotations::kMemoryTargetHost;
+            (it->second ==
+                 host_memory_offload_annotations::kMemoryTargetPinnedHost ||
+             it->second ==
+                 host_memory_offload_annotations::kMemoryTargetUnpinnedHost);
         const bool is_to_device_case =
             (it->second ==
              host_memory_offload_annotations::kMemoryTargetDevice);
