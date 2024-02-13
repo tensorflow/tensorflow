@@ -324,6 +324,7 @@ cc_library(
     hdrs = ["gpu_indexing_performance_model.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":coalescing_analysis",
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
         ":hlo_op_profiles",
