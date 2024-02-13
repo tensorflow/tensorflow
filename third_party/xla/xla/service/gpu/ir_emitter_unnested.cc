@@ -1650,6 +1650,166 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(
+    const HloCustomCallInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  const xla::gpu::CudnnfMHABackendConfig& config =
+      gpu_config.cudnn_fmha_backend_config();
+  bool is_flash_attention = config.is_flash_attention();
+
+  int input_index = 0;
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm1_grad_gemm1_rhs_slice,
+                      GetAllocationSliceForHlo(instr->operand(input_index)));
+  Shape bmm1_grad_gemm1_rhs_shape = instr->operand(input_index++)->shape();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm1_grad_gemm2_rhs_slice,
+                      GetAllocationSliceForHlo(instr->operand(input_index)));
+  Shape bmm1_grad_gemm2_rhs_shape = instr->operand(input_index++)->shape();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm2_grad_gemm2_rhs_slice,
+                      GetAllocationSliceForHlo(instr->operand(input_index)));
+  Shape bmm2_grad_gemm2_rhs_shape = instr->operand(input_index++)->shape();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bmm2_grad_gemm1_lhs_slice,
+                      GetAllocationSliceForHlo(instr->operand(input_index)));
+  Shape bmm2_grad_gemm1_lhs_shape;
+
+  // fmha.getBmm2GradGemm1Lhs() could be bmm2_grad_gemm1_lhs for regular
+  // attention or softmax stats for flash attention here we set the shape to
+  // be bmm2_grad_gemm1_lhs even it is flash attention
+  if (is_flash_attention) {
+    // flash attention TODO: make sure the layout is correct for
+    // bmm2_grad_gemm1_lhs
+    Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
+    bmm2_grad_gemm1_lhs_shape = intermediate_tensor_shape;
+    input_index++;
+  } else {
+    bmm2_grad_gemm1_lhs_shape = instr->operand(input_index++)->shape();
+  }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_output_slice,
+                      GetAllocationSliceForHlo(instr->operand(input_index)));
+  Shape d_output_shape = instr->operand(input_index++)->shape();
+
+  TF_ASSIGN_OR_RETURN(const CudnnfMHAKind kind, GetCudnnfMHAKind(instr));
+  bool has_mask = kind == CudnnfMHAKind::kBackwardScaleMaskSoftmax ||
+                  kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax ||
+                  kind == CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout ||
+                  kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout;
+  BufferAllocation::Slice mask_slice;
+  std::optional<Shape> mask_shape;
+  if (has_mask) {
+    TF_ASSIGN_OR_RETURN(mask_slice,
+                        GetAllocationSliceForHlo(instr->operand(input_index)));
+    mask_shape = instr->operand(input_index++)->shape();
+  }
+
+  bool has_bias = is_flash_attention &&
+                  (kind == CudnnfMHAKind::kBackwardScaleBiasSoftmax ||
+                   kind == CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout ||
+                   kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax ||
+                   kind == CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout);
+  BufferAllocation::Slice bias_slice;
+  std::optional<Shape> bias_shape;
+  if (has_bias) {
+    TF_ASSIGN_OR_RETURN(bias_slice,
+                        GetAllocationSliceForHlo(instr->operand(input_index)));
+    bias_shape = instr->operand(input_index++)->shape();
+  }
+
+  BufferAllocation::Slice fwd_output_slice;
+  std::optional<Shape> fwd_output_shape;
+  if (is_flash_attention) {
+    TF_ASSIGN_OR_RETURN(fwd_output_slice,
+                        GetAllocationSliceForHlo(instr->operand(input_index)));
+    fwd_output_shape = instr->operand(input_index++)->shape();
+  }
+
+  TF_RET_CHECK(input_index == instr->operand_count());
+
+  int output_index = 0;
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_bmm1_lhs_slice,
+                      GetAllocationSliceForHlo(instr, {output_index}));
+  Shape d_bmm1_lhs_shape =
+      ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_bmm1_rhs_slice,
+                      GetAllocationSliceForHlo(instr, {output_index}));
+  Shape d_bmm1_rhs_shape =
+      ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d_bmm2_rhs_slice,
+                      GetAllocationSliceForHlo(instr, {output_index}));
+  Shape d_bmm2_rhs_shape =
+      ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+
+  BufferAllocation::Slice d_s_slice, softmax_sum_slice, d_Q_accum_slice;
+  std::optional<Shape> d_s_shape;
+  if (!is_flash_attention) {
+    TF_ASSIGN_OR_RETURN(d_s_slice,
+                        GetAllocationSliceForHlo(instr, {output_index}));
+    d_s_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+  } else {
+    TF_ASSIGN_OR_RETURN(softmax_sum_slice,
+                        GetAllocationSliceForHlo(instr, {output_index++}));
+    TF_ASSIGN_OR_RETURN(d_Q_accum_slice,
+                        GetAllocationSliceForHlo(instr, {output_index++}));
+  }
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSliceForHlo(instr, {output_index++}));
+
+  bool has_dbias =
+      instr->shape().tuple_shapes().size() == 6 && !is_flash_attention;
+  BufferAllocation::Slice d_bias_slice;
+  std::optional<Shape> d_bias_shape;
+  if (has_dbias) {
+    TF_ASSIGN_OR_RETURN(d_bias_slice,
+                        GetAllocationSliceForHlo(instr, {output_index}));
+    d_bias_shape = ShapeUtil::GetSubshape(instr->shape(), {output_index++});
+  }
+
+  TF_RET_CHECK(output_index == instr->shape().tuple_shapes().size());
+
+  GpufMHABackwardDescriptor descriptor = {
+      kind,
+      config,
+      is_flash_attention,
+      config.is_causal_mask(),
+      bmm1_grad_gemm1_rhs_shape,
+      bmm1_grad_gemm2_rhs_shape,
+      bmm2_grad_gemm1_lhs_shape,
+      bmm2_grad_gemm2_rhs_shape,
+      d_output_shape,
+      d_bmm1_lhs_shape,
+      d_bmm1_rhs_shape,
+      d_bmm2_rhs_shape,
+      config.bmm1_grad_gemm1_dot_dimension_numbers(),
+      config.bmm1_grad_gemm2_dot_dimension_numbers(),
+      config.bmm2_grad_gemm1_dot_dimension_numbers(),
+      config.bmm2_grad_gemm2_dot_dimension_numbers(),
+      d_s_shape,
+      fwd_output_shape,
+      mask_shape,
+      d_bias_shape,
+      bias_shape};
+
+  TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig fmha_backward_config,
+                      GpufMHABackwardConfig::For(descriptor));
+
+  AddThunkToThunkSequence(std::make_unique<FusedMHABackwardThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      std::move(fmha_backward_config), bmm1_grad_gemm1_rhs_slice,
+      bmm1_grad_gemm2_rhs_slice, bmm2_grad_gemm1_lhs_slice,
+      bmm2_grad_gemm2_rhs_slice, d_output_slice, scratch_slice,
+      d_bmm1_lhs_slice, d_bmm1_rhs_slice, d_bmm2_rhs_slice, d_s_slice,
+      softmax_sum_slice, d_Q_accum_slice, mask_slice, d_bias_slice,
+      fwd_output_slice, bias_slice));
+
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::fusedMHABackwardOp;
@@ -4386,6 +4546,10 @@ absl::Status IrEmitterUnnested::EmitOp(
     return EmitFusedMHAThunk(op);
   }
   if (mlir::isa<mlir::lmhlo_gpu::fusedMHABackwardOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      const auto* instr = Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op));
+      return EmitFusedMHABackwardThunk(instr);
+    }
     return EmitFusedMHABackwardThunk(op);
   }
 #endif  // GOOGLE_CUDA
@@ -4777,6 +4941,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       if (IsFwdCustomCallTofMHA(*instr)) {
         return EmitFusedMHAThunk(custom_call);
+      }
+      if (IsBwdCustomCallTofMHA(*instr)) {
+        return EmitFusedMHABackwardThunk(custom_call);
       }
 #endif  // GOOGLE_CUDA
       if (IsCustomCallToTopK(*instr)) {
