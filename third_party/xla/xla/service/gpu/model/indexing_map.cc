@@ -237,16 +237,27 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   // + ((s0 * 128 + s1) floordiv 192) * 768
   //
   // This rule lets us eliminate the subtraction and the addition.
+  // TODO(pifon): Remove this once the remaining simplification is fixed.
   if (max_remaining_multiplier_gcd > 1) {
-    new_dividend = RewriteSum(new_dividend, [&](AffineExpr expr) {
+    AffineExpr partially_extracted = getAffineConstantExpr(0, mlir_context);
+    new_dividend = RewriteSumIf(new_dividend, [&](AffineExpr expr) {
       if (auto multiplier = GetConstantRhsMultiplier(expr);
           multiplier && ((*multiplier % max_remaining_multiplier_gcd) == 0)) {
         auto expr_lhs = mlir::cast<AffineBinaryOpExpr>(expr).getLHS();
-        return expr_lhs * (*multiplier / max_remaining_multiplier_gcd);
+        partially_extracted =
+            partially_extracted +
+            expr_lhs * (*multiplier / max_remaining_multiplier_gcd);
+        // Remove from dividend.
+        return false;
       }
-      return expr.floorDiv(max_remaining_multiplier_gcd);
+      return true;
     });
-    return extracted + new_dividend.floorDiv(d / max_remaining_multiplier_gcd);
+    if (!new_dividend) {
+      new_dividend = getAffineConstantExpr(0, mlir_context);
+    }
+    return extracted + (partially_extracted +
+                        new_dividend.floorDiv(max_remaining_multiplier_gcd))
+                           .floorDiv(d / max_remaining_multiplier_gcd);
   }
 
   // If we removed nothing, return the original division.
