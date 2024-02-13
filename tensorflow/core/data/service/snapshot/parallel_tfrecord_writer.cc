@@ -162,8 +162,11 @@ ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
   }
 
   std::vector<Tensor> record = std::move(buffer_.front());
+  ByteSize estimated_size = EstimatedSize(record);
+  LOG_EVERY_N_SEC(INFO, 1) << "Writing TFRecord of " << estimated_size
+                           << " to file " << file_prefix_ << "*.";
   ++file_stats_[filename].num_records;
-  file_stats_[filename].estimated_size += EstimatedSize(record);
+  file_stats_[filename].estimated_size += estimated_size;
   buffer_.pop_front();
   ready_to_push_.SignalAll();
   return record;
