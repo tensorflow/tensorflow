@@ -349,13 +349,17 @@ AutoShardingSolverResult CallORToolsSolver(
 
   // Construct objective function.
   // Node costs
+  absl::flat_hash_set<MPVariable*> infinity_vars;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       double coefficient = request.computation_costs(node_idx).costs(j) +
                            request.communication_costs(node_idx).costs(j);
-      if (coefficient >= kInfinityCost) continue;
+      if (coefficient >= kInfinityCost) {
+        infinity_vars.insert(s[node_idx][j]);
+        continue;
+      }
       AddSalt(absl::StrCat(node_idx, "S", j), request.saltiplier(),
               &coefficient);
       solver->MutableObjective()->SetCoefficient(
@@ -368,7 +372,10 @@ AutoShardingSolverResult CallORToolsSolver(
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       double coefficient = request.resharding_costs(edge_idx).costs(j);
-      if (coefficient >= kInfinityCost) continue;
+      if (coefficient >= kInfinityCost) {
+        infinity_vars.insert(e[edge_idx][j]);
+        continue;
+      }
       AddSalt(absl::StrCat(edge_idx, "E", j), request.saltiplier(),
               &coefficient);
       solver->MutableObjective()->SetCoefficient(
@@ -386,9 +393,7 @@ AutoShardingSolverResult CallORToolsSolver(
     if (s[node_idx].empty() || request.s_follow(node_idx) >= 0) continue;
     bool all_infinity = true;
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      const double node_cost = request.computation_costs(node_idx).costs(j) +
-                               request.communication_costs(node_idx).costs(j);
-      if (node_cost >= kInfinityCost ||
+      if (infinity_vars.contains(s[node_idx][j]) ||
           shaved_strategies.contains({node_idx, j})) {
         MPConstraint* constraint = solver->MakeRowConstraint(
             0.0, 0.0,
@@ -406,8 +411,7 @@ AutoShardingSolverResult CallORToolsSolver(
     if (e[edge_idx].empty() || e_follow[edge_idx] >= 0) continue;
     bool all_infinity = true;
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-      const double edge_cost = request.resharding_costs(edge_idx).costs(j);
-      if (edge_cost >= kInfinityCost) {
+      if (infinity_vars.contains(e[edge_idx][j])) {
         MPConstraint* constraint = solver->MakeRowConstraint(
             0.0, 0.0,
             absl::StrCat("infinitycost: e[", edge_idx, "][", j, "] = 0"));
