@@ -1,5 +1,6 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
@@ -99,6 +100,7 @@ xla_test(
     name = "address_computation_fusion_test",
     srcs = ["address_computation_fusion_test.cc"],
     backends = ["gpu"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",
@@ -119,7 +121,11 @@ xla_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(

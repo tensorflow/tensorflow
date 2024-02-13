@@ -2097,7 +2097,9 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
           .debug_options()
           .xla_gpu_enable_address_computation_fusion()) {
     HloPassPipeline pipeline("address-computation");
-    pipeline.AddPass<AddressComputationFusionRewriter>();
+    TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                        se::MultiPlatformManager::PlatformWithId(PlatformId()));
+    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 

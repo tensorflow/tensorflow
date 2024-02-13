@@ -3329,6 +3329,8 @@ cc_library(
         ":ir_emission_utils",
         "//xla:statusor",
         "//xla:util",
+        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_target_registry",
         "//xla/service:hlo_pass",

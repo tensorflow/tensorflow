@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <utility>
@@ -25,10 +26,12 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -41,6 +44,22 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #define PLATFORM "ROCM"
+#endif
+
+#if GOOGLE_CUDA
+#define gpuSuccess cudaSuccess
+#define gpuMemcpyAsync cudaMemcpyAsync
+#define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
+#define gpuMemcpy cudaMemcpy
+#define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
+#elif TENSORFLOW_USE_ROCM
+#define gpuSuccess hipSuccess
+#define gpuMemcpyAsync hipMemcpyAsync
+#define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
+#define gpuMemcpy hipMemcpy
+#define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
 #endif
 
 namespace xla {
@@ -1002,6 +1021,80 @@ TEST_F(AddressComputationFusionTest, NilTuple) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
+                                      error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
+void Callback_Memcpy(se::gpu::GpuStreamHandle stream, void** buffers,
+                     const char* /*opaque*/, size_t /*opaque_len*/) {
+  void* src = buffers[0];
+  void* dst = buffers[1];
+  auto err = gpuMemcpyAsync(dst, src, /*count=*/sizeof(float) * 128,
+                            gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
+}
+
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Memcpy, PLATFORM);
+
+TEST_F(AddressComputationFusionTest, CustomCallLegacyAPI) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "Callback_Memcpy",
+             /*operands=*/
+             {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
+                    {128}, {1})},
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
+  ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  xla::HloModuleConfig hlo_config(
+      xla::ProgramShape(computation.proto().host_program_shape()),
+      /*ignore_layouts=*/false);
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_address_computation_fusion(false);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  debug_options.set_xla_gpu_enable_address_computation_fusion(true);
+  hlo_config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                            computation.proto(), hlo_config));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
+                                      error_spec,
+                                      /*run_hlo_passes=*/false));
+}
+
+void Callback_Void(se::gpu::GpuStreamHandle /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/) {}
+
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, PLATFORM);
+
+TEST_F(AddressComputationFusionTest, NilTupleLegacyAPI) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "Callback_Void", /*operands=*/
+             {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
+                    {128}, {1})},
+             ShapeUtil::MakeNil(),
+             /*opaque=*/"");
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
