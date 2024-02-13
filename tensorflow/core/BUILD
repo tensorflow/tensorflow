@@ -1139,8 +1139,8 @@ cc_library(
     deps = [
         ":portable_tensorflow_lib",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
