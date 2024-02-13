@@ -5897,6 +5897,7 @@ xla_cc_test(
     deps = [
         ":convert_memory_placement_to_internal_annotations",
         "//xla:statusor",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
