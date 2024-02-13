@@ -15,7 +15,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
 #include "mlir/TableGen/Operator.h"  // from @llvm-project
+#include "mlir/TableGen/Trait.h"  // from @llvm-project
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
