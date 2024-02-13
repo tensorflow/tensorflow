@@ -19,10 +19,10 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <type_traits>
 
-#include "absl/strings/str_format.h"
-#include "Eigen/Core"  // from @eigen_archive            // IWYU pragma: export
+#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: export
 #include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
 namespace xla {
@@ -68,12 +68,12 @@ using s4 = tsl::int4;
 namespace ml_dtypes {
 template <typename Sink>
 void AbslStringify(Sink& sink, const xla::s4& i) {
-  absl::Format(&sink, "%d", static_cast<int32_t>(i));
+  sink.Append(std::to_string(static_cast<int32_t>(i)));
 }
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const xla::u4& i) {
-  absl::Format(&sink, "%d", static_cast<uint32_t>(i));
+  sink.Append(std::to_string(static_cast<uint32_t>(i)));
 }
 }  // namespace ml_dtypes
 
