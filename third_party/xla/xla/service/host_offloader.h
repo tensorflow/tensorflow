@@ -49,7 +49,8 @@ class HostOffloader : public HloModulePass {
  private:
   const int64_t kHostMemorySpaceColor;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  absl::flat_hash_set<HloInstruction*> expected_reload_annotations_;
+  absl::flat_hash_set<HloInstruction*> found_host_to_device_annotations_;
+  absl::flat_hash_set<HloInstruction*> expected_host_to_device_annotations_;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_remove_;
   absl::flat_hash_set<HloInstruction*> broadcasts_to_replace_;
   absl::flat_hash_set<HloPosition> positions_to_move_to_host_memory_;
