@@ -120,7 +120,7 @@ static xla::Status PopulateExecutableCostAnalysis(PJRT_Executable* executable) {
     std::string& property_name = cost_analysis_names[i];
 
     cost_analysis_property.struct_size = PJRT_NamedValue_STRUCT_SIZE;
-    cost_analysis_property.priv = nullptr;
+    cost_analysis_property.extension_start = nullptr;
 
     property_name = property.first;
     cost_analysis_property.name = property_name.c_str();
@@ -1936,7 +1936,7 @@ PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args) {
   if (!event->status.has_value()) {
     PJRT_Event_Await_Args await_args;
     await_args.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
-    await_args.priv = nullptr;
+    await_args.extension_start = nullptr;
     await_args.event = event;
     return PJRT_Event_Await(&await_args);
   }
@@ -2077,7 +2077,7 @@ static std::vector<PJRT_NamedValue> PopulatePjrtAttributes(
   for (auto const& [name, value] : attributes) {
     PJRT_NamedValue& cur_attribute = c_attributes[ind];
     cur_attribute.struct_size = PJRT_NamedValue_STRUCT_SIZE;
-    cur_attribute.priv = nullptr;
+    cur_attribute.extension_start = nullptr;
     cur_attribute.name = name.c_str();
     cur_attribute.name_size = name.size();
     if (const std::string* string_val = std::get_if<std::string>(&value)) {

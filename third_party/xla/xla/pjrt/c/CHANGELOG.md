@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.42
+* Renamed all ``priv`` fields to ``extension_start``
+
 ## 0.41
 * Renamed PJRT_Structure_Base to PJRT_Extension_Base
 * Renamed PJRT_Structure_Type to PJRT_Extension_Type (and similarly for enum fields)
@@ -36,7 +39,7 @@ PJRT_ExecuteOptions.
 ## 0.31 (Sep 22, 2023)
 * Added PJRT_Extension_Base.
 * Added PJRT_Extension_Type.
-* Renamed PJRT_Api.priv to PJRT_Api.extension_start.
+* Renamed PJRT_Api.extension_start to PJRT_Api.extension_start.
 
 ## 0.30 (Sep 14, 2023)
 * Added PJRT_NamedValue_Type::PJRT_NamedValue_kBool.

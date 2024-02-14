@@ -177,7 +177,7 @@ xla::Status InitializePjrtPlugin(absl::string_view device_type) {
   }
   PJRT_Plugin_Initialize_Args args;
   args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   RETURN_STATUS_IF_PJRT_ERROR(pjrt_api->PJRT_Plugin_Initialize(&args),
                               pjrt_api);
   iter->second.second = true;

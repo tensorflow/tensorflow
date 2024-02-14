@@ -61,7 +61,7 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
   return [api](PJRT_Client* client) -> void {
     PJRT_Client_Destroy_Args destroy_args;
     destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
+    destroy_args.extension_start = nullptr;
     destroy_args.client = client;
 
     PJRT_Error* error = api->PJRT_Client_Destroy(&destroy_args);
@@ -74,7 +74,7 @@ PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api) {
   return [api](PJRT_Error* error) -> void {
     PJRT_Error_Destroy_Args destroy_args;
     destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
+    destroy_args.extension_start = nullptr;
     destroy_args.error = error;
 
     api->PJRT_Error_Destroy(&destroy_args);
@@ -85,7 +85,7 @@ PJRT_BufferDeleter MakeBufferDeleter(const PJRT_Api* api) {
   return [api](PJRT_Buffer* buffer) -> void {
     PJRT_Buffer_Destroy_Args destroy_args;
     destroy_args.struct_size = PJRT_Buffer_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
+    destroy_args.extension_start = nullptr;
     destroy_args.buffer = buffer;
 
     pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_Destroy(&destroy_args), api);
@@ -96,7 +96,7 @@ PJRT_ExecutableDeleter MakeExecutableDeleter(const PJRT_Api* api) {
   return [api](PJRT_Executable* executable) -> void {
     PJRT_Executable_Destroy_Args args;
     args.struct_size = PJRT_Executable_Destroy_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.executable = executable;
     pjrt::LogFatalIfPjrtError(api->PJRT_Executable_Destroy(&args), api);
   };
@@ -106,7 +106,7 @@ PJRT_LoadedExecutableDeleter MakeLoadedExecutableDeleter(const PJRT_Api* api) {
   return [api](PJRT_LoadedExecutable* executable) -> void {
     PJRT_LoadedExecutable_Destroy_Args args;
     args.struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.executable = executable;
     pjrt::LogFatalIfPjrtError(api->PJRT_LoadedExecutable_Destroy(&args), api);
   };
@@ -127,7 +127,7 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
     PJRT_TopologyDescription_Destroy_Args destroy_args;
     destroy_args.struct_size =
         PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
+    destroy_args.extension_start = nullptr;
     destroy_args.topology = topology;
 
     pjrt::LogFatalIfPjrtError(
@@ -138,7 +138,7 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
 PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;
   args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.error = error;
   pjrt::LogFatalIfPjrtError(api->PJRT_Error_GetCode(&args), api);
   return args.code;
@@ -205,7 +205,7 @@ absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
                                       const PJRT_Api* api) {
   PJRT_Error_Message_Args message_args;
   message_args.struct_size = PJRT_Error_Message_Args_STRUCT_SIZE;
-  message_args.priv = nullptr;
+  message_args.extension_start = nullptr;
   message_args.error = error;
   api->PJRT_Error_Message(&message_args);
   return absl::string_view(message_args.message, message_args.message_size);
@@ -225,7 +225,7 @@ PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api) {
   return [api](PJRT_Event* managed) {
     PJRT_Event_Destroy_Args args;
     args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.event = managed;
 
     LogFatalIfPjrtError(api->PJRT_Event_Destroy(&args), api);
@@ -389,7 +389,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
   using xla::Status, xla::PjRtFuture;
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
-  event_onready_args.priv = nullptr;
+  event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
   PjRtFuture<Status>::Promise promise = PjRtFuture<Status>::CreatePromise();
@@ -424,7 +424,7 @@ static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     int api_minor_version) {
   PJRT_NamedValue c_value;
   c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
-  c_value.priv = nullptr;
+  c_value.extension_start = nullptr;
   c_value.name = name.c_str();
   c_value.name_size = name.size();
 
@@ -596,7 +596,7 @@ xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   PJRT_Client_PlatformVersion_Args args;
   args.struct_size = PJRT_Client_PlatformVersion_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.client = client;
   LogFatalIfPjrtError(api->PJRT_Client_PlatformVersion(&args), api);
 
@@ -609,7 +609,7 @@ absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
   PJRT_Client_PlatformName_Args args;
   args.client = client;
   args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   pjrt::LogFatalIfPjrtError(api->PJRT_Client_PlatformName(&args), api);
 
   absl::string_view platform_name(args.platform_name, args.platform_name_size);
@@ -620,7 +620,7 @@ xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
     PJRT_Client* client, const PJRT_Api* api) {
   PJRT_Client_TopologyDescription_Args args;
   args.struct_size = PJRT_Client_TopologyDescription_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.client = client;
   RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Client_TopologyDescription(&args), api);
   return args.topology;
@@ -659,7 +659,7 @@ PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device) {
   PJRT_Device_GetDescription_Args args;
   args.struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.device = device;
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
   return args.device_description;
@@ -669,7 +669,7 @@ absl::Span<PJRT_Memory* const> GetAddressableMemories(const PJRT_Api* api,
                                                       PJRT_Device* device) {
   PJRT_Device_AddressableMemories_Args args;
   args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.device = device;
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_AddressableMemories(&args), api);
   return absl::MakeSpan(args.memories, args.num_memories);
@@ -864,7 +864,7 @@ xla::StatusOr<xla::Layout> ConvertToLayout(
 PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer) {
   PJRT_Buffer_ElementType_Args args;
   args.struct_size = PJRT_Buffer_ElementType_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.buffer = buffer;
   LogFatalIfPjrtError(api->PJRT_Buffer_ElementType(&args), api);
   return args.type;
@@ -874,7 +874,7 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
                                         PJRT_Buffer* buffer) {
   PJRT_Buffer_Dimensions_Args args;
   args.struct_size = PJRT_Buffer_Dimensions_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.buffer = buffer;
   LogFatalIfPjrtError(api->PJRT_Buffer_Dimensions(&args), api);
   return {args.dims, args.num_dims};
@@ -884,7 +884,7 @@ PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
                                          PJRT_Buffer* buffer) {
   PJRT_Buffer_GetMemoryLayout_Args args;
   args.struct_size = PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.buffer = buffer;
   LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
   return args.layout;
@@ -925,7 +925,7 @@ absl::string_view PlatformName(const PJRT_Api* api,
                                const PJRT_TopologyDescription* topo_desc) {
   PJRT_TopologyDescription_PlatformName_Args args;
   args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
   LogFatalIfPjrtError(api->PJRT_TopologyDescription_PlatformName(&args), api);
   return {args.platform_name, args.platform_name_size};
@@ -936,7 +936,7 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
   PJRT_TopologyDescription_GetDeviceDescriptions_Args args;
   args.struct_size =
       PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
   LogFatalIfPjrtError(
       api->PJRT_TopologyDescription_GetDeviceDescriptions(&args), api);
@@ -947,7 +947,7 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable) {
   PJRT_Executable_GetCompiledMemoryStats_Args args;
   args.struct_size = PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE;
-  args.priv = 0;
+  args.extension_start = nullptr;
   args.executable = executable;
   RETURN_STATUS_IF_PJRT_ERROR(
       api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
