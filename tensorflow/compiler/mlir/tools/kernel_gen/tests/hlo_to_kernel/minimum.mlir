@@ -1,4 +1,4 @@
-// RUN: hlo_to_kernel --input=%s --output=%t --unroll_factors=4 --tile_sizes=256 --arch=sm_70 --max-supported-rank=-1
+// RUN: hlo_to_kernel --input=%s --output=%t --unroll_factors=4 --tile_sizes=256 --arch=sm_70
 
 func.func @Minimum_GPU_DT_UINT32_DT_UINT32(%arg0: tensor<*xui32>, %arg1: tensor<*xui32>) -> tensor<*xui32> attributes {llvm.emit_c_interface, tf_entry} {
   %0 = shape.const_shape [1, 1, 1, 1, 1] : tensor<5xindex>

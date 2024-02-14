@@ -151,7 +151,7 @@ func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i64, i1, i1, i1) -> !llvm.ptr
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr, !llvm.ptr, i64, !llvm.ptr, i64, !llvm.ptr, i1, i1, i1) -> !llvm.ptr
 // CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder\00")
 
 // CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr)
@@ -184,17 +184,16 @@ func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[C4:.*]] = llvm.mlir.constant(4 : i64)
   // CHECK: llvm.store %[[C4]], %[[PTR]]
 
-  // CHECK-DAG: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
   // CHECK-DAG: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
   // CHECK-DAG: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile
   // CHECK-SAME: %[[CTX]], %[[CODE_PTR]],
   // CHECK-SAME: %[[NUM_TILE_SIZES]], %[[TILE_SIZES]],
   // CHECK-SAME: %[[NUM_UNROLL_FACTORS]], %[[UNROLL_FACTORS]],
-  // CHECK-SAME: %[[MAX_RANK]], %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
+  // CHECK-SAME: %[[ENABLE_FTZ]], %[[CPU_CODEGEN]]
   // CHECK: llvm.return %[[RES]]
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
-      tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
+      tileSizes = [1, 2, 3], unrollFactors = [4],
       enableFtz = false, index64Bit = false, cpuCodegen = false }
   func.return %0 : !tf_framework.jit_callable
 }

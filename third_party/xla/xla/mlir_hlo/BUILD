@@ -700,7 +700,6 @@ cc_library(
         "mhlo/transforms/optimize_mhlo/optimize_mhlo.cc",
         "mhlo/transforms/optimize_mhlo/optimize_mhlo_pass.cc",
         "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
-        "mhlo/transforms/rank_specialization/rank_specialization.cc",
         "mhlo/transforms/restrict_max_rank/restrict_max_rank.cc",
         "mhlo/transforms/shape_legalize_to_hlo/shape_legalize_to_hlo.cc",
         "mhlo/transforms/shape_reification/shape_reification_pass.cc",

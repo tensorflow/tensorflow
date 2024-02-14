@@ -119,8 +119,8 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
            llvm::StringRef host_triple,
            llvm::ArrayRef<std::string> architectures,
            llvm::ArrayRef<int64_t> tile_sizes,
-           llvm::ArrayRef<int64_t> unroll_factors, int64_t max_supported_rank,
-           bool print_ptx, bool print_llvmir, bool enable_ftz, bool index_64bit,
+           llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
+           bool print_llvmir, bool enable_ftz, bool index_64bit,
            bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string hlo_code;
@@ -138,9 +138,9 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       GenerateKernelForHloCode(context, hlo_code, architectures, tile_sizes,
-                               unroll_factors, max_supported_rank, print_ptx,
-                               print_llvmir, enable_ftz, index_64bit,
-                               jit_compile, jit_i64_indexed_for_large_tensors,
+                               unroll_factors, print_ptx, print_llvmir,
+                               enable_ftz, index_64bit, jit_compile,
+                               jit_i64_indexed_for_large_tensors,
                                /*apply_cl_options=*/true));
 
   // Get binary.
@@ -186,12 +186,6 @@ int main(int argc, char** argv) {
   llvm::cl::list<std::string> architectures(
       "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::opt<int64_t> max_supported_rank(
-      "max-supported-rank",
-      llvm::cl::desc(
-          "maximum supported rank to be guaranteed by rank specialization "
-          "lowering, skip rank specialization if negative"),
-      llvm::cl::init(5));
   llvm::cl::list<int64_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);
@@ -223,8 +217,8 @@ int main(int argc, char** argv) {
 
   auto status = tensorflow::kernel_gen::Run(
       input_file, output_file, host_triple, architectures, tile_sizes,
-      unroll_factors, max_supported_rank, print_ptx, print_llvmir, enable_ftz,
-      index_64bit, jit_compile, jit_i64_indexed_for_large_tensors);
+      unroll_factors, print_ptx, print_llvmir, enable_ftz, index_64bit,
+      jit_compile, jit_i64_indexed_for_large_tensors);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

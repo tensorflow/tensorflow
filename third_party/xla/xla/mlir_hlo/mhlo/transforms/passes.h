@@ -148,15 +148,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool preferColumnsReductions = true);
 
-/// Rank specialization passes:
-///   - Find compatible operations and group them together in one rank
-///     specialization cluster.
-///   - Lower rank specialization clusters to SCF and ranked operations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createRankSpecializationClusterPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
-    int64_t maxTargetRank = 5);
-
 std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
 
