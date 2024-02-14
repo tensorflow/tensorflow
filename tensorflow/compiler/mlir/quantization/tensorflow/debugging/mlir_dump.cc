@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -141,47 +142,64 @@ class PrinterConfig : public mlir::PassManager::IRPrinterConfig {
       : mlir::PassManager::IRPrinterConfig(
             print_module_scope, print_after_only_on_change,
             /*printAfterOnlyOnFailure=*/false, op_printing_flags),
-        mlir_dump_count_(1),
+        mlir_pass_count_(1),
         dump_file_prefix_(dump_file_prefix) {}
 
   void printBeforeIfEnabled(mlir::Pass* pass, mlir::Operation* op,
                             PrintCallbackFn print_callback) override {
-    DumpMlir(GetDumpFilename(pass, op, /*is_before=*/true), print_callback);
+    Dump(pass, print_callback, /*is_before=*/true);
   }
 
   void printAfterIfEnabled(mlir::Pass* pass, mlir::Operation* op,
                            PrintCallbackFn print_callback) override {
-    DumpMlir(GetDumpFilename(pass, op, /*is_before=*/false), print_callback);
+    Dump(pass, print_callback, /*is_before=*/false);
   }
 
  private:
-  int64_t mlir_dump_count_;
+  int64_t mlir_pass_count_;
   absl::string_view dump_file_prefix_;
+  // Map from pass ptr to dump files and pass number.
+  //
+  // Each pass has unique and stable pointer, even for passes with the same
+  // name. E.g. a PassManager could have multiple Canonicalizer passes.
+  // We use this property to uniquely determine a Pass in a PassManager.
+  //
+  // If multiple consecutive func passes are applied to a Module. PassManager
+  // will iterate over the func in the outer loop and apply the passes in the
+  // inner loop. This may cause passes to run out-of-order. But the 1st runs of
+  // each pass are still in-order. So we use pass_to_number_map_ to keep track
+  // of the number for each pass.
+  llvm::DenseMap<mlir::Pass*, std::unique_ptr<llvm::raw_ostream>>
+      pass_to_dump_file_before_map_;
+  llvm::DenseMap<mlir::Pass*, std::unique_ptr<llvm::raw_ostream>>
+      pass_to_dump_file_after_map_;
+  llvm::DenseMap<mlir::Pass*, int64_t> pass_to_number_map_;
 
-  std::string GetDumpFilename(mlir::Pass* pass, mlir::Operation* op,
-                              bool is_before) {
-    if (auto func_op = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
-      // If the pass applies to func. Add func name to the dump file name.
-      return llvm::formatv("{0}_{1,0+4}_{2}_{3}_{4}.mlir", dump_file_prefix_,
-                           (mlir_dump_count_++), pass->getName().str(),
-                           func_op.getSymName(),
-                           is_before ? "before" : "after");
+  // Get the unique number for each pass.
+  int64_t GetPassNumber(mlir::Pass* pass) {
+    if (!pass_to_number_map_.contains(pass)) {
+      pass_to_number_map_[pass] = mlir_pass_count_++;
     }
-    return llvm::formatv("{0}_{1,0+4}_{2}_{3}.mlir", dump_file_prefix_,
-                         (mlir_dump_count_++), pass->getName().str(),
-                         is_before ? "before" : "after");
+    return pass_to_number_map_[pass];
   }
 
-  void DumpMlir(const std::string& filename, PrintCallbackFn print_callback) {
-    std::unique_ptr<llvm::raw_ostream> os;
-    std::string filepath;
-    absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> dump_file =
-        CreateMlirDumpFile(filename);
-    if (!dump_file.ok()) {
-      LOG(WARNING) << "Failed to dump MLIR module to " << filename;
-      return;
+  void Dump(mlir::Pass* pass, PrintCallbackFn print_callback, bool is_before) {
+    auto& pass_to_dump_file_map = is_before ? pass_to_dump_file_before_map_
+                                            : pass_to_dump_file_after_map_;
+    if (!pass_to_dump_file_map.contains(pass)) {
+      std::string filename = llvm::formatv(
+          "{0}_{1,0+4}_{2}_{3}.mlir", dump_file_prefix_, GetPassNumber(pass),
+          pass->getName().str(), is_before ? "before" : "after");
+      absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> dump_file =
+          CreateMlirDumpFile(filename);
+      if (!dump_file.ok()) {
+        LOG(WARNING) << "Failed to dump MLIR module to " << filename;
+        return;
+      }
+      pass_to_dump_file_map[pass] = std::move(*dump_file);
     }
-    print_callback(**dump_file);
+
+    return print_callback(*(pass_to_dump_file_map[pass]));
   }
 };
 
