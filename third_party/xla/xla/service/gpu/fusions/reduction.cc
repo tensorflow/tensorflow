@@ -1308,9 +1308,13 @@ ReductionFusion::ComputeReductionCodegenInfo(
 
   int64_t num_threads_y =
       reduction_dimensions.is_row_reduction ? 1 : WarpSize();
+  int64_t rows_per_warp =
+      reduction_dimensions.is_row_reduction
+          ? RowReductionGetRowsPerWarp(shape[kRowMinorReducedDimension])
+          : 1;
   int64_t num_threads_x = [&] {
     if (reduction_dimensions.is_row_reduction) {
-      if (RowReductionGetRowsPerWarp(shape[kRowMinorReducedDimension]) > 1) {
+      if (rows_per_warp > 1) {
         return shape[kRowMinorReducedDimension];
       }
       int64_t max_block_size =
@@ -1355,6 +1359,14 @@ ReductionFusion::ComputeReductionCodegenInfo(
   absl::InlinedVector<int64_t, 4> tile_per_thread{
       reduction_tiling[0], reduction_tiling[1],
       reduction_tiling[2] / vector_size};
+  if (rows_per_warp > 1) {
+    // If we produce more than one element per thread, that means the reduced
+    // dimension is small and it can't be tiled - we already have more threads
+    // in a warp than the size of the reduced dimension. The code generator
+    // doesn't currently support tiling the kept dimension, because it just
+    // uses the thread ID as the coordinate.
+    tile_per_thread[2] = 1;
+  }
   if (vector_size != 1) {
     num_threads.push_back(1);  // The vector dimension is a loop.
     tiled_shape.push_back(vector_size);
