@@ -35,10 +35,6 @@ tf_proto_library(
     create_java_proto = False,
     create_kotlin_proto = False,
     protodeps = tf_additional_all_protos(),
-    visibility = [
-        ":data_transfer_visibility",
-        "//tensorflow:internal",
-    ],
 )
 
 tf_proto_library(
