@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -42,7 +44,7 @@ namespace tf_mlrt {
 
 namespace {
 
-absl::Status IfrtLoadVariable(
+absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> LoadIfrtVariable(
     tensorflow::ifrt_serving::IfrtModelContext& ifrt_model_context,
     const tensorflow::Tensor& variable,
     absl::string_view sharding_config_proto_text, absl::string_view name) {
@@ -64,8 +66,7 @@ absl::Status IfrtLoadVariable(
           *ifrt_model_context.GetClient(), variable, absl::MakeSpan(device_ids),
           hlo_sharding, ifrt_model_context.GetThreadPoolDevice()));
 
-  return ifrt_model_context.GetLoadedVariableRegistry().RegisterLoadedVariable(
-      name, result_array);
+  return result_array;
 }
 
 struct MlrtIfrtLoadVariableKernel : mlrt::KernelFrame {
@@ -104,8 +105,13 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
     return;
   }
 
-  auto status = IfrtLoadVariable(**ifrt_model_context, variable(),
-                                 sharding_config_proto_text(), name());
+  auto status =
+      (*ifrt_model_context)
+          ->GetLoadedVariableRegistry()
+          .TryRegisterLoadedVariable(name(), [&]() {
+            return LoadIfrtVariable(**ifrt_model_context, variable(),
+                                    sharding_config_proto_text(), name());
+          });
   if (!status.ok()) {
     execution_context().Fail(status);
     return;

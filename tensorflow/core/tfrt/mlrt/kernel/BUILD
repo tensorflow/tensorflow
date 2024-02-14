@@ -63,9 +63,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/python/ifrt",
     ],
 )
 
@@ -179,6 +181,7 @@ tf_cc_shared_test(
         "//tensorflow/core/tfrt/mlrt/interpreter:interpreter_testutil",
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

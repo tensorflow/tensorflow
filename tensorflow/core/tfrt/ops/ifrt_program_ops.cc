@@ -51,5 +51,26 @@ variable_arg_indices: variable_arg_indices[k] indicates the position of tensor
 in sorted ascending order.
 )");
 
+REGISTER_OP("IfrtLoadVariable")
+    .Input("variable: Tin")
+    .Attr("Tin: type")
+    .Attr("config: string")
+    .Attr("name: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(R"(
+Converts the given tensor to a named array.
+
+This op loads the `variable` tensor to an IFRT device array based the sharding
+spec in a `config` and the array can be looked up by `name` by the runtime.
+The `config` is a text proto of `IfrtVariableDeviceShardingConfigProto`. 
+The `name` is typically a concatenation of `container` and `shared_name` from `tf.VarHandle`.
+The idea is to avoid transferring to device repeatedly.
+
+Note that this op is not part of a stable interface. Users must not use this op
+in their SavedModel and instead rely on Ifrt Serving's mechanism that
+automatically inserts this op with graph rewrite.
+)");
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow

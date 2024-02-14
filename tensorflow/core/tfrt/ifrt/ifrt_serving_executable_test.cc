@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -357,15 +358,19 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   std::vector<std::string> loaded_variable_names;
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
-      TF_ASSERT_OK_AND_ASSIGN(
-          tsl::RCReference<xla::ifrt::Array> array,
-          MakeArrayFromTensor(*client, GetParam().in_tensors[i],
-                              /*device_ids=*/{0}, xla::HloSharding::Replicate(),
-                              thread_pool_device));
-
       std::string variable_name = absl::StrCat("variable_", i);
-      ASSERT_OK(ifrt_loaded_variable_registry.RegisterLoadedVariable(
-          variable_name, array));
+      ASSERT_OK(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
+          variable_name,
+          [&]() -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
+            TF_ASSIGN_OR_RETURN(
+                tsl::RCReference<xla::ifrt::Array> array,
+                MakeArrayFromTensor(*client, GetParam().in_tensors[i],
+                                    /*device_ids=*/{0},
+                                    xla::HloSharding::Replicate(),
+                                    thread_pool_device));
+
+            return array;
+          }));
       loaded_variable_names.push_back(variable_name);
       loaded_variable_indices.push_back(i);
 

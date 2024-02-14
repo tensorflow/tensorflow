@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
@@ -318,6 +319,24 @@ class GetResourceOpConversion final
     auto new_op = rewriter.create<tf_mlrt::GetResourceOp>(
         op->getLoc(), result_types, op.getIndices());
     rewriter.replaceOp(op, new_op->getResults());
+    return mlir::success();
+  }
+};
+
+// Convert tf.IfrtLoadVariableOp to tf_mlrt.IfrtLoadVariableOp
+class IfrtLoadVariableOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtLoadVariableOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtLoadVariableOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::IfrtLoadVariableOp>(
+        op.getLoc(), adaptor.getOperands()[0],
+        op.getDeviceShardingConfigProtoTextAttr(), op.getNameAttr());
+    rewriter.replaceOp(op, new_op);
+
     return mlir::success();
   }
 };
@@ -1167,8 +1186,8 @@ class TfToMlrtConversionPass
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
-                 SetResourceOpConversion, TFAwaitOpConversion,
-                 TFPromiseOpConversion>(&context);
+                 SetResourceOpConversion, IfrtLoadVariableOpConversion,
+                 TFAwaitOpConversion, TFPromiseOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);

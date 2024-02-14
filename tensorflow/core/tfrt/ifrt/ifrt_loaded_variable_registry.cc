@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -25,20 +26,22 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/array.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
-absl::Status IfrtLoadedVariableRegistry::RegisterLoadedVariable(
+absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
     absl::string_view name,
-    tsl::RCReference<xla::ifrt::Array> loaded_variable) {
+    LoadedVariableConstructor&& loaded_variable_constructor) {
   absl::MutexLock lock(&mutex_);
   auto& variable = loaded_variable_map_[name];
   if (variable != nullptr) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("Variable '", name, "' already exists."));
+    // Already registered. This is rare.
+    VLOG(1) << "Variable '" << name << "' already registered.";
+    return absl::OkStatus();
   }
-  variable = std::move(loaded_variable);
+  TF_ASSIGN_OR_RETURN(variable, loaded_variable_constructor());
   return absl::OkStatus();
 }
 

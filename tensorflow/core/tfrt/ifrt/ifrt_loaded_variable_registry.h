@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -30,9 +31,18 @@ namespace ifrt_serving {
 // This class is thread safe.
 class IfrtLoadedVariableRegistry {
  public:
-  absl::Status RegisterLoadedVariable(
+  using LoadedVariableConstructor =
+      absl::AnyInvocable<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>()
+                             const>;
+
+  // Tries to register a loaded variable with the given name.
+  // Returns an error if the named array does not already exists and
+  // loaded_variable_constructor failed to create an array. Note that it returns
+  // OK if the named array already exists.
+  // loaded_variable_constructor is invoked in the caller thread.
+  absl::Status TryRegisterLoadedVariable(
       absl::string_view name,
-      tsl::RCReference<xla::ifrt::Array> loaded_variable)
+      LoadedVariableConstructor&& loaded_variable_constructor)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetLoadedVariable(

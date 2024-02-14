@@ -458,3 +458,21 @@ func.func @xla_func(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entr
   %2 = "tf.XlaLaunch"(%arg0, %1) {__op_key = 3: i32, _noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
+
+// -----
+
+// Test lowering of IfrtLoadVariableOp 
+
+// CHECK-LABEL: func @ifrt_load_variable_test
+func.func @ifrt_load_variable_test() -> () {
+  // CHECK: [[HANDLE:%.*]] = tf_mlrt.executeop()
+  // CHECK-SAME:  VarHandleOp
+  %0 = "tf.VarHandleOp"() {__op_key = 1: i32, device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+  // CHECK-NEXT: "tf_mlrt.ifrt_load_variable"([[HANDLE]])
+  // CHECK-SAME: device_sharding_config_proto_text
+  // CHECK-SAME: name = "__variable"
+  "tf.IfrtLoadVariable"(%0) <{device_sharding_config_proto_text = "sharding { } device_ids: 0 device_ids: 1 ", name = "__variable"}> {__op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> () 
+  // CHECK-NEXT: return
+  func.return
+}
+
