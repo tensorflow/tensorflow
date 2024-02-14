@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -151,12 +152,18 @@ Status RootDataset::FromOptions(const DatasetBase* input,
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(input, params);
   (*output)->Initialize(/*metadata=*/{});
+  for (const auto& framework : input->options().framework_type()) {
+    metrics::RecordTFDataFrameworkType(framework);
+  }
   return absl::OkStatus();
 }
 
 Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
                                 DatasetBase** output) {
   Params params;
+  for (const auto& framework : input->options().framework_type()) {
+    metrics::RecordTFDataFrameworkType(framework);
+  }
   SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(std::move(input), params);
   (*output)->Initialize(/*metadata=*/{});
