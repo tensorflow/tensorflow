@@ -2130,6 +2130,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<CommandBufferScheduling>(
         gpu_device_info, toolkit_version,
         driver_version.value_or(toolkit_version));
+    pipeline.AddPass<GpuSanitizeConstantNames>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 

@@ -4465,6 +4465,9 @@ absl::Status IrEmitterUnnested::EmitOp(
     const HloConstantInstruction* hlo_const_instr =
         DynCast<HloConstantInstruction>(hlo_for_lmhlo.at(op));
     TF_RET_CHECK(hlo_const_instr);
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitConstant(hlo_const_instr);
+    }
     return EmitConstant(op, hlo_const_instr->literal());
   }
 
@@ -5010,7 +5013,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kWhile:
       return EmitWhile(instr);
 
-    // HLO module is already ordered, so kAfterAll is a noop.
+    // HLO module is already scheduled, so instructions for ordering are noops.
+    case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
