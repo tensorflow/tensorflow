@@ -60,14 +60,6 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
     "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v2",
     "Tracks usage of the MLIR-based TF2XLA bridge among TF2 models");
 
-auto* replicated_graphs_without_device_type_counter =
-    tensorflow::monitoring::Counter<1>::New(
-        /* metric name */
-        "/tensorflow/core/tf2xla/replicated_graphs_without_device_type_count",
-        /* metric description */
-        "Tracks if any replicated graphs are without device type",
-        /* metric field */ "version");
-
 namespace {
 
 using ::mlir::ModuleOp;
@@ -128,10 +120,6 @@ bool IsReplicatedGraph(mlir::ModuleOp module) {
     return mlir::WalkResult::advance();
   });
   return walk_result.wasInterrupted();
-}
-
-bool IsReplicatedGraphWithoutDeviceType(mlir::ModuleOp module) {
-  return !HasTPUDevice(module) && IsReplicatedGraph(module);
 }
 
 bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
@@ -292,12 +280,6 @@ Status MlirBridgePass::Run(const std::string& function_name,
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
-  // Check if it's possible for a replicated graph to not have a device type.
-  if (IsReplicatedGraphWithoutDeviceType(module)) {
-    replicated_graphs_without_device_type_counter->GetCell("v2")->IncrementBy(
-        1);
-  }
-
   if (!HasDevice(module)) {
     LOG(INFO) << "No devices in " << function_name << "\n";
     return absl::OkStatus();
@@ -416,12 +398,6 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   // Skip function graphs as MlirBridgePass will be used instead.
   if (options.is_function_graph) return OkStatus();
-
-  // Check if it's possible for a replicated graph to not have a device type.
-  if (IsReplicatedGraphWithoutDeviceType(module)) {
-    replicated_graphs_without_device_type_counter->GetCell("v1")->IncrementBy(
-        1);
-  }
 
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
   if (!RunReplicatedBridge(module)) {
