@@ -694,8 +694,6 @@ void DotHandler::RecomputeSplitBothContract() {
                               ins_, instruction_id_, /* window */ 10,
                               instruction_sequence_, hlo_cost_analysis_) /
                           device_mesh_.dim(e.mesh_dims[0]);
-    LOG(INFO) << "CC " << compute_cost << " "
-              << device_mesh_.dim(e.mesh_dims[0]);
     auto communication_cost_fn = [this, &e](const HloSharding& output_spec) {
       double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
       return cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
