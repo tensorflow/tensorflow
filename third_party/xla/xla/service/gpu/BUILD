@@ -1020,6 +1020,7 @@ xla_cc_test(
     deps = [
         ":nccl_clique_key",
         "//xla/service:global_device_id",
+        "@com_google_absl//absl/container:btree",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
