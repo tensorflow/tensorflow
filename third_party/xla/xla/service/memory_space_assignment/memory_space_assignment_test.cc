@@ -54,9 +54,11 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/instruction_hoister.h"
+#include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/repacking.h"
+#include "xla/service/memory_space_assignment/slice.h"
 #include "xla/service/time_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -75,33 +77,11 @@ limitations under the License.
 #include "tsl/platform/test.h"
 
 namespace xla {
+namespace memory_space_assignment {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
 using Chunk = HeapSimulator::Chunk;
-using memory_space_assignment::AsynchronousCopy;
-using memory_space_assignment::AsynchronousCopyOrdering;
-using memory_space_assignment::AsynchronousCopyResource;
-using memory_space_assignment::CostAnalysis;
-using memory_space_assignment::CostAnalysisOptions;
-using memory_space_assignment::CostAnalysisPrefetchIntervalPicker;
-using memory_space_assignment::InstructionCountPrefetchIntervalPicker;
-using memory_space_assignment::MemoryBoundLoopOptimizer;
-using memory_space_assignment::MemoryBoundLoopOptimizerOptions;
-using memory_space_assignment::MemorySpaceAssignment;
-using memory_space_assignment::MemorySpaceAssignmentRepacker;
-using memory_space_assignment::MsaSortOrderOverrides;
-using memory_space_assignment::Options;
-using memory_space_assignment::PreferredPrefetchOverrides;
-using memory_space_assignment::PrefetchIntervalPicker;
-using memory_space_assignment::PresetAssignments;
-using memory_space_assignment::SlicedPrefetchOptions;
-using SliceParam = memory_space_assignment::MemorySpaceAssignment::SliceParam;
-using SliceProposal =
-    memory_space_assignment::MemorySpaceAssignment::SliceProposal;
-using SliceProposalCollection =
-    memory_space_assignment::MemorySpaceAssignment::SliceProposalCollection;
-using MSA = memory_space_assignment::MemorySpaceAssignment;
 using ::testing::_;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
@@ -7801,7 +7781,7 @@ TEST_F(AsynchronousCopyOrderingTest, Simple) {
   // 6,17          +----------+   Violate
   // 5,13         +-------+       OK (same start as 5,14)
   // 5,14         +--------+      OK (same as 5,14)
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyOrdering ordering;
   EXPECT_FALSE(ordering.ViolatesOrdering(3, 11));
   ordering.AddCopy({3, 11, 1, alternate_mem_space, 0});
@@ -7821,7 +7801,7 @@ TEST_F(AsynchronousCopyOrderingTest, Simple) {
 }
 
 TEST_F(AsynchronousCopyOrderingTest, SameInterval) {
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyOrdering ordering;
   EXPECT_FALSE(ordering.ViolatesOrdering(1, 5));
   EXPECT_FALSE(ordering.ViolatesOrdering(2, 4));
@@ -7853,7 +7833,7 @@ TEST_F(AsynchronousCopyResourceTest, Simple) {
   //  4,9,3              +-------+    Violate
   //  4,8,2              +-----+      OK; The 5,9 copy shifts resource to right.
   // resource:  0 0 0 3 7 0 0 0 0 4
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource(
       {2.0, 3.0, 1.0, 6.0, 7.0, 1.0, 7.0, 2.0, 2.0, 4.0});
   EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
@@ -7887,7 +7867,7 @@ TEST_F(AsynchronousCopyResourceTest, Propagate) {
   // 0,4,3       +-----+               OK
   // resource:  2 0 0 0 0 0 0 0 0 0
   // 0,4,1       +-----+               Violate
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource(
       {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
   EXPECT_TRUE(resource.HasEnoughResource(6, 10, 2.0));
@@ -7931,7 +7911,7 @@ TEST_F(AsynchronousCopyResourceTest, CantPropagate) {
   // 4,8,4               +-----+       OK
   // resource:  2 2 2 2 2 0 0 0 0 2
   // 3,6,4             +---+           Violate
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource(
       {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
   EXPECT_TRUE(resource.HasEnoughResource(5, 10, 2.0));
@@ -7958,7 +7938,7 @@ TEST_F(AsynchronousCopyResourceTest, Nested) {
   // 1,3,2         +-+       OK
   // resource:  2 2 0 2 2
   // 0,4,4       +-----+     Violate
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
   EXPECT_TRUE(resource.HasEnoughResource(1, 3, 2.0));
   resource.AddCopy({1, 3, 2.0, alternate_mem_space, 0});
@@ -7982,7 +7962,7 @@ TEST_F(AsynchronousCopyResourceTest, Remove) {
   // resource:  0 1 2 2 2
   // rem:-1,2,3+---+
   // resource:  2 2 2 2 2
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
   AsynchronousCopy copy1{2, 5, 2.0, alternate_mem_space, 0};
   AsynchronousCopy copy2{-1, 2, 3.0, alternate_mem_space, 1};
@@ -8025,7 +8005,7 @@ TEST_F(AsynchronousCopyResourceTest, NestedRemove) {
   // resource:  2 2 2 2 2
   // add:1,3,2     +-+       OK
   // resource:  2 2 0 2 2
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
   AsynchronousCopy copy1{1, 3, 2.0, alternate_mem_space, 0};
   AsynchronousCopy copy2{0, 4, 4.0, alternate_mem_space, 1};
@@ -8072,7 +8052,7 @@ TEST_F(AsynchronousCopyResourceTest, PropagateRemove) {
   // resource:  2 0 0 0 0 0 0 0 1 2
   // rem:0,4,3   +-----+
   // resource:  2 2 0 0 0 0 0 0 2 2
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource(
       {2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0});
   EXPECT_TRUE(resource.HasEnoughResource(6, 10, 2.0));
@@ -8124,7 +8104,7 @@ TEST_F(AsynchronousCopyResourceTest, StartAtZeroAndRemove) {
   // resource:  0 0 1 1 2
   // add:0,4,2   +-----+     OK
   // resource:  0 0 0 0 2
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource({0.0, 0.0, 1.0, 1.0, 2.0});
   AsynchronousCopy copy1{0, 4, 2.0, alternate_mem_space, 0};
   EXPECT_TRUE(resource.HasEnoughResource(0, 4, 2.0));
@@ -8167,7 +8147,7 @@ TEST_F(AsynchronousCopyResourceTest, OutOfOrderRemovalSameStartTime) {
   // resource:  2 2 1 2 2
   // rem:1,5,1     +-----+
   // resource:  2 2 2 2 2
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource({2.0, 2.0, 2.0, 2.0, 2.0});
   AsynchronousCopy copy1{1, 3, 1.0, alternate_mem_space, 0};
   AsynchronousCopy copy2{1, 4, 2.0, alternate_mem_space, 1};
@@ -8232,7 +8212,7 @@ TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckSuccess) {
   //  0,6,4    +-----------+
   //  4,6,3              +-+          2 copies OK; The 1,10 copy shifts.
   // resource:  0 0 0 0 6 0 7 2 2 4
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource(
       {2.0, 1.0, 3.0, 6.0, 7.0, 3.0, 7.0, 2.0, 2.0, 4.0});
   EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
@@ -8260,7 +8240,7 @@ TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckFailure) {
   // resource:  0 0 0 3 7 3 7 2 2 4
   //  0,6,4    +-----------+
   //  4,6,4              +-+          Not-OK
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource(
       {2.0, 1.0, 3.0, 6.0, 7.0, 3.0, 7.0, 2.0, 2.0, 4.0});
   EXPECT_TRUE(resource.HasEnoughResource(-1, 3, 5.0));
@@ -8277,7 +8257,7 @@ TEST_F(AsynchronousCopyResourceTest, HasEnoughResourceMultiCheckFailure) {
 
 TEST_F(AsynchronousCopyResourceTest,
        HasEnoughResourceMultiCheckRegressionTest) {
-  auto alternate_mem_space = MemorySpaceAssignment::MemorySpace::kAlternate;
+  auto alternate_mem_space = MemorySpace::kAlternate;
   AsynchronousCopyResource resource({/*0:*/ 24.0f,
                                      /*1:*/ 0.0f,
                                      /*2:*/ 6.0f,
@@ -10135,9 +10115,7 @@ ENTRY Entry {
   Status VerifyMsaEquivalence(HloModule* module,
                               bool expect_unsupported_allocations = false) {
     // Create a map indexed by instruction number and operand number.
-    absl::flat_hash_map<std::pair<int, int>,
-                        const MemorySpaceAssignment::Allocation*>
-        allocation_map;
+    absl::flat_hash_map<std::pair<int, int>, const Allocation*> allocation_map;
     for (const MemoryBoundLoopOptimizer::LoopValue& value :
          optimizer_->loop_values()) {
       // Skip verification for unsupported allocations as they will go through
@@ -10191,25 +10169,22 @@ ENTRY Entry {
             TF_RET_CHECK(expect_unsupported_allocations);
             continue;
           }
-          const MemorySpaceAssignment::Allocation* allocation =
+          const Allocation* allocation =
               allocation_map.at({inst_number, operand_number});
           if (!allocation->is_copy_allocation()) {
             // We don't expect a prefetch here.
             EXPECT_NE(operand->opcode(), HloOpcode::kCopyDone);
             int expected_memory_space =
-                allocation->memory_space() ==
-                        MemorySpaceAssignment::MemorySpace::kDefault
+                allocation->memory_space() == MemorySpace::kDefault
                     ? kDefaultMemorySpace
                     : kAlternateMemorySpace;
             EXPECT_EQ(operand->shape().layout().memory_space(),
                       expected_memory_space);
           } else {
-            EXPECT_EQ(allocation->memory_space(),
-                      MemorySpaceAssignment::MemorySpace::kAlternate);
+            EXPECT_EQ(allocation->memory_space(), MemorySpace::kAlternate);
             TF_RET_CHECK(operand->opcode() == HloOpcode::kCopyDone);
-            const MemorySpaceAssignment::CopyAllocation* copy_allocation =
-                static_cast<const MemorySpaceAssignment::CopyAllocation*>(
-                    allocation);
+            const CopyAllocation* copy_allocation =
+                static_cast<const CopyAllocation*>(allocation);
             if (copy_allocation->copy_done_schedule_before() != inst_number) {
               // The only case where the copy done schedule before is not the
               // same as this use would be that this use is not the first use of
@@ -10343,8 +10318,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, NoAlternateMem) {
        optimizer->loop_values()) {
     LOG(INFO) << loop_value.ToString();
     for (const auto& allocation : loop_value.allocations) {
-      EXPECT_EQ(allocation->memory_space(),
-                MemorySpaceAssignment::MemorySpace::kDefault);
+      EXPECT_EQ(allocation->memory_space(), MemorySpace::kDefault);
       for (const HloUse& use : allocation->uses()) {
         EXPECT_FALSE(seen_uses.contains(use)) << use.ToString();
         seen_uses.insert(use);
@@ -10440,20 +10414,19 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
   //                                                  +=========+
   //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
   //  prev |                  loop                      | next
-  std::vector<const MemorySpaceAssignment::CopyAllocation*> prefetches;
+  std::vector<const CopyAllocation*> prefetches;
   for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
        optimizer->loop_values()) {
     if (!loop_value.allocations.empty() &&
         loop_value.allocations.back()->is_copy_allocation()) {
-      prefetches.push_back(
-          static_cast<const MemorySpaceAssignment::CopyAllocation*>(
-              loop_value.allocations.back().get()));
+      prefetches.push_back(static_cast<const CopyAllocation*>(
+          loop_value.allocations.back().get()));
     }
   }
   EXPECT_EQ(prefetches.size(), 3);
   bool seen_overlap = false;
   bool seen_nonoverlap = false;
-  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+  for (const CopyAllocation* prefetch : prefetches) {
     const HloUse& use = *prefetch->uses().begin();
     if (use.instruction->name() == "op14") {
       EXPECT_EQ(prefetch->copy_done_schedule_before(), 14);
@@ -10551,19 +10524,18 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
   // =====>             ===============================>
   //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
   //  prev |                  loop                      | next
-  std::vector<const MemorySpaceAssignment::CopyAllocation*> prefetches;
+  std::vector<const CopyAllocation*> prefetches;
   for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
        optimizer->loop_values()) {
     if (!loop_value.allocations.empty() &&
         loop_value.allocations.back()->is_copy_allocation()) {
-      prefetches.push_back(
-          static_cast<const MemorySpaceAssignment::CopyAllocation*>(
-              loop_value.allocations.back().get()));
+      prefetches.push_back(static_cast<const CopyAllocation*>(
+          loop_value.allocations.back().get()));
     }
   }
   EXPECT_EQ(prefetches.size(), 2);
   std::optional<int> expected_op14_copy_start_time;
-  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+  for (const CopyAllocation* prefetch : prefetches) {
     const HloUse& use = *prefetch->uses().begin();
     if (use.instruction->name() == "op1") {
       EXPECT_EQ(prefetch->copy_done_schedule_before(), 1);
@@ -10572,7 +10544,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
     }
   }
   EXPECT_TRUE(expected_op14_copy_start_time.has_value());
-  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+  for (const CopyAllocation* prefetch : prefetches) {
     const HloUse& use = *prefetch->uses().begin();
     if (use.instruction->name() == "op14") {
       EXPECT_EQ(prefetch->copy_done_schedule_before(), 14);
@@ -10638,20 +10610,19 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
   // ==>    ========================================>    ======
   //  13 14| 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14| 0  1
   //  prev |                  loop                      | next
-  std::vector<const MemorySpaceAssignment::CopyAllocation*> prefetches;
+  std::vector<const CopyAllocation*> prefetches;
   for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
        optimizer->loop_values()) {
     if (!loop_value.allocations.empty() &&
         loop_value.allocations.back()->is_copy_allocation()) {
-      prefetches.push_back(
-          static_cast<const MemorySpaceAssignment::CopyAllocation*>(
-              loop_value.allocations.back().get()));
+      prefetches.push_back(static_cast<const CopyAllocation*>(
+          loop_value.allocations.back().get()));
     }
   }
   EXPECT_EQ(prefetches.size(), 3);
   bool seen_overlap = false;
   bool seen_nonoverlap = false;
-  for (const MemorySpaceAssignment::CopyAllocation* prefetch : prefetches) {
+  for (const CopyAllocation* prefetch : prefetches) {
     const HloUse& use = *prefetch->uses().begin();
     if (use.instruction->name() == "op13") {
       EXPECT_EQ(prefetch->copy_done_schedule_before(), 13);
@@ -13154,4 +13125,5 @@ ENTRY main {
 }
 
 }  // namespace
+}  // namespace memory_space_assignment
 }  // namespace xla

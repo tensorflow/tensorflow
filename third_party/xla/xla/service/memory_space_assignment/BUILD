@@ -37,9 +37,11 @@ cc_library(
     hdrs = ["memory_space_assignment.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":allocation",
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
         ":repacking",
+        ":slice",
         ":tuning_utils",
         ":utils",
         "//xla:debug_options_flags",
@@ -60,7 +62,6 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service:time_utils",
-        "//xla/service:tuple_util",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "@com_google_absl//absl/algorithm:container",
@@ -86,10 +87,12 @@ xla_cc_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
     deps = [
+        ":allocation",
         ":cost_analysis",
         ":memory_space_assignment",
         ":memory_space_assignment_proto_cc",
         ":repacking",
+        ":slice",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -168,6 +171,53 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
+    ],
+)
+
+cc_library(
+    name = "slice",
+    srcs = ["slice.cc"],
+    hdrs = [
+        "slice.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":memory_space_assignment_proto_cc",
+        "//xla:shape_util",
+        "//xla/service/heap_simulator",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "allocation",
+    srcs = ["allocation.cc"],
+    hdrs = [
+        "allocation.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_analysis",
+        ":memory_space_assignment_proto_cc",
+        ":slice",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_value",
+        "//xla/service:time_utils",
+        "//xla/service:tuple_util",
+        "//xla/service/heap_simulator",
+        "//xla/service/heap_simulator:allocation_block",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
