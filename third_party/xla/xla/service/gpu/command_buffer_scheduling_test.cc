@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -39,11 +40,8 @@ class CommandBufferSchedulingTest : public HloTestBase {
   // Use CUDA 12.3 version for testing as it has all the features we rely on.
   static constexpr int32_t kCudaVersion = 12030;
 
-  const auto& gpu_comp() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+  const se::DeviceDescription& device_desc() {
+    return backend().default_stream_executor()->GetDeviceDescription();
   }
 
   DebugOptions GetDebugOptionsForTest() override {
@@ -101,7 +99,7 @@ TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
 // CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -179,7 +177,7 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
 // CHECK:  })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -218,7 +216,7 @@ TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByDone) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -253,7 +251,7 @@ TEST_F(CommandBufferSchedulingTest, AllGatherStartFollowedByDone) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -294,7 +292,7 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -355,7 +353,8 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   config.insert(DebugOptions::FUSION);
 
   std::vector<HloInstructionSequence> command_buffer_sequences =
-      CommandBufferScheduling::CollectCommandBufferSequences(seq, config);
+      CommandBufferScheduling::CollectCommandBufferSequences(seq, config,
+                                                             device_desc());
   EXPECT_EQ(command_buffer_sequences.size(), 2);
 
   std::vector<HloInstruction*> seq_0 =
@@ -541,7 +540,7 @@ TEST_F(CommandBufferSchedulingTest, ForwardControlDependencies) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -581,7 +580,7 @@ TEST_F(CommandBufferSchedulingTest, ForwardControlDependenciesToParams) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -660,7 +659,7 @@ TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -722,7 +721,7 @@ TEST_F(CommandBufferSchedulingTest, While) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());
@@ -798,7 +797,7 @@ TEST_F(CommandBufferSchedulingTest, Conditional) {
     CHECK: })";
 
   RunAndFilecheckHloRewrite(
-      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      hlo, CommandBufferScheduling(device_desc(), kCudaVersion, kCudaVersion),
       expected, [](HloModule* module) {
         EXPECT_TRUE(module->has_schedule());
         TF_CHECK_OK(module->schedule().Verify());

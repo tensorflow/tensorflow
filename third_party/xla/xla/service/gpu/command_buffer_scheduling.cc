@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -39,6 +40,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -56,7 +59,8 @@ using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
-                      const CommandBufferConfig& config);
+                      const CommandBufferConfig& config,
+                      const se::DeviceDescription& device_description);
 
 //===----------------------------------------------------------------------===//
 // No-op HLO operations.
@@ -91,27 +95,30 @@ static bool IsNoOp(const HloInstruction* hlo) {
 // This is a template to define pattern matching functions for HLO instructions
 // that do not have a corresponding class for them.
 template <HloOpcode op>
-static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
+static bool IsCommand(const HloInstruction*, const CommandBufferConfig&,
+                      const se::DeviceDescription&);
 
 // While loops can be executed inside command buffers only if condition and body
 // regions can be executed as command buffers.
 template <>
-bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
-                                  const CommandBufferConfig& config) {
+bool IsCommand<HloOpcode::kWhile>(
+    const HloInstruction* hlo, const CommandBufferConfig& config,
+    const se::DeviceDescription& device_description) {
   return config.contains(DebugOptions::CONDITIONALS) &&
-         IsCommand(hlo->while_body(), config) &&
-         IsCommand(hlo->while_condition(), config);
+         IsCommand(hlo->while_body(), config, device_description) &&
+         IsCommand(hlo->while_condition(), config, device_description);
 }
 
 // Conditional can be executed inside command buffers only if all regions of its
 // branches can be executed as command buffers.
 template <>
-bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
-                                        const CommandBufferConfig& config) {
+bool IsCommand<HloOpcode::kConditional>(
+    const HloInstruction* hlo, const CommandBufferConfig& config,
+    const se::DeviceDescription& device_description) {
   return config.contains(DebugOptions::CONDITIONALS) &&
          absl::c_all_of(hlo->branch_computations(),
                         [&](const HloComputation* comp) {
-                          return IsCommand(comp, config);
+                          return IsCommand(comp, config, device_description);
                         });
 }
 
@@ -127,16 +134,25 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
 }
 
 static bool IsCommand(const HloInstruction* hlo,
-                      const CommandBufferConfig& config) {
+                      const CommandBufferConfig& config,
+                      const se::DeviceDescription& device_description) {
   if (auto* fusion = DynCast<HloFusionInstruction>(hlo)) {
-    // TODO(vuson): Make address computation fusion compatible with command
-    // buffer
     auto gpu_config = fusion->backend_config<GpuBackendConfig>();
     const FusionBackendConfig& backend_config =
         gpu_config->fusion_backend_config();
     const auto& custom_config = backend_config.custom_fusion_config();
-    return custom_config.name() != "address_computation" &&
-           config.contains(DebugOptions::FUSION);
+    if (custom_config.name() == "address_computation") {
+      auto fusion_analysis =
+          HloFusionAnalysis::Create(fusion, &device_description);
+      const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
+      auto custom_call_adaptor = HloFindIf(
+          adaptor.GetRoots(), adaptor,
+          [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
+      const auto* custom_call = static_cast<const HloCustomCallInstruction*>(
+          &custom_call_adaptor->instruction());
+      return IsCommand(custom_call, config);
+    }
+    return config.contains(DebugOptions::FUSION);
   }
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
@@ -151,10 +167,10 @@ static bool IsCommand(const HloInstruction* hlo,
     return IsCommand(custom_call, config);
 
   if (hlo->opcode() == HloOpcode::kWhile)
-    return IsCommand<HloOpcode::kWhile>(hlo, config);
+    return IsCommand<HloOpcode::kWhile>(hlo, config, device_description);
 
   if (hlo->opcode() == HloOpcode::kConditional)
-    return IsCommand<HloOpcode::kConditional>(hlo, config);
+    return IsCommand<HloOpcode::kConditional>(hlo, config, device_description);
 
   return false;
 }
@@ -221,11 +237,13 @@ static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
-                      const CommandBufferConfig& config) {
+                      const CommandBufferConfig& config,
+                      const se::DeviceDescription& device_description) {
   return absl::c_all_of(
       computation->instructions(), [&](const HloInstruction* inst) {
         return IsNoOp(inst) || IsConstant(inst) || IsParameter(inst) ||
-               IsCommand(inst, config) || IsAsyncStartCommand(inst, config) ||
+               IsCommand(inst, config, device_description) ||
+               IsAsyncStartCommand(inst, config) ||
                IsAsyncDoneCommand(inst, config);
       });
 }
@@ -252,7 +270,7 @@ static void RemoveTrailingNoOps(HloInstructionSequence& seq) {
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
     const HloInstructionSequence schedule, const CommandBufferConfig& config,
-    int32_t min_num_commands) {
+    const se::DeviceDescription& device_description, int32_t min_num_commands) {
   std::vector<HloInstructionSequence> sequences;
 
   HloInstructionSequence current_seq;
@@ -282,7 +300,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
     }
 
     // Synchronous commands always can be added to instruction sequence.
-    if (IsCommand(inst, config)) {
+    if (IsCommand(inst, config, device_description)) {
       num_commands_in_current_seq++;
       current_seq.push_back(inst);
       continue;
@@ -574,9 +592,9 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
 //===----------------------------------------------------------------------===//
 
 CommandBufferScheduling::CommandBufferScheduling(
-    const se::GpuComputeCapability& gpu_compute_comp,
+    const se::DeviceDescription& device_description,
     int32_t gpu_toolkit_version, int32_t gpu_driver_version)
-    : gpu_compute_comp_(gpu_compute_comp),
+    : device_description_(device_description),
       gpu_toolkit_version_(gpu_toolkit_version),
       gpu_driver_version_(gpu_driver_version) {}
 
@@ -630,7 +648,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     return true;  // check for ROCM support
   };
 
-  if (std::visit(VariantVisitor{check_cuda, check_rocm}, gpu_compute_comp_)) {
+  if (std::visit(VariantVisitor{check_cuda, check_rocm},
+                 device_description_.gpu_compute_capability())) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
     erase(kRequireConditionals);  // on-device control flow
   }
@@ -652,7 +671,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
     std::vector<HloInstructionSequence> sequences =
         CollectCommandBufferSequences(
-            module->schedule().sequence(comp), config,
+            module->schedule().sequence(comp), config, device_description_,
             debug_options.xla_gpu_graph_min_graph_size());
 
     for (const HloInstructionSequence& seq : sequences) {
