@@ -97,29 +97,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
   return result;
 }
 
-absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
-  // llvm intrinsics differentiate between half/float/double functions via
-  // the suffixes ".f16", ".f32" and ".f64".
-  std::string munged_callee = callee_name;
-  switch (output_type) {
-    case F16:
-      StrAppend(&munged_callee, ".f16");
-      break;
-    case F32:
-      StrAppend(&munged_callee, ".f32");
-      break;
-    case F64:
-      StrAppend(&munged_callee, ".f64");
-      break;
-    default:
-      return Unimplemented("Bad type for llvm intrinsic math call: %s",
-                           PrimitiveType_Name(output_type));
-  }
-  return EmitMathCall(munged_callee, operands, input_types, output_type);
-}
-
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
