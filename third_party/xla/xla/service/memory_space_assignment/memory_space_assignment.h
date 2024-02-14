@@ -1543,7 +1543,6 @@ class MemoryBoundLoopOptimizer {
 class AlternateMemoryBestFitHeap
     : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
-  using MemorySpace = MemorySpace;
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
   using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 
