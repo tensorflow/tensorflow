@@ -1672,6 +1672,13 @@ class HloInstruction {
   // a bitcast.
   bool IsEffectiveBitcast() const;
 
+  // Returns true if this instruction is asynchronous with the
+  // async_execution_thread set to `execution_thread`.
+  bool IsAsyncInstructionWithExecutionThread(
+      absl::string_view execution_thread) const {
+    return IsAsynchronous() && async_execution_thread() == execution_thread;
+  };
+
   // Gets/sets the to_apply HloComputation for Call, Map, Reduce, etc.
   // The setter should only be called by HloModule or HloComputation methods.
   //
