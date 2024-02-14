@@ -6654,6 +6654,17 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_test(
+    name = "custom_call_target_registry_test",
+    srcs = ["custom_call_target_registry_test.cc"],
+    deps = [
+        ":custom_call_status",
+        ":custom_call_target_registry",
+        "//xla:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 # Exposes the public interface only and hides internal details. Suitable for
 # linking into a static library or binary.
 cc_library(
