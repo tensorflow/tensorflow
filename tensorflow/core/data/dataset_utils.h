@@ -37,9 +37,6 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
-// The initial parallelism value before Autotune has a chance to optimize.
-constexpr int kAutotuneDefaultParallelism = 16;
-
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
@@ -365,7 +362,8 @@ inline int GetCpuBudget() {
 
 // Returns the initial value for parallelism parameter before the first Autotune
 // optimization.
-int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx,
+                                    const Options& options);
 
 // Creates an iterator context appropriate for a nested dataset's iterator. A
 // nested dataset is a dataset created within another dataset, e.g. by the

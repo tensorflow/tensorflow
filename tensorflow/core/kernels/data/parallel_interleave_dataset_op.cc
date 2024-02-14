@@ -397,8 +397,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       thread_pool_ = ctx->CreateThreadPool(
           "data_parallel_interleave_worker_pool", num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = std::min(
-            GetAutotuneDefaultParallelism(ctx), dataset()->cycle_length_);
+        num_parallel_calls_->value =
+            std::min(GetAutotuneDefaultParallelism(ctx, dataset()->options()),
+                     dataset()->cycle_length_);
       }
       cancellation_manager_ = std::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);

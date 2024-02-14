@@ -944,8 +944,15 @@ bool ShouldApplyOptimizations(
           !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
-int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
-  return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx,
+                                    const Options& options) {
+  int64_t initial_parallelism = 16;
+  if (options.autotune_options().initial_parallelism() > 0) {
+    initial_parallelism = options.autotune_options().initial_parallelism();
+  }
+  int64_t runner_threadpool_size = ctx->runner_threadpool_size();
+  int64_t value = std::min(initial_parallelism, runner_threadpool_size);
+  return value;
 }
 
 IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {

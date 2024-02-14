@@ -213,7 +213,8 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         if (dataset()->parallel_copy_) {
           num_parallel_calls_->value = 1;
         } else {
-          num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
+          num_parallel_calls_->value =
+              GetAutotuneDefaultParallelism(ctx, dataset()->options());
         }
       }
       cancellation_manager_ = std::make_unique<CancellationManager>();

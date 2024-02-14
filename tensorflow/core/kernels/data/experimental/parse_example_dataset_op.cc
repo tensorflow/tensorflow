@@ -382,7 +382,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == model::kAutotune) {
-          num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
+          num_parallel_calls_->value =
+              GetAutotuneDefaultParallelism(ctx, dataset()->options());
         }
         TF_RETURN_IF_ERROR(RegisterCancellationCallback(
             ctx->cancellation_manager(),

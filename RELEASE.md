@@ -119,7 +119,7 @@ This release contains contributions from many people at Google, as well as:
 * <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
-*  Full aarch64 Linux and Arm64 macOS wheels are now published to the 
+*  Full aarch64 Linux and Arm64 macOS wheels are now published to the
   `tensorflow` pypi repository and no longer redirect to a separate package.
 
 ### Major Features and Improvements
@@ -128,7 +128,7 @@ This release contains contributions from many people at Google, as well as:
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 *  Support for Python 3.12 has been added.
-*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now 
+*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now
    available for easier TPU based installs.
 *  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
 
@@ -168,6 +168,13 @@ This release contains contributions from many people at Google, as well as:
       from both the node defs and the function defs of the graph. Note that
       this currently only strips the `Assert` nodes from the graph and
       converts them into `NoOp`s instead.
+
+*   `tf.data`
+
+    * `tf.data` now has an `autotune_options.initial_parallelism` option to
+      control the initial parallelism setting used by autotune before the data
+      pipeline has started running. The default is 16. A lower value reduces
+      initial memory usage, while a higher value improves startup time.
 
 ## Keras
 

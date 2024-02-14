@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
@@ -154,7 +155,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
+        num_parallel_calls_->value =
+            GetAutotuneDefaultParallelism(ctx, dataset()->options());
       }
       cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
