@@ -28,6 +28,7 @@ pybind_extension(
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
     ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 pybind_extension(

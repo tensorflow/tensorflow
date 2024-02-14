@@ -793,3 +793,4 @@ build:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 build --config=pycpp_filters
+build --experimental_convenience_symlinks=clean

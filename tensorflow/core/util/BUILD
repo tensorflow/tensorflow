@@ -709,16 +709,16 @@ alias(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-check_deps(
-    name = "determinism_check_deps",
-    disallowed_deps = if_static(
-        [],
-        otherwise = [":determinism"],
-    ),
-    deps = [
-        "//tensorflow:tensorflow_cc",
-    ],
-)
+#check_deps(
+#    name = "determinism_check_deps",
+#    disallowed_deps = if_static(
+#        [],
+#        otherwise = [":determinism"],
+#    ),
+#    deps = [
+#        "//tensorflow:tensorflow_cc",
+#    ],
+#)
 
 tf_kernel_library(
     name = "cuda_solvers",

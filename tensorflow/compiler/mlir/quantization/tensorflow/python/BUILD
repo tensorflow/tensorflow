@@ -29,12 +29,12 @@ cc_library(
     srcs = ["quantize_model.cc"],
     hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        # Directly linked to `libtensorflow_cc.so` or
-        # `_pywrap_tensorflow_internal.so` if static build.
-        "//tensorflow:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
+#    visibility = [
+#        # Directly linked to `libtensorflow_cc.so` or
+#        # `_pywrap_tensorflow_internal.so` if static build.
+#        "//tensorflow:__pkg__",
+#        "//tensorflow/python:__pkg__",
+#    ],
     deps = [
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",

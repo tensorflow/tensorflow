@@ -769,7 +769,7 @@ pybind_extension(
         "_op_def_util.pyi",
     ],
     deps = [
-        ":op_def_util",
+        ":op_def_util_cc",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -920,11 +920,8 @@ cc_library(
 # Note: this target is only used by python_api_info_test.
 pybind_extension(
     name = "_pywrap_python_api_info",
-    srcs = ["python_api_info_wrapper.cc"],
-    hdrs = [
-        "op_def_util.h",
-        "python_api_info.h",
-        "python_tensor_converter.h",
+    srcs = [
+        "python_api_info_wrapper.cc",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -942,6 +939,9 @@ pybind_extension(
         "_pywrap_python_api_info.pyi",
     ],
     deps = [
+        ":python_api_info",
+        ":op_def_util_cc",
+        ":python_tensor_converter",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
