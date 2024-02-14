@@ -1048,6 +1048,10 @@ class HloInstruction {
   // and returns the receive buffer. The operand must be kRecv.
   static std::unique_ptr<HloInstruction> CreateRecvDone(
       HloInstruction* operand, bool is_host_transfer = false);
+  // Similar to the above, but the operand doesn't have to be a kRecv.
+  static std::unique_ptr<HloInstruction> CreateRecvDone(
+      HloInstruction* operand, int64_t channel_id,
+      bool is_host_transfer = false);
 
   // Creates a slice instruction, where the operand is sliced by the given
   // start/limit indices.

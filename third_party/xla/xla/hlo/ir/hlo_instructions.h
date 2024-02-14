@@ -611,6 +611,8 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
  public:
   explicit HloRecvDoneInstruction(HloRecvInstruction* operand,
                                   bool is_host_transfer);
+  explicit HloRecvDoneInstruction(HloInstruction* operand, int64_t channel_id,
+                                  bool is_host_transfer);
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kRecvDone;

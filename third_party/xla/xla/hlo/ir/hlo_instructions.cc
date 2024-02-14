@@ -839,13 +839,25 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
   AppendOperand(operand);
 }
 
+HloRecvDoneInstruction::HloRecvDoneInstruction(HloInstruction* operand,
+                                               int64_t channel_id,
+                                               bool is_host_transfer)
+    : HloSendRecvInstruction(
+          HloOpcode::kRecvDone,
+          ShapeUtil::MakeTupleShape(
+              {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
+               ShapeUtil::MakeTokenShape()}),
+          channel_id, is_host_transfer) {
+  AppendOperand(operand);
+}
+
 std::unique_ptr<HloInstruction>
 HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return std::make_unique<HloRecvDoneInstruction>(
-      Cast<HloRecvInstruction>(new_operands[0]), is_host_transfer());
+      new_operands[0], channel_id().value(), is_host_transfer());
 }
 
 HloCollectiveInstruction::HloCollectiveInstruction(

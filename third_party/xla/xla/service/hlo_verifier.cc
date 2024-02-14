@@ -2254,20 +2254,40 @@ Status VerifyChannels(const HloModule& module) {
         }
         case HloOpcode::kRecv: {
           TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* recv_done = instruction->users().front();
-          TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
-          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
-          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          const HloInstruction* recv_user = instruction->users().front();
+          if (recv_user->opcode() == HloOpcode::kRecvDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_user));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_user));
+          } else {
+            // If a Recv user is not a RecvDone, it has to be a tuple that is
+            // either the root of a while-body or the init of a while-loop.
+            TF_RET_CHECK(recv_user->opcode() == HloOpcode::kTuple);
+            if (recv_user != recv_user->parent()->root_instruction()) {
+              TF_RET_CHECK(recv_user->users().size() == 1);
+              const HloInstruction* user = recv_user->users().front();
+              TF_RET_CHECK(user->opcode() == HloOpcode::kWhile);
+            }
+          }
           break;
         }
         case HloOpcode::kSendDone:
           TF_RET_CHECK(instruction->operands().size() == 1);
           TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kSend);
           break;
-        case HloOpcode::kRecvDone:
+        case HloOpcode::kRecvDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
-          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kRecv);
+          const HloInstruction* recv_done_operand = instruction->operand(0);
+          if (recv_done_operand->opcode() != HloOpcode::kRecv) {
+            // If the RecvDone operand is not a Recv, it has to be either part
+            // of a while-loop result or a parameter of a while-body.
+            TF_RET_CHECK(recv_done_operand->opcode() ==
+                         HloOpcode::kGetTupleElement);
+            HloOpcode opcode = recv_done_operand->operand(0)->opcode();
+            TF_RET_CHECK(opcode == HloOpcode::kWhile ||
+                         opcode == HloOpcode::kParameter);
+          }
           break;
+        }
         default:
           break;
       }
