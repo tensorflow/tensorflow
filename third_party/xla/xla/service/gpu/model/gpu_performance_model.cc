@@ -72,17 +72,18 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
 
-  // TODO(jreiffers): We should be checking each operand.
-  bool coalesced = IsReadCoalescedHeuristic(fusion_analysis, instr,
-                                            /*consumer=*/nullptr);
+  CoalescingAnalysis coalescing_analysis(
+      instr, fusion_analysis.GetEmitterFusionKind());
 
   absl::Duration read_time;
-  for (int i = 0; i < instr->operand_count(); ++i) {
-    auto element_type = instr->operand(i)->shape().element_type();
+  for (const auto [operand_id, operand] : llvm::enumerate(instr->operands())) {
+    auto element_type = operand->shape().element_type();
     // Information about data read taking into account utilization.
     // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
-    int64_t n_bytes_total = cost_analysis->operand_bytes_accessed(*instr, i);
-    float operand_utilization = cost_analysis->operand_utilization(*instr, i);
+    int64_t n_bytes_total =
+        cost_analysis->operand_bytes_accessed(*instr, operand_id);
+    float operand_utilization =
+        cost_analysis->operand_utilization(*instr, operand_id);
 
     // An estimate how much data would need to fit into L1/L2 cache to speed up
     // the operand access.
@@ -92,6 +93,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     int64_t n_bytes_net =
         std::llround(n_bytes_total / std::max(operand_utilization, 1.0f));
 
+    bool coalesced = coalescing_analysis.IsReadCoalesced(operand);
     read_time +=
         ReadTimeWithDRAMHeuristic(*device_info, num_blocks, n_bytes_net,
                                   n_bytes_total, element_type, coalesced);
@@ -225,6 +227,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
       fusion_operands.insert(operand);
     }
   }
+  CoalescingAnalysis coalescing_analysis(
+      producer, consumer, fusion_analysis.GetEmitterFusionKind());
 
   absl::Duration read_time;
   for (const auto* operand : fusion_operands) {
@@ -236,9 +240,7 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     int64_t n_bytes_total = std::llround(operand_size * operand_utilization);
     int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
 
-    bool coalesced =
-        IsReadCoalescedHeuristic(fusion_analysis, producer, consumer);
-
+    bool coalesced = coalescing_analysis.IsReadCoalesced(operand);
     read_time += ReadTimeWithDRAMHeuristic(
         *device_info, launch_dimensions.num_blocks(), n_bytes_net,
         n_bytes_total, operand->shape().element_type(), coalesced);

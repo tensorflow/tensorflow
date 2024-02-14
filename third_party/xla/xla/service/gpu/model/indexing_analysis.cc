@@ -1033,6 +1033,29 @@ GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
   return grouped_indexing_maps;
 }
 
+bool FuseProducerConsumerOutputToInputIndexing(
+    const HloInstruction* producer_instr,
+    absl::flat_hash_map<const HloInstruction*, IndexingMapSet>*
+        consumer_indexing,
+    MLIRContext* mlir_context) {
+  auto producer_indexing = ComputeOutputToInputIndexing(
+      producer_instr, /*output_id=*/0, mlir_context);
+  auto consumer_indexing_maps = (*consumer_indexing)[producer_instr];
+  for (const auto& [producer_operand_id, producer_operand_indexing] :
+       llvm::enumerate(producer_indexing.indexing_maps)) {
+    const HloInstruction* producer_operand_instr =
+        producer_instr->operand(producer_operand_id);
+    for (const IndexingMap& producer_map : producer_operand_indexing) {
+      for (const IndexingMap& consumer_map : consumer_indexing_maps) {
+        (*consumer_indexing)[producer_operand_instr].insert(
+            ComposeIndexingMaps(producer_map, consumer_map));
+      }
+    }
+  }
+  consumer_indexing->erase(producer_instr);
+  return true;
+}
+
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
                                                     int output_id,
                                                     MLIRContext* ctx) {

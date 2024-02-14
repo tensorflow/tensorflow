@@ -89,6 +89,14 @@ absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
 GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
                              const HloInstruction* instr);
 
+// Computes producer indexing maps and fuse/compose them with the consumer
+// indexing maps.
+bool FuseProducerConsumerOutputToInputIndexing(
+    const HloInstruction* producer_instr,
+    absl::flat_hash_map<const HloInstruction*, IndexingMapSet>*
+        consumer_indexing,
+    mlir::MLIRContext* mlir_context);
+
 // Creates an indexing map for bitcasting from `input_shape` to `output_shape`.
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.

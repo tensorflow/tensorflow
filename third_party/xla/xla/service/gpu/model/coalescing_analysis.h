@@ -16,29 +16,55 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_COALESCING_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_COALESCING_ANALYSIS_H_
 
-#include <optional>
-
 #include "absl/container/flat_hash_map.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 
 namespace xla {
 namespace gpu {
 
+// Computes read coalescing for operands of an instruction or a
+// producer-consumer fusion.
+// Note, that later, after we migrate away from using the heuristic, we might
+// want to use HloFusionAdaptor instead of having two different constructors.
+class CoalescingAnalysis {
+ public:
+  // Computes read coalescing for operands of `instr`.
+  CoalescingAnalysis(const HloInstruction* instr,
+                     HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                     KernelFusionInterface* fusion_interface = nullptr,
+                     mlir::MLIRContext* mlir_context = nullptr,
+                     bool use_heuristic = true);
+
+  // Computes read coalescing for operands of fused `producer` and `consumer`.
+  CoalescingAnalysis(const HloInstruction* producer,
+                     const HloInstruction* consumer,
+                     HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                     KernelFusionInterface* fusion_interface = nullptr,
+                     mlir::MLIRContext* mlir_context = nullptr,
+                     bool use_heuristic = true);
+
+  // Returns true if the operand is read coalesced.
+  bool IsReadCoalesced(const HloInstruction* operand) const;
+
+ private:
+  bool ComputeCoalescingForAllOperands(
+      const HloInstruction* instr, const HloInstruction* optional_producer,
+      HloFusionAnalysis::EmitterFusionKind fusion_kind,
+      KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context);
+
+  absl::flat_hash_map<const HloInstruction*, bool> coalescing_per_operand_;
+  bool is_coalesced_computed_by_heuristic_ = false;
+};
+
 // Returns true if all input reads are coalesced. If consumer is not nullptr,
 // producer and consumer are considered as one fusion, otherwise it's only the
 // producer.
-bool IsReadCoalescedHeuristic(const HloFusionAnalysis& fusion_analysis,
+bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
                               const HloInstruction* producer,
                               const HloInstruction* consumer = nullptr);
-
-// Returns true, if operand's read is coalesced.
-bool IsReadCoalesced(const HloInstruction* operand, const HloInstruction* instr,
-                     const absl::flat_hash_map<const HloInstruction*,
-                                               IndexingMapSet>& indexing_maps,
-                     mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

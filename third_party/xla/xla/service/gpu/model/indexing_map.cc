@@ -640,6 +640,10 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
          lhs.GetSymbolRanges() == rhs.GetSymbolRanges();
 }
 
+IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
+  return ComposeIndexingMaps(lhs, rhs);
+}
+
 // Simplification of IndexingMap has two main parts.
 // At first we optimized constraints to make the domain as small and simple as
 // possible. And only then we simplify the affine_map, because its

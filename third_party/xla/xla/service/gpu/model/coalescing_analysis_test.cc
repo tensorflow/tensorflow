@@ -18,104 +18,168 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/fusions.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAreArray;
+using ::testing::ElementsAre;
 
 class CoalescingTest : public HloTestBase {
  public:
-  void GetRoot(absl::string_view hlo_string,
-               absl::Span<const bool> expected_results) {
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_string));
+  std::vector<bool> IsReadCoalescedPerOperand(absl::string_view hlo_string) {
+    auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     HloInstruction* root = module->entry_computation()->root_instruction();
 
-    for (auto* operand : root->operands()) {
-      CHECK(operand->opcode() == HloOpcode::kParameter ||
-            operand->opcode() == HloOpcode::kConstant)
-          << "If there are multiple instructions, they need to be wrapped in a "
-             "fusion.";
-    }
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+    auto analysis = AnalyzeFusion(*root, device_info_);
+    auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+    auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.value().get());
+    EXPECT_TRUE(emitter.ok());
 
-    auto output_to_input_indexing =
-        ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_);
-    auto grouped_indexing_maps =
-        GroupIndexingMapsByProducers(output_to_input_indexing, root);
+    CoalescingAnalysis coalescing_analysis(
+        root, analysis.GetEmitterFusionKind(), fusion, &mlir_context_,
+        /*use_heuristic=*/false);
 
-    std::vector<bool> actual_results;
-    actual_results.reserve(expected_results.size());
-    for (auto [operand_id, is_coalesced] : llvm::enumerate(expected_results)) {
-      auto* operand = root->operand(operand_id);
-      actual_results.push_back(IsReadCoalesced(
-          operand, root, grouped_indexing_maps, &mlir_context_));
+    std::vector<bool> results;
+    for (const HloInstruction* operand : root->operands()) {
+      results.push_back(coalescing_analysis.IsReadCoalesced(operand));
     }
-    EXPECT_THAT(actual_results, ElementsAreArray(expected_results));
+    return results;
   }
 
+ protected:
+  stream_executor::DeviceDescription device_info_ =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(CoalescingTest, IdentityLayout) {
-  GetRoot(R"(
+  absl::string_view ir = R"(
     HloModule m
-    ENTRY e {
-      p0 = f32[10, 20] parameter(0)
-      p1 = f32[10, 20] parameter(1)
-      ROOT add0 = f32[10, 20] add(p0, p1)
+    fusion {
+      p0 = f32[100, 200] parameter(0)
+      p1 = f32[100, 200] parameter(1)
+      ROOT adthread_x = f32[100, 200] add(p0, p1)
     }
-  )",
-          {true, true});
+    ENTRY e {
+      p0 = f32[100, 200] parameter(0)
+      p1 = f32[100, 200] parameter(1)
+      ROOT fusion = f32[100, 200] fusion(p0, p1), kind=kInput, calls=fusion
+    }
+  )";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x) -> (thread_x)
+  // Operand 2: (thread_x) -> (thread_x)
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true));
 }
 
 TEST_F(CoalescingTest, RhsTransposedLayout) {
-  GetRoot(R"(
+  absl::string_view ir = R"(
     HloModule m
-    ENTRY e {
-      p0 = f32[10, 20]{1, 0} parameter(0)
-      p1 = f32[10, 20]{0, 1} parameter(1)
-      ROOT exp = f32[10, 20]{1, 0} add(p0, p1)
+    fusion {
+      p0 = f32[100, 200]{1, 0} parameter(0)
+      p1 = f32[100, 200]{0, 1} parameter(1)
+      ROOT exp = f32[100, 200]{1, 0} add(p0, p1)
     }
-  )",
-          {true, false});
+    ENTRY e {
+      p0 = f32[100, 200]{1, 0} parameter(0)
+      p1 = f32[100, 200]{0, 1} parameter(1)
+      ROOT fusion = f32[100, 200]{1, 0} fusion(p0, p1), kind=kInput, calls=fusion
+    }
+  )";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x) -> (thread_x)
+  // Operand 2: (thread_x) -> (thread_x * 100)
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, false));
 }
 
 TEST_F(CoalescingTest, OutputTransposedLayout) {
-  GetRoot(R"(
+  absl::string_view ir = R"(
     HloModule m
-    ENTRY e {
-      p0 = f32[10, 20]{1, 0} parameter(0)
-      p1 = f32[10, 20]{1, 0} parameter(1)
-      ROOT exp = f32[10, 20]{0, 1} add(p0, p1)
+    fusion {
+      p0 = f32[100, 200]{1, 0} parameter(0)
+      p1 = f32[100, 200]{1, 0} parameter(1)
+      ROOT exp = f32[100, 200]{0, 1} add(p0, p1)
     }
-  )",
-          {false, false});
+    ENTRY e {
+      p0 = f32[100, 200]{1, 0} parameter(0)
+      p1 = f32[100, 200]{1, 0} parameter(1)
+      ROOT fusion = f32[100, 200]{0, 1} fusion(p0, p1), kind=kInput, calls=fusion
+    }
+  )";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x) -> (thread_x * 200)
+  // Operand 2: (thread_x) -> (thread_x * 200)
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false, false));
 }
 
 TEST_F(CoalescingTest, OutputAndLhsTransposedLayout) {
-  GetRoot(R"(
+  absl::string_view ir = R"(
     HloModule m
-    ENTRY e {
-      p0 = f32[10, 20]{1, 0} parameter(0)
-      p1 = f32[10, 20]{0, 1} parameter(1)
-      ROOT exp = f32[10, 20]{1, 0} add(p0, p1)
+    fusion {
+      p0 = f32[100, 200]{1, 0} parameter(0)
+      p1 = f32[100, 200]{0, 1} parameter(1)
+      ROOT exp = f32[100, 200]{1, 0} add(p0, p1)
     }
-  )",
-          {true, false});
+    ENTRY e {
+      p0 = f32[100, 200]{1, 0} parameter(0)
+      p1 = f32[100, 200]{0, 1} parameter(1)
+      ROOT fusion = f32[100, 200]{1, 0} fusion(p0, p1), kind=kInput, calls=fusion
+    }
+  )";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x) -> (thread_x)
+  // Operand 2: (thread_x) -> (thread_x * 100)
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, false));
+}
+
+TEST_F(CoalescingTest, Transpose) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      %input = f32[100, 64, 32] parameter(0)
+      ROOT transpose = f32[32, 100, 64] transpose(%input), dimensions={2, 0, 1}
+    }
+
+    ENTRY entry {
+      %input = f32[100, 64, 32] parameter(0)
+      ROOT %fusion = f32[32, 100, 64] fusion(%input), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x) -> (thread_x * 32 + s0 * 4) for s0 in [0, 7]
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false));
+}
+
+TEST_F(CoalescingTest, TransposeOnlyOuterDims) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      %input = f32[100, 32, 64] parameter(0)
+      ROOT transpose = f32[32, 100, 64] transpose(%input), dimensions={1, 0, 2}
+    }
+
+    ENTRY entry {
+      %input = f32[100, 32, 64] parameter(0)
+      ROOT %fusion = f32[32, 100, 64] fusion(%input), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // (thread_x) -> (thread_x * 4 + s0 + (thread_x floordiv 16) * 1984)
+  //   for s0 in [0, 3]
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false));
 }
 
 }  // namespace
