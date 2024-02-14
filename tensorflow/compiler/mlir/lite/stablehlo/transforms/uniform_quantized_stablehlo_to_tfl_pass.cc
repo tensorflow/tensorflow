@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -322,7 +323,6 @@ class RewriteUniformDequantizeOp
         op, /*resultTypes=*/op->getResultTypes(), /*input=*/op.getOperand());
   }
 };
-
 
 // Rewrites full-integer quantized `stablehlo.dot_general` ->`tfl.batch_matmul`
 // when it accepts uniform quantized tensors.
@@ -1664,6 +1664,94 @@ class RewriteQuantizedBroadcastInDimOp
   }
 };
 
+// Rewrites quantized stablehlo.reduce_window with max to tfl.max_pool_2d.
+// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
+class RewriteQuantizedReduceWindowOpWithMax
+    : public OpRewritePattern<stablehlo::ReduceWindowOp> {
+ public:
+  using OpRewritePattern<stablehlo::ReduceWindowOp>::OpRewritePattern;
+
+  LogicalResult MatchBinaryReduceFunction(Region& function) const {
+    Block& body = function.front();
+    if (body.getNumArguments() != 2) return failure();
+
+    auto return_op = dyn_cast<stablehlo::ReturnOp>(body.back());
+    if (!return_op) return failure();
+    if (return_op.getNumOperands() != 1) return failure();
+
+    auto reduce_op = dyn_cast_or_null<stablehlo::MaxOp>(
+        return_op.getOperands().front().getDefiningOp());
+    if (!reduce_op) return failure();
+    return success(reduce_op.getLhs() == body.getArgument(0) &&
+                   reduce_op.getRhs() == body.getArgument(1));
+  }
+
+  LogicalResult match(stablehlo::ReduceWindowOp op) const override {
+    // Check that the reduce-window is a max-reduce-window.
+    if (failed(MatchBinaryReduceFunction(op.getBody()))) {
+      return failure();
+    }
+
+    // Only 2d pooling is supported in TFLite.
+    if (op.getWindowDimensions().size() != 4) {
+      return failure();
+    }
+
+    // reduce_window op with dilations or padding will supported later.
+    // TODO: b/321099943 - Support reduce_window op with dilations and padding.
+    if (op.getBaseDilations().has_value() ||
+        op.getWindowDilations().has_value() || op.getPadding().has_value()) {
+      return failure();
+    }
+
+    // Window_dimensions and window_strides should have batch and channel
+    // dimension of 1 as they cannot be specified in tfl.max_pool_2d.
+    ArrayRef<int64_t> window_dims = op.getWindowDimensions();
+    if (window_dims[0] != 1 || window_dims[3] != 1) {
+      return failure();
+    }
+    std::optional<ArrayRef<int64_t>> window_strides = op.getWindowStrides();
+    if (window_strides.has_value()) {
+      if ((*window_strides)[0] != 1 || (*window_strides)[3] != 1) {
+        return failure();
+      }
+    }
+
+    return success(IsOpFullyQuantized(op));
+  }
+
+  void rewrite(stablehlo::ReduceWindowOp op,
+               PatternRewriter& rewriter) const override {
+    Type result_type = op.getResult(0).getType();
+    Value input = op.getOperand(0);
+    // Ops with padding is rejected in matching function, so we can use the
+    // padding to be 'VALID'.
+    StringAttr padding = rewriter.getStringAttr("VALID");
+
+    // Use NHWC format.
+    int32_t stride_h = 1;
+    int32_t stride_w = 1;
+    std::optional<ArrayRef<int64_t>> window_strides = op.getWindowStrides();
+    if (window_strides.has_value()) {
+      stride_h = CastI64ToI32((*window_strides)[1]).value();
+      stride_w = CastI64ToI32((*window_strides)[2]).value();
+    }
+    auto stride_h_attr = IntegerAttr::get(rewriter.getI32Type(), stride_h);
+    auto stride_w_attr = IntegerAttr::get(rewriter.getI32Type(), stride_w);
+
+    ArrayRef<int64_t> window_dims = op.getWindowDimensions();
+    auto window_w_attr = IntegerAttr::get(rewriter.getI32Type(),
+                                          CastI64ToI32(window_dims[2]).value());
+    auto window_h_attr = IntegerAttr::get(rewriter.getI32Type(),
+                                          CastI64ToI32(window_dims[1]).value());
+    StringAttr activation_function = rewriter.getStringAttr("NONE");
+
+    rewriter.replaceOpWithNewOp<TFL::MaxPool2DOp>(
+        op, result_type, input, padding, stride_w_attr, stride_h_attr,
+        window_w_attr, window_h_attr, activation_function);
+  }
+};
+
 void UniformQuantizedStableHloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
@@ -1676,7 +1764,8 @@ void UniformQuantizedStableHloToTflPass::runOnOperation() {
                RewriteQuantizedConvolutionOp, RewriteQuantizedTransposeOp,
                RewriteQuantizedReshapeOp, RewriteQuantizedSelectOp,
                RewriteQuantizedConcatenateOp, RewriteQuantizedPadOp,
-               RewriteQuantizedSliceOp, RewriteQuantizedBroadcastInDimOp>(&ctx);
+               RewriteQuantizedSliceOp, RewriteQuantizedBroadcastInDimOp,
+               RewriteQuantizedReduceWindowOpWithMax>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

@@ -967,3 +967,94 @@ func.func @float_broadcast_in_dim(%arg0: tensor<1x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NOT: tfl.transpose
 // CHECK-NOT: tfl.expand_dims
 // CHECK: stablehlo.broadcast_in_dim
+
+// -----
+
+// Test that a quantized stablehlo.reduce_window with max is converted to
+// tfl.max_pool_2d.
+
+func.func @reduce_window_with_max(
+  %arg0: tensor<2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+  %arg1: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+) -> tensor<2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, %arg3: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>):
+    %1 = stablehlo.maximum %arg2, %arg3 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+    stablehlo.return %1 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  }) {window_dimensions = array<i64: 1, 3, 4, 1>, window_strides = array<i64: 1, 2, 3, 1>} : (tensor<2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>) -> tensor<2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: reduce_window_with_max
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+// CHECK-SAME: %[[ARG1:.*]]: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+// CHECK: %[[MAX_POOL:.*]] = "tfl.max_pool_2d"(%[[ARG0]])
+// CHECK-SAME: {filter_height = 3 : i32, filter_width = 4 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 3 : i32}
+// CHECK-SAME: (tensor<2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>) -> tensor<2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+// CHECK: return %[[MAX_POOL]]
+
+// -----
+
+// Test that a quantized stablehlo.reduce_window with max whose rank is not 4
+// is not converted to tfl.max_pool_2d.
+
+func.func @reduce_window_not_4d(
+  %arg0: tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+  %arg1: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+) -> tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, %arg3: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>):
+    %1 = stablehlo.maximum %arg2, %arg3 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+    stablehlo.return %1 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  }) {window_dimensions = array<i64: 1, 1, 3, 4, 1>, window_strides = array<i64: 1, 1, 2, 3, 1>} : (tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>) -> tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: reduce_window_not_4d
+// CHECK: stablehlo.reduce_window
+// CHECK-NOT: tfl.max_pool_2d
+
+// -----
+
+// Test that a quantized stablehlo.reduce_window with max that takes multiple
+// inputs is not converted to tfl.max_pool_2d.
+
+func.func @reduce_window_not_binary(
+  %arg0: tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+  %arg1: tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+  %arg2: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+  %arg3: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+) -> tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0, %1 = "stablehlo.reduce_window"(%arg0, %arg1, %arg2, %arg3) ({
+  ^bb0(%arg4: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, %arg5: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, %arg6: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, %arg7: tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>):
+    %2 = stablehlo.maximum %arg4, %arg5 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+    %3 = stablehlo.maximum %arg6, %arg7 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+    stablehlo.return %2, %3 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  }) {window_dimensions = array<i64: 1, 1, 3, 4, 1>, window_strides = array<i64: 1, 1, 2, 3, 1>} : (tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<3x2x9x10x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:-5>>) -> (tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>)
+  return %0 : tensor<3x2x4x3x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: reduce_window_not_binary
+// CHECK: stablehlo.reduce_window
+// CHECK-NOT: tfl.max_pool_2d
+
+// -----
+
+// Test that a float stablehlo.reduce_window with max is not converted to
+// tfl.max_pool_2d.
+
+func.func @float_reduce_window_with_max(
+  %arg0: tensor<2x9x10x3xf32>,
+  %arg1: tensor<f32>
+) -> tensor<2x4x3x3xf32> {
+  %0 = "stablehlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = stablehlo.maximum %arg2, %arg3 : tensor<f32>
+    stablehlo.return %1 : tensor<f32>
+  }) {window_dimensions = array<i64: 1, 3, 4, 1>, window_strides = array<i64: 1, 2, 3, 1>} : (tensor<2x9x10x3xf32>, tensor<f32>) -> tensor<2x4x3x3xf32>
+  return %0 : tensor<2x4x3x3xf32>
+}
+
+// CHECK-LABEL: float_reduce_window_with_max
+// CHECK: stablehlo.reduce_window
+// CHECK-NOT: tfl.max_pool_2d
