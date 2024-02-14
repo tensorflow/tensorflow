@@ -328,15 +328,19 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
                           WarnStuckTimeout(), TerminateTimeout()));
 
   VLOG(3) << "Create NCCL communicator for clique " << clique_key.ToString()
-          << " rank #" << rank << " of " << nranks
-          << "; num_local_participants=" << num_local_participants;
+          << " rank #" << rank << " of " << nranks;
 
   absl::StatusOr<NcclApi::OwnedNcclComm> comm =
       NcclApi::Default()->CommInitRank(nranks, state->clique_id, rank);
 
   if (comm.ok()) {
+    VLOG(3) << "Created NCCL communicator for clique " << clique_key.ToString()
+            << " rank #" << rank << " of " << nranks;
     state->comms[rank] = std::move(*comm);
   } else {
+    VLOG(3) << "Failed to create NCCL communicator for clique "
+            << clique_key.ToString() << " rank #" << rank << " of " << nranks
+            << "; error=" << comm.status();
     state->comms[rank] = comm.status();
   }
 
