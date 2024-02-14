@@ -115,7 +115,7 @@ REQUIRED_PACKAGES = [
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tensorboard >= 2.16, < 2.17',
-    'keras >= 2.16.0rc0, < 2.17'
+    'keras >= 3.0.0'
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
