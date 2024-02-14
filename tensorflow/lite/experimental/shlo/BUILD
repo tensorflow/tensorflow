@@ -43,3 +43,10 @@ cc_library(
         ":f16",
     ],
 )
+
+cc_library(
+    name = "dispatch",
+    hdrs = ["dispatch.h"],
+    visibility = ["//visibility:private"],
+    deps = [":data_type"],
+)
