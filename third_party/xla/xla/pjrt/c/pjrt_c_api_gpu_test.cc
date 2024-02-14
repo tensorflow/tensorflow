@@ -391,11 +391,11 @@ TEST(PjrtCApiGpuPrivTest, CustomCallUntyped) {
   args.api_version = 0;
   args.custom_call_function = reinterpret_cast<void*>(&TestCustomCallV2);
   auto api = GetPjrtApi();
-  const PJRT_Structure_Base* next =
-      reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
+  const PJRT_Extension_Base* next =
+      reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
   while (next != nullptr &&
          next->type !=
-             PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call) {
+             PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
     next = next->next;
   }
   ASSERT_NE(next, nullptr);
@@ -422,11 +422,11 @@ TEST(PjrtCApiGpuPrivTest, CustomCallTyped) {
   args.api_version = 1;
   args.custom_call_function = kNoop;
   auto api = GetPjrtApi();
-  const PJRT_Structure_Base* next =
-      reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
+  const PJRT_Extension_Base* next =
+      reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
   while (next != nullptr &&
          next->type !=
-             PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call) {
+             PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
     next = next->next;
   }
   ASSERT_NE(next, nullptr);

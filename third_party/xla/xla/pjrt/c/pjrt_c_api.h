@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 40
+#define PJRT_API_MINOR 41
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2019,17 +2019,17 @@ typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 // -------------------------------- Extension ----------------------------------
 
 typedef enum {
-  PJRT_Structure_Type_Gpu_Custom_Call = 0,
-  PJRT_Structure_Type_Profiler,
-} PJRT_Structure_Type;
+  PJRT_Extension_Type_Gpu_Custom_Call = 0,
+  PJRT_Extension_Type_Profiler,
+} PJRT_Extension_Type;
 
-// PJRT_Structure_Base contains a type and a pointer to next
-// PJRT_Structure_Base. The framework can go through this chain to find
+// PJRT_Extension_Base contains a type and a pointer to next
+// PJRT_Extension_Base. The framework can go through this chain to find
 // structure and identify it with the type.
-typedef struct PJRT_Structure_Base {
-  PJRT_Structure_Type type;
-  const struct PJRT_Structure_Base* next;
-} PJRT_Structure_Base;
+typedef struct PJRT_Extension_Base {
+  PJRT_Extension_Type type;
+  const struct PJRT_Extension_Base* next;
+} PJRT_Extension_Base;
 
 // -------------------------------- API access ---------------------------------
 

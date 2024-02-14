@@ -185,7 +185,7 @@ PLUGIN_Profiler_Api profiler_api{
 };
 
 PJRT_Profiler_Extension profiler_extension{
-    /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Profiler,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
     /*next=*/nullptr,
     /*profiler_api=*/&profiler_api,
 };
@@ -217,7 +217,7 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
 }
 
 PJRT_Gpu_Custom_Call custom_call{
-    /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
     /*next=*/&profiler_extension,
     /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
 };
