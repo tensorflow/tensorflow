@@ -59,7 +59,7 @@ using ::testing::UnorderedElementsAre;
 using DummyAutoShardingTest = HloTestBase;
 
 TEST_F(DummyAutoShardingTest, ReplicatedShardingDummy) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %elementwise {
   %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0)
@@ -79,14 +79,14 @@ ENTRY %elementwise {
 
 class AutoShardingTest : public HloTestBase {
  protected:
-  const char* const dot_hlo_string_ = R"(
+  absl::string_view dot_hlo_string_ = R"(
 HloModule module
 ENTRY matmul {
   parameter.1 = f32[32,64]{1,0} parameter(0)
   parameter.2 = f32[64,128]{1,0} parameter(1)
   ROOT root = f32[32,128]{1,0} dot(parameter.1, parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  const char* const add_hlo_string_ = R"(
+  absl::string_view add_hlo_string_ = R"(
 HloModule module
 ENTRY %elementwise {
   %param0 = f32[16,32,64]{2,1,0} parameter(0)
@@ -163,7 +163,7 @@ ENTRY %elementwise {
 };
 
 TEST_F(AutoShardingTest, DISABLED_ElementWiseOperator) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %elementwise {
   %param0 = f32[128,128]{0,1} parameter(0)
@@ -189,7 +189,7 @@ ENTRY %elementwise {
 }
 
 TEST_F(AutoShardingTest, NDIterativeSolveTest) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %elementwise {
@@ -217,8 +217,38 @@ ENTRY %elementwise {
   EXPECT_THAT(slice, op::Sharding("{devices=[256,1]<=[256]}"));
 }
 
+TEST_F(AutoShardingTest, SliceDeviceMeshTest) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,3084]{1,0} parameter(0)
+  slice = s32[512,2048]{1,0} slice(param), slice={[0:512], [0:2048]}
+  ROOT copy = s32[512,2048]{1,0} copy(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      AutoSharding(/* option */ {.enable = true,
+                                 .solve_nd_sharding_iteratively = true,
+                                 .device_mesh_shape = {2, 2},
+                                 .device_mesh_alpha = {1.0, 1.0},
+                                 .device_mesh_beta = {0.01, 1.0}})
+          .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* slice = FindInstruction(module.get(), "slice");
+  ASSERT_NE(slice, nullptr);
+  EXPECT_THAT(
+      slice,
+      AnyOf(op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"),
+            op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}")));
+}
+
 TEST_F(AutoShardingTest, RngBitGeneratorArrayInput) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule rng_bit_generator
 
 ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
@@ -243,7 +273,7 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
 }
 
 TEST_F(AutoShardingTest, RngBitGeneratorTupleInput) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule rng_bit_generator
 
 ENTRY %RngBitGenerator {
@@ -273,7 +303,7 @@ ENTRY %RngBitGenerator {
 }
 
 TEST_F(AutoShardingTest, DotLHSTwoNonContractingDims) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   %param0 = f32[4,256,64]{2,1,0} parameter(0)
@@ -325,7 +355,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, DotRHSTwoNonContractingDims) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   %param0 = f32[4,256,32]{2,1,0} parameter(0)
@@ -377,7 +407,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, DotTwoContractingDims) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   %param0 = f32[4,256,64]{2,1,0} parameter(0)
@@ -418,7 +448,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, TwoMatmul) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY twomatmul {
   parameter.1 = f32[64,64]{1,0} parameter(0)
@@ -497,7 +527,7 @@ ENTRY twomatmul {
 }
 
 TEST_F(AutoShardingTest, ProcessCustomCallShardings) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry {
@@ -527,7 +557,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationKeepAll) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -581,7 +611,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 
 TEST_F(AutoShardingTest,
        SaveAndRemoveShardingAnnotationKeepInputOutputSmallTensor) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -631,7 +661,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 }
 
 TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationKeepInputOutput) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -709,7 +739,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 }
 
 TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationRemoveAll) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -746,7 +776,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 }
 
 TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationRemoveAllSmallTensor) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -799,7 +829,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 }
 
 TEST_F(AutoShardingTest, TupleReduceTest) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 %func (lhs_value: f32[], lhs_index: s32[], rhs_value: f32[], rhs_index: s32[]) -> (f32[], s32[]) {
   %lhs_value = f32[] parameter(0)
@@ -845,7 +875,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, ReduceTest) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 %func (x: f32[], y: f32[]) -> f32[] {
@@ -888,7 +918,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, ScatterTest2D) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 region {
@@ -927,7 +957,7 @@ ENTRY %Scatter {
 }
 
 TEST_F(AutoShardingTest, ScatterTest3D) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 region {
@@ -970,7 +1000,7 @@ ENTRY %Scatter {
 }
 
 TEST_F(AutoShardingTest, GatherTest) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   %param0 = f32[256,1024]{0,1} parameter(0)
@@ -1001,7 +1031,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, GatherTestNoReshard) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   get-tuple-element = s8[1000,128]{1,0} parameter(0)
@@ -1032,7 +1062,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, GatherConvTest) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   %param0 = f32[1024,1024]{0,1} parameter(0)
@@ -1331,7 +1361,7 @@ TEST_F(AutoShardingTest, InvalidOptions) {
 
 TEST_F(AutoShardingTest, AutoShardingKeepUserShardingInputOutput) {
   // An HLO Module with sharding for all instructions.
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -1363,7 +1393,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 
 TEST_F(AutoShardingTest, AutoShardingKeepUserShardingAdd) {
   // An HLO Module with sharding for all instructions.
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %elementwise {
   %param0 = f32[128,128]{0,1} parameter(0)
@@ -1397,7 +1427,7 @@ ENTRY %elementwise {
 
 TEST_F(AutoShardingTest, AutoShardingKeepUserShardingDot) {
   // An HLO Module with sharding for all instructions.
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
@@ -1443,7 +1473,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
 }
 
 TEST_F(AutoShardingTest, DISABLED_AutoShardingKeepUserShardingTupleReduce) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 %func (lhs_value: f32[], lhs_index: s32[], rhs_value: f32[], rhs_index: s32[]) -> (f32[], s32[]) {
   %lhs_value = f32[] parameter(0)
@@ -1491,7 +1521,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, DISABLED_TupleParameter) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %tupleparameter {
   %tuple_param = (f32[16,32,64]{2,1,0}, f32[16,32,64]{2,1,0}) parameter(0)
@@ -1521,7 +1551,7 @@ ENTRY %tupleparameter {
 
 // CRASHES
 TEST_F(AutoShardingTest, DISABLED_GetTupleElementWithUserShardingTest) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 %while_cond {
@@ -1568,7 +1598,7 @@ ENTRY %entry (param0: f32[16,256,256], param1: f32[16,256,256]) -> f32[16,256,25
 }
 
 TEST_F(AutoShardingTest, While) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 %cond {
@@ -1648,7 +1678,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, DynamicSlice) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 ENTRY %entry {
   %param0 = s32[] parameter(0)
@@ -1677,7 +1707,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, Alias) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias)}
 
 ENTRY %entry {
@@ -1703,7 +1733,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, AliasTupleParameter) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module, input_output_alias={ {0}: (0, {0}, may-alias), {1}: (0, {1}, may-alias), {2}: (0, {2}, may-alias), {3}: (0, {3}, may-alias)}
 
 ENTRY %entry {
@@ -1730,7 +1760,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, JaxRandomUniform) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 clone {
   lhs.1 = u32[] parameter(0)
@@ -1781,7 +1811,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, Reshape) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry {
@@ -1809,7 +1839,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, ReshapeWithInvalidUserSharding) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry {
@@ -1835,7 +1865,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, Broadcast) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry {
@@ -1854,7 +1884,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, TestReshardingCostsForUserAnnotatedSharding) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module
 
 ENTRY %entry {
@@ -1880,7 +1910,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, AllowAliasToFollowerConversion) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias)}
 
 ENTRY %entry {
@@ -1907,7 +1937,7 @@ ENTRY %entry {
 }
 
 TEST_F(AutoShardingTest, DisallowAliasToFollowerConversion) {
-  const char* const hlo_string = R"(
+  constexpr absl::string_view hlo_string = R"(
 HloModule module, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias)}
 
 ENTRY %entry {
