@@ -44,6 +44,10 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/threadpool.h"
 
+namespace mlir {
+class DialectRegistry;
+}  // namespace mlir
+
 namespace xla {
 
 // The following types are used for ahead of time compilation.
@@ -150,6 +154,10 @@ class Compiler {
     // AOT device description. If provided, used instead of querying the device
     // on which compilation is performed.
     std::optional<TargetConfig> target_config;
+
+    // Registry of MLIR dialects and plugins to be loaded during optimization.
+    // If non-null, it will be used to construct relevant MLIR contexts.
+    mlir::DialectRegistry* registry = nullptr;
   };
 
   virtual ~Compiler() = default;
