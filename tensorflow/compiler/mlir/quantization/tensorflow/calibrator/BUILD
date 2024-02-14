@@ -245,7 +245,14 @@ pybind_extension(
         ":calibrator_singleton",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
+        "//tensorflow/core:__pkg__",
+    ],
+    private_deps = [
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-    ],
+    ]
 )

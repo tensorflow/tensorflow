@@ -4,7 +4,7 @@
 
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library")
+load("//rules_pywrap:pywrap.bzl", "pybind_extension", "pywrap_library", "pywrap_common_library")
 
 # Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tsl_async_value_deps")
@@ -964,13 +964,13 @@ pybind_extension(
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
-        "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
     data = [
         "_pywrap_mlir.pyi",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/python:mlir",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -1274,6 +1274,7 @@ pytype_strict_library(
 pywrap_library(
     name = "_pywrap_tensorflow",
     deps = [
+        ":_pywrap_quantize_training",
         ":_pywrap_tensorflow_cc_only",
         "//tensorflow/python/client:_pywrap_device_lib",
         "//tensorflow/python/client:_pywrap_events_writer",
@@ -1281,6 +1282,10 @@ pywrap_library(
         "//tensorflow/python/data/experimental/service:_pywrap_server_lib",
         "//tensorflow/python/data/experimental/service:_pywrap_snapshot_utils",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
+        "//tensorflow/python:_pywrap_mlir",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:pywrap_calibration",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_function_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:flags_pybind",
         "//tensorflow/python/framework:_dtypes",
@@ -1312,13 +1317,14 @@ pywrap_library(
         "//tensorflow/python/util:_pywrap_determinism",
         "//tensorflow/python/util:_pywrap_nest",
         "//tensorflow/python/util:_pywrap_tensor_float_32_execution",
+        "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_util_port",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:_tf_stack",
         "//tensorflow/python/util:pywrap_xla_ops",
         "//tensorflow/python/util:_function_parameter_canonicalizer_binding_for_test",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
-
+        "//tensorflow/python/tpu:_pywrap_tpu_embedding",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1331,4 +1337,9 @@ pybind_extension(
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/distributed_runtime:server_lib",
     ]
+)
+
+pywrap_common_library(
+    name = "_pywrap_tensorflow_common",
+    dep = ":_pywrap_tensorflow",
 )

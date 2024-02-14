@@ -37,7 +37,7 @@ def pywrap_library(
     # everything except the object file with Python Extension's init function
     # PyInit_<extension_name>.
     #
-    pywrap_info_collector_name = "_%s_info_collector" % (name)
+    pywrap_info_collector_name = "_%s_info_collector" % name
 
     collected_pywrap_infos(
         name = pywrap_info_collector_name,
@@ -45,7 +45,7 @@ def pywrap_library(
         pywrap_count = actual_pywrap_count,
     )
 
-    pywrap_common_name = "_%s_pywrap_internal" % (name)
+    pywrap_common_name = "_%s_pywrap_internal" % name
     _pywrap_split_library(
         name = pywrap_common_name,
         dep = ":%s" % pywrap_info_collector_name,
@@ -56,7 +56,7 @@ def pywrap_library(
 
     common_deps = []
 
-    pywrap_common_cc_binary_name = "%s_internal" % (name)
+    pywrap_common_cc_binary_name = "%s_internal" % name
     native.cc_binary(
         name = pywrap_common_cc_binary_name,
         deps = [":%s" % pywrap_common_name],
@@ -73,7 +73,7 @@ def pywrap_library(
     # I.e. cc_binary does not work as a dependency downstream, but if wrapped
     # into a cc_import it all of a sudden starts working. I wish bazel team
     # fixed it...
-    pywrap_common_if_lib_name = "%s_if_lib" % (pywrap_common_name)
+    pywrap_common_if_lib_name = "%s_if_lib" % pywrap_common_name
     native.filegroup(
         name = pywrap_common_if_lib_name,
         srcs = [":%s" % pywrap_common_cc_binary_name],
@@ -82,7 +82,7 @@ def pywrap_library(
         compatible_with = compatible_with,
     )
 
-    pywrap_common_import_name = "%s_import" % pywrap_common_name
+    pywrap_common_import_name = "%s_pywrap_internal_import" % name
     native.cc_import(
         name = pywrap_common_import_name,
         interface_library = ":%s" % pywrap_common_if_lib_name,
@@ -169,6 +169,12 @@ def pywrap_library(
         srcs = binaries_data,
         testonly = testonly,
         compatible_with = compatible_with,
+    )
+
+def pywrap_common_library(name, dep):
+    native.alias(
+        name = name,
+        actual = "%s_pywrap_internal_import" % dep,
     )
 
 def _generated_win_def_file_impl(ctx):
@@ -526,11 +532,11 @@ def _pywrap_binaries_impl(ctx):
             outputs = [final_binary],
         )
 
-        print("{original} {final}".format(
-            original = original_binary_file.path,
-            final = final_binary.path
-            )
-        )
+#        print("{index} {final}".format(
+#            index = i,
+#            final = final_binary.path
+#            )
+#        )
 
         final_binaries.append(final_binary)
 

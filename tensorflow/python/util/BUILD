@@ -76,7 +76,7 @@ pybind_extension(
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",
-        "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
+        "//tensorflow/core/profiler/internal:print_model_analysis",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",

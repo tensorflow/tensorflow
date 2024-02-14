@@ -2158,7 +2158,8 @@ def tf_custom_op_library(
     if not gpu_deps:
         gpu_deps = []
 
-    deps = deps + if_cuda_or_rocm([
+    deps = [clean_dep("//tensorflow/python:_pywrap_tensorflow_common")] + deps
+    deps += if_cuda_or_rocm([
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -2419,7 +2420,7 @@ def py_test(
         exec_properties = tf_exec_properties(kwargs)
 
     test_env = {
-        "PYWRAP_TARGET": "//tensorflow/python:_pywrap_tensorflow"
+        "PYWRAP_TARGET": clean_dep(Label("//tensorflow/python:_pywrap_tensorflow"))
     }
     test_env.update(env)
     actual_deps = deps.to_list() if hasattr(deps, "to_list") else deps
