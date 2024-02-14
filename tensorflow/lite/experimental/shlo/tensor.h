@@ -19,28 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <variant>
 
-namespace shlo_ref {
+#include "tensorflow/lite/experimental/shlo/data_type.h"
 
-// For more information on StableHLO types, see the spec., search for "Element
-// types".
-enum class DataType {
-  kUnknown,
-  kI1,
-  kSI4,
-  kSI8,
-  kSI16,
-  kSI32,
-  kSI64,
-  kUI4,
-  kUI8,
-  kUI16,
-  kUI32,
-  kUI64,
-  kBF16,
-  kF16,
-  kF32,
-  kF64
-};
+namespace shlo_ref {
 
 // A non owning view of tensor data.
 struct Tensor {
