@@ -163,4 +163,4 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_MAT_MUL_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_MAT_MUL_OP_H_
