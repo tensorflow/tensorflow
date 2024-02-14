@@ -1081,7 +1081,12 @@ inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
   Value expNegX = mapMhloOpToStdScalarOp<mhlo::ExpOp>(loc, resultTypes,
                                                       resultTypes, {{negX}}, b);
 
-  Value oneFloat = b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0));
+  Type type = getElementTypeOrSelf(resultTypes[0]);
+  Value oneFloat =
+      type.isa<ComplexType>()
+          ? b->create<arith::ConstantOp>(loc, b->getF32FloatAttr(1.0))
+          : getConstantOrSplat(b, loc, resultTypes[0],
+                               FloatAttr::get(type, 1.0f));
   Value one = mapConvertOpToStdScalarOp(loc, resultTypes, resultTypes,
                                         {oneFloat.getType()}, {{oneFloat}}, b);
   Value oneAddExprNegX = mapMhloOpToStdScalarOp<mhlo::AddOp>(
