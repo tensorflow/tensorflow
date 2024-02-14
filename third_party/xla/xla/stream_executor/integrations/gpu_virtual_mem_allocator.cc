@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
+#include "xla/stream_executor/integrations/gpu_virtual_mem_allocator.h"  // IWYU pragma: keep
 
-#include "absl/strings/str_format.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/profiler/lib/traceme.h"
+#include "absl/strings/str_format.h"  // IWYU pragma: keep
+#include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
+#include "tsl/platform/numbers.h"  // IWYU pragma: keep
+#include "tsl/profiler/lib/traceme.h"  // IWYU pragma: keep
 
-#if CUDA_VERSION >= 10020
+#if GOOGLE_CUDA
 
-namespace tensorflow {
+namespace stream_executor {
 namespace {
 
 using ::stream_executor::gpu::GpuContext;
@@ -49,7 +49,7 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
   TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
                       SupportsVirtualAddressManagement(device));
   if (!supports_virtual_address_management) {
-    return tsl::errors::Internal(absl::StrFormat(
+    return absl::InternalError(absl::StrFormat(
         "GPU %d does not support virtual memory address management.",
         gpu_id.value()));
   }
@@ -121,7 +121,10 @@ GpuVirtualMemAllocator::GpuVirtualMemAllocator(
       gpu_id_(gpu_id),
       access_gpu_handles_(access_gpu_handles),
       vmem_(vmem),
-      granularity_(granularity) {}
+      granularity_(granularity) {
+  CHECK_EQ(granularity & (granularity - 1), 0)
+      << "Granularity must be a power of two; granularity=" << granularity;
+}
 
 GpuVirtualMemAllocator::~GpuVirtualMemAllocator() {
   for (const auto mapping : mappings_) {
@@ -224,6 +227,6 @@ void GpuVirtualMemAllocator::Free(void* ptr, size_t num_bytes) {
   VisitFree(ptr, gpu_id_.value(), num_bytes);
 }
 
-}  // namespace tensorflow
+}  // namespace stream_executor
 
-#endif
+#endif  // GOOGLE_CUDA

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
-
-#if CUDA_VERSION >= 10020
+#include "xla/stream_executor/integrations/gpu_virtual_mem_allocator.h"  // IWYU pragma: keep
 
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tsl/framework/device_id.h"
+#include "tsl/platform/test.h"  // IWYU pragma: keep
+#include "tsl/platform/test_benchmark.h"  // IWYU pragma: keep
 
-namespace tensorflow {
+#if GOOGLE_CUDA
+
+namespace stream_executor {
 namespace {
 
 using ::stream_executor::gpu::GpuContext;
@@ -36,7 +36,7 @@ constexpr size_t k2MiB{2 << 20};
 std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
   tsl::PlatformDeviceId gpu_id(0);
   auto executor =
-      se::GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
+      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
       executor->platform_specific_handle().context);
   return GpuVirtualMemAllocator::Create(
@@ -48,7 +48,7 @@ std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
 TEST(GpuVirtualMemAllocatorTest, SimpleAlloc) {
   tsl::PlatformDeviceId gpu_id(0);
   auto executor =
-      se::GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
+      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
       executor->platform_specific_handle().context);
   auto allocator = GpuVirtualMemAllocator::Create(
@@ -177,6 +177,6 @@ TEST(GpuVirtualMemAllocatorTest, FreeRange) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace stream_executor
 
-#endif
+#endif  // GOOGLE_CUDA
