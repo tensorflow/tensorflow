@@ -239,7 +239,12 @@ class DiscoverablePathsAndVersions:
       self.clang_major_version = (
           self.clang_major_version or _get_clang_major_version(self.clang_path)
       )
-      self.lld_path = self.lld_path or _find_executable("ld.lld")
+
+      # Notably, we don't use `_find_executable_or_die` for lld, as it changes
+      # which commands it accepts based on it's name! ld.lld is symlinked to a
+      # different executable just called lld, which should not be invoked
+      # directly.
+      self.lld_path = self.lld_path or shutil.which("ld.lld")
     elif config.host_compiler == HostCompiler.GCC:
       self.gcc_path = self.gcc_path or _find_executable_or_die("gcc")
 
