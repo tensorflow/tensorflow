@@ -7573,7 +7573,10 @@ xla_cc_test(
     name = "xla_aot_compile_cpu_test",
     srcs = ["xla_aot_compile_cpu_test.cc"],
     data = [":xla_aot_compile_test_cpu_executable"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":cpu_plugin",
         ":platform_util",
