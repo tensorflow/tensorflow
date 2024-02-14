@@ -280,11 +280,12 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
   new_state->DowncastAndSetIteratorAndDataset(std::move(iterator), dataset);
+  new_state->SetModel(iter_ctx.model());
   new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
   tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
-      env_, iterator_state_->iterator());
+      env_, iterator_state_->iterator(), iterator_state_->model());
   EnsureIteratorMemoryLoggerStarted();
   TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
   return absl::OkStatus();
@@ -303,6 +304,10 @@ void IteratorResource::State::MergeCheckpoint(MemoryCheckpoint* other) {
   if (SymbolicCheckpointEnabled(dataset_->options())) {
     checkpoint_.Merge(other);
   }
+}
+
+void IteratorResource::State::SetModel(std::shared_ptr<model::Model> model) {
+  model_ = model;
 }
 
 namespace {

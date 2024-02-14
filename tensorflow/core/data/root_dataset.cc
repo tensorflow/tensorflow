@@ -195,8 +195,12 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         dataset()->params_.ComputeInitialAutotuneRamBudget());
 
     if (dataset()->params_.autotune) {
-      model_ = ctx->model() != nullptr ? ctx->model()
-                                       : std::make_shared<model::Model>();
+      if (ctx->model() != nullptr) {
+        model_ = ctx->model();
+      } else {
+        model_ = std::make_shared<model::Model>();
+        ctx->SetModel(model_);
+      }
 
       absl::flat_hash_set<string> experiments = GetExperiments();
       if (experiments.contains("stage_based_autotune_v2")) {

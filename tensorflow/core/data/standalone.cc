@@ -82,7 +82,7 @@ Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
   if (DatasetBaseIterator* dataset_iterator =
           dynamic_cast<DatasetBaseIterator*>(iterator_.get())) {
     tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
-        *Env::Default(), dataset_iterator);
+        *Env::Default(), dataset_iterator, ctx_->model());
     TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
     EnsureIteratorMemoryLoggerStarted();
   }

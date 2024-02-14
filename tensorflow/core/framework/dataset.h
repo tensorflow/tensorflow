@@ -867,6 +867,8 @@ class IteratorContext {
 
   RunMode run_mode() { return params_.run_mode; }
 
+  void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
+
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
     if (params_.thread_pool) {
