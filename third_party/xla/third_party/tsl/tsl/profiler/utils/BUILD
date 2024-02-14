@@ -461,3 +461,31 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
+
+cc_library(
+    name = "timestamp_utils",
+    srcs = ["timestamp_utils.cc"],
+    hdrs = ["timestamp_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_utils",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+tsl_cc_test(
+    name = "timestamp_utils_test",
+    srcs = ["timestamp_utils_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":timestamp_utils",
+        ":xplane_schema",
+        ":xplane_utils",
+        ":xplane_visitor",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+    ],
+)

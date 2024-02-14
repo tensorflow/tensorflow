@@ -397,6 +397,29 @@ const LineIdTypeStrMap& GetLineIdTypeStrMap() {
   return *line_id_type_str_map;
 }
 
+using TaskEnvStatTypeMap =
+    absl::flat_hash_map<absl::string_view, TaskEnvStatType>;
+using TaskEnvStatTypeStrMap =
+    absl::flat_hash_map<TaskEnvStatType, absl::string_view>;
+
+constexpr int kNumTaskEnvStatTypes = TaskEnvStatType::kLastTaskEnvStatType -
+                                     TaskEnvStatType::kFirstTaskEnvStatType + 1;
+
+const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
+  static auto* task_env_stat_type_map = new TaskEnvStatTypeMap({
+      {"profile_start_time", kEnvProfileStartTime},
+      {"profile_stop_time", kEnvProfileStopTime},
+  });
+  DCHECK_EQ(task_env_stat_type_map->size(), kNumTaskEnvStatTypes);
+  return *task_env_stat_type_map;
+}
+
+const TaskEnvStatTypeStrMap& GetTaskEnvStatTypeStrMap() {
+  static auto* task_env_stat_type_str_map = new TaskEnvStatTypeStrMap(
+      gtl::ReverseMap<TaskEnvStatTypeStrMap>(GetTaskEnvStatTypeMap()));
+  return *task_env_stat_type_str_map;
+}
+
 }  // namespace
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type) {
@@ -440,6 +463,17 @@ absl::string_view GetMegaScaleStatTypeStr(MegaScaleStatType stat_type) {
 
 std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetMegaScaleStatTypeMap(), stat_name)) {
+    return *stat_type;
+  }
+  return std::nullopt;
+}
+
+std::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type) {
+  return GetTaskEnvStatTypeStrMap().at(stat_type);
+}
+
+std::optional<int64_t> FindTaskEnvStatType(absl::string_view stat_name) {
+  if (auto stat_type = gtl::FindOrNull(GetTaskEnvStatTypeMap(), stat_name)) {
     return *stat_type;
   }
   return std::nullopt;
