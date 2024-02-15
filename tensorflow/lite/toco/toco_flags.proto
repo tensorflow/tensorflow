@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 62.
+// Next ID to use: 63.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -350,4 +350,10 @@ message TocoFlags {
   // Quantizer integrated in the converter.
   // WARNING: Experimental interface, subject to change.
   optional stablehlo.quantization.QuantizationConfig quantization_config = 61;
+
+  // Disables per channel weights quantization for Dense layers and enables
+  // legacy per tensor quantization. The legacy quantization for Dense layers is
+  // inconsistent with Conv 1x1 which always performs per channel quantization.
+  optional bool disable_per_channel_quantization_for_dense_layers = 62
+      [default = false];
 }

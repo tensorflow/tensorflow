@@ -52,6 +52,14 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.lite`
+    * Quantization for `FullyConnected` layer is switched from per-tensor to
+      per-channel scales for dynamic range quantization use case (`float32`
+      inputs / outputs and `int8` weights). The change enables new quantization
+      schema globally in the converter and inference engine. The new behaviour
+      can be disabled via experimental
+      flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

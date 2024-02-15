@@ -103,8 +103,8 @@ func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x11
   func.return %fc : tensor<1x112x112x512xf32>
 
 // CHECK-DAG: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<512x12xf32>
-// CHECK-DAG: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
-// CHECK-DAG: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<512x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<512x12xf32>
+// CHECK-DAG: %[[q_w:.*]] = "tfl.quantize"(%[[w]]) {qtype = tensor<512x12x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00,1.000000e+00,1.000000e+00,1.000000e+00,
+// CHECK-DAG: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w]]) : (tensor<512x12x!quant.uniform<i8<-127:127>:f32:0, {1.000000e+00,1.000000e+00,1.000000e+00,1.000000e+00,
 // CHECK-DAG: %[[b:.*]] = arith.constant dense<0.000000e+00> : tensor<512xf32>
 // CHECK: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %[[dq_w]], %[[b]]) {
 // CHECK-NOT: fused_activation_function = "NONE"
