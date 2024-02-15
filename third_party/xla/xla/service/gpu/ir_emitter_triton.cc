@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -142,6 +143,7 @@ namespace mt = ::mlir::triton;
 using ::llvm::SmallVector;
 using mlir::ArrayRef;
 using mlir::ImplicitLocOpBuilder;
+using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
 using mlir::ValueRange;
@@ -221,7 +223,7 @@ ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
 }
 
 Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
   }
@@ -229,7 +231,7 @@ Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
 }
 
 Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
+  if (auto src_shaped_ty = x.getType().dyn_cast<ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
   }
@@ -242,7 +244,7 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
   Type dst_ty = dst_element_ty;
-  if (auto src_shaped_ty = src_ty.dyn_cast<mlir::ShapedType>()) {
+  if (auto src_shaped_ty = src_ty.dyn_cast<ShapedType>()) {
     src_element_ty = src_shaped_ty.getElementType();
     dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
     fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
@@ -1559,6 +1561,94 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
   return result;
 }
 
+// Truncates |input| of F32 type to the number representable in Bf16 toward
+// zero.
+// It is used for Emit6xBfloat16MatMul.
+Value TruncateToBF16TowardsZero(ImplicitLocOpBuilder& b, Value input) {
+  ShapedType input_type = input.getType().dyn_cast<ShapedType>();
+  Type input_type_as_i32 = input_type.clone(b.getI32Type());
+  Value input_as_i32 = b.create<mt::BitcastOp>(input_type_as_i32, input);
+  Value mask = CreateConst<uint32_t>(b, b.getI32Type(), 0xFFFF0000u,
+                                     input_type.getShape());
+  Value high_bits = b.create<ma::AndIOp>(input_type_as_i32, input_as_i32, mask);
+
+  return b.create<mt::BitcastOp>(input_type, high_bits);
+}
+
+// Finds the middle 8 bits of |input|'s mantissa.
+// It is used for Emit6xBfloat16MatMul.
+Value SoftMiddleEight(ImplicitLocOpBuilder& b, Value input) {
+  Value high = TruncateToBF16TowardsZero(b, input);
+  return b.create<ma::SubFOp>(input, high);
+}
+
+// Finds the low 8 bits of |input|'s mantissa.
+// It is used for Emit6xBfloat16MatMul.
+Value SoftLowEight(ImplicitLocOpBuilder& b, Value input) {
+  // Find the middle bits of the middle bits, and these are the low eight
+  // bits.
+  return SoftMiddleEight(b, SoftMiddleEight(b, input));
+}
+
+// Rounds |input| to BF16 type.
+// It is used for Emit6xBfloat16MatMul.
+Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
+  return Cast(b, input, b.getBF16Type());
+}
+
+// Leverages BF16 datatype for F32 matmul computation. It follows the guidance
+// from https://arxiv.org/pdf/1904.06376.pdf.
+StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+                                     Value rhs, Value acc) {
+  Type f32 = b.getF32Type();
+  TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
+  TF_RET_CHECK(acc.getType().cast<ShapedType>().getElementType() == f32);
+
+  Value lhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, lhs));
+  Value lhs_middle =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftMiddleEight(b, lhs)));
+  Value lhs_low =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftLowEight(b, lhs)));
+
+  Value rhs_high = RoundToBF16(b, TruncateToBF16TowardsZero(b, rhs));
+  Value rhs_middle =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftMiddleEight(b, rhs)));
+  Value rhs_low =
+      RoundToBF16(b, TruncateToBF16TowardsZero(b, SoftLowEight(b, rhs)));
+
+  auto bf16_dot = [&](Value lhs_bf16, Value rhs_bf16,
+                      Value accumulator) -> Value {
+    return b.create<mt::DotOp>(lhs_bf16, rhs_bf16, accumulator,
+                               /*allowTF32=*/false,
+                               /*maxNumImpreciseAcc=*/0);
+  };
+
+  Value local_acc = ZerosLike(b, acc);
+  Value result = bf16_dot(lhs_middle, rhs_middle, local_acc);
+  result = bf16_dot(lhs_low, rhs_high, result);
+  result = bf16_dot(lhs_high, rhs_low, result);
+  result = bf16_dot(lhs_middle, rhs_high, result);
+  result = bf16_dot(lhs_high, rhs_middle, result);
+  // If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
+  // If rhs is +infinity, we will have:
+  // +infinity * 1.0 = +infinity
+  // +infinity * 0.0 = NaN
+  // We would get the wrong result if we sum these partial products. Instead, we
+  // must override any accumulated result if the last partial product is
+  // non-finite. See b/115844437.
+  Value positive_inf = CreateConst<float>(
+      b, b.getF32Type(), std::numeric_limits<float>::infinity(),
+      result.getType().cast<ShapedType>().getShape());
+  Value abs_result = b.create<mm::AbsFOp>(result);
+  Value is_finite =
+      b.create<ma::CmpFOp>(ma::CmpFPredicate::OGT, positive_inf, abs_result);
+  result = b.create<ma::SelectOp>(is_finite, result, ZerosLike(b, result));
+  result = bf16_dot(lhs_high, rhs_high, result);
+  result = b.create<ma::AddFOp>(acc, result);
+  return result;
+}
+
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 absl::Status EmitMatMul(mlir::OpBuilder builder,
                         absl::string_view libdevice_path,
@@ -1747,15 +1837,30 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
                         [](const int precision) {
                           return precision != PrecisionConfig::DEFAULT;
                         });
-
-    // Execute matrix multiplication of input tiles and pass the accumulator.
-    // TODO(manany): Should be looked into once we enable Hopper workloads.
-    // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
-    // lower precision than the output type. The change was introduced here:
-    // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-    Value accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
-                                                 iter_args.back(), allow_tf32,
-                                                 /*maxNumImpreciseAcc=*/0);
+    const HloModule* hlo_module = computation->parent();
+    Type f32 = b.getF32Type();
+    // BF16 datatype is not supported before Ampere.
+    const bool use_bf16_6x =
+        device_info.cuda_compute_capability().IsAtLeastAmpere() &&
+        hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm() &&
+        dot_input_lhs.getType().cast<ShapedType>().getElementType() == f32 &&
+        dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
+    Value accumulator_next;
+    if (use_bf16_6x) {
+      StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
+          b, dot_input_lhs, dot_input_rhs, iter_args.back());
+      TF_CHECK_OK(accumulator_next_or.status());
+      accumulator_next = accumulator_next_or.value();
+    } else {
+      // Execute matrix multiplication of input tiles and pass the accumulator.
+      // TODO(manany): Should be looked into once we enable Hopper workloads.
+      // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+      // lower precision than the output type. The change was introduced here:
+      // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+      accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
+                                             iter_args.back(), allow_tf32,
+                                             /*maxNumImpreciseAcc=*/0);
+    }
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);

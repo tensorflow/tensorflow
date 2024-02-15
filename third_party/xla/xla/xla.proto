@@ -681,7 +681,10 @@ message DebugOptions {
 
   bool xla_gpu_enable_dot_strength_reduction = 270;
 
-  // Next id: 271
+  // If enabled, uses bf16_6way gemm to compute F32 gemm.
+  bool xla_gpu_enable_bf16_6way_gemm = 271;
+
+  // Next id: 272
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

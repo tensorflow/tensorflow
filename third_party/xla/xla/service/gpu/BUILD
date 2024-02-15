@@ -599,6 +599,8 @@ xla_test(
         ":triton_fusion_analysis",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:xla_proto_cc",
@@ -611,6 +613,7 @@ xla_test(
         "//xla/tests:filecheck",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
