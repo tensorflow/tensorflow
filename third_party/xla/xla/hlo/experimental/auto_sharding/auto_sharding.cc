@@ -3697,7 +3697,7 @@ StatusOr<bool> AutoSharding::Run(
   LOG(INFO) << "Starting the auto sharding pass";
 
   if (IsModuleManuallySharded(module)) {
-    LOG(ERROR)
+    LOG(FATAL)
         << "Auto-sharding on partially manually sharded modules is not yet "
            "supported. Please fall back on the sharding propagation pass.";
     return false;
