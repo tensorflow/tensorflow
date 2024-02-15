@@ -813,8 +813,16 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
   return out;
 }
 
+AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
+                             const Tiling& tiling) {
+  return AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, exprs,
+                        exprs[0].getContext());
+}
+
+}  // namespace
+
 llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
-    mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
+    AffineExpr linear, absl::Span<const int64_t> sizes,
     absl::Span<const int64_t> strides) {
   llvm::SmallVector<AffineExpr, 4> result;
   result.reserve(sizes.size());
@@ -832,14 +840,6 @@ llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
   }
   return result;
 }
-
-AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
-                             const Tiling& tiling) {
-  return AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, exprs,
-                        exprs[0].getContext());
-}
-
-}  // namespace
 
 IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
                                                       MLIRContext* ctx) {

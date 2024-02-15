@@ -46,6 +46,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -69,6 +70,8 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
@@ -142,20 +145,15 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
   return WarpSize() / reduced_dimension_size;
 }
 
-// Divides `num_reduces` reduces into groups. Different groups will be executed
-// in parallel. Generally speaking, we'd like to run the reduce instructions
-// in parallel without incurring too much recomputation overhead. The current
-// heuristic is to place reduce instructions who share nothing or only
-// (broadcasted) scalars/constants into different groups; otherwise, they are
-// placed in the same group. Non-reduce instructions always go with the reduce
-// instructions into the same group so long as they share any predecessors.
-std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions(
+}  // namespace
+
+ReductionFusion::IndexGroups ReductionFusion::GroupDisjointReductions(
     const HloFusionAnalysis& analysis) {
   const int num_fusion_outputs = analysis.fusion_roots().size();
 
   CHECK_NE(0, num_fusion_outputs);
   if (num_fusion_outputs == 1) {
-    return {{analysis.fusion_roots()[0]}};
+    return {{{analysis.fusion_roots()[0]}}, {0}, {true}};
   }
 
   absl::node_hash_map<HloInstructionAdaptor,
@@ -171,11 +169,16 @@ std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions(
                       absl::flat_hash_set<HloInstructionAdaptor>>
       reachable_outputs;
   absl::flat_hash_set<HloInstructionAdaptor> roots_with_reduction;
-  auto roots = analysis.fusion().GetRoots();
+  const auto& roots = analysis.fusion().GetRoots();
+  ReductionFusion::IndexGroups result;
+  result.group_id_per_root.reserve(roots.size());
+  result.is_reduction_root.reserve(roots.size());
   for (auto [root, hero] : llvm::zip(roots, analysis.fusion_heroes())) {
     disjoint_sets[root].Get() = root;
     reachable_outputs[root].insert(root);
-    if (IsRealReductionHero(root.instruction(), *hero)) {
+    result.is_reduction_root.push_back(
+        IsRealReductionHero(root.instruction(), *hero));
+    if (result.is_reduction_root.back()) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root) {
       disjoint_sets[*first_non_reduction_root].Merge(&disjoint_sets[root]);
@@ -233,18 +236,30 @@ std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions(
   }
 
   // Place output instructions in the same set into the same group.
-  ConstHloInstructionMap<std::vector<const HloInstruction*>> groups;
+  ConstHloInstructionMap<std::vector<const HloInstruction*>> group_map;
   for (auto root : roots) {
-    groups[&disjoint_sets[root].Get().instruction()].push_back(
+    group_map[&disjoint_sets[root].Get().instruction()].push_back(
         &root.instruction());
   }
 
-  std::vector<std::vector<const HloInstruction*>> ret;
-  ret.reserve(groups.size());
-  absl::c_for_each(
-      groups, [&](auto& iter) { ret.emplace_back(std::move(iter.second)); });
-  return ret;
+  absl::flat_hash_map<const HloInstruction*, int> set_ids;
+  for (auto&& [id, disjoint_set] : llvm::enumerate(disjoint_sets)) {
+    set_ids[&disjoint_set.second.Get().instruction()] = id;
+  }
+
+  for (auto root : roots) {
+    result.group_id_per_root.push_back(
+        set_ids[&disjoint_sets[root].Get().instruction()]);
+  }
+
+  result.grouped_roots.reserve(group_map.size());
+  absl::c_for_each(group_map, [&](auto& it) {
+    result.grouped_roots.emplace_back(std::move(it.second));
+  });
+  return result;
 }
+
+namespace {
 
 int GetVectorSize(const HloFusionAnalysis& analysis,
                   const ReductionDimensions& reduction_dimensions,
@@ -1238,20 +1253,20 @@ absl::Status ReductionFusion::ReductionEmitter::EmitKernel(
   // block_id_y instead of block_id_x simplifies the index calculation
   // for reduction code generation as the block_id_y is orthogonal to
   // the indices used within the reductions.
-  const std::vector<std::vector<const HloInstruction*>>& instr_index_groups =
-      reduction_codegen_info_.GetIndexGroups();
+  const auto& instr_index_groups =
+      reduction_codegen_info_.GetIndexGroups().grouped_roots;
   Shape reduce_operand_shape = reduction_codegen_info_.GetReduceOperandShape();
 
-  llvm::Value* raw_block_id_y = gpu::EmitCallToTargetIntrinsic(
+  llvm::Value* block_id_y = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdy, {}, {}, builder_);
   llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
-                            llvm::cast<llvm::Instruction>(raw_block_id_y));
-  raw_block_id_y = builder_->CreateZExtOrTrunc(
-      raw_block_id_y, builder_->getInt32Ty(), "raw_block_id_y");
+                            llvm::cast<llvm::Instruction>(block_id_y));
+  block_id_y = builder_->CreateZExtOrTrunc(block_id_y, builder_->getInt32Ty());
+  block_id_y->setName("block.id.y");
   for (int i = 0; i < instr_index_groups.size(); ++i) {
     TF_RETURN_IF_ERROR(ksl.IfWithStatus(
         absl::StrCat("reduce-group-", i),
-        builder_->CreateICmpEQ(raw_block_id_y, builder_->getInt32(i)), [&] {
+        builder_->CreateICmpEQ(block_id_y, builder_->getInt32(i)), [&] {
           return EmitIRForReduction(instr_index_groups[i], fused_emitter,
                                     result_ir_arrays, reduce_operand_shape);
         }));
@@ -1286,7 +1301,8 @@ absl::Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
 LaunchDimensions ReductionFusion::launch_dimensions() const {
   const Tiling& tiling = reduction_codegen_info_.GetTiling();
-  size_t blocks_y = reduction_codegen_info_.GetIndexGroups().size();
+  size_t blocks_y =
+      reduction_codegen_info_.GetIndexGroups().grouped_roots.size();
   return {se::BlockDim(/*x=*/tiling.GetNumBlocks(),
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
           se::ThreadDim(/*x=*/tiling.GetNumThreadsPerBlock(),
@@ -1380,6 +1396,110 @@ ReductionFusion::ComputeReductionCodegenInfo(
   return ReductionCodegenInfo(
       tiling, reduction_dimensions.is_row_reduction, reduction_is_race_free,
       GroupDisjointReductions(analysis), hero_reduction);
+}
+
+std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(
+    int64_t root_index, mlir::MLIRContext* ctx) const {
+  const auto& groups = reduction_codegen_info_.GetIndexGroups();
+  if (!groups.is_reduction_root[root_index]) {
+    // Non-transpose roots are elementwise by definition.
+    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+  }
+  auto* root = analysis_.fusion_roots()[root_index];
+  auto* hero = analysis_.fusion_heroes()[root_index];
+
+  const auto& tiling = reduction_codegen_info_.GetTiling();
+  auto block_offsets = GetBlockOffsetsForTiling(tiling, ctx);
+  auto thread_ids = DelinearizeInBoundsIndex(mlir::getAffineDimExpr(0, ctx),
+                                             tiling.GetThreadsPerBlock(),
+                                             tiling.GetThreadStrides());
+
+  auto physical_shape = ShapeUtil::DeleteDimensions(hero->dimensions(),
+                                                    hero->operand(0)->shape());
+
+  std::vector<Range> dimension_ranges{
+      {0, tiling.GetNumThreadsPerBlock() - 1}, {}, {},
+      {0, tiling.GetNumBlocks() - 1},          {}, {},
+  };
+  auto physical_index = [&]() {
+    if (reduction_codegen_info_.IsRowReduction()) {
+      IndexingMap linear_index(
+          mlir::AffineMap::get(6, 0,
+                               block_offsets.getResult(kRowKeptDimension) +
+                                   thread_ids[kRowKeptDimension],
+                               ctx),
+          dimension_ranges, {});
+      int rows_per_warp = RowReductionGetRowsPerWarp(
+          tiling.GetShape()[kRowMinorReducedDimension]);
+      if (rows_per_warp > 1) {
+        linear_index.AddConstraint(thread_ids[kRowMinorReducedDimension] %
+                                       (WarpSize() / rows_per_warp),
+                                   {0, 0});
+      } else {
+        linear_index.AddConstraint(thread_ids[kRowMinorReducedDimension],
+                                   {0, 0});
+      }
+      return ComposeIndexingMaps(
+          linear_index,
+          GetBitcastMap(ShapeUtil::MakeShape(
+                            PRED, {tiling.GetShape()[kRowKeptDimension]}),
+                        physical_shape, ctx));
+    }
+
+    IndexingMap projected_index(
+        mlir::AffineMap::get(6, 0,
+                             {block_offsets.getResult(kColMajorKeptDimension),
+                              block_offsets.getResult(kColMinorKeptDimension) +
+                                  thread_ids[kColReducedDimension]},
+                             ctx),
+        dimension_ranges, {});
+
+    // TODO(b/319081342): Add constraints for the writing threads
+    // (`has_output`).
+    projected_index.AddConstraint(
+        mlir::getAffineDimExpr(kIndexingMapThreadIdxDims[0], ctx) % WarpSize(),
+        {0, 0});
+
+    return ComposeIndexingMaps(
+        projected_index,
+        GetBitcastMap(ShapeUtil::DeleteDimension(kColReducedDimension,
+                                                 tiling.GetXlaShape()),
+                      physical_shape, ctx));
+  }();
+
+  auto map = ComposeIndexingMaps(
+      physical_index, GetBitcastMap(OutputShape(hero->shape(), 0),
+                                    OutputShape(root->shape(), 0), ctx));
+
+  int group_index = groups.group_id_per_root[root_index];
+  map.AddConstraint(mlir::getAffineDimExpr(kIndexingMapBlockIdxDims[1], ctx),
+                    {group_index, group_index});
+  return map;
+}
+
+std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  const auto& groups = reduction_codegen_info_.GetIndexGroups();
+
+  auto* hero = analysis_.fusion_heroes()[hero_operand_index];
+  if (groups.is_reduction_root[root_index] &&
+      hero_operand_index >= hero->operand_count() / 2) {
+    // We don't have indexing for the init values.
+    return std::nullopt;
+  }
+
+  const auto& tiling = reduction_codegen_info_.GetTiling();
+  auto map = ComposeIndexingMaps(
+      GetIndexingMapForTiling(tiling, ctx),
+      GetBitcastMap(tiling.GetXlaShape(),
+                    hero->operand(hero_operand_index)->shape(), ctx));
+  // Only threads with the right y block index actually do anything for this
+  // root.
+  int group_index = groups.group_id_per_root[root_index];
+  map.AddConstraint(mlir::getAffineDimExpr(kIndexingMapBlockIdxDims[1], ctx),
+                    {group_index, group_index});
+  return map;
 }
 
 }  // namespace gpu

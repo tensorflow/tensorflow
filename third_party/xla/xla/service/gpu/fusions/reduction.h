@@ -109,17 +109,11 @@ class ReductionFusion : public KernelFusionEmitterBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override {
-    // TODO(b/319081342): Implement this.
-    return std::nullopt;
-  }
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override {
-    // TODO(b/319081342): Implement this.
-    return std::nullopt;
-  }
+      mlir::MLIRContext* ctx) const override;
 
  protected:
   absl::StatusOr<FusionEmissionResult> EmitInitializers(
@@ -137,10 +131,20 @@ class ReductionFusion : public KernelFusionEmitterBase {
   class ReductionEmitter;
   class ReductionGroupEmitter;
 
+  struct IndexGroups {
+    std::vector<std::vector<const HloInstruction*>> grouped_roots;
+
+    // For each root of the fusion, returns the index of the group it was placed
+    // in.
+    std::vector<int> group_id_per_root;
+
+    // For each root of the fusion, returns whether it is a reduction root, or
+    // an additional output.
+    std::vector<bool> is_reduction_root;
+  };
+
   class ReductionCodegenInfo {
    public:
-    using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
-
     ReductionCodegenInfo(Tiling tiling, bool is_row_reduction,
                          bool is_race_free, IndexGroups index_groups,
                          const HloInstruction* first_reduce)
@@ -167,6 +171,14 @@ class ReductionFusion : public KernelFusionEmitterBase {
     const HloInstruction* first_reduce_;
   };
 
+  // Groups the roots of the fusion. Different groups will be executed in
+  // parallel. We run reduce instructions in parallel if we can without too
+  // much recomputation overhead. The current heuristic is to place reduce
+  // instructions that share nothing or only (broadcasted) scalars/constants
+  // into different groups; otherwise, they are placed in the same group. Non-
+  // reduce instructions are always grouped with reduces with which they share
+  // any predecessors.
+  static IndexGroups GroupDisjointReductions(const HloFusionAnalysis& analysis);
   static ReductionCodegenInfo ComputeReductionCodegenInfo(
       const HloFusionAnalysis& analysis);
 
