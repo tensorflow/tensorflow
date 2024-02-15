@@ -4761,10 +4761,7 @@ absl::Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::WhileOp>(op)) {
-    // TODO(ezhulenev): While loops may contain instructions that do not support
-    // emitting from HLO, so we can't yet enable while thunk emission here.
-    static constexpr bool kWhileThunkNotSupported = true;
-    if (ir_emitter_context_->emit_ir_from_hlo() && !kWhileThunkNotSupported) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
       return EmitWhile(hlo_for_lmhlo.at(op));
     }
     return EmitWhile(op, hlo_for_lmhlo);
