@@ -468,7 +468,7 @@ std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name) {
   return std::nullopt;
 }
 
-std::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type) {
+absl::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type) {
   return GetTaskEnvStatTypeStrMap().at(stat_type);
 }
 

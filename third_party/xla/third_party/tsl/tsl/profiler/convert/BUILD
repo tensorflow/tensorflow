@@ -51,6 +51,7 @@ cc_library(
     deps = [
         "//tsl/platform:types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
+        "//tsl/profiler/utils:timestamp_utils",
         "//tsl/profiler/utils:xplane_schema",
         "//tsl/profiler/utils:xplane_utils",
     ],

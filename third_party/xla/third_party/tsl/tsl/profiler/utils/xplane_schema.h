@@ -411,7 +411,7 @@ bool IsInternalEvent(std::optional<int64_t> event_type);
 // Returns true if the given stat shouldn't be shown in the trace viewer.
 bool IsInternalStat(std::optional<int64_t> stat_type);
 
-std::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type);
+absl::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type);
 
 std::optional<int64_t> FindTaskEnvStatType(absl::string_view stat_name);
 
