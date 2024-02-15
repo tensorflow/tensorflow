@@ -141,13 +141,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                                const char* sync_scope_id);
 
  private:
-  // A helper method for HandleSort(). It adds the inner comparison loop where
-  // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
-  void EmitCompareLoop(int64_t dimension_to_sort,
-                       const llvm_ir::IrArray::Index& keys_index,
-                       const llvm_ir::IrArray::Index& compare_keys_index,
-                       const llvm_ir::IrArray& keys_array);
-
   // A convenience method to determine whether or not IR is emitted for AMDGPU.
   bool IsEmittingForAMDGPU() const;
 };
