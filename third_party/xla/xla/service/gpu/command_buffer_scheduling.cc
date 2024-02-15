@@ -59,8 +59,7 @@ using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
-                      const CommandBufferConfig& config,
-                      const se::DeviceDescription& device_description);
+                      const CommandBufferConfig& config);
 
 //===----------------------------------------------------------------------===//
 // No-op HLO operations.
@@ -95,36 +94,34 @@ static bool IsNoOp(const HloInstruction* hlo) {
 // This is a template to define pattern matching functions for HLO instructions
 // that do not have a corresponding class for them.
 template <HloOpcode op>
-static bool IsCommand(const HloInstruction*, const CommandBufferConfig&,
-                      const se::DeviceDescription&);
+static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 
 // While loops can be executed inside command buffers only if condition and body
 // regions can be executed as command buffers.
 template <>
-bool IsCommand<HloOpcode::kWhile>(
-    const HloInstruction* hlo, const CommandBufferConfig& config,
-    const se::DeviceDescription& device_description) {
-  return config.contains(DebugOptions::CONDITIONALS) &&
-         IsCommand(hlo->while_body(), config, device_description) &&
-         IsCommand(hlo->while_condition(), config, device_description);
+bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
+                                  const CommandBufferConfig& config) {
+  return config.enabled_commands.contains(DebugOptions::CONDITIONALS) &&
+         IsCommand(hlo->while_body(), config) &&
+         IsCommand(hlo->while_condition(), config);
 }
 
 // Conditional can be executed inside command buffers only if all regions of its
 // branches can be executed as command buffers.
 template <>
-bool IsCommand<HloOpcode::kConditional>(
-    const HloInstruction* hlo, const CommandBufferConfig& config,
-    const se::DeviceDescription& device_description) {
-  return config.contains(DebugOptions::CONDITIONALS) &&
+bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
+                                        const CommandBufferConfig& config) {
+  return config.enabled_commands.contains(DebugOptions::CONDITIONALS) &&
          absl::c_all_of(hlo->branch_computations(),
                         [&](const HloComputation* comp) {
-                          return IsCommand(comp, config, device_description);
+                          return IsCommand(comp, config);
                         });
 }
 
 static bool IsCommand(const HloCustomCallInstruction* hlo,
                       const CommandBufferConfig& config) {
-  if (config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo)) {
+  if (config.enabled_commands.contains(DebugOptions::CUBLAS) &&
+      IsLegacyCublasMatmul(*hlo)) {
     return true;
   }
 
@@ -134,8 +131,7 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
 }
 
 static bool IsCommand(const HloInstruction* hlo,
-                      const CommandBufferConfig& config,
-                      const se::DeviceDescription& device_description) {
+                      const CommandBufferConfig& config) {
   if (auto* fusion = DynCast<HloFusionInstruction>(hlo)) {
     auto gpu_config = fusion->backend_config<GpuBackendConfig>();
     const FusionBackendConfig& backend_config =
@@ -143,7 +139,7 @@ static bool IsCommand(const HloInstruction* hlo,
     const auto& custom_config = backend_config.custom_fusion_config();
     if (custom_config.name() == "address_computation") {
       auto fusion_analysis =
-          HloFusionAnalysis::Create(fusion, &device_description);
+          HloFusionAnalysis::Create(fusion, &config.device_description);
       const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
       auto custom_call_adaptor = HloFindIf(
           adaptor.GetRoots(), adaptor,
@@ -152,25 +148,25 @@ static bool IsCommand(const HloInstruction* hlo,
           &custom_call_adaptor->instruction());
       return IsCommand(custom_call, config);
     }
-    return config.contains(DebugOptions::FUSION);
+    return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
-    return config.contains(DebugOptions::FUSION);
+    return config.enabled_commands.contains(DebugOptions::FUSION);
 
   if (hlo->opcode() == HloOpcode::kPartitionId ||
       hlo->opcode() == HloOpcode::kReplicaId) {
-    return config.contains(DebugOptions::FUSION);
+    return config.enabled_commands.contains(DebugOptions::FUSION);
   }
 
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
     return IsCommand(custom_call, config);
 
   if (hlo->opcode() == HloOpcode::kWhile)
-    return IsCommand<HloOpcode::kWhile>(hlo, config, device_description);
+    return IsCommand<HloOpcode::kWhile>(hlo, config);
 
   if (hlo->opcode() == HloOpcode::kConditional)
-    return IsCommand<HloOpcode::kConditional>(hlo, config, device_description);
+    return IsCommand<HloOpcode::kConditional>(hlo, config);
 
   return false;
 }
@@ -190,12 +186,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
   if (hlo->opcode() == HloOpcode::kAllReduceStart ||
       hlo->opcode() == HloOpcode::kAllGatherStart) {
-    return config.contains(DebugOptions::COLLECTIVES);
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncStart) {
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.contains(DebugOptions::COLLECTIVES);
+      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
   }
 
@@ -206,12 +202,12 @@ static bool IsAsyncDoneCommand(const HloInstruction* hlo,
                                const CommandBufferConfig& config) {
   if (hlo->opcode() == HloOpcode::kAllReduceDone ||
       hlo->opcode() == HloOpcode::kAllGatherDone) {
-    return config.contains(DebugOptions::COLLECTIVES);
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncDone) {
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.contains(DebugOptions::COLLECTIVES);
+      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
   }
 
@@ -237,13 +233,11 @@ static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
-                      const CommandBufferConfig& config,
-                      const se::DeviceDescription& device_description) {
+                      const CommandBufferConfig& config) {
   return absl::c_all_of(
       computation->instructions(), [&](const HloInstruction* inst) {
         return IsNoOp(inst) || IsConstant(inst) || IsParameter(inst) ||
-               IsCommand(inst, config, device_description) ||
-               IsAsyncStartCommand(inst, config) ||
+               IsCommand(inst, config) || IsAsyncStartCommand(inst, config) ||
                IsAsyncDoneCommand(inst, config);
       });
 }
@@ -270,7 +264,7 @@ static void RemoveTrailingNoOps(HloInstructionSequence& seq) {
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
     const HloInstructionSequence schedule, const CommandBufferConfig& config,
-    const se::DeviceDescription& device_description, int32_t min_num_commands) {
+    int32_t min_num_commands) {
   std::vector<HloInstructionSequence> sequences;
 
   HloInstructionSequence current_seq;
@@ -300,7 +294,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
     }
 
     // Synchronous commands always can be added to instruction sequence.
-    if (IsCommand(inst, config, device_description)) {
+    if (IsCommand(inst, config)) {
       num_commands_in_current_seq++;
       current_seq.push_back(inst);
       continue;
@@ -610,10 +604,11 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
   const DebugOptions& debug_options = module->config().debug_options();
 
-  CommandBufferConfig config;
+  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> commands;
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
-    config.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
+    commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
+  CommandBufferConfig config{std::move(commands), device_description_};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
@@ -622,7 +617,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {
-      if (config.erase(cmd)) {
+      if (config.enabled_commands.erase(cmd)) {
         VLOG(1) << "Removed command buffer support for "
                 << DebugOptions::CommandBufferCmdType_Name(cmd)
                 << " as it's not supported with gpu toolkit version "
@@ -671,7 +666,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
     std::vector<HloInstructionSequence> sequences =
         CollectCommandBufferSequences(
-            module->schedule().sequence(comp), config, device_description_,
+            module->schedule().sequence(comp), config,
             debug_options.xla_gpu_graph_min_graph_size());
 
     for (const HloInstructionSequence& seq : sequences) {

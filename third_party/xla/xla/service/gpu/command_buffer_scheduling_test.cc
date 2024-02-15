@@ -349,12 +349,11 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   }
   EXPECT_EQ(seq.size(), 10);
 
-  CommandBufferScheduling::CommandBufferConfig config;
-  config.insert(DebugOptions::FUSION);
+  CommandBufferScheduling::CommandBufferConfig config{{DebugOptions::FUSION},
+                                                      device_desc()};
 
   std::vector<HloInstructionSequence> command_buffer_sequences =
-      CommandBufferScheduling::CollectCommandBufferSequences(seq, config,
-                                                             device_desc());
+      CommandBufferScheduling::CollectCommandBufferSequences(seq, config);
   EXPECT_EQ(command_buffer_sequences.size(), 2);
 
   std::vector<HloInstruction*> seq_0 =
