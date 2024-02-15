@@ -35,12 +35,7 @@ namespace xla {
 //   passes.
 class SimplifyFPConversions : public HloModulePass {
  public:
-  enum class Scope {
-    kOnlySimplifyCompilerGeneratedConversions,
-    kSimplifyAllConversions
-  };
-
-  explicit SimplifyFPConversions(Scope scope) : scope_(scope) {}
+  explicit SimplifyFPConversions() = default;
 
   absl::string_view name() const override { return "simplify-fp-conversions"; }
 
@@ -48,9 +43,6 @@ class SimplifyFPConversions : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  Scope scope_;
 };
 
 }  // namespace xla

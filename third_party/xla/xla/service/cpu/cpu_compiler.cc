@@ -909,14 +909,12 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (!is_aot_compile) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
     pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
                                            compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnMatMulRewriter pass.
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 

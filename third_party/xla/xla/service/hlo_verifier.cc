@@ -2885,12 +2885,6 @@ void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
   if (metadata.source_line() != 0) {
     ++has_source_line_count_;
   }
-  if (metadata.creation_pass_id() != 0) {
-    ++has_creation_pass_id_count_;
-  }
-  if (metadata.logical_creation_pass_id() != 0) {
-    ++has_logical_creation_pass_id_count_;
-  }
   if (metadata.size_of_generated_code_in_bytes() != 0) {
     ++has_size_of_generated_code_in_bytes_count_;
   }
