@@ -2,13 +2,13 @@
 // This tests that we do not increase the grid launch size when
 // few_waves is enabled.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK:   ![[ctaid_range]] = !{i32 0, i32 2}
-// CHECK:   ![[tid_range]] = !{i32 0, i32 1024}
+// CHECK-LABEL:   define void @wrapped_b
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-DAG:     ![[ctaid_range]] = !{i32 0, i32 2}
+// CHECK-DAG:     ![[tid_range]] = !{i32 0, i32 1024}
 
 
 HloModule Test, is_scheduled=true
@@ -27,14 +27,14 @@ ENTRY main {
 
 // This tests that we cap grid launch code when few_waves is enabled.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
-// CHECK:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-LABEL:   define void @wrapped_b
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 1760}
+// CHECK-DAG:     ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test, is_scheduled=true
 
@@ -53,15 +53,15 @@ ENTRY main {
 // This tests that we cap grid launch code when few_waves is enabled
 // and scalar broadcast are present.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-LABEL:   define void @fusion_3
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 1760}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule ScalarBroadcast, is_scheduled=true
 
@@ -84,15 +84,15 @@ ENTRY main {
 // This tests that we enable few_waves in a simple fusion. It is the baseline
 // for the tests below.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 1760}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule SimpleFusion, is_scheduled=true
 
@@ -113,15 +113,15 @@ ENTRY main {
 
 // This tests that we keep few_waves enabled for large constants.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 1760}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule LargeConstant, is_scheduled=true
 
@@ -141,15 +141,15 @@ ENTRY main {
 
 // This tests that we disable few_waves if a non-elementwise op is present.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 195313}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 97657}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 256}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 195313}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 97657}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 256}
 
 HloModule NonElementwise, is_scheduled=true
 
@@ -175,15 +175,15 @@ ENTRY main {
 // - the fusion is not row-vectorizable
 // It serves as a baseline for the tests below.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 7813}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 3907}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 256}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 7813}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 3907}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 256}
 
 HloModule NoFewWaves, is_scheduled=true
 
@@ -219,15 +219,15 @@ ENTRY main {
 // - the fusion IS row-vectorizable
 // In this case, the block count is changed from 7813 to 2000.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 2000}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 500}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 2000}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 500}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 2000}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 500}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 2000}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 500}
 
 HloModule RowVectorizable, is_scheduled=true
 
@@ -260,15 +260,15 @@ ENTRY main {
 // - the fusion is not row-vectorizable
 // In this case, the block count is changed from 7813 to 1008.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
-// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX-DAG: ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 1760}
+// CHECK-GCN-DAG: ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule ScalarBroadcastFourInputs, is_scheduled=true
 
@@ -300,14 +300,14 @@ ENTRY main {
 // This tests the GELU kernel. The original kernel that
 // motivated few_waves implementation.
 
-// CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1760}
-// CHECK:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-LABEL:   define void @fusion
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX-DAG: call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN-DAG: call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX-DAG: ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-GCN-DAG: ![[ctaid_range]] = !{i32 0, i32 1760}
+// CHECK-DAG:     ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test, is_scheduled=true
 
