@@ -97,20 +97,6 @@ void HloToIrBindings::EmitBasePointersForHlos(
   }
 }
 
-llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
-                                                  llvm::Value* base_ptr) {
-  // TODO(b/26344050): tighten the alignment based on the real element type.
-  if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
-    return llvm_ir::EmitGetTupleElement(
-        gte->shape(), gte->tuple_index(), /*alignment=*/1, base_ptr,
-        llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
-  }
-  return llvm_ir::EmitGetTupleElement(
-      gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr),
-      llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
-}
-
 // Returns true if `value` has a name that should not be changed.
 static bool HasMeaningfulName(llvm::Value* value) {
   if (auto* global = llvm::dyn_cast<llvm::GlobalValue>(value)) {

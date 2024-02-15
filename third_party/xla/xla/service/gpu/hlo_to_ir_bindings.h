@@ -78,10 +78,6 @@ class HloToIrBindings {
   std::string ToString() const;
 
  private:
-  // Emits IR to resolve (possibly) recursive GetTupleElement instructions.
-  llvm::Value* EmitGetTupleElement(const HloInstruction* gte,
-                                   llvm::Value* base_ptr);
-
   const bool is_nested_;
 
   llvm::IRBuilder<>* b_;
