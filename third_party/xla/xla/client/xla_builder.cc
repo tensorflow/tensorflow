@@ -862,8 +862,8 @@ StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
           << " i: " << i << ", shape: " << shape.ToString()
           << ", operand_shape: " << operand_shape->ToString();
     } else {
-      // Non-broadcast dimensions must not be dynamic.
-      TF_RET_CHECK(!shape.is_dynamic_dimension(i));
+      // Non-broadcast dimensions must be static.
+      TF_RET_CHECK(shape.is_static_dimension(i));
     }
   }
   return AddInstruction(std::move(instr), HloOpcode::kBroadcast, {operand});
@@ -898,7 +898,7 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
           operand_shape->is_dynamic_dimension(i));
     } else {
       TF_RET_CHECK(operand_shape->dimensions(i) == 1 &&
-                   !operand_shape->is_dynamic_dimension(i))
+                   operand_shape->is_static_dimension(i))
           << "An explicit broadcast sequence requires the broadcasted "
              "dimensions to be trivial; operand shape: "
           << *operand_shape << "; output_shape: " << output_shape;
@@ -3921,7 +3921,7 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64_t dimension) {
                                          *operand_shape, dimension));
     // Calling GetDimensionSize on a static dimension returns a constant
     // instruction.
-    if (!operand_shape->is_dynamic_dimension(dimension)) {
+    if (operand_shape->is_static_dimension(dimension)) {
       return ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
     }
     *instr.mutable_shape() = shape.ToProto();
