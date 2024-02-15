@@ -147,4 +147,3 @@ tsl/mkl/BUILD:
 tsl/mkl/LICENSE:
 tsl/mkl/MKL_LICENSE:
 tsl/mkl/build_defs.bzl:
-tsl/platform/default/build_config/BUILD:

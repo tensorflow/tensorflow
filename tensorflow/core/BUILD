@@ -708,7 +708,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_opensource",
-        "@local_tsl//tsl/platform/default/build_config:tensorflow_platform_specific",
+        "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
     ],
 )
 

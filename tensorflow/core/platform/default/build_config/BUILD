@@ -22,3 +22,17 @@ cc_library(
         "@zlib",
     ],
 )
+
+cc_library(
+    name = "tensorflow_platform_specific",
+    copts = tf_copts(),
+    linkstatic = 1,
+    deps = [],
+)
+
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    linkstatic = 1,
+    deps = [],
+)
