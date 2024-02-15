@@ -28,12 +28,14 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::PipelineConfig;
+using ::stablehlo::quantization::QuantizationSpecs;
 using ::stablehlo::quantization::StaticRangePtqPreset;
 using ::tensorflow::quantization::CalibrationOptions;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
-                             const CalibrationOptions& calibration_options) {
-  pm.addPass(createLiftQuantizableSpotsAsFunctionsPass());
+                             const CalibrationOptions& calibration_options,
+                             const QuantizationSpecs& quantization_specs) {
+  pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
   pm.addNestedPass<func::FuncOp>(
       CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());

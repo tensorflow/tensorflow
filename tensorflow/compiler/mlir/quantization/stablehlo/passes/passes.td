@@ -34,6 +34,7 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
     that disperse values. (ex: convolution, dot_general)
   }];
   let dependentDialects = [
+      "mlir::func::FuncDialect",
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",
   ];

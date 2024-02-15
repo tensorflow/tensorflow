@@ -61,3 +61,17 @@ def TestTFToStablehloPass : Pass<"stablehlo-test-tf-to-stablehlo", "mlir::Module
     "mlir::sparse_tensor::SparseTensorDialect", "mlir::vhlo::VhloDialect",
   ];
 }
+
+def TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass :
+    Pass<"stablehlo-test-lift-quantizable-spots-as-functions-with-quantization-specs", "mlir::ModuleOp"> {
+  let summary = "Test-only pass for testing the LiftQuantizableSpotsAsFunctionsPass with a predefined QuantizationSpecs.";
+  let description = [{
+    This test-only pass is the same as `LiftQuantizableSpotsAsFunctionsPass` but
+    has predefined `QuantizationSpecs` to make FileCheck testing easier.
+  }];
+  let dependentDialects = [
+      "mlir::func::FuncDialect",
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+  ];
+}
