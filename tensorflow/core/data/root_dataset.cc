@@ -336,6 +336,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       params.runner =
           RunnerWithMaxParallelism(params.runner, max_intra_op_parallelism_);
     }
+    params.options = &dataset()->options();
     return params;
   }
 

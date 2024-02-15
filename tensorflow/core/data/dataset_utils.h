@@ -362,8 +362,7 @@ inline int GetCpuBudget() {
 
 // Returns the initial value for parallelism parameter before the first Autotune
 // optimization.
-int64 GetAutotuneDefaultParallelism(IteratorContext* ctx,
-                                    const Options& options);
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
 // Creates an iterator context appropriate for a nested dataset's iterator. A
 // nested dataset is a dataset created within another dataset, e.g. by the
