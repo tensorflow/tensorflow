@@ -469,23 +469,9 @@ GpuThunkAotCompilationResult::LoadExecutable(
                                       mlir_context.get(), llvm_module.get(),
                                       /*emit_ir_from_hlo=*/true,
                                       /*emit_kernels=*/false);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = llvm_ir::CreateMlirModuleOp(
-      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
-  std::vector<const BufferAllocation*> ordered_allocations;
-  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
-      operation_map;
-  TF_RETURN_IF_ERROR(HloToLhloModule(*buffer_assignment, *hlo_module,
-                                     *mlir_module, &ordered_allocations,
-                                     &operation_map));
-  ir_emitter_context.set_allocations(ordered_allocations);
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
-  auto entry_function = mlir::cast<mlir::func::FuncOp>(
-      mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
-  // TODO(anlunx): EmitLmhloRegion emits fusion kernels. We need to make sure
-  // ptx and cubin already contain emission results and disable kernel emission
-  // here.
   TF_RETURN_IF_ERROR(
-      ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
+      ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
   std::unique_ptr<ThunkSequence> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
   ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },

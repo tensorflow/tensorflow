@@ -270,70 +270,27 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
           << ": " << hlo_module->GetFingerprint128();
 
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
   mlir::DialectRegistry registry;
   IrEmitterUnnested::GetDependentDialects(registry);
-
   // Disable MLIR multi-threading to prevent creating too many threads when
   // compiling XLA executables concurrently (e.g. during auto-tuning).
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
       registry, mlir::MLIRContext::Threading::DISABLED);
-
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = llvm_ir::CreateMlirModuleOp(
-      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
-  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
-      operation_map;
-
-  // Store the allocations in the order of the LMHLO buffer arguments.
-  std::vector<const BufferAllocation*> ordered_allocations;
-  TF_RETURN_IF_ERROR(HloToLhloModule(*results.buffer_assignment, *hlo_module,
-                                     *mlir_module, &ordered_allocations,
-                                     &operation_map));
-
-  results.module_name =
-      mlir::mhlo::GetDebugNameFromLocation(mlir_module->getLoc());
-
-  if (DumpingEnabledForHloModule(*hlo_module)) {
-    DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
-  }
-
-  auto entry_function = mlir::cast<mlir::func::FuncOp>(
-      mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
-
-  bool emit_from_hlo = !IsXlaRuntimeExecutableEnabled(hlo_module->config());
-
-  std::vector<BufferAllocation> mlir_allocations;
-  absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> mlir_output_info;
-  Shape mlir_output_shape;
-  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(entry_function, &mlir_allocations,
-                                           &mlir_output_info,
-                                           &mlir_output_shape));
+  results.module_name = hlo_module->name();
 
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(), platform_name,
       gpu_device_info, mlir_context.get(), results.llvm_module.get(),
-      emit_from_hlo, /*emit_kernels=*/true);
+      /*emit_ir_from_hlo=*/true, /*emit_kernels=*/true);
 
   std::vector<BufferAllocation*> allocations;
-  if (emit_from_hlo) {
     results.output_shape = hlo_module->result_shape();
     TF_ASSIGN_OR_RETURN(results.output_info,
                         GetOutputInfo(*hlo_module, *results.buffer_assignment));
-    TF_RET_CHECK(mlir_allocations.size() == ordered_allocations.size());
-    ir_emitter_context.set_allocations(ordered_allocations);
     results.use_original_allocations = true;
-  } else {
-    results.allocations = std::move(mlir_allocations);
-    results.output_shape = mlir_output_shape;
-    results.output_info = mlir_output_info;
-    allocations.reserve(results.allocations.size());
-    for (auto& allocation : results.allocations) {
-      allocations.push_back(&allocation);
-    }
-    ir_emitter_context.set_allocations(allocations);
-    results.use_original_allocations = false;
-  }
 
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
 
@@ -342,7 +299,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
     TF_RETURN_IF_ERROR(
-        ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
+        ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
 
     bool supports_runtime_managed_constants =
         // TODO(b/218907125): Implement this feature for ROCm as well.
