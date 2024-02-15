@@ -62,14 +62,18 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -144,6 +148,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -158,6 +163,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
@@ -170,6 +176,7 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/protobuf/dnn.pb.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 #include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -2861,6 +2868,75 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitTritonCustomCall(
+    const HloCustomCallInstruction* instr) {
+#if !GOOGLE_CUDA
+  return absl::UnimplementedError("Triton support requires CUDA");
+#else
+  mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
+  mlir_context.loadDialect<mlir::triton::TritonDialect>();
+  auto call =
+      TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
+  auto kernel_name =
+      ir_emitter_context_->name_uniquer()->GetUniqueName(call.name);
+  auto triton_module =
+      mlir::parseSourceString<mlir::ModuleOp>(call.ir, &mlir_context);
+  auto triton_fn = triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
+  triton_fn.setName(kernel_name);
+
+  // TODO(b/325259518): Cache the TTIR->LLVM compilation.
+  HloModule* hlo_module = instr->GetModule();
+  auto gemm_config = TritonGemmConfig(
+      /*block_m=*/-1, /*block_n=*/-1, /*block_k=*/-1, /*split_k=*/-1,
+      call.num_stages, call.num_warps);
+  TF_ASSIGN_OR_RETURN(
+      auto result,
+      CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
+                          ir_emitter_context_->cuda_compute_capability(),
+                          ir_emitter_context_->gpu_device_info(), gemm_config,
+                          triton_module.release(),
+                          ir_emitter_context_->llvm_module(), mlir_context));
+
+  llvm::Function* impl_fn =
+      ir_emitter_context_->llvm_module()->getFunction(kernel_name);
+  TF_RET_CHECK(impl_fn);
+  impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
+      kernel_name + "_impl"));
+
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
+                              instr->operands()));
+  auto launch_dimensions =
+      LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
+                       se::ThreadDim(call.num_warps * 32));
+
+  llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
+
+  llvm::Function* kernel;
+  std::vector<llvm_ir::IrArray> inputs;
+  std::vector<llvm_ir::IrArray> outputs;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(kernel, inputs, outputs),
+      BuildKernelPrototype(*ir_emitter_context_, kernel_name,
+                           kernel_arguments.args(), impl_fn->arg_size(),
+                           launch_dimensions, &builder));
+
+  // Move function body into kernel prototype.
+  llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
+  prototype_func->splice(prototype_func->begin(), impl_fn);
+  for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
+    arg.replaceAllUsesWith(input.GetBasePointer());
+  }
+  impl_fn->eraseFromParent();
+
+  AddThunkToThunkSequence(std::make_unique<KernelThunk>(
+      instr, kernel->getName().str(), kernel_arguments.args(),
+      launch_dimensions, std::nullopt, result.shmem_bytes));
+  return absl::OkStatus();
+#endif  // GOOGLE_CUDA
+}
+
 // Convert the following form of fusion region:
 //   fusion() {
 //     %0 = tensor_load %external_memref0
@@ -4493,6 +4569,11 @@ absl::Status IrEmitterUnnested::EmitOp(
 
     if (!is_gpu_runtime && call.getCallTargetName() == "__gpu$TopK") {
       return EmitTopKCustomCall(
+          Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
+    }
+
+    if (call.getCallTargetName() == "__gpu$xla.gpu.triton") {
+      return EmitTritonCustomCall(
           Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
     }
 

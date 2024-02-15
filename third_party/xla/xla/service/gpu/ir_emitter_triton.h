@@ -93,6 +93,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
 
+// Compiles a given Triton module to LLVM IR.
+absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::MLIRContext& mlir_context);
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -326,6 +326,8 @@ cc_library(
         ":reduction_utils",
         ":target_util",
         ":thunk",
+        ":triton_call",
+        ":triton_fusion_analysis",
         "//xla:autotuning_proto_cc",
         "//xla:literal",
         "//xla:permutation_util",
@@ -384,6 +386,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:sort_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
@@ -413,8 +416,11 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:ToLLVMIRTranslation",
@@ -423,6 +429,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@triton//:TritonDialects",
     ] + if_gpu_is_configured([
         ":ir_emitter_triton",
         "//xla/service/gpu/runtime:cholesky_thunk",
@@ -513,6 +520,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service:dump",
+        "//xla/service:hlo_module_config",
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
@@ -776,6 +784,22 @@ xla_test(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "triton_call",
+    srcs = if_gpu_is_configured(["triton_call.cc"]),
+    hdrs = ["triton_call.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
     ],
 )
 

@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -2010,11 +2011,9 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
 
 namespace {
 
-std::string GetLibdevicePath(const HloComputation* hlo_computation) {
-  return nvptx::LibDevicePath(hlo_computation->parent()
-                                  ->config()
-                                  .debug_options()
-                                  .xla_gpu_cuda_data_dir());
+std::string GetLibdevicePath(const HloModuleConfig& hlo_config) {
+  return nvptx::LibDevicePath(
+      hlo_config.debug_options().xla_gpu_cuda_data_dir());
 }
 
 }  // namespace
@@ -2054,9 +2053,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation),
-                                device_info, analysis, hlo_computation, fn,
-                                config));
+  TF_RETURN_IF_ERROR(
+      ir_emitter(b, GetLibdevicePath(hlo_computation->parent()->config()),
+                 device_info, analysis, hlo_computation, fn, config));
 
   b.create<mt::ReturnOp>(loc);
 
@@ -2130,12 +2129,21 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   VLOG(2) << config.ToString();
 
   // Compile Triton kernel to LLVM.
-  std::optional<llvm::raw_fd_ostream> log_stream;
   const HloModule* hlo_module = hlo_computation->parent();
+  return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), cc,
+                             device_info, config, triton_module.release(),
+                             llvm_module, mlir_context);
+}
 
+// TODO(b/325220878): Replace TritonGemmConfig with a more generic abstraction.
+absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::MLIRContext& mlir_context) {
   bool should_verify =
-      (hlo_module->config().debug_options().xla_gpu_llvm_verification_level() >=
-       1);
+      (hlo_config.debug_options().xla_gpu_llvm_verification_level() >= 1);
 #ifndef NDEBUG
   should_verify = true;
 #endif
@@ -2143,13 +2151,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   mlir::PassManager pm(&mlir_context);
   pm.enableVerifier(should_verify);
 
-  if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
+  std::optional<llvm::raw_fd_ostream> log_stream;
+  if (hlo_config.debug_options().xla_gpu_dump_llvmir()) {
     const std::string basename =
-        absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
+        absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module_name)),
                      ".triton-passes.log");
     std::string outputs_dir;
     if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_module->config().debug_options().xla_dump_to();
+      outputs_dir = hlo_config.debug_options().xla_dump_to();
     }
     if (!outputs_dir.empty()) {
       std::string path = tsl::io::JoinPath(outputs_dir, basename);
@@ -2187,7 +2196,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  bool succeeded = mlir::succeeded(pm.run(*triton_module));
+  bool succeeded = mlir::succeeded(pm.run(triton_module));
 
   if (log_stream.has_value()) {
     log_stream->flush();
@@ -2198,8 +2207,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   }
 
   const int shared_mem_bytes =
-      (*triton_module)
-          ->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
+      triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
@@ -2210,8 +2218,8 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::Module> ll_triton_module,
-      TranslateLLVMToLLVMIR(&llvm_module->getContext(), *triton_module,
-                            GetLibdevicePath(hlo_computation)));
+      TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module,
+                            GetLibdevicePath(hlo_config)));
   VLogModule(5, *ll_triton_module);
   if (should_verify) {
     VerifyModule(*ll_triton_module);

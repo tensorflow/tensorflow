@@ -213,6 +213,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
+  absl::Status EmitTritonCustomCall(const HloCustomCallInstruction* instr);
 
   absl::Status EmitSendThunk(const HloSendInstruction* instr);
   absl::Status EmitSendDoneThunk(const HloSendDoneInstruction* instr);
