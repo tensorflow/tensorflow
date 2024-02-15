@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -78,6 +79,17 @@ class SinkVariableAsNamedArrayPass
       if (mlir::failed(CollectVariablesUsedByDevice(
               call, variable_config_by_name, ifrt_call_argument_configs))) {
         return signalPassFailure();
+      }
+    }
+
+    // Insert IfrtLoadVariableOp after ReadVariableOp.
+    for (auto& [name, variable_config] : variable_config_by_name) {
+      for (auto& read_variable_op : variable_config.read_variable_op) {
+        builder.setInsertionPointAfter(read_variable_op);
+        builder.create<mlir::TF::IfrtLoadVariableOp>(
+            read_variable_op->getLoc(), read_variable_op.getValue(),
+            builder.getStringAttr(variable_config.device_sharding_config),
+            builder.getStringAttr(name));
       }
     }
 
@@ -143,38 +155,6 @@ class SinkVariableAsNamedArrayPass
         }
       }
       variable_config.used_by_host = used_by_host;
-
-      // Annotate ReadVariableOp and VarHandle.
-      for (auto& read_variable_op : variable_config.read_variable_op) {
-        auto var_handle =
-            GetDefiningOp<mlir::TF::VarHandleOp>(read_variable_op.getOperand());
-        if (!var_handle) {
-          read_variable_op.emitError()
-              << "cannot find VarHandle op for ReadVariableOp in the current "
-                 "function body.";
-          return signalPassFailure();
-        }
-
-        read_variable_op->setAttr(kVariableUsedByHostAttr,
-                                  builder.getBoolAttr(used_by_host));
-        var_handle->setAttr(kVariableUsedByHostAttr,
-                            builder.getBoolAttr(used_by_host));
-        read_variable_op->setAttr(kVariableUsedByDeviceAttr,
-                                  builder.getBoolAttr(true));
-        var_handle->setAttr(kVariableUsedByDeviceAttr,
-                            builder.getBoolAttr(true));
-        read_variable_op->setAttr(kVariableArrayNameAttr,
-                                  builder.getStringAttr(name));
-        var_handle->setAttr(kVariableArrayNameAttr,
-                            builder.getStringAttr(name));
-
-        read_variable_op->setAttr(
-            kVariableShardingConfigTextAttr,
-            builder.getStringAttr(variable_config.device_sharding_config));
-        var_handle->setAttr(
-            kVariableShardingConfigTextAttr,
-            builder.getStringAttr(variable_config.device_sharding_config));
-      }
     }
   }
 

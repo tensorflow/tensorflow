@@ -52,7 +52,6 @@ cc_library(
 cc_library(
     name = "tf_ifrt_passes",
     srcs = [
-        "lower_to_ifrt_load_variable.cc",
         "rewrite_cluster_to_ifrt_call.cc",
         "sink_variable_as_named_array.cc",
         "tf_ifrt_passes.cc",

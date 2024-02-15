@@ -33,29 +33,16 @@ def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::Mo
 
   let description = [{
     This pass sinks variable tensor argument to `tf.IfrtCall` as variable_arg_indices
-    and variable_names attributes.
+    and variable_names attributes and also lowers `tf.ReadVariableOp` to
+    `tf.IfrtLoadVariableOp`.
 
     The runtime ensures that `tf.IfrtCall` kernel can bind the IFRT array by
     its name as input to the TPU program.
-
-    This pass also annotate variable ops with sharding information.
 
  }];
 
   let constructor = "CreateSinkVariableAsNamedArrayPass()";
 }
-
-def LowerToIfrtLoadVariablePass: Pass<"lower-to-ifrt-load-variable", "mlir::ModuleOp"> {
-  let summary = "Lower to IfrtLoadVariable";
-
-  let description = [{
-    This pass converts applicable variable tensor to a named IFRT array 
-    through inserting proper `tf.IfrtLoadVariableOp`. 
- }];
-
-  let constructor = "CreateLowerToIfrtLoadVariablePass()";
-}
-
 
 def TfRestoreSplittingPass
     : Pass<"tf-restore-splitting", "mlir::func::FuncOp"> {

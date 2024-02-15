@@ -85,9 +85,6 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
 
   // Sink variable tensor as named array in IFRT.
   pm.addPass(CreateSinkVariableAsNamedArrayPass());
-  // Lower to IFRT load variable. Depends on annotation from
-  // SinkVariableAsnamedArrayPass.
-  pm.addPass(CreateLowerToIfrtLoadVariablePass());
 }
 
 }  // namespace
