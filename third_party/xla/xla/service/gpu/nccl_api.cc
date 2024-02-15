@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
@@ -26,15 +27,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -281,6 +285,10 @@ class DefaultNcclApi final : public NcclApi {
                                              const NcclCliqueId& clique_id,
                                              int32_t rank) final;
 
+  absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
+      int32_t nranks, const NcclCliqueId& clique_id,
+      absl::Span<const DeviceRank> ranks) final;
+
   absl::Status CommAbort(NcclCommHandle comm) final;
   absl::Status CommFinalize(NcclCommHandle comm) final;
   absl::Status CommDestroy(NcclCommHandle comm) final;
@@ -358,6 +366,25 @@ absl::StatusOr<NcclApi::OwnedNcclComm> DefaultNcclApi::CommInitRank(
       ncclCommInitRank(&comm, nranks, AsNcclUniqueId(clique_id), rank));
 
   return OwnedNcclComm(Cast(comm), NcclCommDeleter{this});
+}
+
+absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>>
+DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
+                              absl::Span<const DeviceRank> ranks) {
+  VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
+          << " devices; hash(id)=" << absl::HashOf(clique_id.data());
+
+  std::vector<OwnedNcclComm> comms;
+
+  TF_RETURN_IF_ERROR(GroupStart());
+  for (const DeviceRank& rank : ranks) {
+    se::gpu::ScopedActivateExecutorContext activate_context(rank.device);
+    TF_ASSIGN_OR_RETURN(comms.emplace_back(),
+                        CommInitRank(nranks, clique_id, rank.rank));
+  }
+  TF_RETURN_IF_ERROR(GroupEnd());
+
+  return comms;
 }
 
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {

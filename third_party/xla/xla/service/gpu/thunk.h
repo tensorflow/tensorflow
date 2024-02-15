@@ -214,6 +214,8 @@ class Thunk {
     // A mapping from local device ordinals to global device IDs.
     using GlobalDeviceIdMap = std::map<int32_t, GlobalDeviceId>;
 
+    se::StreamExecutor* executor;
+
     // XLA execution run id allows us to distinguish collective operations
     // from different concurrent executions and avoid deadlocks.
     RunId run_id;
@@ -227,8 +229,9 @@ class Thunk {
 
    private:
     CollectiveExecuteParams(
-        RunId run_id, int64_t local_device_ordinal,
-        GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
+        se::StreamExecutor* executor, RunId run_id,
+        int64_t local_device_ordinal, GlobalDeviceId global_device_id,
+        const DeviceAssignment* device_assn,
         const GlobalDeviceIdMap* global_device_id_map,
         const NcclCliqueIdCallback* nccl_clique_id_callback);
   };

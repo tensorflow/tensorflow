@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/lockable.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
 
@@ -51,9 +52,6 @@ namespace xla::gpu {
 // NcclCliqueKey for details.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/communicators.html#using-multiple-nccl-communicators-concurrently
-
-// Forward declare.
-class NcclCliqueCommunicators;
 
 //===----------------------------------------------------------------------===//
 // NcclUniqueId
@@ -79,7 +77,7 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
 class NcclCliqueCommunicators {
  public:
   NcclCliqueCommunicators(
-      NcclCliqueKey clique_key, NcclCliqueId,
+      NcclCliqueKey clique_key, NcclCliqueId clique_id,
       absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators);
 
   // Returns a NCCL communicator for a given rank if it's in a clique.
@@ -122,7 +120,7 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // owned by `num_local_participants` threads). XLA uses this lock to serialize
 // execution of all collective operations sharing a `clique_id`.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    RunId run_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     size_t num_local_participants);
 

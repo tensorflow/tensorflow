@@ -128,18 +128,20 @@ Thunk::CollectiveExecuteParams::Create(
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
-  return CollectiveExecuteParams(run_options.run_options().run_id(),
+  return CollectiveExecuteParams(run_options.stream()->parent(),
+                                 run_options.run_options().run_id(),
                                  local_device_ordinal, global_device_id,
                                  run_options.run_options().device_assignment(),
                                  device_id_map, nccl_callback);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
-    RunId run_id, int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-    const DeviceAssignment* device_assn,
+    se::StreamExecutor* executor, RunId run_id, int64_t local_device_ordinal,
+    GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const NcclCliqueIdCallback* nccl_clique_id_callback)
-    : run_id(run_id),
+    : executor(executor),
+      run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
       device_assn(device_assn),
