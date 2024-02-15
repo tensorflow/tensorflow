@@ -469,8 +469,15 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   // Launch CUDA kernels with packed arguments.
   auto launch = [&](const KernelArgsPackedArrayBase& packed) {
-    CHECK_EQ(kernel.Arity() + (packed.number_of_shared_bytes() > 0),
-             packed.number_of_arguments());
+    int32_t expected_number_of_arguments =
+        kernel.Arity() + (packed.number_of_shared_bytes() > 0);
+
+    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
+        << "Kernel " << kernel.name() << " has " << packed.number_of_arguments()
+        << " arguments, but expected " << expected_number_of_arguments
+        << "; arity=" << kernel.Arity()
+        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
+
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
     if (cluster_dims.has_value()) {
