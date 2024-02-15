@@ -5050,6 +5050,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (instr->custom_call_target() == "SliceToDynamic") {
         return EmitSliceToDynamic(custom_call);
       }
+      if (instr->custom_call_target() == "__gpu$xla.gpu.triton") {
+        return EmitTritonCustomCall(custom_call);
+      }
       return EmitCustomCallThunk(custom_call);
     }
     case HloOpcode::kFusion: {
