@@ -109,7 +109,6 @@ tf_mkl_kernel_library(
     hdrs = [
         "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
-        "//tensorflow/core/kernels/sparse:mat_mul_op.h",
     ],
     deps = [
         "//tensorflow/core/kernels:cwise_op",
