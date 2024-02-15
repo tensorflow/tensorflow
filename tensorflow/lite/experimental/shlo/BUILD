@@ -14,8 +14,55 @@ cc_library(
 
 cc_library(
     name = "tensor",
+    srcs = ["tensor.cc"],
     hdrs = ["tensor.h"],
-    deps = [":data_type"],
+    deps = [
+        ":data_type",
+        ":quantized_tensor_element_type",
+        ":shape",
+    ],
+)
+
+cc_library(
+    name = "shape",
+    srcs = ["shape.cc"],
+    hdrs = ["shape.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "shape_test",
+    srcs = ["shape_test.cc"],
+    deps = [
+        ":shape",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "quantized_tensor_element_type",
+    hdrs = ["quantized_tensor_element_type.h"],
+    deps = [
+        ":data_type",
+        ":shape",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "quantized_tensor_element_type_test",
+    srcs = ["quantized_tensor_element_type_test.cc"],
+    deps = [
+        ":data_type",
+        ":quantized_tensor_element_type",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

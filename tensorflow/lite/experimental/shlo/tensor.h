@@ -16,39 +16,68 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TENSOR_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TENSOR_H_
 
-#include <cstdint>
+#include <cassert>
+#include <cstddef>
 #include <variant>
 
 #include "tensorflow/lite/experimental/shlo/data_type.h"
+#include "tensorflow/lite/experimental/shlo/quantized_tensor_element_type.h"
+#include "tensorflow/lite/experimental/shlo/shape.h"
 
 namespace shlo_ref {
 
-// A non owning view of tensor data.
+using TensorElementType = DataType;
+
+struct TensorType {
+  Shape shape;
+  TensorElementType element_type;
+};
+
+struct QuantizedTensorType {
+  Shape shape;
+  QuantizedTensorElementType element_type;
+};
+
 struct Tensor {
-  DataType type;     // Type of the underlying buffer.
-  void* data;        // Non owning pointer to the underlying buffer.
-  int64_t rank;      // Number of dimensions.
-  int64_t* dims;     // Size of each dimension, in elements. Must hold `rank`
-                     // elements.
-  int64_t* strides;  // Stride between two elements of each dimension, in bytes.
-                     // Must hold `rank` elements.
+  const Shape& shape() const;
+  Shape& shape();
 
-  struct NoQuantization {};
+  bool IsQuantized() const;
+  bool IsPerAxisQuantized() const;
+  bool IsPerTensorQuantized() const;
 
-  // The size of the arrays must be equal to the channel count.
-  struct PerChannelAffineQuantization {
-    float* scales;
-    float* zero_points;
-  };
+  size_t Rank() const;
+  DataType StorageType() const;
 
-  struct PerTensorAffineQuantization {
-    float scales;
-    float zero_points;
-  };
+  DimensionSize NumElements() const;
 
-  std::variant<NoQuantization, PerChannelAffineQuantization,
-               PerTensorAffineQuantization>
-      quantization;
+  TensorType& tensor_type();
+  const TensorType& tensor_type() const;
+
+  QuantizedTensorType& quantized_tensor_type();
+  const QuantizedTensorType& quantized_tensor_type() const;
+
+  const TensorElementType& tensor_element_type() const;
+  const QuantizedTensorElementType& quantized_tensor_element_type() const;
+
+  template <DataType data_type, typename T = Storage<data_type>::Type>
+  T* GetDataAs() {
+    return reinterpret_cast<T*>(data);
+  }
+
+  template <DataType data_type, typename T = Storage<data_type>::Type>
+  const T* GetDataAs() const {
+    return reinterpret_cast<const T*>(data);
+  }
+
+  std::variant<TensorType, QuantizedTensorType> type;
+
+  // If type is TensorType, the type should be Storage<type.element_type>::Type.
+  // If type is QuantizedTensorType, the type should be
+  // Storage<type.element_type.storage_type>::Type.
+  // May be nullptr if buffers are not yet available.
+  // The size of the array must be equal to Size(shape).
+  void* data = nullptr;
 };
 
 }  // namespace shlo_ref

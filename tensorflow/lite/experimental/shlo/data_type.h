@@ -74,16 +74,7 @@ struct Storage<DataType::kF32> {
 };
 
 template <DataType data_type>
-constexpr auto Cast(const void* p) {
-  using Type = typename Storage<data_type>::Type;
-  return reinterpret_cast<const Type*>(p);
-}
-
-template <DataType data_type>
-constexpr auto Cast(void* p) {
-  using Type = typename Storage<data_type>::Type;
-  return reinterpret_cast<Type*>(p);
-}
+using StorageType = typename Storage<data_type>::Type;
 
 constexpr bool IsBool(DataType data_type) { return data_type == DataType::kI1; }
 
@@ -98,7 +89,7 @@ constexpr bool IsFloat(DataType data_type) {
 
 template <DataType data_type>
 constexpr int64_t SizeOf() {
-  return sizeof(typename Storage<data_type>::Type);
+  return sizeof(StorageType<data_type>);
 }
 
 constexpr int64_t SizeOf(DataType data_type) {
