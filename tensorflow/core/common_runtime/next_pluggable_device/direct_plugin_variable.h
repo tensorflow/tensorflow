@@ -31,12 +31,12 @@ class DirectPluginVariable : public PluginVariable {
   DirectPluginVariable(int index, const std::string& name, Var* var);
   absl::Status GetTensor(const Tensor** result_tensor) override {
     *result_tensor = var_info_.var()->tensor();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   absl::Status GetMutableTensor(Tensor** result_tensor) override {
     *result_tensor = var_info_.var()->tensor();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   VariableInfo* GetVariableInfo() { return &var_info_; }
