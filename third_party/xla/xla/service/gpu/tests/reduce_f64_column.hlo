@@ -119,7 +119,7 @@ ENTRY e {
 // CHECK:         %[[VAL_61:.*]] = bitcast <2 x i32> %[[VAL_60]] to i64
 // CHECK:         %[[VAL_62:.*]] = bitcast i64 %[[VAL_61]] to double
 // CHECK:         store double %[[VAL_62]], ptr{{.*}}%[[VAL_9]], align 8
-// CHECK-PTX:     call void @[[ADD:add.*]](ptr [[VAL_51]], ptr %[[VAL_9]], ptr %[[VAL_8]])
+// CHECK-PTX:     call void @[[ADD:add.*]](ptr %[[VAL_51]], ptr %[[VAL_9]], ptr %[[VAL_8]])
 // CHECK-GCN:     %[[VAL_9_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_9]] to ptr
 // CHECK-GCN:     %[[VAL_8_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_8]] to ptr
 // CHECK-GCN:     call void @[[ADD:add.*]](ptr %[[VAL_51]], ptr %[[VAL_9_1]], ptr %[[VAL_8_1]])
@@ -139,7 +139,7 @@ ENTRY e {
 // CHECK:         %[[VAL_73:.*]] = bitcast <2 x i32> %[[VAL_72]] to i64
 // CHECK:         %[[VAL_74:.*]] = bitcast i64 %[[VAL_73]] to double
 // CHECK:         store double %[[VAL_74]], ptr{{.*}}%[[VAL_7]], align 8
-// CHECK-PTX:     call void @[[ADD]](ptr [[VAL_51]], ptr %[[VAL_7]], ptr %[[VAL_6]])
+// CHECK-PTX:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_7]], ptr %[[VAL_6]])
 // CHECK-GCN:     %[[VAL_7_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_7]] to ptr
 // CHECK-GCN:     %[[VAL_6_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_6]] to ptr
 // CHECK-GCN:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_7_1]], ptr %[[VAL_6_1]])
@@ -159,7 +159,7 @@ ENTRY e {
 // CHECK:         %[[VAL_85:.*]] = bitcast <2 x i32> %[[VAL_84]] to i64
 // CHECK:         %[[VAL_86:.*]] = bitcast i64 %[[VAL_85]] to double
 // CHECK:         store double %[[VAL_86]], ptr{{.*}}%[[VAL_5]], align 8
-// CHECK-PTX:     call void @[[ADD]](ptr [[VAL_51]], ptr %[[VAL_5]], ptr %[[VAL_4]])
+// CHECK-PTX:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_5]], ptr %[[VAL_4]])
 // CHECK-GCN:     %[[VAL_5_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_5]] to ptr
 // CHECK-GCN:     %[[VAL_4_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_4]] to ptr
 // CHECK-GCN:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_5_1]], ptr %[[VAL_4_1]])
@@ -179,7 +179,7 @@ ENTRY e {
 // CHECK:         %[[VAL_97:.*]] = bitcast <2 x i32> %[[VAL_96]] to i64
 // CHECK:         %[[VAL_98:.*]] = bitcast i64 %[[VAL_97]] to double
 // CHECK:         store double %[[VAL_98]], ptr{{.*}}%[[VAL_3]], align 8
-// CHECK-PTX:     call void @[[ADD]](ptr [[VAL_51]], ptr %[[VAL_3]], ptr %[[VAL_2]])
+// CHECK-PTX:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_3]], ptr %[[VAL_2]])
 // CHECK-GCN:     %[[VAL_3_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_3]] to ptr
 // CHECK-GCN:     %[[VAL_2_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_2]] to ptr
 // CHECK-GCN:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_3_1]], ptr %[[VAL_2_1]])
@@ -199,7 +199,7 @@ ENTRY e {
 // CHECK:         %[[VAL_109:.*]] = bitcast <2 x i32> %[[VAL_108]] to i64
 // CHECK:         %[[VAL_110:.*]] = bitcast i64 %[[VAL_109]] to double
 // CHECK:         store double %[[VAL_110]], ptr{{.*}}%[[VAL_1]], align 8
-// CHECK-PTX:     call void @[[ADD]](ptr [[VAL_51]], ptr %[[VAL_1]], ptr %[[VAL_0]])
+// CHECK-PTX:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_1]], ptr %[[VAL_0]])
 // CHECK-GCN:     %[[VAL_1_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_1]] to ptr
 // CHECK-GCN:     %[[VAL_0_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_0]] to ptr
 // CHECK-GCN:     call void @[[ADD]](ptr %[[VAL_51]], ptr %[[VAL_1_1]], ptr %[[VAL_0_1]])
@@ -228,7 +228,7 @@ ENTRY e {
 // CHECK:         %[[VAL_130:.*]] = trunc i8 %[[VAL_123]] to i1
 // CHECK:         %[[VAL_131:.*]] = select i1 %[[VAL_130]], double %[[VAL_126]], double %[[VAL_129]]
 // CHECK:         store double %[[VAL_131]], ptr{{.*}}%[[VAL_14]], align 8
-// CHECK-PTX:     call void @[[ADD]](ptr [[VAL_13]], ptr %[[VAL_14]], ptr %[[VAL_10]])
+// CHECK-PTX:     call void @[[ADD]](ptr %[[VAL_13]], ptr %[[VAL_14]], ptr %[[VAL_10]])
 // CHECK-GCN:     %[[VAL_13_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_13]] to ptr
 // CHECK-GCN:     %[[VAL_14_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_14]] to ptr
 // CHECK-GCN:     %[[VAL_10_1:.*]] = addrspacecast ptr{{.*}}%[[VAL_10]] to ptr
