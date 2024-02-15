@@ -39,6 +39,28 @@ using ::testing::FieldsAre;
 
 using TritonDotAnalysisTest = HloTestBase;
 
+TEST_F(TritonDotAnalysisTest, QueryingOutputScopeParametersAlwaysWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_dot {
+  p0 = f32[8,8] parameter(0)
+  ROOT dot = f32[8,8] dot(p0, p0),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[8,8] parameter(0)
+  ROOT r = f32[8,8] fusion(p0), kind=kCustom, calls=triton_dot
+})"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const auto analysis,
+      TritonFusionAnalysis::Execute(*module->entry_computation()
+                                         ->root_instruction()
+                                         ->called_computations()[0]));
+  EXPECT_TRUE(
+      analysis.ScopeParameters(TritonFusionAnalysis::Scope::OUTPUT).empty());
+}
+
 TEST_F(TritonDotAnalysisTest, NopBitcasts) {
   const std::string hlo_text = R"(
 HloModule t
