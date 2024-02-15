@@ -67,7 +67,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/log",
