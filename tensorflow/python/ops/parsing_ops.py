@@ -1200,7 +1200,7 @@ def decode_json_example(json_examples, name=None):
   >>> example_binary.numpy()
   b'\n\x0f\n\r\n\x01a\x12\x08\x1a\x06\x08\x01\x08\x01\x08\x03'
 
-  The OP works on string tensors of andy shape:
+  The OP works on string tensors of any shape:
 
   >>> tf.io.decode_json_example([
   ...     [example_json, example_json],
