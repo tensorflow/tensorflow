@@ -196,7 +196,6 @@ cc_library(
     name = "pjrt_c_api_gpu",
     srcs = ["pjrt_c_api_gpu.cc"],
     hdrs = ["pjrt_c_api_gpu.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_gpu_internal",
         ":pjrt_c_api_hdrs",

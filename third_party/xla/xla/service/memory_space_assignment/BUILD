@@ -5,6 +5,7 @@ load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -12,7 +13,8 @@ load(
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -28,14 +30,12 @@ tf_proto_library(
     srcs = ["memory_space_assignment.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":allocation",
         ":cost_analysis",
@@ -135,7 +135,6 @@ xla_cc_test(
 cc_library(
     name = "repacking",
     hdrs = ["repacking.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla/service/heap_simulator:allocation_block",
@@ -147,7 +146,6 @@ cc_library(
     name = "best_fit_repacker",
     srcs = ["best_fit_repacker.cc"],
     hdrs = ["best_fit_repacker.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":repacking",
         "//xla:comparison_util",
@@ -169,7 +167,6 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
@@ -183,7 +180,6 @@ cc_library(
     hdrs = [
         "slice.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":memory_space_assignment_proto_cc",
         "//xla:shape_util",
@@ -198,7 +194,6 @@ cc_library(
     hdrs = [
         "allocation.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
@@ -228,7 +223,6 @@ cc_library(
     name = "tuning_utils",
     srcs = ["tuning_utils.cc"],
     hdrs = ["tuning_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/heap_simulator",
@@ -239,7 +233,6 @@ cc_library(
     name = "cost_analysis",
     srcs = ["cost_analysis.cc"],
     hdrs = ["cost_analysis.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:statusor",
@@ -284,7 +277,6 @@ cc_library(
     name = "prefetch_interval_picker",
     srcs = ["prefetch_interval_picker.cc"],
     hdrs = ["prefetch_interval_picker.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cost_analysis",
         ":memory_space_assignment_proto_cc",
@@ -308,7 +300,6 @@ cc_library(
     name = "testing_utils",
     testonly = True,
     hdrs = ["testing_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cost_analysis",
         "//xla:shape_util",

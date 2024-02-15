@@ -1,8 +1,13 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//learning/brain/mlir:tensorflow_friends",
+        "//learning/brain/mlir:xla_friends",
+    ]),
     licenses = ["notice"],
 )
 
@@ -10,7 +15,6 @@ cc_library(
     name = "attribute_importer",
     srcs = ["attribute_importer.cc"],
     hdrs = ["attribute_importer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:statusor",
@@ -26,7 +30,6 @@ cc_library(
     name = "stack_location_utils",
     srcs = ["stack_location_utils.cc"],
     hdrs = ["stack_location_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
@@ -44,7 +47,6 @@ cc_library(
         "hlo_function_importer.h",
         "hlo_module_importer.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":attribute_importer",
         ":hlo_utils",
@@ -80,7 +82,6 @@ cc_library(
     name = "hlo_to_mlir_hlo",
     srcs = ["hlo_to_mlir_hlo.cc"],
     hdrs = ["hlo_to_mlir_hlo.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_module_importer",
         "//xla:status",
@@ -94,7 +95,6 @@ cc_library(
     srcs = ["hlo_utils.cc"],
     hdrs = ["hlo_utils.h"],
     includes = ["include"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -134,7 +134,6 @@ cc_library(
     name = "location_importer",
     srcs = ["location_importer.cc"],
     hdrs = ["location_importer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "stack_location_utils",
         "//xla/hlo/ir:hlo",
@@ -146,7 +145,6 @@ cc_library(
     name = "translate",
     srcs = ["translate.cc"],
     hdrs = ["translate.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_to_mlir_hlo",
         "//xla:status",
@@ -163,7 +161,6 @@ cc_library(
     name = "translate_registration",
     testonly = True,
     srcs = ["translate_registration.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":translate",
         "@llvm-project//mlir:IR",

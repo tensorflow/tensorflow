@@ -83,7 +83,7 @@ cc_library(
     srcs = ["testlib.cc"],
     hdrs = ["testlib.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/mlir/runtime:friends"],
     deps = [
         ":testlib_inc_gen",
         "@llvm-project//llvm:Support",

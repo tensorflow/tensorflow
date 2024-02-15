@@ -1,7 +1,6 @@
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -32,7 +31,7 @@ cc_library(
     testonly = 1,
     srcs = ["testlib_pipeline.cc"],
     hdrs = ["testlib_pipeline.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//xla:runtime"],
     deps = [
         "//xla/mlir/runtime/transforms:compiler",
         "//xla/mlir/runtime/transforms:passes",

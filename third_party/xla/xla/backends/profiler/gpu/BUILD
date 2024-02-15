@@ -7,6 +7,7 @@ load(
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
+    "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
 )
@@ -25,7 +26,8 @@ load(
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla:internal"]),
 )
 
 tsl_gpu_library(
@@ -38,7 +40,6 @@ tsl_gpu_library(
         ":cupti_wrapper",
         ":rocm_tracer",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":cupti_utils",
         "@com_google_absl//absl/container:fixed_array",
@@ -75,7 +76,6 @@ tsl_gpu_library(
     cuda_deps = [
         ":cupti_interface",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "@local_tsl//tsl/platform:test",
     ],
@@ -154,7 +154,6 @@ bool_flag(
 config_setting(
     name = "use_cupti_stub",
     flag_values = {":use_cupti_stub_flag": "True"},
-    visibility = ["//visibility:public"],
 )
 
 # We need an indirection because we can't compose multiple selects.
@@ -164,7 +163,6 @@ alias(
         ":use_cupti_stub": ":_cupti_wrapper_stub",
         "//conditions:default": ":_cupti_wrapper_impl",
     }),
-    visibility = ["//visibility:public"],
 )
 
 # Rationale for linkstatic: The symbols in libcupti_static.a have hidden
@@ -280,7 +278,6 @@ tsl_gpu_library(
     srcs = if_cuda(["nvtx_utils.cc"]),
     hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",

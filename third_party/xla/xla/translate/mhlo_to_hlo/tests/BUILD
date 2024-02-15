@@ -2,7 +2,6 @@ load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -54,5 +53,4 @@ lit_test_suite(
 filegroup(
     name = "test_utilities",
     testonly = True,
-    visibility = ["//visibility:public"],
 )

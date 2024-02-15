@@ -29,7 +29,7 @@ load(
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_libtpu",
-    "set_external_visibility",
+    "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
 )
@@ -48,14 +48,23 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tensorflow/compiler/tf2xla:__subpackages__",
+        "//xla:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+        "//xla/pjrt:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//waymo/ml/compiler/triton:__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
 cc_library(
     name = "gpu_activation_header",
     hdrs = ["gpu_activation.h"],
-    visibility = ["//visibility:public"],
     deps = ["//xla/stream_executor/platform"],
 )
 
@@ -63,7 +72,6 @@ cc_library(
     name = "gpu_activation",
     srcs = if_gpu_is_configured(["gpu_activation.cc"]),
     hdrs = if_gpu_is_configured(["gpu_activation.h"]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         ":gpu_executor_header",
         ":gpu_activation_header",
@@ -77,7 +85,6 @@ cc_library(
 cc_library(
     name = "gpu_diagnostics_header",
     hdrs = if_gpu_is_configured(["gpu_diagnostics.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/status:statusor",
@@ -87,7 +94,6 @@ cc_library(
 cc_library(
     name = "gpu_collectives_header",
     hdrs = if_gpu_is_configured(["gpu_collectives.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -97,7 +103,12 @@ cc_library(
 cc_library(
     name = "gpu_driver_header",
     hdrs = if_gpu_is_configured(["gpu_driver.h"]),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//tensorflow/core/util/autotune_maps:__subpackages__",
+    ]),
     deps = [
         ":gpu_types_header",
         "//xla/stream_executor",
@@ -117,7 +128,10 @@ cc_library(
 cc_library(
     name = "gpu_runtime_header",
     hdrs = if_gpu_is_configured(["gpu_runtime.h"]),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+    ]),
     deps = [
         ":gpu_types_header",
         "@com_google_absl//absl/status:statusor",
@@ -127,7 +141,6 @@ cc_library(
 cc_library(
     name = "gpu_kernels",
     hdrs = if_gpu_is_configured(["gpu_kernels.h"]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -137,7 +150,6 @@ cc_library(
     local_defines = if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
@@ -173,7 +185,6 @@ cc_library(
 cc_library(
     name = "gpu_event_header",
     hdrs = if_gpu_is_configured(["gpu_event.h"]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         ":gpu_driver_header",
         ":gpu_stream_header",
@@ -187,7 +198,6 @@ cc_library(
     name = "gpu_event",
     srcs = if_gpu_is_configured(["gpu_event.cc"]),
     hdrs = if_gpu_is_configured(["gpu_event.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
@@ -201,7 +211,6 @@ cc_library(
 cc_library(
     name = "gpu_executor_header",
     hdrs = if_gpu_is_configured(["gpu_executor.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_collectives_header",
         ":gpu_kernel_header",
@@ -224,7 +233,6 @@ cc_library(
 cc_library(
     name = "gpu_helpers_header",
     hdrs = if_gpu_is_configured(["gpu_helpers.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_types_header",
         "@local_tsl//tsl/platform:logging",
@@ -236,7 +244,9 @@ tsl_gpu_library(
     hdrs = [
         "gpu_init.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "@local_tsl//tsl:internal",
+    ]),
     deps = [
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:status",
@@ -255,7 +265,12 @@ tsl_gpu_library(
     ],
     copts = tsl_copts(),
     linkstatic = True,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/compiler/tf2xla:__subpackages__",
+        "//xla:__subpackages__",
+        "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ]),
     deps = [
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
@@ -269,7 +284,6 @@ tsl_gpu_library(
 cc_library(
     name = "gpu_kernel_header",
     hdrs = if_gpu_is_configured(["gpu_kernel.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
         ":gpu_types_header",
@@ -282,7 +296,6 @@ cc_library(
 cc_library(
     name = "gpu_stream_header",
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_types_header",
         "//xla/stream_executor",
@@ -294,7 +307,6 @@ cc_library(
     name = "gpu_stream",
     srcs = if_gpu_is_configured(["gpu_stream.cc"]),
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_executor_header",
         ":gpu_types_header",
@@ -307,7 +319,6 @@ cc_library(
 cc_library(
     name = "gpu_timer_header",
     hdrs = if_gpu_is_configured(["gpu_timer.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
@@ -321,7 +332,6 @@ cc_library(
     name = "gpu_timer",
     srcs = if_gpu_is_configured(["gpu_timer.cc"]),
     hdrs = if_gpu_is_configured(["gpu_timer.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
@@ -346,7 +356,6 @@ cc_library(
 cc_library(
     name = "gpu_types_header",
     hdrs = if_gpu_is_configured(["gpu_types.h"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor/platform",
     ] + if_cuda_is_configured([
@@ -359,7 +368,11 @@ cc_library(
 cc_library(
     name = "gpu_asm_opts",
     hdrs = ["gpu_asm_opts.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+    ]),
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -370,7 +383,12 @@ cc_library(
     name = "asm_compiler_header",
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+    ]),
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",
         ":gpu_driver_header",
@@ -406,7 +424,13 @@ cc_library(
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
     copts = tsl_copts(),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+    ]),
     deps = if_gpu_is_configured([
         ":gpu_asm_opts",
         ":gpu_driver_header",
@@ -472,7 +496,11 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//xla/service/gpu:__subpackages__",
+        "//xla/stream_executor:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+    ]),
     deps = if_gpu_is_configured([
         ":asm_compiler",
         ":gpu_asm_opts",
@@ -518,7 +546,6 @@ xla_cc_test(
 tsl_gpu_library(
     name = "gpu_cudamallocasync_allocator_header",
     hdrs = ["gpu_cudamallocasync_allocator.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
         "@com_google_absl//absl/base:core_headers",
@@ -540,7 +567,6 @@ tsl_gpu_library(
         "//xla/stream_executor/cuda:cuda_activation",
         "//xla/stream_executor/cuda:cuda_executor",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor",
@@ -560,7 +586,6 @@ cc_library(
     name = "gpu_graph",
     srcs = if_gpu_is_configured(["gpu_graph.cc"]),
     hdrs = if_gpu_is_configured(["gpu_graph.h"]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         ":gpu_driver_header",
         ":gpu_kernel_header",
@@ -594,7 +619,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status",

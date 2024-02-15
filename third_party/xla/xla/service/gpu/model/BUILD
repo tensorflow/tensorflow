@@ -2,13 +2,15 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test", "xla_nvml_deps")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -23,7 +25,6 @@ cc_library(
     name = "analytical_latency_estimator",
     srcs = ["analytical_latency_estimator.cc"],
     hdrs = ["analytical_latency_estimator.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_collective_performance_model",
         ":gpu_hlo_cost_analysis",
@@ -72,7 +73,6 @@ cc_library(
     name = "fusion_analysis_cache",
     srcs = ["fusion_analysis_cache.cc"],
     hdrs = ["fusion_analysis_cache.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -103,7 +103,6 @@ cc_library(
     name = "gpu_cost_model_stats_collection",
     srcs = ["gpu_cost_model_stats_collection.cc"],
     hdrs = ["gpu_cost_model_stats_collection.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model",
@@ -144,7 +143,6 @@ cc_library(
     srcs = ["gpu_hlo_cost_analysis.cc"],
     hdrs = ["gpu_hlo_cost_analysis.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
@@ -189,7 +187,6 @@ cc_library(
     name = "gpu_performance_model_base",
     srcs = ["gpu_performance_model_base.cc"],
     hdrs = ["gpu_performance_model_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
@@ -215,7 +212,6 @@ cc_library(
     name = "gpu_performance_model",
     srcs = ["gpu_performance_model.cc"],
     hdrs = ["gpu_performance_model.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coalescing_analysis",
         ":gpu_hlo_cost_analysis",
@@ -269,7 +265,6 @@ cc_library(
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":coalescing_analysis",
         ":fusion_analysis_cache",
@@ -322,7 +317,6 @@ cc_library(
     name = "gpu_indexing_performance_model",
     srcs = ["gpu_indexing_performance_model.cc"],
     hdrs = ["gpu_indexing_performance_model.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coalescing_analysis",
         ":gpu_hlo_cost_analysis",
@@ -374,7 +368,6 @@ cc_library(
     name = "affine_map_printer",
     srcs = ["affine_map_printer.cc"],
     hdrs = ["affine_map_printer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -401,7 +394,6 @@ cc_library(
     name = "indexing_map",
     srcs = ["indexing_map.cc"],
     hdrs = ["indexing_map.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":affine_map_printer",
         "@com_google_absl//absl/types:span",
@@ -432,7 +424,6 @@ cc_library(
     testonly = True,
     srcs = ["indexing_test_utils.cc"],
     hdrs = ["indexing_test_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":affine_map_printer",
         ":indexing_analysis",
@@ -454,7 +445,6 @@ cc_library(
     name = "indexing_analysis",
     srcs = ["indexing_analysis.cc"],
     hdrs = ["indexing_analysis.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":affine_map_printer",
         ":indexing_map",
@@ -498,7 +488,6 @@ cc_library(
     name = "tile_analysis",
     srcs = ["tile_analysis.cc"],
     hdrs = ["tile_analysis.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":affine_map_printer",
         ":indexing_map",
@@ -533,7 +522,6 @@ cc_library(
     name = "coalescing_analysis",
     srcs = ["coalescing_analysis.cc"],
     hdrs = ["coalescing_analysis.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":indexing_analysis",
         ":indexing_map",
@@ -578,7 +566,6 @@ tf_proto_library(
     protodeps = [
         "//xla/service:hlo_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -589,7 +576,6 @@ cc_library(
         "hlo_op_profiles_data.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_op_profile_proto_cc",
         "//xla:types",
@@ -624,7 +610,6 @@ cc_library(
     srcs = ["hlo_op_profiler.cc"],
     hdrs = ["hlo_op_profiler.h"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_op_profile_proto_cc",
         "//xla:debug_options_flags",

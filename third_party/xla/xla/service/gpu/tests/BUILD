@@ -23,7 +23,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -41,7 +42,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -50,7 +50,6 @@ cc_library(
     srcs = ["gpu_codegen_test.cc"],
     hdrs = ["gpu_codegen_test.h"],
     tags = tf_cuda_tests_tags(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -731,7 +730,6 @@ filegroup(
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
         "@llvm-project//llvm:FileCheck",
     ],
-    visibility = ["//visibility:public"],
 )
 
 xla_cc_test(
@@ -856,7 +854,6 @@ cc_library(
     testonly = True,
     srcs = ["simple_optimization_test.cc"],
     tags = tf_cuda_tests_tags(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

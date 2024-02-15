@@ -28,7 +28,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -39,7 +40,7 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
+    visibility = ["//xla:internal"],
 )
 
 build_test(
@@ -253,7 +254,6 @@ cc_library(
     name = "hlo_extractor",
     srcs = ["hlo_extractor.cc"],
     hdrs = ["hlo_extractor.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:literal_util",
@@ -291,7 +291,6 @@ xla_cc_binary(
 cc_library(
     name = "hlo_expand_main",
     srcs = ["hlo_expand_main.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_expand_lib",
         ":hlo_module_loader",
@@ -312,7 +311,6 @@ cc_library(
     name = "hlo_expand_lib",
     srcs = ["hlo_expand.cc"],
     hdrs = ["hlo_expand.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/service:batchnorm_expander",
@@ -370,7 +368,6 @@ cc_library(
     name = "hlo_slicer",
     srcs = ["hlo_slicer.cc"],
     hdrs = ["hlo_slicer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_extractor",
         "//xla:shape_util",
@@ -436,7 +433,7 @@ cc_library(
     name = "hlo_module_loader",
     srcs = ["hlo_module_loader.cc"],
     hdrs = ["hlo_module_loader.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//xla:friends"],
     deps = [
         ":run_hlo_module_proto_cc",
         "//xla:debug_options_flags",
@@ -468,7 +465,6 @@ cc_library(
     name = "prepare_reference_module",
     srcs = ["prepare_reference_module.cc"],
     hdrs = ["prepare_reference_module.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:statusor",
@@ -504,7 +500,6 @@ cc_library(
     name = "hlo_decomposer_lib",
     srcs = ["hlo_decomposer.cc"],
     hdrs = ["hlo_decomposer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla/hlo/ir:hlo",
@@ -519,7 +514,6 @@ cc_library(
     name = "run_hlo_module_lib",
     srcs = ["run_hlo_module.cc"],
     hdrs = ["run_hlo_module.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_control_flow_flattening",
         ":hlo_decomposer_lib",
@@ -599,7 +593,6 @@ cc_library(
     name = "hlo_control_flow_flattening",
     srcs = ["hlo_control_flow_flattening.cc"],
     hdrs = ["hlo_control_flow_flattening.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
@@ -636,7 +629,6 @@ cc_library(
     name = "driver",
     srcs = ["driver.cc"],
     tags = ["nofixdeps"],
-    visibility = ["//visibility:public"],
     deps = [],
 )
 
@@ -664,7 +656,6 @@ tsl_gpu_library(
     cuda_deps = [
     ],
     defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:util",
         "//xla/hlo/ir:hlo",

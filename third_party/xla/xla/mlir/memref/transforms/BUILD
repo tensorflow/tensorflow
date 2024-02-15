@@ -3,7 +3,8 @@ load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/mlir/memref:friends"],
     licenses = ["notice"],
 )
 
@@ -29,7 +30,6 @@ cc_library(
     srcs = ["aligned_allocations.cc"],
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":passes_inc_gen",
         "@llvm-project//mlir:FuncDialect",

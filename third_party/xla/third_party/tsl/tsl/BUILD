@@ -132,7 +132,6 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin",
     },
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -145,7 +144,6 @@ config_setting(
         "apple_platform_type": "macos",
         "cpu": "darwin_x86_64",
     },
-    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(

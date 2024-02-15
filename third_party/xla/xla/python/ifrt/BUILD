@@ -1,4 +1,5 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 
@@ -20,15 +21,16 @@ package_group(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
 )
 
-exports_files(
-    [
-        "BUILD",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    "BUILD",
+])
 
 cc_library(
     name = "ifrt",
@@ -67,7 +69,6 @@ cc_library(
         "value.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":serdes",
         ":types_proto_cc",
@@ -186,7 +187,6 @@ cc_library(
     testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         "//xla:statusor",
@@ -205,7 +205,6 @@ cc_library(
     testonly = True,
     srcs = ["sharding_test_util.cc"],
     hdrs = ["sharding_test_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":mock",
@@ -219,7 +218,6 @@ cc_library(
     name = "no_impl_test_main",
     testonly = True,
     srcs = ["no_impl_test_main.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_googletest//:gtest",
     ],
@@ -229,7 +227,6 @@ cc_library(
     name = "array_impl_test_lib",
     testonly = True,
     srcs = ["array_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":test_util",
@@ -254,7 +251,6 @@ cc_library(
     name = "client_impl_test_lib",
     testonly = True,
     srcs = ["client_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":test_util",
@@ -277,7 +273,6 @@ cc_library(
     name = "tuple_impl_test_lib",
     testonly = True,
     srcs = ["tuple_impl_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":test_util",
@@ -304,7 +299,6 @@ cc_library(
     testonly = True,
     srcs = ["mock.cc"],
     hdrs = ["mock.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         "//xla:literal",
@@ -326,7 +320,6 @@ cc_library(
     srcs = ["serdes.cc"],
     hdrs = ["serdes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":serdes_proto_cc",
         "@com_google_absl//absl/base:core_headers",
@@ -360,7 +353,6 @@ xla_cc_test(
 tf_proto_library(
     name = "serdes_proto",
     srcs = ["serdes.proto"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -368,7 +360,6 @@ cc_library(
     srcs = ["sharding_serdes.cc"],
     hdrs = ["sharding_serdes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
         ":serdes",
@@ -399,12 +390,10 @@ xla_cc_test(
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "sharding_proto",
     srcs = ["sharding.proto"],
     protodeps = [":types_proto"],
-    visibility = ["//visibility:public"],
 )

@@ -6,6 +6,7 @@ load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -24,14 +25,12 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
     hdrs = ["global_data.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:service_interface",
         "//xla:types",
@@ -47,7 +46,6 @@ cc_library(
     name = "padding",
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla:types",
@@ -72,7 +70,6 @@ cc_library(
     name = "client",
     srcs = ["client.cc"],
     hdrs = ["client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":global_data",
         ":xla_computation",
@@ -98,7 +95,6 @@ cc_library(
     name = "executable_build_options",
     srcs = ["executable_build_options.cc"],
     hdrs = ["executable_build_options.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:execution_options_util",
@@ -124,7 +120,6 @@ cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":client",
         ":executable_build_options",
@@ -153,7 +148,6 @@ cc_library(
     name = "compile_only_client",
     srcs = ["compile_only_client.cc"],
     hdrs = ["compile_only_client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":client",
         ":xla_computation",
@@ -174,7 +168,6 @@ cc_library(
     name = "client_library",
     srcs = ["client_library.cc"],
     hdrs = ["client_library.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":compile_only_client",
         ":local_client",
@@ -197,7 +190,6 @@ cc_library(
     name = "sharding_builder",
     srcs = ["sharding_builder.cc"],
     hdrs = ["sharding_builder.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array",
         "//xla:shape_tree",

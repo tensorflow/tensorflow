@@ -12,7 +12,7 @@ load(
     "tf_additional_cudnn_plugin_copts",
     "tf_additional_gpu_compilation_copts",
 )
-load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "set_external_visibility", "tsl_copts")
+load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -28,7 +28,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -49,7 +50,6 @@ bool_flag(
 config_setting(
     name = "graph_conditional_enabled",
     flag_values = {":enable_graph_conditional": "True"},
-    visibility = ["//visibility:public"],
 )
 
 bool_flag(
@@ -65,14 +65,12 @@ config_setting(
     flag_values = {
         ":enable_libnvptxcompiler_support": "True",
     },
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda_platform_id",
     srcs = ["cuda_platform_id.cc"],
     hdrs = ["cuda_platform_id.h"],
-    visibility = ["//visibility:public"],
     deps = ["//xla/stream_executor:platform"],
 )
 
@@ -128,22 +126,13 @@ cuda_only_cc_library(
 
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
-cc_library(
-    name = "ptxas_wrapper",
-    visibility = ["//visibility:public"],
-)
+cc_library(name = "ptxas_wrapper")
 
-cc_library(
-    name = "nvlink_wrapper",
-    visibility = ["//visibility:public"],
-)
+cc_library(name = "nvlink_wrapper")
 
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
-cc_library(
-    name = "fatbinary_wrapper",
-    visibility = ["//visibility:public"],
-)
+cc_library(name = "fatbinary_wrapper")
 
 cuda_only_cc_library(
     name = "cuda_driver",
@@ -419,7 +408,6 @@ cuda_only_cc_library(
 cc_library(
     name = "cuda_dnn_headers",
     textual_hdrs = ["cuda_dnn.h"],
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation_header",
         "//xla/stream_executor:dnn",
@@ -505,7 +493,6 @@ cuda_library(
         ":graph_conditional_enabled": ["STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log",
         "@local_config_cuda//cuda:cuda_headers",
@@ -516,7 +503,6 @@ cuda_library(
 cc_library(
     name = "cuda_helpers",
     textual_hdrs = if_cuda_is_configured(["cuda_helpers.h"]),
-    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "//xla/stream_executor/gpu:gpu_helpers_header",
     ]),
@@ -551,10 +537,7 @@ cuda_only_cc_library(
     ],
 )
 
-cc_library(
-    name = "libnvptxcompiler_empty",
-    visibility = ["//visibility:public"],
-)
+cc_library(name = "libnvptxcompiler_empty")
 
 # This intermediate target is needed because we can't nest `select` statements.
 alias(
@@ -564,7 +547,6 @@ alias(
         "//conditions:default": ":libnvptxcompiler_empty",
     }),
     tags = ["manual"],
-    visibility = ["//visibility:public"],
 )
 
 cuda_only_cc_library(
@@ -673,12 +655,10 @@ cc_library(
 cc_library(
     name = "IOKit",
     linkopts = ["-framework IOKit"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "stream_executor_cuda",
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor:stream_executor_bundle",
     ] + if_google(

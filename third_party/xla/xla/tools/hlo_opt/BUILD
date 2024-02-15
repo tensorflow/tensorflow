@@ -20,7 +20,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -29,7 +30,6 @@ cc_library(
     name = "opt_lib",
     srcs = ["opt_lib.cc"],
     hdrs = ["opt_lib.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:statusor",
@@ -52,7 +52,6 @@ cc_library(
     name = "gpu_opt",
     testonly = True,
     srcs = if_gpu_is_configured(["gpu_opt.cc"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":opt_lib",
         "//xla:debug_options_flags",
@@ -93,7 +92,6 @@ cc_library(
     name = "cpu_opt",
     testonly = True,
     srcs = ["cpu_opt.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":opt_lib",
         "//xla/service:cpu_plugin",
@@ -108,7 +106,6 @@ cc_library(
     name = "opt_main",
     testonly = True,
     srcs = ["opt_main.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "cpu_opt",
         ":opt_lib",
@@ -186,18 +183,13 @@ filegroup(
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "all_gpu_specs",
     data = glob(["gpu_specs/*.txtpb"]),
-    visibility = ["//visibility:public"],
 )
 
-exports_files(
-    glob([
-        "gpu_specs/*.txtpb",
-    ]),
-    visibility = ["//visibility:public"],
-)
+exports_files(glob([
+    "gpu_specs/*.txtpb",
+]))

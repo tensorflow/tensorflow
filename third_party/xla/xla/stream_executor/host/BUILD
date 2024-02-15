@@ -3,11 +3,12 @@
 
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -24,7 +25,6 @@ cc_library(
     hdrs = [
         "host_platform_id.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor:platform",
     ],
@@ -60,7 +60,6 @@ cc_library(
     hdrs = [
         "host_stream.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
@@ -81,7 +80,6 @@ cc_library(
     hdrs = [
         "host_gpu_executor.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":host_stream",
         "//xla/stream_executor",

@@ -7,7 +7,7 @@
 load(
     "//tsl:tsl.bzl",
     "if_not_fuchsia",
-    "set_external_visibility",
+    "internal_visibility",
     "tsl_copts",
 )
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
@@ -39,7 +39,10 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],
 )
 
@@ -49,14 +52,16 @@ exports_files(
         "load_library.h",
         "stringpiece_test.cc",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/platform:__subpackages__",
+        "//tsl:__subpackages__",
+    ]),
 )
 
 cc_library(
     name = "base64",
     srcs = ["base64.cc"],
     hdrs = ["base64.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":macros",
@@ -70,7 +75,6 @@ cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":mutex",
@@ -81,14 +85,12 @@ cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "coding",
     srcs = ["coding.cc"],
     hdrs = ["coding.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":byte_order",
         ":stringpiece",
@@ -100,7 +102,6 @@ cc_library(
     name = "criticality",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["criticality.h"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_deps("criticality"),
 )
 
@@ -110,7 +111,6 @@ tsl_cc_test(
     srcs = [
         "criticality_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":criticality",
         ":test",
@@ -122,7 +122,6 @@ cc_library(
     name = "denormal",
     srcs = ["denormal.cc"],
     hdrs = ["denormal.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":macros",
         ":platform",
@@ -134,7 +133,6 @@ tsl_cc_test(
     name = "denormal_test",
     size = "small",
     srcs = ["denormal_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":denormal",
         ":test",
@@ -150,13 +148,11 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
 )
 
 cc_library(
     name = "env_impl",
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
@@ -164,7 +160,6 @@ cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("env_time"),
 )
 
@@ -172,7 +167,6 @@ cc_library(
     name = "errors",
     srcs = ["errors.cc"],
     hdrs = ["errors.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -190,7 +184,6 @@ cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
@@ -200,7 +193,6 @@ cc_library(
     name = "mutex",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -208,7 +200,6 @@ cc_library(
     name = "numbers",
     srcs = ["numbers.cc"],
     hdrs = ["numbers.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -224,7 +215,6 @@ cc_library(
     name = "path",
     srcs = ["path.cc"],
     hdrs = ["path.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":mutex",
@@ -245,7 +235,6 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":types",
@@ -255,7 +244,6 @@ cc_library(
 cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         "@com_googlesource_code_re2//:re2",
@@ -265,7 +253,6 @@ cc_library(
 cc_library(
     name = "resource",
     textual_hdrs = ["resource.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":stringpiece",
     ] + tf_resource_deps(),
@@ -275,14 +262,12 @@ cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "status",
     srcs = ["status.cc"],
     hdrs = ["status.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -311,7 +296,6 @@ cc_library(
         "status_to_from_proto.cc",
     ],
     hdrs = ["status_to_from_proto.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":status",
         "//tsl/protobuf:error_codes_proto_impl_cc",
@@ -324,7 +308,6 @@ cc_library(
     testonly = 1,
     srcs = ["status_matchers.cc"],
     hdrs = ["status_matchers.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":status",
         ":statusor",
@@ -336,7 +319,6 @@ cc_library(
 cc_library(
     name = "statusor",
     hdrs = ["statusor.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":logging",
@@ -355,7 +337,6 @@ cc_library(
     name = "thread_annotations",
     hdrs = ["thread_annotations.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -364,7 +345,6 @@ cc_library(
     srcs = ["test.cc"],
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -381,7 +361,6 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         "@com_google_benchmark//:benchmark",
@@ -396,7 +375,10 @@ filegroup(
         "test_benchmark.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -406,13 +388,15 @@ filegroup(
         "test.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )
 
 cc_library(
     name = "tracing",
     textual_hdrs = ["tracing.h"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_deps("tracing"),
 )
 
@@ -424,7 +408,6 @@ cc_library(
         "tstring.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":cord",
         ":platform",
@@ -439,7 +422,6 @@ filegroup(
         "ctstring_internal.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -487,7 +469,6 @@ filegroup(
         "//tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 # Header files for tensorflow/core:platform_base.
@@ -502,7 +483,6 @@ filegroup(
         "threadpool_options.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -519,7 +499,6 @@ filegroup(
         "thread_annotations.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -607,7 +586,6 @@ filegroup(
         ],
     }),
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -630,7 +608,10 @@ filegroup(
         "subprocess.h",
     ]),
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -649,7 +630,6 @@ filegroup(
         "//tsl/platform/profile_utils:i_cpu_utils_helper.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 exports_files(
@@ -691,7 +671,10 @@ exports_files(
         "tracing.cc",
         "tracing.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        ":__subpackages__",
+        "//tensorflow:__subpackages__",
+    ]),
 )
 
 filegroup(
@@ -704,13 +687,14 @@ filegroup(
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+    ]),
 )
 
 cc_library(
     name = "intrusive_ptr",
     hdrs = ["intrusive_ptr.h"],
-    visibility = ["//visibility:public"],
     deps = [],
 )
 
@@ -732,7 +716,10 @@ filegroup(
         "unbounded_work_queue.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -743,7 +730,10 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -757,7 +747,11 @@ filegroup(
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )
 
 filegroup(
@@ -770,14 +764,17 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+        "//tensorflow/core/platform:__pkg__",
+    ]),
 )
 
 cc_library(
     name = "macros",
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -789,13 +786,11 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("net"),
 )
 
@@ -803,7 +798,6 @@ cc_library(
     name = "platform",
     hdrs = ["platform.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -818,7 +812,6 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("platform_port"),
 )
 
@@ -827,13 +820,11 @@ cc_library(
     srcs = [
         "platform_strings_computed.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "protobuf_compiler",
     hdrs = ["protobuf_compiler.h"],
-    visibility = ["//visibility:public"],
     deps = tf_protobuf_compiler_deps(),
 )
 
@@ -841,7 +832,6 @@ cc_library(
     name = "random",
     srcs = ["random.cc"],
     hdrs = ["random.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":mutex",
         ":types",
@@ -853,7 +843,6 @@ cc_library(
     testonly = 1,
     srcs = ["resource_loader.cc"],
     textual_hdrs = ["resource_loader.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":path",
         ":test",
@@ -863,7 +852,6 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_deps("rocm_rocdl_path"),
 )
 
@@ -873,20 +861,17 @@ filegroup(
         "stacktrace_handler.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "stacktrace_handler_hdrs_lib",
     hdrs = ["stacktrace_handler.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("stacktrace_handler"),
     alwayslink = 1,
 )
@@ -898,7 +883,6 @@ tsl_cc_test(
         "stacktrace_handler_test.cc",
     ],
     tags = ["no_windows"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":stacktrace",
@@ -912,7 +896,6 @@ cc_library(
     name = "str_util",
     srcs = ["str_util.cc"],
     hdrs = ["str_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -926,7 +909,6 @@ cc_library(
     name = "strcat",
     srcs = ["strcat.cc"],
     hdrs = ["strcat.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -941,7 +923,6 @@ cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
     ],
@@ -951,7 +932,6 @@ cc_library(
     name = "crash_analysis",
     hdrs = ["crash_analysis.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_platform_deps("crash_analysis"),
@@ -961,7 +941,6 @@ cc_library(
     name = "stringprintf",
     srcs = ["stringprintf.cc"],
     hdrs = ["stringprintf.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":macros",
         ":types",
@@ -973,7 +952,6 @@ cc_library(
     textual_hdrs = [
         "subprocess.h",
     ],
-    visibility = ["//visibility:public"],
     deps = tf_windows_aware_platform_deps("subprocess"),
 )
 
@@ -981,7 +959,6 @@ cc_library(
     name = "cord",
     hdrs = ["cord.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings:cord",
     ],
@@ -991,7 +968,6 @@ cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":mutex",
         ":types",
@@ -1003,7 +979,6 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":bfloat16",
         ":ml_dtypes",
@@ -1015,7 +990,9 @@ cc_library(
 cc_library(
     name = "build_test",
     testonly = 1,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/platform:__pkg__",
+    ]),
     deps = [
         ":byte_order",
         ":fingerprint",
@@ -1034,7 +1011,6 @@ cc_library(
     name = "bfloat16",
     hdrs = ["bfloat16.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":byte_order",
         "@eigen_archive//:eigen3",
@@ -1045,7 +1021,6 @@ cc_library(
     name = "ml_dtypes",
     hdrs = ["ml_dtypes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@ml_dtypes//:float8",
         "@ml_dtypes//:int4",
@@ -1055,7 +1030,6 @@ cc_library(
 cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_stream_executor_deps("dso_loader"),
@@ -1065,7 +1039,9 @@ cc_library(
     name = "logging",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = tf_logging_deps(),
 )
 
@@ -1073,7 +1049,9 @@ cc_library(
     name = "error_logging",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["error_logging.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -1084,7 +1062,6 @@ cc_library(
     name = "grpc_credentials",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["grpc_credentials.h"],
-    visibility = ["//visibility:public"],
     deps = tsl_grpc_credentials_deps(),
 )
 
@@ -1092,7 +1069,6 @@ cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/base:prefetch",
     ],
@@ -1103,7 +1079,6 @@ cc_library(
     srcs = ["hash.cc"],
     hdrs = ["hash.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":macros",
         ":raw_coding",
@@ -1115,7 +1090,6 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_deps("human_readable_json"),
 )
 
@@ -1123,7 +1097,6 @@ cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":byte_order",
         ":types",
@@ -1139,13 +1112,12 @@ filegroup(
         "str_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_platform_deps("casts"),
@@ -1155,7 +1127,6 @@ cc_library(
     name = "setround",
     srcs = ["setround.cc"],
     hdrs = ["setround.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":macros",
@@ -1166,7 +1137,6 @@ cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_windows_aware_platform_deps("stacktrace"),
@@ -1179,7 +1149,6 @@ tsl_cc_test(
         "stacktrace_test.cc",
     ],
     tags = ["no_windows"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":stacktrace",
@@ -1192,14 +1161,12 @@ cc_library(
     name = "cuda_libdevice_path",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["cuda_libdevice_path.h"],
-    visibility = ["//visibility:public"],
     deps = tf_cuda_libdevice_path_deps(),
 )
 
 cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":types",
     ],
@@ -1209,7 +1176,6 @@ cc_library(
     name = "fingerprint",
     hdrs = ["fingerprint.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":stringpiece",
@@ -1221,7 +1187,6 @@ tsl_cc_test(
     name = "fingerprint_test",
     size = "small",
     srcs = ["fingerprint_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":fingerprint",
         ":test",
@@ -1235,7 +1200,6 @@ cc_library(
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     alwayslink = 1,
 )
 
@@ -1243,7 +1207,6 @@ cc_library(
     name = "scanner",
     srcs = ["scanner.cc"],
     hdrs = ["scanner.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":macros",
         ":str_util",
@@ -1255,21 +1218,18 @@ filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "tensor_float_32_hdr_lib",
     hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 tsl_cc_test(
     name = "ctstring_test",
     size = "small",
     srcs = ["ctstring_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":test",
         ":test_main",
@@ -1281,7 +1241,6 @@ tsl_cc_test(
     name = "hash_test",
     size = "small",
     srcs = ["hash_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hash",
         ":logging",
@@ -1295,7 +1254,6 @@ tsl_cc_test(
     name = "path_test",
     size = "small",
     srcs = ["path_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":env_impl",
@@ -1309,7 +1267,6 @@ tsl_cc_test(
 tsl_cc_test(
     name = "random_test",
     srcs = ["random_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":random",
         ":test",
@@ -1322,7 +1279,6 @@ tsl_cc_test(
     name = "tstring_test",
     size = "small",
     srcs = ["tstring_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cord",
         ":platform",
@@ -1342,7 +1298,6 @@ cc_library(
         "//tsl:windows": [],
         "//conditions:default": ["-lm"],
     }),
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":stacktrace_handler",
@@ -1357,7 +1312,6 @@ tsl_cc_test(
     name = "status_test",
     size = "small",
     srcs = ["status_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":stack_frame",
@@ -1378,7 +1332,6 @@ tsl_cc_test(
     name = "statusor_test",
     size = "small",
     srcs = ["statusor_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":macros",
@@ -1394,7 +1347,6 @@ tsl_cc_test(
     name = "status_matchers_test",
     size = "small",
     srcs = ["status_matchers_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":status",
@@ -1410,7 +1362,6 @@ cc_library(
     name = "notification",
     hdrs = ["notification.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -1421,7 +1372,6 @@ cc_library(
     name = "threadpool_options",
     hdrs = ["threadpool_options.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":threadpool_interface",
     ],
@@ -1431,7 +1381,6 @@ cc_library(
     name = "unbounded_work_queue",
     hdrs = ["unbounded_work_queue.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ] + tf_platform_deps("unbounded_work_queue"),
@@ -1440,7 +1389,6 @@ cc_library(
 tsl_cc_test(
     name = "unbounded_work_queue_test",
     srcs = ["unbounded_work_queue_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":blocking_counter",
         ":env",
@@ -1457,14 +1405,12 @@ cc_library(
     name = "context",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["context.h"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_deps("context"),
 )
 
 cc_library(
     name = "load_library",
     textual_hdrs = ["load_library.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":status",
     ] + tf_windows_aware_platform_deps("load_library"),
@@ -1474,7 +1420,6 @@ cc_library(
     name = "abi",
     srcs = ["abi.cc"],
     hdrs = ["abi.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":types",
     ],
@@ -1483,7 +1428,6 @@ cc_library(
 cc_library(
     name = "refcount",
     hdrs = ["refcount.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":mutex",
@@ -1494,7 +1438,6 @@ cc_library(
 cc_library(
     name = "null_file_system",
     hdrs = ["null_file_system.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
     ],
@@ -1510,7 +1453,6 @@ tsl_cc_test(
         "//tsl/platform/testdata:test_noop",
         "//tsl/platform/testdata:test_stderr",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":path",
         ":strcat",
@@ -1525,7 +1467,6 @@ tsl_cc_test(
     name = "errors_test",
     size = "small",
     srcs = ["errors_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":test",
@@ -1540,7 +1481,6 @@ tsl_cc_test(
     srcs = [
         "intrusive_ptr_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":intrusive_ptr",
         ":refcount",
@@ -1559,7 +1499,6 @@ tsl_cc_test(
         "manual",
         "notap",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":test",
@@ -1572,7 +1511,6 @@ tsl_cc_test(
     size = "small",
     srcs = ["setround_test.cc"],
     tags = ["noclang"],
-    visibility = ["//visibility:public"],
     deps = [
         ":setround",
         ":test",
@@ -1586,7 +1524,6 @@ tsl_cc_test(
     srcs = [
         "refcount_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":env_impl",
@@ -1602,7 +1539,6 @@ tsl_cc_test(
     srcs = [
         "integral_types_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":test",
         ":test_main",
@@ -1616,7 +1552,6 @@ tsl_cc_test(
     srcs = [
         "logging_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":test",
@@ -1630,7 +1565,6 @@ tsl_cc_test(
     srcs = [
         "mutex_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":env_impl",
@@ -1656,7 +1590,6 @@ tsl_cc_test(
     srcs = [
         "net_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":logging",
         ":net",
@@ -1674,7 +1607,6 @@ tsl_cc_test(
     tags = [
         "notap",  #TODO(b/245510532) : disabled due to flakiness.
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":env_impl",
@@ -1692,7 +1624,6 @@ tsl_cc_test(
     srcs = [
         "scanner_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":scanner",
         ":test",
@@ -1706,7 +1637,6 @@ tsl_cc_test(
     srcs = [
         "str_util_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":str_util",
         ":test",
@@ -1720,7 +1650,6 @@ tsl_cc_test(
     srcs = [
         "strcat_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":strcat",
         ":stringprintf",
@@ -1737,7 +1666,6 @@ tsl_cc_test(
     srcs = [
         "stringpiece_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":stringpiece",
         ":test",
@@ -1751,7 +1679,6 @@ tsl_cc_test(
     srcs = [
         "stringprintf_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":stringprintf",
         ":test",
@@ -1765,7 +1692,6 @@ tsl_cc_test(
     srcs = [
         "numbers_test.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":numbers",
         ":test",
@@ -1776,7 +1702,6 @@ tsl_cc_test(
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
-    visibility = ["//visibility:public"],
     deps = tf_platform_alias("rules_cc_bzl"),
 )
 
@@ -1789,7 +1714,6 @@ cc_library(
         "retrying_utils.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":errors",
@@ -1806,7 +1730,6 @@ cc_library(
         "retrying_file_system.h",
     ],
     copts = tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":errors",
@@ -1820,7 +1743,6 @@ tsl_cc_test(
     name = "retrying_file_system_test",
     size = "small",
     srcs = ["retrying_file_system_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":env_impl",
         ":retrying_file_system",
@@ -1835,7 +1757,6 @@ tsl_cc_test(
     name = "retrying_utils_test",
     size = "small",
     srcs = ["retrying_utils_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":env",
         ":env_impl",

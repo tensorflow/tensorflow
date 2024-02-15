@@ -2,7 +2,8 @@ load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -18,5 +19,4 @@ filegroup(
 cc_library(
     name = "libtpu",
     hdrs = ["libtpu.h"],
-    visibility = ["//visibility:public"],
 )

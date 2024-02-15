@@ -5,7 +5,8 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -23,7 +24,6 @@ cc_library(
     srcs = ["annotation.cc"],
     hdrs = ["annotation.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -46,7 +46,6 @@ cc_library(
     name = "command_buffer_allocations",
     srcs = ["command_buffer_allocations.cc"],
     hdrs = ["command_buffer_allocations.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla:statusor",
@@ -67,7 +66,6 @@ cc_library(
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         ":custom_call_thunk",
         ":nccl_all_gather_thunk",
@@ -118,7 +116,6 @@ cc_library(
     name = "command_buffer_cmd_emitter",
     srcs = ["command_buffer_cmd_emitter.cc"],
     hdrs = ["command_buffer_cmd_emitter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":command_buffer_cmd",
         ":conditional_thunk",
@@ -185,7 +182,6 @@ cc_library(
     name = "cholesky_thunk",
     srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
     hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:cusolver_context",
@@ -207,7 +203,6 @@ cc_library(
     name = "command_buffer_thunk",
     srcs = ["command_buffer_thunk.cc"],
     hdrs = ["command_buffer_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":command_buffer_allocations",
         ":command_buffer_cmd",
@@ -278,7 +273,6 @@ cc_library(
     name = "conditional_thunk",
     srcs = ["conditional_thunk.cc"],
     hdrs = ["conditional_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":sequential_thunk",
         "//xla:status",
@@ -306,7 +300,6 @@ cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:util",
         "//xla/service:buffer_assignment",
@@ -323,7 +316,6 @@ cc_library(
     name = "copy_thunk",
     srcs = ["copy_thunk.cc"],
     hdrs = ["copy_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla/service:buffer_assignment",
@@ -340,7 +332,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -364,7 +355,6 @@ cc_library(
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -393,7 +383,6 @@ cc_library(
     name = "fft_thunk",
     srcs = ["fft_thunk.cc"],
     hdrs = ["fft_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:types",
         "//xla:util",
@@ -417,7 +406,6 @@ cc_library(
     name = "fused_mha_thunk",
     srcs = ["fused_mha_thunk.cc"],
     hdrs = ["fused_mha_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -433,7 +421,6 @@ cc_library(
     name = "gemm_thunk",
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla/service:buffer_assignment",
@@ -452,7 +439,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:matmul_utils",
@@ -468,7 +454,6 @@ cc_library(
     name = "infeed_thunk",
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
@@ -485,7 +470,6 @@ cc_library(
     name = "kernel_thunk",
     srcs = ["kernel_thunk.cc"],
     hdrs = ["kernel_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla:types",
@@ -515,7 +499,6 @@ cc_library(
     name = "memset_thunk",
     srcs = ["memset_thunk.cc"],
     hdrs = ["memset_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla/service:buffer_assignment",
@@ -529,7 +512,6 @@ cc_library(
     name = "nccl_all_gather_thunk",
     srcs = ["nccl_all_gather_thunk.cc"],
     hdrs = ["nccl_all_gather_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -552,7 +534,6 @@ cc_library(
     name = "nccl_all_reduce_thunk",
     srcs = ["nccl_all_reduce_thunk.cc"],
     hdrs = ["nccl_all_reduce_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -580,7 +561,6 @@ cc_library(
     name = "nccl_all_to_all_thunk",
     srcs = ["nccl_all_to_all_thunk.cc"],
     hdrs = ["nccl_all_to_all_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
@@ -604,7 +584,6 @@ cc_library(
     name = "norm_thunk",
     srcs = ["norm_thunk.cc"],
     hdrs = ["norm_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -621,7 +600,6 @@ cc_library(
     name = "outfeed_thunk",
     srcs = ["outfeed_thunk.cc"],
     hdrs = ["outfeed_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:util",
         "//xla/service/gpu:io_feed_manager",
@@ -635,7 +613,6 @@ cc_library(
     name = "replica_id_thunk",
     srcs = ["replica_id_thunk.cc"],
     hdrs = ["replica_id_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/service:buffer_assignment",
         "//xla/service:global_device_id",
@@ -652,7 +629,6 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla/hlo/ir:hlo",
@@ -669,7 +645,6 @@ cc_library(
     name = "send_recv_thunk",
     srcs = ["send_recv_thunk.cc"],
     hdrs = ["send_recv_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status",
@@ -695,7 +670,6 @@ cc_library(
     name = "triangular_solve_thunk",
     srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
     hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
-    visibility = ["//visibility:public"],
     deps = if_gpu_is_configured([
         "@com_google_absl//absl/strings:str_format",
         "//xla/service/gpu:buffer_allocations",
@@ -721,7 +695,6 @@ cc_library(
     name = "while_thunk",
     srcs = ["while_thunk.cc"],
     hdrs = ["while_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":sequential_thunk",
         "//xla:status",
@@ -745,7 +718,6 @@ cc_library(
     name = "wait_for_streams_thunk",
     srcs = ["wait_for_streams_thunk.cc"],
     hdrs = ["wait_for_streams_thunk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/service:global_device_id",
         "//xla/service/gpu:thunk",

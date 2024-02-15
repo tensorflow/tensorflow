@@ -1,4 +1,4 @@
-load("//tsl:tsl.bzl", "if_not_android", "nvtx_headers", "set_external_visibility")
+load("//tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
 load("//tsl:tsl.default.bzl", "filegroup")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
@@ -53,7 +53,9 @@ cc_library(
     name = "profiler_controller",
     srcs = ["profiler_controller.cc"],
     hdrs = ["profiler_controller.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+    ]),
     deps = [
         ":profiler_interface",
         "//tsl/platform:errors",
@@ -66,7 +68,12 @@ cc_library(
 cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+        "//tsl/profiler:xla_profiler_backends",
+        "@local_xla//xla/python:__pkg__",
+        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+    ]),
     deps = [
         ":profiler_interface",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -82,7 +89,10 @@ cc_library(
         "profiler_factory.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+    ]),
     deps = [
         ":profiler_interface",
         "//tsl/platform:mutex",
@@ -95,7 +105,6 @@ cc_library(
 tsl_cc_test(
     name = "profiler_factory_test",
     srcs = ["profiler_factory_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":profiler_factory",
         ":profiler_factory_impl",
@@ -114,7 +123,11 @@ cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl:internal",
+        "//tsl/profiler:internal",
+        "//tsl/profiler:xla_profiler_backends",
+    ]),
     deps = [
         "//tsl/platform:status",
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -126,7 +139,10 @@ cc_library(
     srcs = ["profiler_lock.cc"],
     hdrs = ["profiler_lock.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+        "//tsl/profiler:xla_internal",
+    ]),
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:macros",
@@ -138,7 +154,6 @@ cc_library(
 tsl_cc_test(
     name = "profiler_lock_test",
     srcs = ["profiler_lock_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":profiler_lock",
         "//tsl/platform:test",
@@ -149,7 +164,7 @@ tsl_cc_test(
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tsl:internal"]),
     deps = [
         "//tsl/platform",
         "//tsl/platform:errors",
@@ -174,7 +189,10 @@ cc_library(
         "profiler_session.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/python:__pkg__",
+        "//tsl/profiler:internal",
+    ]),
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:logging",
@@ -213,7 +231,6 @@ cc_library(
 tsl_cc_test(
     name = "traceme_encode_test",
     srcs = ["traceme_encode_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":traceme_encode",
         "//tsl/platform",
@@ -228,7 +245,7 @@ tsl_cc_test(
 tf_profiler_pybind_cc_library_wrapper(
     name = "traceme_for_pybind",
     actual = ":traceme",
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tsl/profiler:xla_internal"]),
 )
 
 cc_library(
@@ -278,7 +295,6 @@ tsl_cc_test(
     name = "scoped_annotation_test",
     size = "small",
     srcs = ["scoped_annotation_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":scoped_annotation",
         "//tsl/platform:test",
@@ -307,7 +323,10 @@ cc_library(
     name = "profiler_collection",
     srcs = ["profiler_collection.cc"],
     hdrs = ["profiler_collection.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "@local_xla//xla/backends/profiler/plugin:__pkg__",
+        "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+    ]),
     deps = [
         ":profiler_interface",
         "//tsl/platform:status",

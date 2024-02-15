@@ -1,12 +1,13 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured", "stream_executor_friends")
-load("@local_tsl//tsl:tsl.bzl", "if_google", "set_external_visibility")
+load("@local_tsl//tsl:tsl.bzl", "if_google", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -29,7 +30,7 @@ filegroup(
         "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
@@ -43,7 +44,6 @@ cc_library(
     name = "tf_allocator_adapter",
     srcs = ["tf_allocator_adapter.cc"],
     hdrs = ["tf_allocator_adapter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
@@ -66,7 +66,6 @@ cc_library(
         "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:memory_allocation",
@@ -85,7 +84,6 @@ cc_library(
     srcs = ["gpu_virtual_mem_allocator.cc"],
     hdrs = ["gpu_virtual_mem_allocator.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/strings:str_format",
