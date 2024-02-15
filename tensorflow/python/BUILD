@@ -1354,6 +1354,8 @@ pybind_extension(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/kernels:data_service_ops",
+        "//tensorflow/core/kernels:reader_ops",
     ]
 )
 
