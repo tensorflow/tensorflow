@@ -156,9 +156,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
-
+  CHECK_OK(stream.Initialize());
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
@@ -205,9 +203,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
-
+  CHECK_OK(stream.Initialize());
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
@@ -293,9 +289,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
-
+  CHECK_OK(stream.Initialize());
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 

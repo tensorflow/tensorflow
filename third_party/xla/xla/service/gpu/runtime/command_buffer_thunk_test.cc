@@ -94,8 +94,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -155,8 +154,7 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -197,8 +195,7 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -248,8 +245,7 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdSameThunk) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   // Prepare arguments:
   int64_t length = 4;
@@ -314,8 +310,7 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdAcrossThunk) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   // Prepare arguments:
   int64_t length = 4;
@@ -381,8 +376,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -467,8 +461,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   auto packing = CreateDefaultArgsPacking();
 
@@ -565,8 +558,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 4 * 3;
@@ -677,8 +669,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -793,8 +784,7 @@ TEST(CommandBufferThunkTest, IfCmd) {
   }
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -879,8 +869,7 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
   }
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -970,8 +959,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   }
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -1057,8 +1045,7 @@ TEST(CommandBufferThunkTest, ForCmd) {
   }
 
   se::Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
