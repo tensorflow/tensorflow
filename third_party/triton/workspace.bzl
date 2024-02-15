@@ -16,5 +16,6 @@ def repo():
         patch_file = [
             # Upstream this in the next integrate
             #"//third_party/triton:cl602997103.patch"
+            "//third_party/triton:cl607293980.patch",
         ],
     )
