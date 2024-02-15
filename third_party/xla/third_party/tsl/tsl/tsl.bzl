@@ -765,3 +765,6 @@ def tsl_pybind_extension_opensource(
 # public, but monorepos can have more precise constraints.
 def set_external_visibility(monorepo_paths):
     return if_oss(["//visibility:public"], monorepo_paths)
+
+def nvtx_headers():
+    return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])

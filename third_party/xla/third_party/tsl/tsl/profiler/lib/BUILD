@@ -1,4 +1,4 @@
-load("//tsl:tsl.bzl", "if_not_android", "set_external_visibility")
+load("//tsl:tsl.bzl", "if_not_android", "nvtx_headers", "set_external_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
@@ -257,9 +257,7 @@ cc_library(
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",  # NVTX headers
-    ]),
+    ] + if_cuda_is_configured(nvtx_headers()),
 )
 
 cc_library(
