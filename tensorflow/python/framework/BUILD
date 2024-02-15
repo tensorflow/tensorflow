@@ -823,10 +823,6 @@ pybind_extension(
     name = "_pywrap_python_api_parameter_converter",
     srcs = [
         "python_api_parameter_converter_wrapper.cc",
-        "op_def_util.h",
-        "python_api_info.h",
-        "python_api_parameter_converter.h",
-        "python_tensor_converter.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -844,6 +840,10 @@ pybind_extension(
         "_pywrap_python_api_parameter_converter.pyi",
     ],
     deps = [
+        ":python_api_parameter_converter",
+        ":python_api_info",
+        ":op_def_util_cc",
+        ":python_tensor_converter",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

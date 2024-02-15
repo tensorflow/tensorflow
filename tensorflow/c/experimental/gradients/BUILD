@@ -56,7 +56,7 @@ cc_library(
         "nn_grad.h",
     ],
     visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+        "//tensorflow/python/framework/experimental:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",

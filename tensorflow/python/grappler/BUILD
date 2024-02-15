@@ -81,6 +81,7 @@ pybind_extension(
         "_pywrap_model_analyzer.pyi",
     ],
     deps = [
+        "//tensorflow/python/grappler:model_analyzer_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:reader_base",
         "//tensorflow/core:lib_headers_for_pybind",

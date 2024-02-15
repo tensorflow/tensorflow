@@ -36,6 +36,9 @@ pybind_extension(
     srcs = ["tape.cc"],
 #    features = ["-layering_check"],
     deps = [
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -43,6 +46,7 @@ pybind_extension(
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
     ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 pybind_extension(
@@ -52,6 +56,7 @@ pybind_extension(
         "_math_ops.pyi",
     ],
     deps = [
+        "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -61,6 +66,7 @@ pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
     ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 pybind_extension(
@@ -70,6 +76,7 @@ pybind_extension(
         "_nn_ops.pyi",
     ],
     deps = [
+        "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -79,6 +86,7 @@ pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
     ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 py_strict_library(
