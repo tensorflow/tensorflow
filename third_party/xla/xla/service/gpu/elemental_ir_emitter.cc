@@ -324,19 +324,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCbrt(
                             prim_type);
 }
 
-llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
-  llvm::Value* block_id = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = IntCast(
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockDimx, {}, {}, b()),
-      b()->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
-  return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
-}
-
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitF32ToBF16(
     llvm::Value* f32_value) {
   // sm_80 and up has an instruction to convert f32 into bf16.

@@ -98,8 +98,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view, bool /*is_reducer*/) override;
 
-  llvm::Value* EmitThreadId() override;
-
   absl::StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value) override;
 
   bool fast_min_max() override {
