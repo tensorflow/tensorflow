@@ -55,9 +55,6 @@ class HloToIrBindings {
     return base_ptrs_.contains(&hlo);
   }
 
-  llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
-  void SetTempBufferBase(llvm::Value* v) { temp_buffer_base_ = v; }
-
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
   llvm::Value* GetBasePointer(const HloInstruction& hlo,
@@ -96,9 +93,6 @@ class HloToIrBindings {
   // in the ShapeTree.
   absl::flat_hash_map<const HloInstruction*, ShapeTree<llvm::Value*>>
       base_ptrs_;
-
-  // The address of the memory block that contains all temporary buffers.
-  llvm::Value* temp_buffer_base_ = nullptr;
 };
 
 }  // namespace gpu

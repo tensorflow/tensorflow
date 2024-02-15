@@ -166,9 +166,6 @@ void HloToIrBindings::UnbindAllLocalIrValues() {
 std::string HloToIrBindings::ToString() const {
   std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
-  StrAppend(&s,
-            "  temp_buffer_base_=", llvm_ir::DumpToString(temp_buffer_base_),
-            "\n");
 
   if (base_ptrs_.empty()) {
     return s;
