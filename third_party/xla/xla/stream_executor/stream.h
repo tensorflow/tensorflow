@@ -189,26 +189,6 @@ class Stream {
   // BLAS support
 
   template <typename InputType, typename OutputType>
-  absl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
-                            uint64_t m, uint64 n, uint64 k,
-                            const DeviceMemory<InputType> &a, int lda,
-                            const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<OutputType> *c, int ldc,
-                            const NumericOptions &numeric_options,
-                            blas::CallContext context) {
-    InputType alpha{1.0};
-    InputType beta{0.0};
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-    return blas->BlasGemm(this, transa, transb, m, n, k, alpha, a, lda, b, ldb,
-                          beta, c, ldc, numeric_options, context);
-  }
-
-  template <typename InputType, typename OutputType>
   absl::Status ThenBlasGemmWithAlgorithm(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, const DeviceMemory<InputType> &a, int lda,

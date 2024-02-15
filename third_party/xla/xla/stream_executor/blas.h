@@ -474,6 +474,20 @@ class BlasSupport {
                       ldb, beta_ptr, c, ldc, numeric_options, context);
   }
 
+  template <typename InputType, typename OutputType>
+  absl::Status BlasGemm(Stream *stream, blas::Transpose transa,
+                        blas::Transpose transb, uint64_t m, uint64 n, uint64 k,
+                        const DeviceMemory<InputType> &a, int lda,
+                        const DeviceMemory<InputType> &b, int ldb,
+                        DeviceMemory<OutputType> *c, int ldc,
+                        const NumericOptions &numeric_options,
+                        blas::CallContext context) {
+    InputType alpha{1.0};
+    InputType beta{0.0};
+    return BlasGemm(stream, transa, transb, m, n, k, alpha, a, lda, b, ldb,
+                    beta, c, ldc, numeric_options, context);
+  }
+
   template <typename InputType, typename OutputType, typename ConstantType>
   absl::Status BlasGemmWithAlgorithm(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
