@@ -3331,6 +3331,7 @@ cc_library(
         ":cublas_cudnn",
         ":hlo_traversal",
         ":ir_emission_utils",
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla:util",
         "//xla/ffi:ffi_api",
@@ -3353,7 +3354,7 @@ cc_library(
 
 xla_cc_test(
     name = "address_computation_fusion_rewriter_test",
-    srcs = ["address_computation_fusion_rewriter_test.cc"],
+    srcs = if_cuda_is_configured(["address_computation_fusion_rewriter_test.cc"]),
     deps = [
         ":address_computation_fusion_rewriter",
         ":gpu_device_info_for_tests",
@@ -3364,9 +3365,11 @@ xla_cc_test(
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_value",
+        "//xla/service:custom_call_target_registry",
         "//xla/service:executable",
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_module_config",
+        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",

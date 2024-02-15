@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,15 +30,19 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -52,12 +57,35 @@ bool IsNoOp(const HloInstruction* hlo) {
                           HloOpcode::kGetTupleElement>(hlo);
 }
 
-bool IsCustomCall(const HloInstruction* hlo) {
+bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
   auto* custom_call = DynCast<HloCustomCallInstruction>(hlo);
   if (custom_call == nullptr) return false;
 
-  return custom_call->api_version() ==
-         CustomCallApiVersion::API_VERSION_TYPED_FFI;
+  // TODO(vuson): properly handle token by following
+  // `LhloDialectEmitter::EmitCustomCallOp`'s `CreateOperands` logic for
+  // `LhloDialectEmitter::EmitFusionOp`'s `RewriteFusionOperand`
+  if (custom_call->shape().IsTuple() &&
+      absl::c_any_of(
+          custom_call->shape().tuple_shapes(),
+          [&](const Shape& sub_shape) { return sub_shape.IsToken(); }))
+    return false;
+
+  const std::string call_target_name = custom_call->custom_call_target();
+
+  bool is_ffi_custom_call =
+      custom_call->api_version() == CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(platform_name));
+
+  absl::StatusOr<XLA_FFI_Handler*> handler =
+      ffi::FindHandler(call_target_name, platform_name);
+
+  // At least one implementation should be available at run time.
+  bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
+  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+
+  return found_custom_call || found_ffi_handler;
 }
 
 absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
@@ -253,7 +281,7 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr)) {
+      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         auto sliced_operand_chains = GetSlicedOperandChains(instr);
         if (!(sliced_operand_chains.size() == 1 &&
               sliced_operand_chains.front() == instr)) {

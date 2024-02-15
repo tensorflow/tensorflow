@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_ADDRESS_COMPUTATION_FUSION_REWRITER_H_
 
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
