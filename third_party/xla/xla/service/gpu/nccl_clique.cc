@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -248,6 +249,10 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     std::vector<NcclApi::DeviceRank> ranks;
     ranks.reserve(args.size());
     for (auto* arg : args) ranks.emplace_back(*arg);
+
+    // Sort device ranks, mainly to get more readable logs below, NCCL does
+    // not care in what order ranks are initialized.
+    absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
 
     VLOG(3) << absl::StreamFormat(
         "Create NCCL communicators for clique %s; ranks=[%s]; hash(id)=%d",
