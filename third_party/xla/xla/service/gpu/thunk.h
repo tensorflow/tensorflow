@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -182,8 +183,8 @@ class Thunk {
     CollectiveCliques() = default;
     explicit CollectiveCliques(CliquesMap cliques_map);
 
-    absl::StatusOr<NcclComm::Lock> GetComm(const NcclCliqueKey& clique_key,
-                                           int32_t rank) const;
+    absl::StatusOr<NcclApi::NcclCommHandle> GetComm(
+        const NcclCliqueKey& clique_key, int32_t rank) const;
 
     // Returns the number of communicators in a collective clique. Returns error
     // if we do not have an acquired clique for a given key.

@@ -1149,16 +1149,16 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& params,
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
-      NcclComm::Lock comm,
+      NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode,
                   /*stream_id=*/0));
 
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      *comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                 params.buffer_allocations->device_ordinal(),
-                 params.buffer_allocations->memory_allocator(), params.stream));
+      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                params.buffer_allocations->device_ordinal(),
+                params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
@@ -1166,7 +1166,7 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& params,
           params.stream->parent(), params.command_buffer_trace_stream,
           [&](se::Stream* stream) {
             return RunAllReduce(nccl_api(), reduction_kind_, device_buffers,
-                                *stream, *comm);
+                                *stream, comm);
           }));
 
   return command_buffer->AddNestedCommandBuffer(*nested_cmd);
@@ -1219,16 +1219,16 @@ absl::Status ReduceScatterCmd::Record(const Thunk::ExecuteParams& params,
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
-      NcclComm::Lock comm,
+      NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode,
                   /*stream_id=*/0));
 
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      *comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                 params.buffer_allocations->device_ordinal(),
-                 params.buffer_allocations->memory_allocator(), params.stream));
+      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                params.buffer_allocations->device_ordinal(),
+                params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
@@ -1236,7 +1236,7 @@ absl::Status ReduceScatterCmd::Record(const Thunk::ExecuteParams& params,
           params.stream->parent(), params.command_buffer_trace_stream,
           [&](se::Stream* stream) {
             return RunReduceScatter(nccl_api(), reduction_kind_, device_buffers,
-                                    *stream, *comm);
+                                    *stream, comm);
           }));
 
   return command_buffer->AddNestedCommandBuffer(*nested_cmd);
@@ -1286,23 +1286,23 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& params,
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`.
   TF_ASSIGN_OR_RETURN(
-      NcclComm::Lock comm,
+      NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode,
                   /*stream_id=*/0));
 
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
-      *comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
-                 params.buffer_allocations->device_ordinal(),
-                 params.buffer_allocations->memory_allocator(), params.stream));
+      comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                params.buffer_allocations->device_ordinal(),
+                params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::CommandBuffer::Trace(
           params.stream->parent(), params.command_buffer_trace_stream,
           [&](se::Stream* stream) {
-            return RunAllGather(nccl_api(), device_buffers, *stream, *comm);
+            return RunAllGather(nccl_api(), device_buffers, *stream, comm);
           }));
 
   return command_buffer->AddNestedCommandBuffer(*nested_cmd);

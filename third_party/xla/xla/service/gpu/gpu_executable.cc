@@ -276,7 +276,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
       TF_ASSIGN_OR_RETURN(
           std::shared_ptr<NcclClique::Lock> clique,
           AcquireNcclClique(params.run_id, clique_key, *clique_id_callback,
-                            *rank, num_local_participants, false));
+                            *rank, num_local_participants));
 
       cliques_map[clique_key] = std::move(clique);
     }

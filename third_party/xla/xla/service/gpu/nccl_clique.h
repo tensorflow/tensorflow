@@ -22,18 +22,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/lockable.h"
-#include "tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -72,28 +69,6 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
     bool is_local);
 
 //===----------------------------------------------------------------------===//
-// NcclComm
-//===----------------------------------------------------------------------===//
-
-// TODO(b/319655685): Lockable NcclComm should be deleted and NcclClique should
-// become the owner of all communicators making up a clique and responsible for
-// synchronizing access to communicators.
-
-TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
-
-struct NcclCommName {
-  static std::string ToString(NcclApi::NcclCommHandle comm) {
-    return absl::StrFormat("lockable comm %p", comm);
-  }
-};
-
-struct NcclComm : public Lockable<NcclApi::NcclCommHandle, NcclCommName> {
-  friend class NcclCliqueCommunicators;
-
-  explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
-};
-
-//===----------------------------------------------------------------------===//
 // NcclClique
 //===----------------------------------------------------------------------===//
 
@@ -103,14 +78,16 @@ struct NcclComm : public Lockable<NcclApi::NcclCommHandle, NcclCommName> {
 // operations that does not lead to deadlocks.
 class NcclCliqueCommunicators {
  public:
-  NcclCliqueCommunicators(NcclCliqueKey clique_key, NcclCliqueId,
-                          absl::node_hash_map<int32_t, NcclComm> communicators);
+  NcclCliqueCommunicators(
+      NcclCliqueKey clique_key, NcclCliqueId,
+      absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators);
 
   // Returns a NCCL communicator for a given rank if it's in a clique.
-  std::optional<NcclComm*> comm(int32_t rank);
+  std::optional<NcclApi::NcclCommHandle> comm(int32_t rank);
 
   // Calls `fn` for each communicator in the clique.
-  void ForEachComm(absl::FunctionRef<void(int32_t, NcclComm&)> fn);
+  void ForEachComm(
+      absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn);
 
   const NcclCliqueKey& clique_key() const { return clique_key_; }
   const NcclCliqueId& clique_id() const { return clique_id_; }
@@ -123,7 +100,7 @@ class NcclCliqueCommunicators {
   NcclCliqueId clique_id_;
 
   // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
-  absl::node_hash_map<int32_t, NcclComm> communicators_;
+  absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators_;
 };
 
 struct NcclCliqueName {
@@ -134,7 +111,7 @@ struct NcclCliqueName {
 
 struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
   NcclClique(NcclCliqueKey clique_key, NcclCliqueId clique_id,
-             absl::node_hash_map<int32_t, NcclComm> communicators)
+             absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators)
       : Lockable(NcclCliqueCommunicators{std::move(clique_key), clique_id,
                                          std::move(communicators)}) {}
 
@@ -147,7 +124,7 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    size_t num_local_participants, bool may_skip_rendezvous);
+    size_t num_local_participants);
 
 }  // namespace xla::gpu
 

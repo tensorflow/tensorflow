@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
@@ -239,7 +238,7 @@ static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
   return NcclCliqueKey(std::move(participants), stream_id);
 }
 
-absl::StatusOr<NcclComm::Lock> GetNcclComm(
+absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -422,7 +421,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
                                 Thunk::KindToString(kind()));
   const int64_t stream_id = GetStreamId();
   TF_ASSIGN_OR_RETURN(
-      NcclComm::Lock comm,
+      NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode, stream_id));
 
@@ -436,7 +435,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Wait for main compute stream to make sure all buffers are ready.
     async_stream.ThenWaitFor(params.stream);
 
-    TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, *comm));
+    TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, comm));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
@@ -444,7 +443,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   } else {
     // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, *comm));
+    TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, comm));
   }
 
   // After a first execution of this instance of collective operation do a

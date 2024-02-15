@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -54,7 +55,7 @@ namespace gpu {
 Thunk::CollectiveCliques::CollectiveCliques(CliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
-absl::StatusOr<NcclComm::Lock> Thunk::CollectiveCliques::GetComm(
+absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
     const NcclCliqueKey& clique_key, int32_t rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
@@ -71,7 +72,7 @@ absl::StatusOr<NcclComm::Lock> Thunk::CollectiveCliques::GetComm(
                                             clique_key.ToString()));
   }
 
-  return (*communicator)->Acquire();
+  return *communicator;
 }
 
 absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(

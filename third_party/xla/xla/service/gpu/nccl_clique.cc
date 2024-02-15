@@ -99,22 +99,23 @@ static absl::Duration TerminateTimeout() {
 
 NcclCliqueCommunicators::NcclCliqueCommunicators(
     NcclCliqueKey clique_key, NcclCliqueId clique_id,
-    absl::node_hash_map<int32_t, NcclComm> communicators)
+    absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators)
     : clique_key_(std::move(clique_key)),
       clique_id_(std::move(clique_id)),
       communicators_(std::move(communicators)) {}
 
-std::optional<NcclComm*> NcclCliqueCommunicators::comm(int32_t rank) {
+std::optional<NcclApi::NcclCommHandle> NcclCliqueCommunicators::comm(
+    int32_t rank) {
   if (auto it = communicators_.find(rank); it != communicators_.end()) {
-    return &it->second;
+    return it->second.get();
   }
   return std::nullopt;
 }
 
 void NcclCliqueCommunicators::ForEachComm(
-    absl::FunctionRef<void(int32_t, NcclComm&)> fn) {
+    absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn) {
   for (auto& [rank, comm] : communicators_) {
-    fn(rank, comm);
+    fn(rank, comm.get());
   }
 }
 
@@ -125,7 +126,7 @@ std::string NcclCliqueCommunicators::DebugString() const {
   int32_t cnt = 0;
   for (const auto& [rank, comm] : communicators_) {
     if (cnt++) absl::StrAppend(&out, ", ");
-    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank, comm.value());
+    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank, comm.get());
   }
   return out;
 }
@@ -175,17 +176,14 @@ static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
 // Runs an async error check for a `comm` and aborts it if it is in the
 // error state. It will free resources that are allocated to a communicator
 // and abort any uncompleted operations before destroying the communicator.
-static absl::Status CheckComm(NcclComm& lockable_comm) {
-  if (NcclComm::Lock comm = lockable_comm.TryAcquire()) {
-    absl::Status async_err = NcclApi::Default()->CommGetAsyncError(*comm);
-    if (!async_err.ok()) {
-      LOG(ERROR) << "Aborting communicator: " << comm
-                 << " due to async NCCL error: " << async_err;
-      TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(*comm));
-    }
-    return async_err;
+static absl::Status CheckComm(NcclApi::NcclCommHandle comm) {
+  absl::Status async_err = NcclApi::Default()->CommGetAsyncError(comm);
+  if (!async_err.ok()) {
+    LOG(ERROR) << "Aborting communicator: " << comm
+               << " due to async NCCL error: " << async_err;
+    TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(comm));
   }
-  return absl::OkStatus();
+  return async_err;
 }
 
 // Runs async check on all communicators in a clique.
@@ -194,7 +192,7 @@ static void CheckClique(const NcclCliqueKey& clique_key,
   if (NcclClique::Lock clique = lockable_clique.TryAcquire()) {
     VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
             << " for async errors; num_communicators=" << clique->size();
-    clique->ForEachComm([](int32_t rank, NcclComm& comm) {
+    clique->ForEachComm([](int32_t rank, NcclApi::NcclCommHandle comm) {
       if (auto status = CheckComm(comm); !status.ok()) LOG(ERROR) << status;
     });
   } else {
@@ -257,7 +255,7 @@ struct InitializationState {
                       InitializationGuard::Lock lock);
 
   NcclCliqueId clique_id;
-  absl::node_hash_map<int32_t, absl::StatusOr<NcclApi::OwnedNcclComm>> comms;
+  absl::flat_hash_map<int32_t, absl::StatusOr<NcclApi::OwnedNcclComm>> comms;
 
   // Guards initialization of NCCL cliques.
   InitializationGuard::Lock lock;
@@ -358,7 +356,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
     NcclCliques& cliques = GetNcclCliques();
 
     // Create NCCL communicators from handles.
-    absl::node_hash_map<int32_t, NcclComm> communicators;
+    absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators;
     for (auto& [rank, comm] : state->comms) {
       if (*comm == nullptr) {
         return absl::InternalError(absl::StrFormat(
@@ -405,43 +403,30 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    size_t num_local_participants, bool may_skip_rendezvous) {
+    size_t num_local_participants) {
   VLOG(2) << "Acquire NCCL clique " << clique_key.ToString() << "; run"
           << run_id.ToString() << "; rank " << rank
-          << "; num_local_participants=" << num_local_participants
-          << "; may_skip_rendezvous=" << may_skip_rendezvous;
+          << "; num_local_participants=" << num_local_participants;
 
-  // If we prefer to skip rendezvous check if NcclClique is already available
-  // for a given key.
-  // TODO(ezhulenev): Remove this code path as it leads to deadlocks.
-  if (may_skip_rendezvous) {
-    TF_ASSIGN_OR_RETURN(
-        NcclClique::Lock clique,
-        AcquireNcclClique(clique_key, run_id, num_local_participants));
+  // Get the clique lock via the rendezvous to guarantee that all clique members
+  // participate in XLA run.
+  auto rendezvous_key = std::make_tuple(run_id, clique_key);
+  auto rendezvous_name =
+      absl::StrFormat("acquire clique for rank %d; clique=%s; run_id=%d", rank,
+                      clique_key.ToString(), run_id.ToInt());
 
-    // If lock is not null return it to the caller.
-    if (clique) return std::make_shared<NcclClique::Lock>(std::move(clique));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<NcclClique::Lock> clique,
+      RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
+          rendezvous_name, rendezvous_key, num_local_participants,
+          [&] {
+            return AcquireNcclClique(clique_key, run_id,
+                                     num_local_participants);
+          },
+          WarnStuckTimeout(), TerminateTimeout()));
 
-  } else {
-    // Get the clique lock via the rendezvous process.
-    auto rendezvous_key = std::make_tuple(run_id, clique_key);
-    auto rendezvous_name =
-        absl::StrFormat("acquire clique for rank %d; clique=%s; run_id=%d",
-                        rank, clique_key.ToString(), run_id.ToInt());
-
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<NcclClique::Lock> clique,
-        RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
-            rendezvous_name, rendezvous_key, num_local_participants,
-            [&] {
-              return AcquireNcclClique(clique_key, run_id,
-                                       num_local_participants);
-            },
-            WarnStuckTimeout(), TerminateTimeout()));
-
-    // If lock is not null return it to the caller.
-    if (*clique) return clique;
-  }
+  // If lock is not null return it to the caller.
+  if (*clique) return clique;
 
   // If NCCL clique is not found try to initialize a new one for a given key.
   return InitializeNcclClique(run_id, clique_key, clique_id_callback,
