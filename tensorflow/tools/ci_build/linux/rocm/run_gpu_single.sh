@@ -65,6 +65,7 @@ if [ -f /usertools/rocm.bazelrc ]; then
              --config=pycpp \
 	     --action_env=OPENBLAS_CORETYPE=Haswell \
              --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
+             --action_env=TF_ENABLE_ONEDNN_OPTS=0 \
              --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
              --test_env=TF_GPU_COUNT=$TF_GPU_COUNT
 else
@@ -85,6 +86,7 @@ else
 	      --test_env=HSA_TOOLS_LIB=libroctracer64.so \
 	      --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
 	      --action_env=OPENBLAS_CORETYPE=Haswell \
+              --action_env=TF_ENABLE_ONEDNN_OPTS=0 \
 	      --test_timeout 920,2400,7200,9600 \
 	      --build_tests_only \
 	      --test_output=errors \
