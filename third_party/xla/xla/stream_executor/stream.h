@@ -28,6 +28,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -108,7 +109,9 @@ class Stream {
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
+  ABSL_DEPRECATED("Use absl::Status Stream::Initialize instead.")
   Stream &Init() TF_LOCKS_EXCLUDED(mu_);
+  absl::Status Initialize();
 
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise

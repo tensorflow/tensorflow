@@ -183,20 +183,35 @@ absl::Status Stream::RefreshStatus() {
   return status;
 }
 
-Stream &Stream::Init() {
+absl::Status Stream::Initialize() {
   VLOG_CALL();
 
   absl::MutexLock lock(&mu_);
-  CHECK_EQ(false, allocated_)
-      << "stream appears to already have been initialized";
-  CHECK(!status_.ok()) << "stream should be in !ok() state pre-initialization";
+  if (allocated_) {
+    return absl::InternalError(
+        "stream appears to already have been initialized");
+  }
+  if (status_.ok()) {
+    return absl::InternalError(
+        "stream should be in !ok() state pre-initialization");
+  }
 
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;
     status_ = absl::OkStatus();
-  } else {
-    LOG(ERROR) << "failed to allocate stream during initialization";
+    return absl::OkStatus();
+  }
+
+  return absl::InternalError("failed to allocate stream during initialization");
+}
+
+Stream &Stream::Init() {
+  VLOG_CALL();
+
+  absl::Status status = Initialize();
+  if (!status.ok()) {
+    LOG(ERROR) << status;
   }
 
   return *this;
