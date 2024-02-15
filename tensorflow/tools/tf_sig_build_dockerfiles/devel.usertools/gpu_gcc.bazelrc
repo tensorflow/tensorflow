@@ -56,7 +56,7 @@ build:rocm --linkopt="-fuse-ld=gold"
 # Test-related settings below this point.
 test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test:cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
-test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled
+test:rocm --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled --action_env=TF_ENABLE_ONEDNN_OPTS=0 --action_env=OPENBLAS_CORETYPE=Haswell
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
 test --test_timeout=920,2400,7200,9600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
 # Give only the list of failed tests at the end of the log
