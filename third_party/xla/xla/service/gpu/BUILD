@@ -9,6 +9,7 @@ load(
     "//xla/service/gpu:build_defs.bzl",
     "build_cub_sort_kernels",
     "get_cub_sort_kernel_types",
+    "gpu_kernel_library",
 )
 load(
     "//xla/stream_executor:build_defs.bzl",
@@ -1439,35 +1440,22 @@ cc_library(
     ],
 )
 
-cuda_library(
-    name = "gpu_prim_cuda",
-    hdrs = ["gpu_prim_cuda.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
+gpu_kernel_library(
+    name = "gpu_prim",
+    hdrs = ["gpu_prim.h"],
     deps = [
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:bfloat16",
-    ] + if_cuda_is_configured(xla_cub_deps()),
+    ] + if_cuda_is_configured(xla_cub_deps()) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocprim",
+    ]),
 )
 
 cc_library(
     name = "variant_visitor",
     hdrs = ["variant_visitor.h"],
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "gpu_prim_rocm",
-    hdrs = ["gpu_prim_rocm.h"],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:bfloat16",
-    ] + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
 )
 
 build_cub_sort_kernels(
@@ -1477,14 +1465,9 @@ build_cub_sort_kernels(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = [
-        "ignore_for_dep=third_party/tensorflow/compiler/xla/service/gpu/gpu_prim_rocm.h",
-    ],
     types = get_cub_sort_kernel_types(),
-    deps = if_cuda_is_configured([
-        ":gpu_prim_cuda",
-    ]) + if_rocm_is_configured([
-        ":gpu_prim_rocm",
+    deps = if_gpu_is_configured([
+        ":gpu_prim",
     ]),
 )
 

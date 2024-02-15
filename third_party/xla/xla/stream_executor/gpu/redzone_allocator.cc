@@ -326,16 +326,18 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   }
 
   TF_ASSIGN_OR_RETURN(
-      ComparisonKernelT * loaded_kernel,
+      ComparisonKernelT * kernel_ptr,
       (LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
                           DeviceMemory<uint64_t>>(
           executor, "redzone_checker", redzone_checker_ptx, compiled_ptx)));
 #elif TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ComparisonKernelT> loaded_kernel,
+      ComparisonKernelT loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
                                    DeviceMemory<uint64_t>>("redzone_checker",
                                                            kernel_symbol())));
+  // CUDA side returns a pointer => hence get a pointer to the loaded kernel
+  auto* kernel_ptr = &loaded_kernel;
 #endif  // GOOGLE_CUDA
 
   auto out_param = executor->AllocateOwnedScalar<uint64_t>();
@@ -345,8 +347,8 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first, out_param.cref(),
-                               *loaded_kernel, buf_and_size.second,
-                               redzone_size_, redzone_pattern_));
+                               *kernel_ptr, buf_and_size.second, redzone_size_,
+                               redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;
     }

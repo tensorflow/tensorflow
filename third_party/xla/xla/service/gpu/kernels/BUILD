@@ -2,7 +2,8 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_library")
+load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -147,42 +148,22 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":topk_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":topk_kernel_rocm",
+    ] + if_gpu_is_configured([
+        ":topk_kernel_gpu",
     ]),
 )
 
-cuda_library(
-    name = "topk_kernel_cuda",
-    srcs = if_cuda_is_configured([
+gpu_kernel_library(
+    name = "topk_kernel_gpu",
+    srcs = if_gpu_is_configured([
         "topk_kernel_bfloat16.cu.cc",
         "topk_kernel_float.cu.cc",
         "topk_kernel.cu.h",
     ]),
-    hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),
+    hdrs = if_gpu_is_configured(["topk_kernel_common.h"]),
     compatible_with = [],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:types",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "@local_tsl//tsl/lib/math:math_util",
-    ],
-)
-
-rocm_library(
-    name = "topk_kernel_rocm",
-    srcs = if_rocm_is_configured([
-        "topk_kernel_bfloat16.cu.cc",
-        "topk_kernel_float.cu.cc",
-        "topk_kernel.cu.h",
-    ]),
-    hdrs = if_rocm_is_configured(["topk_kernel_common.h"]),
-    compatible_with = [],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    deps = [
         "//xla/stream_executor/gpu:gpu_types_header",
         "@local_tsl//tsl/lib/math:math_util",
     ],
@@ -232,10 +213,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":topk_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":topk_kernel_rocm",
+    ] + if_gpu_is_configured([
+        ":topk_kernel_gpu",
     ]),
 )
 
