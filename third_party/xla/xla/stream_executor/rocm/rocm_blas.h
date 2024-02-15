@@ -32,6 +32,7 @@ limitations under the License.
 #include "rocm/include/rocblas.h"
 #endif
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #if TF_HIPBLASLT

@@ -11,8 +11,8 @@ BASIS, WITHOUT OF ANY KIND WARRANTIES OR CONDITIONS, either express
 or implied. For the specific language governing permissions and
 limitations under the license, the license you must see.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_GPU_PRIM_CUDA_H_
-#define XLA_SERVICE_GPU_GPU_PRIM_CUDA_H_
+#ifndef XLA_SERVICE_GPU_GPU_PRIM_H_
+#define XLA_SERVICE_GPU_GPU_PRIM_H_
 
 #include "tsl/platform/bfloat16.h"
 
@@ -77,6 +77,42 @@ struct NumericTraits<tsl::bfloat16>
                  /*_NULL_TYPE=*/false, /*_UnsignedBits=*/uint16_t,
                  /*T=*/tsl::bfloat16> {};
 }  // namespace cub
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
 
-#endif  // XLA_SERVICE_GPU_GPU_PRIM_CUDA_H_
+#include "rocm/include/hipcub/hipcub.hpp"
+#include "rocm/rocm_config.h"
+namespace gpuprim = ::hipcub;
+
+// Required for sorting Eigen::half and bfloat16.
+namespace rocprim {
+namespace detail {
+
+#if (TF_ROCM_VERSION >= 50200)
+template <>
+struct float_bit_mask<Eigen::half> {
+  static constexpr uint16_t sign_bit = 0x8000;
+  static constexpr uint16_t exponent = 0x7C00;
+  static constexpr uint16_t mantissa = 0x03FF;
+  using bit_type = uint16_t;
+};
+
+template <>
+struct float_bit_mask<tsl::bfloat16> {
+  static constexpr uint16_t sign_bit = 0x8000;
+  static constexpr uint16_t exponent = 0x7F80;
+  static constexpr uint16_t mantissa = 0x007F;
+  using bit_type = uint16_t;
+};
+#endif  // TF_ROCM_VERSION >= 50200
+template <>
+struct radix_key_codec_base<Eigen::half>
+    : radix_key_codec_floating<Eigen::half, uint16_t> {};
+template <>
+struct radix_key_codec_base<tsl::bfloat16>
+    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
+};  // namespace detail
+};  // namespace rocprim
+
+#endif  // TENSORFLOW_USE_ROCM
+
+#endif  // XLA_SERVICE_GPU_GPU_PRIM_H_

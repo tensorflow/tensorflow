@@ -18,11 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#if GOOGLE_CUDA
-#include "xla/service/gpu/gpu_prim_cuda.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/gpu_prim_rocm.h"
-#endif  // TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/gpu_prim.h"
 
 namespace xla {
 namespace gpu {

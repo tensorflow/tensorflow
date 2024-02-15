@@ -69,7 +69,9 @@ TEST(XlaCompileTest, LoadCpuExecutable) {
   executable_run_options.set_allocator(client->backend().memory_allocator());
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer result,
-      local_executable->Run({&array1, &array2}, executable_run_options));
+      local_executable->Run(
+          absl::Span<const ShapedBuffer* const>{&array1, &array2},
+          executable_run_options));
 
   TF_ASSERT_OK_AND_ASSIGN(Literal output,
                           client->ShapedBufferToLiteral(result));
