@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -42,6 +41,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using llvm::ArrayRef;
 using llvm::SmallBitVector;
 using llvm::SmallVector;
 using mlir::AffineBinaryOpExpr;
@@ -351,7 +351,7 @@ AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
 
 AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
   affine_map = mlir::simplifyAffineMap(affine_map);
-  mlir::SmallVector<AffineExpr, 4> results;
+  SmallVector<AffineExpr, 4> results;
   results.reserve(affine_map.getNumResults());
   bool nothing_changed = true;
   for (AffineExpr expr : affine_map.getResults()) {
@@ -505,6 +505,37 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Range range) {
   if (!inserted) {
     it->second = Intersect(it->second, range);
   }
+}
+
+bool IndexingMap::ConstraintsSatisfied(
+    ArrayRef<AffineExpr> dim_const_exprs,
+    ArrayRef<AffineExpr> symbol_const_exprs) const {
+  CHECK(dim_const_exprs.size() == GetDimensionCount());
+  CHECK(symbol_const_exprs.size() == GetSymbolCount());
+  if (IsKnownEmpty()) {
+    return false;
+  }
+  for (auto& [expr, range] : constraints_) {
+    int64_t expr_value =
+        mlir::cast<AffineConstantExpr>(
+            expr.replaceDimsAndSymbols(dim_const_exprs, symbol_const_exprs))
+            .getValue();
+    if (expr_value < range.lower_bound || expr_value > range.upper_bound) {
+      return false;
+    }
+  }
+  return true;
+}
+
+SmallVector<int64_t, 4> IndexingMap::Evaluate(
+    ArrayRef<AffineExpr> dim_const_exprs,
+    ArrayRef<AffineExpr> symbol_const_exprs) const {
+  CHECK(dim_const_exprs.size() == GetDimensionCount());
+  CHECK(symbol_const_exprs.size() == GetSymbolCount());
+  AffineMap eval = affine_map_.replaceDimsAndSymbols(
+      dim_const_exprs, symbol_const_exprs, dim_const_exprs.size(),
+      symbol_const_exprs.size());
+  return eval.getConstantResults();
 }
 
 bool IndexingMap::IsKnownEmpty() const {

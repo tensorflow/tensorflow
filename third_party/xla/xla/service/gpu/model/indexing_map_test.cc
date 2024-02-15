@@ -29,11 +29,37 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
+
 class IndexingMapTest : public HloTestBase {
  public:
   mlir::MLIRContext mlir_context_;
   AffineMapPrinter printer_;
 };
+
+TEST_F(IndexingMapTest, Evaluation) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1)[s0, s1] -> (d1, d0, s1, s0)", &mlir_context_),
+      {4, 4}, {2, 2});
+
+  auto results = indexing_map.Evaluate(
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
+  EXPECT_THAT(results, ElementsAre(2, 1, 4, 3));
+
+  auto feasible = indexing_map.ConstraintsSatisfied(
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
+  EXPECT_TRUE(feasible);
+
+  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
+                             Range{0, 0});
+
+  auto infeasible = indexing_map.ConstraintsSatisfied(
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({5, 4}, &mlir_context_));
+  EXPECT_FALSE(infeasible);
+}
 
 TEST_F(IndexingMapTest, Composition_Permutation) {
   IndexingMap producer = IndexingMap::FromTensorSizes(

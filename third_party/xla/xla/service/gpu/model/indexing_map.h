@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -157,6 +158,17 @@ class IndexingMap {
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
   void AddConstraint(mlir::AffineExpr expr, Range range);
+
+  // Evaluates the constraints at a given point and returns `true` if all
+  // constraints are satisfied.
+  bool ConstraintsSatisfied(
+      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
+      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
+
+  // Evaluates indexing map results at a given point.
+  llvm::SmallVector<int64_t, 4> Evaluate(
+      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
+      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
 
   // Returns true if the domain is empty. Right now it scans through all
   // constraints to find the one where lower_bound > upper_bound. If it returns
