@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
@@ -37,15 +38,13 @@ TEST_F(StreamTest, NoInitNotOk) {
 TEST_F(StreamTest, InitOk) {
   std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
   Stream stream(executor.get());
-  stream.Init();
-  EXPECT_TRUE(stream.ok());
+  CHECK_OK(stream.Initialize());
 }
 
 TEST_F(StreamTest, OneSubStream) {
   std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
   Stream stream(executor.get());
-  stream.Init();
-  EXPECT_TRUE(stream.ok());
+  CHECK_OK(stream.Initialize());
 
   // Get and return a sub-stream. Sub-streams are always initialized.
   Stream* sub_stream1 = stream.GetOrCreateSubStream();
@@ -65,8 +64,7 @@ TEST_F(StreamTest, OneSubStream) {
 TEST_F(StreamTest, TwoSubStreams) {
   std::unique_ptr<StreamExecutor> executor = NewStreamExecutor();
   Stream stream(executor.get());
-  stream.Init();
-  EXPECT_TRUE(stream.ok());
+  CHECK_OK(stream.Initialize());
 
   // Get two sub-streams.
   Stream* sub_stream1 = stream.GetOrCreateSubStream();

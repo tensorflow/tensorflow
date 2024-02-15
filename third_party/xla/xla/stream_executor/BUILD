@@ -688,6 +688,7 @@ xla_cc_test(
     deps = [
         ":stream_executor",
         "//xla/stream_executor/host:host_platform",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

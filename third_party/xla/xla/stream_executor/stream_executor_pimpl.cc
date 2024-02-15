@@ -561,18 +561,15 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
       << "The logic below only works for synchronous allocators";
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  Stream* out = [&] {
-    absl::MutexLock lock(&mutex_);
-    if (!streams_.count(device_ordinal)) {
-      auto p = streams_.emplace(std::piecewise_construct,
-                                std::forward_as_tuple(device_ordinal),
-                                std::forward_as_tuple(executor));
-      p.first->second.Init();
-      return &p.first->second;
-    }
-    return &streams_.at(device_ordinal);
-  }();
-  return out;
+  absl::MutexLock lock(&mutex_);
+  if (!streams_.count(device_ordinal)) {
+    auto p = streams_.emplace(std::piecewise_construct,
+                              std::forward_as_tuple(device_ordinal),
+                              std::forward_as_tuple(executor));
+    TF_RETURN_IF_ERROR(p.first->second.Initialize());
+    return &p.first->second;
+  }
+  return &streams_.at(device_ordinal);
 }
 
 }  // namespace stream_executor
