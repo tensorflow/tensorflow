@@ -953,7 +953,8 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfNegate) {
 }
 
 TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
-  const char* kModuleStr = R"(
+  // Test Reduce(Broadcast(x), a, Max)
+  const char* kModuleStrForMax = R"(
     HloModule m
     max_f32 {
       p0 = f32[] parameter(0)
@@ -968,12 +969,35 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kModuleStrForMax));
   AlgebraicSimplifierOptions options = default_options_;
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::MaximumAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
+
+  // Test Reduce(Broadcast(x), a, And)
+  const char* kModuleStrForAnd = R"(
+    HloModule m
+    and_u4 {
+      p0 = u4[] parameter(0)
+      p1 = u4[] parameter(1)
+      ROOT r = u4[] and(p0, p1)
+    }
+
+    ENTRY test {
+      p = u4[] parameter(0)
+      b = u4[1000,1000] broadcast(p), dimensions={}
+      ROOT reduce = u4[] reduce(b, u4[] constant(0)), dimensions={0,1}, to_apply=and_u4
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kModuleStrForAnd));
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AndAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
 }
 
 // Test that Const + A is canonicalized to A + Const.

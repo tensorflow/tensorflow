@@ -7244,15 +7244,19 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // Replace Reduce(Broadcast(x), a, Max()) or Reduce(Broadcast(x), a, Min())
-  // with Max(x, a) or Min(x, a) when x is a scalar and the broadcast is
-  // reduced to a scalar.
+  // For Computation equal to Min, Max, And or Or, replace Reduce(Broadcast(x),
+  // a, Computation()) with Computation(x, a) when x is a scalar and the
+  // broadcast is reduced to a scalar.
   if (HloInstruction * broadcast_arg;
       Match(arg, m::Broadcast(m::Op(&broadcast_arg))) &&
       (Match(function->root_instruction(),
              m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))) ||
        Match(function->root_instruction(),
-             m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+             m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1))) ||
+       Match(function->root_instruction(),
+             m::AndAnyOrder(m::Parameter(0), m::Parameter(1))) ||
+       Match(function->root_instruction(),
+             m::OrAnyOrder(m::Parameter(0), m::Parameter(1))))) {
     if (broadcast_arg->shape().rank() == 0 &&
         reduce->dimensions().size() == arg->shape().rank()) {
       return ReplaceWithNewInstruction(
