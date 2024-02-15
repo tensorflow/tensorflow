@@ -38,6 +38,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
 #endif
 
 namespace xla {
@@ -3440,7 +3442,12 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60000
+  auto rocm_switch = Switch::False;  // GELU is only available from ROCM 6.0
+#else
+  auto rocm_switch = Switch::True;
+#endif
+  if (CudaOrRocmCheck(Switch::False, rocm_switch)) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(
