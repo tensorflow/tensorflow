@@ -856,6 +856,11 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
+  HloRecvInstruction* recv = dynamic_cast<HloRecvInstruction*>(new_operands[0]);
+  if (recv != nullptr) {
+    return std::make_unique<HloRecvDoneInstruction>(recv, is_host_transfer());
+  }
+
   return std::make_unique<HloRecvDoneInstruction>(
       new_operands[0], channel_id().value(), is_host_transfer());
 }
