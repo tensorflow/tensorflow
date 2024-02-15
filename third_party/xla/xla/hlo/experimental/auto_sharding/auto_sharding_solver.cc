@@ -382,6 +382,7 @@ AutoShardingSolverResult CallORToolsSolver(
           e[edge_idx][j], accumulated_coefficient + coefficient);
     }
   }
+  LOG(INFO) << "Number of infinity terms: " << infinity_vars.size();
 
   // Add constraints.
   // 0. Do not choose solutions with infinity costs, as it will make the
