@@ -115,10 +115,11 @@ tsl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 }
 
 bool NoParallelCustomCallCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>()
-                            .value()
-                            .collective_backend_config();
-  return backend_config.no_parallel_custom_call();
+  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().no_parallel_custom_call();
 }
 
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the

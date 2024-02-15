@@ -251,9 +251,7 @@ NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclAllReduceStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
-          inst->backend_config<GpuBackendConfig>()
-              ->collective_backend_config()
-              .is_sync()) {}
+          IsSyncCollective(inst)) {}
 
 absl::Status NcclAllReduceStartThunk::CheckImplementable(
     AllReduceStartOp op, int64_t replica_count, int64_t partition_count) {
