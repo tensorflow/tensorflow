@@ -257,7 +257,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     auto start_micros = tsl::Env::Default()->NowMicros();
 
-    Thunk::CollectiveCliques::CliquesMap cliques_map;
+    NcclClique::AcquiredCliquesMap cliques_map;
 
     for (const auto& [clique_key, num_local_participants] : cliques_) {
       std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
@@ -273,10 +273,11 @@ class ResourceRequests : public Thunk::ResourceRequests {
           const NcclCliqueIdCallback* clique_id_callback,
           GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
-      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
-                          AcquireNcclClique(params.executor, params.run_id,
-                                            clique_key, *clique_id_callback,
-                                            *rank, num_local_participants));
+      TF_ASSIGN_OR_RETURN(
+          std::shared_ptr<NcclClique::Lock> clique,
+          AcquireNcclClique(params.executor, params.run_id, clique_key,
+                            *clique_id_callback, *rank, num_local_participants,
+                            cliques_map));
 
       cliques_map[clique_key] = std::move(clique);
     }

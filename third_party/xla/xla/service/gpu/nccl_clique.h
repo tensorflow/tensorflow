@@ -18,11 +18,13 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
@@ -108,6 +110,12 @@ struct NcclCliqueName {
 };
 
 struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
+  // We keep acquired cliques in a sorted container to guarantee that all
+  // participants iterate over cliques in the same order.
+  using AcquiredCliquesMap =
+      absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
+                      std::greater<NcclCliqueKey>>;
+
   NcclClique(NcclCliqueKey clique_key, NcclCliqueId clique_id,
              absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators)
       : Lockable(NcclCliqueCommunicators{std::move(clique_key), clique_id,
@@ -119,10 +127,15 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // Acquires an shared access to a NCCL clique (NcclClique::Lock collectively
 // owned by `num_local_participants` threads). XLA uses this lock to serialize
 // execution of all collective operations sharing a `clique_id`.
+//
+// If clique for a given key does not exist it will be initialized from newly
+// created communicators or created by splitting of the already acquired
+// cliques.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    size_t num_local_participants);
+    size_t num_local_participants,
+    const NcclClique::AcquiredCliquesMap& acquired_cliques);
 
 }  // namespace xla::gpu
 

@@ -177,11 +177,8 @@ class Thunk {
   // collected from all thunks at prepare stage.
   class CollectiveCliques {
    public:
-    using CliquesMap =
-        absl::flat_hash_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>>;
-
     CollectiveCliques() = default;
-    explicit CollectiveCliques(CliquesMap cliques_map);
+    explicit CollectiveCliques(NcclClique::AcquiredCliquesMap cliques_map);
 
     absl::StatusOr<NcclApi::NcclCommHandle> GetComm(
         const NcclCliqueKey& clique_key, int32_t rank) const;
@@ -194,7 +191,7 @@ class Thunk {
     bool empty() const { return cliques_map_.empty(); }
 
    private:
-    CliquesMap cliques_map_;
+    NcclClique::AcquiredCliquesMap cliques_map_;
   };
 
   //===--------------------------------------------------------------------===//

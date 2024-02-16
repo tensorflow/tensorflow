@@ -52,7 +52,8 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(CliquesMap cliques_map)
+Thunk::CollectiveCliques::CollectiveCliques(
+    NcclClique::AcquiredCliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
 absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
