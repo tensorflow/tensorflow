@@ -332,6 +332,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"dcn_destination_per_slice_device_id", kDcnDestinationPerSliceDeviceId},
       {"dcn_chunk", kDcnChunk},
       {"dcn_loop_index", kDcnLoopIndex},
+      {"dropped_traces", kDroppedTraces},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

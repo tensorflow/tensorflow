@@ -317,7 +317,8 @@ enum StatType {
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
-  kLastStatType = kEdgeTpuMlir,
+  kDroppedTraces,
+  kLastStatType = kDroppedTraces,
 };
 
 enum MegaScaleStatType : uint8_t {
