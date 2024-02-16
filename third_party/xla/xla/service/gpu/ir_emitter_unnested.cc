@@ -971,56 +971,79 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
 
 absl::Status IrEmitterUnnested::EmitNormThunk(
     const HloCustomCallInstruction* instr) {
-  if (instr->shape().tuple_shapes_size() != 2 &&
-      instr->shape().tuple_shapes_size() != 4) {
-    return Internal("Unexpected shape for norm: %s", instr->ToString());
-  }
+  TF_ASSIGN_OR_RETURN(auto const gpu_backend_config,
+                      instr->backend_config<xla::gpu::GpuBackendConfig>());
+  const xla::gpu::CudnnNormBackendConfig& backend_config =
+      gpu_backend_config.cudnn_norm_backend_config();
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice x_slice,
                       GetAllocationSliceForHlo(instr->operand(0)));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scale_slice,
                       GetAllocationSliceForHlo(instr->operand(1)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_slice,
-                      GetAllocationSliceForHlo(instr->operand(2)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice y_or_dx_slice,
                       GetAllocationSliceForHlo(instr, {0}));
 
-  bool has_aux_outputs = instr->shape().tuple_shapes_size() == 4;
-  std::optional<BufferAllocation::Slice> expectation_slice, norm_factor_slice;
-  std::optional<Shape> expectation_shape, norm_factor_shape;
-  BufferAllocation::Slice scratch_slice;
-  Shape scratch_shape;
-  if (has_aux_outputs) {
+  std::optional<BufferAllocation::Slice> bias_slice, expectation_slice,
+      norm_factor_slice, dy_slice, dscale_slice, dbias_slice;
+
+  if (backend_config.kind() ==
+          xla::gpu::CudnnNormBackendConfig::LAYER_FWD_INFER ||
+      backend_config.kind() ==
+          xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
+    TF_ASSIGN_OR_RETURN(bias_slice,
+                        GetAllocationSliceForHlo(instr->operand(2)));
+  }
+  if (backend_config.kind() ==
+      xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
     TF_ASSIGN_OR_RETURN(expectation_slice,
                         GetAllocationSliceForHlo(instr, {1}));
     TF_ASSIGN_OR_RETURN(norm_factor_slice,
                         GetAllocationSliceForHlo(instr, {2}));
-    TF_ASSIGN_OR_RETURN(scratch_slice, GetAllocationSliceForHlo(instr, {3}));
-    expectation_shape = ShapeUtil::GetSubshape(instr->shape(), {1});
-    norm_factor_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
-    scratch_shape = ShapeUtil::GetSubshape(instr->shape(), {3});
-  } else {
-    TF_ASSIGN_OR_RETURN(scratch_slice, GetAllocationSliceForHlo(instr, {1}));
-    scratch_shape = ShapeUtil::GetSubshape(instr->shape(), {1});
+  }
+  if (backend_config.kind() == xla::gpu::CudnnNormBackendConfig::LAYER_BWD) {
+    TF_ASSIGN_OR_RETURN(dy_slice, GetAllocationSliceForHlo(instr->operand(2)));
+    TF_ASSIGN_OR_RETURN(expectation_slice,
+                        GetAllocationSliceForHlo(instr->operand(3)));
+    TF_ASSIGN_OR_RETURN(norm_factor_slice,
+                        GetAllocationSliceForHlo(instr->operand(4)));
+    TF_ASSIGN_OR_RETURN(dscale_slice, GetAllocationSliceForHlo(instr, {1}));
+    TF_ASSIGN_OR_RETURN(dbias_slice, GetAllocationSliceForHlo(instr, {2}));
+  }
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSliceForHlo(
+                          instr, {instr->shape().tuple_shapes_size() - 1}));
+
+  GpuNormDescriptor descriptor;
+  descriptor.backend_config = backend_config;
+
+  descriptor.x_shape = instr->operand(0)->shape();
+  descriptor.scale_shape = instr->operand(1)->shape();
+  descriptor.y_or_dx_shape = ShapeUtil::GetSubshape(instr->shape(), {0});
+  if (backend_config.kind() ==
+          xla::gpu::CudnnNormBackendConfig::LAYER_FWD_INFER ||
+      backend_config.kind() ==
+          xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
+    descriptor.bias_shape = instr->operand(2)->shape();
+  }
+  if (backend_config.kind() ==
+      xla::gpu::CudnnNormBackendConfig::LAYER_FWD_TRAIN) {
+    descriptor.expectation_shape = ShapeUtil::GetSubshape(instr->shape(), {1});
+    descriptor.norm_factor_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
+  }
+  if (backend_config.kind() == xla::gpu::CudnnNormBackendConfig::LAYER_BWD) {
+    descriptor.dy_shape = instr->operand(2)->shape();
+    descriptor.expectation_shape = instr->operand(3)->shape();
+    descriptor.norm_factor_shape = instr->operand(4)->shape();
+    descriptor.dscale_shape = ShapeUtil::GetSubshape(instr->shape(), {1});
+    descriptor.dbias_shape = ShapeUtil::GetSubshape(instr->shape(), {2});
   }
 
-  TF_ASSIGN_OR_RETURN(const auto gpu_config,
-                      instr->backend_config<xla::gpu::GpuBackendConfig>());
-  GpuNormDescriptor descriptor = {
-      gpu_config.cudnn_norm_backend_config(),
-      /*input_shape=*/instr->operand(0)->shape(),
-      /*scale_shape=*/instr->operand(1)->shape(),
-      /*bias_shape=*/instr->operand(2)->shape(),
-      /*output_shape=*/ShapeUtil::GetSubshape(instr->shape(), {0}),
-      expectation_shape, norm_factor_shape,
-      /*scratch_size=*/
-      static_cast<size_t>(ShapeUtil::ByteSizeOf(scratch_shape))};
   TF_ASSIGN_OR_RETURN(GpuNormConfig config, GpuNormConfig::For(descriptor));
 
   auto thunk = std::make_unique<NormThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config),
-      input_slice, scale_slice, bias_slice, output_slice, expectation_slice,
-      norm_factor_slice, scratch_slice);
+      x_slice, scale_slice, y_or_dx_slice, bias_slice, expectation_slice,
+      norm_factor_slice, dy_slice, dscale_slice, dbias_slice, scratch_slice);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }

@@ -1692,14 +1692,19 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       ActivationMode activation_mode);
 
-  virtual absl::StatusOr<std::unique_ptr<const NormRunner>> NormRunnerFromDesc(
-      Stream* stream, const AlgorithmDesc& algorithm_desc, double epsilon,
-      const TensorDescriptor& input_descriptor,
-      const TensorDescriptor& scale_descriptor,
-      const TensorDescriptor& bias_descriptor,
-      const TensorDescriptor& output_descriptor,
-      std::optional<TensorDescriptor> expectation_descriptor,
-      std::optional<TensorDescriptor> norm_factor_descriptor);
+  virtual absl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+  NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::NormKind kind, double epsilon,
+      const dnn::TensorDescriptor& x_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& y_or_dx_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor,
+      std::optional<dnn::TensorDescriptor> dy_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
+      std::optional<dnn::TensorDescriptor> dscale_descriptor,
+      std::optional<dnn::TensorDescriptor> dbias_descriptor);
 
   virtual absl::StatusOr<std::unique_ptr<const FusedMHARunner>>
   FusedMHARunnerFromDesc(
