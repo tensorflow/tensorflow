@@ -15,20 +15,25 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/hlo_module_importer.h"
 
-#include <iterator>
+#include <cstdint>
 #include <memory>
-#include <vector>
+#include <optional>
 
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/permutation_util.h"
-#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
+#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -41,6 +46,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::arith::ArithDialect>();
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
+  module.getContext()->loadDialect<mlir::quant::QuantizationDialect>();
 }
 
 namespace {
@@ -48,7 +54,7 @@ namespace {
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
-    const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
+    const absl::Span<const HloModule::CrossProgramPrefetchInfo> prefetches,
     mlir::Builder* builder) {
   llvm::SmallVector<mlir::Attribute, 4> shapes;
   for (auto [parameter, index, alt_memory_offset] : prefetches) {
@@ -65,7 +71,7 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
 }
 }  // namespace
 
-Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
+Status HloModuleImporter::Import(const HloModule& hlo_module) {
   auto module = llvm::cast<mlir::ModuleOp>(symbol_table_.getOp());
   module.setName(hlo_module.name());
   module->setAttr("mhlo.cross_program_prefetches",
@@ -113,19 +119,19 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   return OkStatus();
 }
 
-Status HloModuleImporter::Import(const xla::HloModuleProto& module_proto) {
-  xla::DebugOptions debug_options;
+Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
+  DebugOptions debug_options;
   TF_ASSIGN_OR_RETURN(
       auto module_config,
-      xla::HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
-  TF_ASSIGN_OR_RETURN(auto module, xla::HloModule::CreateFromProto(
-                                       module_proto, module_config));
+      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
+  TF_ASSIGN_OR_RETURN(auto module,
+                      HloModule::CreateFromProto(module_proto, module_config));
 
   return Import(*module);
 }
 
-void HloModuleImporter::ImportFrontendAttributes(
-    const xla::HloModule& hlo_module, mlir::ModuleOp module) {
+void HloModuleImporter::ImportFrontendAttributes(const HloModule& hlo_module,
+                                                 mlir::ModuleOp module) {
   if (!hlo_module.frontend_attributes().map().empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 4> frontend_attributes;
     for (const auto& [k, v] : hlo_module.frontend_attributes().map()) {

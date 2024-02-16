@@ -27,6 +27,24 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call_importer",
+    srcs = ["custom_call_importer.cc"],
+    hdrs = ["custom_call_importer.h"],
+    deps = [
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "stack_location_utils",
     srcs = ["stack_location_utils.cc"],
     hdrs = ["stack_location_utils.h"],
@@ -49,6 +67,7 @@ cc_library(
     ],
     deps = [
         ":attribute_importer",
+        ":custom_call_importer",
         ":hlo_utils",
         ":location_importer",
         "//xla:comparison_util",
@@ -68,11 +87,13 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@local_tsl//tsl/platform:statusor",
     ],
