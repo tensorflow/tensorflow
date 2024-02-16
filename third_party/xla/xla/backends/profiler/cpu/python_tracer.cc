@@ -60,7 +60,7 @@ absl::Status PythonTracer::Start() {  // TENSORFLOW_STATUS_OK
   VLOG(1) << __FUNCTION__;
   recording_ = true;
   PythonHooks::GetSingleton()->Start(options_);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status PythonTracer::Stop() {  // TENSORFLOW_STATUS_OK
@@ -70,7 +70,7 @@ absl::Status PythonTracer::Stop() {  // TENSORFLOW_STATUS_OK
   VLOG(1) << __FUNCTION__;
   context_ = PythonHooks::GetSingleton()->Stop();
   recording_ = false;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status PythonTracer::CollectData(  // TENSORFLOW_STATUS_OK
@@ -80,7 +80,7 @@ absl::Status PythonTracer::CollectData(  // TENSORFLOW_STATUS_OK
     context_->Finalize(space);
     context_.reset();
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
