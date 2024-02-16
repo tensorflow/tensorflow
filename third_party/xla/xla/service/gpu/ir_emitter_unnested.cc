@@ -47,6 +47,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Argument.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -115,6 +116,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/kernel_arguments.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/topk_custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -1762,66 +1764,89 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 #if !GOOGLE_CUDA
   return absl::UnimplementedError("Triton support requires CUDA");
 #else
-  mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
-  mlir_context.loadDialect<mlir::triton::TritonDialect>();
-  auto call =
-      TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
-  auto kernel_name =
-      ir_emitter_context_->name_uniquer()->GetUniqueName(call.name);
-  auto triton_module =
-      mlir::parseSourceString<mlir::ModuleOp>(call.ir, &mlir_context);
-  auto triton_fn = triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
-  triton_fn.setName(kernel_name);
+  auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
+    mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
+    mlir_context.loadDialect<mlir::triton::TritonDialect>();
+    auto call =
+        TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
+    auto kernel_name =
+        ir_emitter_context_->name_uniquer()->GetUniqueName(call.name);
+    VLOG(3) << "Generating: " << kernel_name;
 
-  // TODO(b/325259518): Cache the TTIR->LLVM compilation.
-  HloModule* hlo_module = instr->GetModule();
-  auto gemm_config = TritonGemmConfig(
-      /*block_m=*/-1, /*block_n=*/-1, /*block_k=*/-1, /*split_k=*/-1,
-      call.num_stages, call.num_warps);
-  TF_ASSIGN_OR_RETURN(
-      auto result,
-      CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
-                          ir_emitter_context_->cuda_compute_capability(),
-                          ir_emitter_context_->gpu_device_info(), gemm_config,
-                          triton_module.get(),
-                          ir_emitter_context_->llvm_module(), mlir_context));
+    auto triton_module =
+        mlir::parseSourceString<mlir::ModuleOp>(call.ir, &mlir_context);
+    auto triton_fn =
+        triton_module->lookupSymbol<mlir::triton::FuncOp>(call.name);
+    triton_fn.setName(kernel_name);
 
-  llvm::Function* impl_fn =
-      ir_emitter_context_->llvm_module()->getFunction(kernel_name);
-  TF_RET_CHECK(impl_fn);
-  impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
-      kernel_name + "_impl"));
+    HloModule* hlo_module = instr->GetModule();
+    auto gemm_config = TritonGemmConfig(
+        /*block_m=*/-1, /*block_n=*/-1, /*block_k=*/-1, /*split_k=*/-1,
+        call.num_stages, call.num_warps);
+    TF_ASSIGN_OR_RETURN(
+        auto result,
+        CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
+                            ir_emitter_context_->cuda_compute_capability(),
+                            ir_emitter_context_->gpu_device_info(), gemm_config,
+                            triton_module.get(),
+                            ir_emitter_context_->llvm_module(), mlir_context));
+
+    llvm::Function* impl_fn =
+        ir_emitter_context_->llvm_module()->getFunction(kernel_name);
+    TF_RET_CHECK(impl_fn);
+    impl_fn->setName(ir_emitter_context_->name_uniquer()->GetUniqueName(
+        kernel_name + "_impl"));
+
+    TF_ASSIGN_OR_RETURN(
+        auto kernel_arguments,
+        KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
+                                instr->operands()));
+    auto launch_dimensions =
+        LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
+                         se::ThreadDim(call.num_warps * 32));
+
+    llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
+
+    llvm::Function* kernel;
+    std::vector<llvm_ir::IrArray> inputs;
+    std::vector<llvm_ir::IrArray> outputs;
+    TF_ASSIGN_OR_RETURN(
+        std::tie(kernel, inputs, outputs),
+        BuildKernelPrototype(*ir_emitter_context_, kernel_name,
+                             kernel_arguments.args(), impl_fn->arg_size(),
+                             launch_dimensions, &builder));
+
+    // Move function body into kernel prototype.
+    llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
+    prototype_func->splice(prototype_func->begin(), impl_fn);
+    for (const auto& [kernel_arg, arg, input] :
+         llvm::zip(kernel_arguments.args(), impl_fn->args(), inputs)) {
+      // Remove the alignment and aliasing attributes to avoid recompiling the
+      // kernel for each alignment/aliasing combination.
+      arg.removeAttr(llvm::Attribute::Alignment);
+      arg.removeAttr(llvm::Attribute::NoAlias);
+
+      arg.replaceAllUsesWith(input.GetBasePointer());
+    }
+    impl_fn->eraseFromParent();
+
+    return {{kernel->getName().str(), launch_dimensions, result.cluster_dim,
+             result.shmem_bytes}};
+  };
+
+  auto [status_or_entry, was_cached] =
+      ir_emitter_context_->kernel_cache().GetWithStatus(
+          instr->raw_backend_config_string(), generate);
+  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
                               instr->operands()));
-  auto launch_dimensions =
-      LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
-                       se::ThreadDim(call.num_warps * 32));
-
-  llvm::IRBuilder builder(ir_emitter_context_->llvm_module()->getContext());
-
-  llvm::Function* kernel;
-  std::vector<llvm_ir::IrArray> inputs;
-  std::vector<llvm_ir::IrArray> outputs;
-  TF_ASSIGN_OR_RETURN(
-      std::tie(kernel, inputs, outputs),
-      BuildKernelPrototype(*ir_emitter_context_, kernel_name,
-                           kernel_arguments.args(), impl_fn->arg_size(),
-                           launch_dimensions, &builder));
-
-  // Move function body into kernel prototype.
-  llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
-  prototype_func->splice(prototype_func->begin(), impl_fn);
-  for (const auto& [arg, input] : llvm::zip(impl_fn->args(), inputs)) {
-    arg.replaceAllUsesWith(input.GetBasePointer());
-  }
-  impl_fn->eraseFromParent();
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      instr, kernel->getName().str(), kernel_arguments.args(),
-      launch_dimensions, std::nullopt, result.shmem_bytes));
+      instr, entry->kernel_name, kernel_arguments.args(),
+      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
   return absl::OkStatus();
 #endif  // GOOGLE_CUDA
 }

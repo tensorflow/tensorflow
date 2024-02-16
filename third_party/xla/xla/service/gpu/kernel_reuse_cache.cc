@@ -94,7 +94,13 @@ KernelReuseCache::GetWithStatus(
       fused_computation, kernel_arguments, discriminator);
   VLOG(4) << "Fingerprint: ";
   XLA_VLOG_LINES(4, fingerprint);
+  return GetWithStatus(std::move(fingerprint), generator);
+}
 
+std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
+KernelReuseCache::GetWithStatus(
+    std::string fingerprint,
+    const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
   auto it = cache_.find(fingerprint);
   if (it != cache_.end()) {
     return {&it->second, /*was_cached=*/true};
@@ -102,7 +108,8 @@ KernelReuseCache::GetWithStatus(
 
   absl::StatusOr<Entry> entry = generator();
   if (entry.ok()) {
-    it = cache_.insert({fingerprint, std::move(entry.value())}).first;
+    it =
+        cache_.insert({std::move(fingerprint), std::move(entry.value())}).first;
     return {&it->second, /*was_cached=*/false};
   }
 

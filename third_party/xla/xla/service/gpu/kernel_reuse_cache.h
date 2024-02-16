@@ -57,6 +57,17 @@ class KernelReuseCache {
       absl::string_view discriminator,
       const std::function<absl::StatusOr<Entry>()>& generator);
 
+  // Retrieves the cache entry for the given fingerprint, or generates it using
+  // the given generator function and stores it in the cache.
+  //
+  // The returned pointer is never nullptr.
+  //
+  // A non-OK status is returned if the entry is not found and the generator
+  // failed.
+  std::pair<absl::StatusOr<const Entry*>, bool /*was_cached*/> GetWithStatus(
+      std::string fingerprint,
+      const std::function<absl::StatusOr<Entry>()>& generator);
+
  private:
   absl::flat_hash_map<std::string /*fingerprint*/, Entry> cache_;
 };
