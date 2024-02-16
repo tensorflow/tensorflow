@@ -16,37 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_MLIR_BRIDGE_PASS_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_MLIR_BRIDGE_PASS_UTIL_H_
 
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
 
-using ::mlir::LogicalResult;
-
-// Checks if a graph or reachable functions in the library have any ops with
-// _xla_compile_device_type attribute.
-bool HasCompileDeviceTypeAttr(
-    const Graph& graph, const FunctionLibraryDefinition& function_library);
-
-// Checks if a graph or reachable functions in the library have any ops with
-// _XlaMustCompile attribute.
-bool HasMustCompileAttr(const Graph& graph,
-                        const FunctionLibraryDefinition& function_library);
-
-// Checks if a graph or reachable functions in the library have any ops with
-// _tpu_replicate attribute.
-bool HasTpuReplicateAttr(const Graph& graph,
-                         const FunctionLibraryDefinition& function_library);
-
 // Checks if a graph or reachable functions in the library have any
-// StatefulPartitionedCall ops with _XlaMustCompile attribute.
-bool IsNonReplicatedGraph(const Graph& graph,
-                          const FunctionLibraryDefinition& function_library);
+// StatefulPartitionedOps with _XlaMustCompile=true. The function library will
+// be skipped if nullptr is provided.
+bool IsSupportedByNonReplicatedBridge(
+    const Graph& graph, const FunctionLibraryDefinition* function_library);
 
 // Checks if a graph or reachable functions in the library have any ops with
+// _tpu_replicate or _xla_compile_device_type=TPU. The function library will be
+// skipped if nullptr is provided.
+
+bool IsSupportedByReplicatedBridge(
+    const Graph& graph, const FunctionLibraryDefinition* function_library);
+
+// Check if an MLIR module has any ops with _tpu_replicate or
 // _xla_compile_device_type=TPU.
-bool IsSingleCoreTpuGraph(const Graph& graph,
-                          const FunctionLibraryDefinition& function_library);
+bool IsSupportedByReplicatedBridge(mlir::ModuleOp module);
 
 }  // namespace tensorflow
 

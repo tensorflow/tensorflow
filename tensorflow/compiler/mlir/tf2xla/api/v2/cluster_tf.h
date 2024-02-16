@@ -39,20 +39,19 @@ namespace v2 {
 // Inputs:
 //   module - The MLIR Module that will be clustered. Expected to be in TF
 //   Executor Dialect or TF Functional Dialect. Will convert to TF Functional.
-//   run_replicated_bridge - If the graph targets the replicated bridge. Set it
-//   to true for replicated/partitioned graphs. e.g. replicated and single-core
-//   TPU graphs. Set this to false if the graph is not replicated, e.g. CPU/GPU
-//   graphs.
-//   is_in_fallback_enabled_mode - Whether this was called with fallback to the
-//   non-MLIR Bridge. This is just for logging purposes and doesn't affect
-//   logic.
-//   module_name - What the input module name is for debugging help.
+//   is_supported_by_replicated_brige - If the graph targets the replicated
+//   bridge. Set it to true for replicated/partitioned graphs. e.g. replicated
+//   and single-core TPU graphs. Set this to false if the graph is not
+//   replicated, e.g. CPU/GPU graphs. is_in_fallback_enabled_mode - Whether this
+//   was called with fallback to the non-MLIR Bridge. This is just for logging
+//   purposes and doesn't affect logic. module_name - What the input module name
+//   is for debugging help.
 //
 // Output: Modifies the input module in place with clustered operations.
 //   status - Whether the transformation to cluster the input MLIR module was
 //   successful.
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
-    mlir::ModuleOp module, bool run_replicated_bridge,
+    mlir::ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode,
     llvm::StringRef module_name = llvm::StringRef());
 }  // namespace v2

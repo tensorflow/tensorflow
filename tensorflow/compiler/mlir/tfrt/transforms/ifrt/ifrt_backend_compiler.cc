@@ -160,7 +160,7 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
 
   // Use bridge for cluster formation.
   TF_RETURN_IF_ERROR(tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-      module, /*run_replicated_bridge*/ true,
+      module, /*is_supported_by_replicated_brige*/ true,
       /*is_in_fallback_enabled_mode=*/false));
 
   if (VLOG_IS_ON(1)) {

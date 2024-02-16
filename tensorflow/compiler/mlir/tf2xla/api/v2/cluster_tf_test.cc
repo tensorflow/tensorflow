@@ -88,7 +88,7 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTfReplicatedBridge) {
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
-      *mlir_module_, /*run_replicated_bridge*/ true,
+      *mlir_module_, /*is_supported_by_replicated_brige*/ true,
       /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
@@ -105,7 +105,7 @@ TEST_F(FunctionClusterTensorflowDialectTest,
   TF_ASSERT_OK(CreateMlirModule("outside_compilation.mlir"));
 
   TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
-      *mlir_module_, /*run_replicated_bridge*/ true,
+      *mlir_module_, /*is_supported_by_replicated_brige*/ true,
       /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
@@ -128,7 +128,7 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFNonReplicatedBridge) {
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
-      *mlir_module_, /*run_replicated_bridge*/ false,
+      *mlir_module_, /*is_supported_by_replicated_brige*/ false,
       /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
@@ -145,7 +145,7 @@ TEST_F(FunctionClusterTensorflowDialectTest, LogsFallbackMode) {
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
-      *mlir_module_, /*run_replicated_bridge*/ true,
+      *mlir_module_, /*is_supported_by_replicated_brige*/ true,
       /*is_in_fallback_enabled_mode=*/true));
 
   EXPECT_EQ(

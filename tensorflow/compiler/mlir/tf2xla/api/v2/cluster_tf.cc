@@ -160,17 +160,18 @@ void CreateTPUClusteringPipelineV2(OpPassManager &pm) {
 }
 
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
-    ModuleOp module, bool run_replicated_bridge,
+    ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
-  std::string device_type_filter = run_replicated_bridge ? "tpu" : "cpu/gpu";
+  std::string device_type_filter =
+      is_supported_by_replicated_brige ? "tpu" : "cpu/gpu";
 
   VLOG(2)
-      << (run_replicated_bridge ? "Replicated" : "NonReplicated")
+      << (is_supported_by_replicated_brige ? "Replicated" : "NonReplicated")
       << " Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
   Status clustering_status =
-      run_replicated_bridge
+      is_supported_by_replicated_brige
           ? RunTFXLABridge(
                 module,
                 [module_name](OpPassManager &pm) {
@@ -185,12 +186,12 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
                 },
                 module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nonreplicated");
 
-  // TODO(b/317798386): add run_replicated_bridge as a filter.
+  // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(
       /*error_prefix=*/"clustering_v2", is_in_fallback_enabled_mode,
       device_type_filter, clustering_status));
 
-  // TODO(b/317798386): add run_replicated_bridge as a filter.
+  // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       device_type_filter, /*bridge_version=*/"v2",
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
