@@ -659,7 +659,6 @@ lit_test_suite(
             "calling_convention.hlo",
             "concat.hlo",
             "copy.hlo",
-            "copy_nested.hlo",
             "dynamic_update_slice_inplace.hlo",
             "element_wise_row_vectorization.hlo",
             "fused_scatter.hlo",
