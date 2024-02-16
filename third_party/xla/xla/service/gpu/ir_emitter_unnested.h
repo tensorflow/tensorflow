@@ -111,22 +111,13 @@ class IrEmitterUnnested : public IrEmitter {
     return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
   }
 
-  // Emits code for the given LMHLO region.
+  // Emits code for the given HLO computation.
   //
   // Also populates related information to 'ir_emitter_context_' for
   // large-constant initializations. Large constants don't get initializers in
   // the generated code and so must be initialized by XLA. The value of these
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
-  absl::Status EmitLmhloRegion(
-      mlir::Region* region,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
-
-  // Emits code for the given HLO computation. Right now it is only used to emit
-  // thunks for constructing command buffer. The plan is to replace
-  // EmitLmhloRegion by this function altogether, after we support emitting
-  // all instructions from HLO.
   absl::Status EmitHloComputation(const HloComputation* computation);
 
   static void GetDependentDialects(mlir::DialectRegistry& registry);
@@ -134,82 +125,46 @@ class IrEmitterUnnested : public IrEmitter {
  private:
   explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
 
-  absl::Status EmitUnreachable(mlir::Operation* op, std::string error_message);
-
   absl::Status EmitCommandBufferThunk(const HloInstruction* instr);
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
-  absl::Status EmitConstant(mlir::Operation* op, const Literal& literal);
   absl::Status EmitConstant(const HloConstantInstruction* instr);
 
-  absl::Status EmitConditional(
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
   absl::Status EmitConditional(const HloInstruction* instr);
-  absl::Status EmitConvolutionThunk(mlir::Operation* op);
   absl::Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitGemmThunk(mlir::Operation* op);
   absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
 #if GOOGLE_CUDA || TF_HIPBLASLT
-  absl::Status EmitCublasLtMatmulThunk(mlir::Operation* op);
   absl::Status EmitCublasLtMatmulThunk(const HloCustomCallInstruction* instr);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
-  absl::Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
-  absl::Status EmitConvolutionReorderThunk(mlir::Operation* op);
   absl::Status EmitConvolutionReorderThunk(
       const HloCustomCallInstruction* instr);
-  absl::Status EmitNormThunk(mlir::Operation* op);
   absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFusedMHAThunk(mlir::Operation* op);
   absl::Status EmitFusedMHAThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFusedMHABackwardThunk(mlir::Operation* op);
   absl::Status EmitFusedMHABackwardThunk(const HloCustomCallInstruction* instr);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  absl::Status EmitCubDeviceRadixSort(mlir::Operation* op);
   absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
-  absl::Status EmitCholeskyThunk(mlir::Operation* op);
   absl::Status EmitCholeskyThunk(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  absl::Status EmitCustomCallThunk(mlir::Operation* op,
-                                   const HloCustomCallInstruction* instr);
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFftThunk(mlir::Operation* op);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
-  absl::Status EmitFusion(
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
   absl::Status EmitFusion(const HloFusionInstruction* instr,
                           HloFusionAnalysis& fusion_analysis);
   absl::Status EmitSelectAndScatter(
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
-  absl::Status EmitSelectAndScatter(
       const HloSelectAndScatterInstruction* instr);
-  absl::Status EmitWhile(
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
   absl::Status EmitWhile(const HloInstruction* instr);
-  absl::Status EmitInfeed(mlir::Operation* op);
   absl::Status EmitInfeed(const HloInfeedInstruction* instr);
-  absl::Status EmitOutfeed(mlir::Operation* op);
   absl::Status EmitOutfeed(const HloOutfeedInstruction* instr);
-  absl::Status EmitRngGetAndUpdateState(mlir::Operation* op);
   absl::Status EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
 
   absl::Status EmitSort(mlir::Operation* op, const HloSortInstruction* sort);
   absl::Status EmitSort(const HloSortInstruction* sort);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  absl::Status EmitTriangularSolveCustomCall(mlir::Operation* op);
   absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
@@ -220,12 +175,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitRecvThunk(const HloRecvInstruction* instr);
   absl::Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
-
-  template <typename NcclThunkType, typename OpT>
-  absl::Status EmitNcclThunk(mlir::Operation* op);
-
-  absl::Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op,
-                                 mlir::Value token);
 
   template <typename NcclThunkType, typename HloInstType>
   absl::Status EmitNcclThunk(Thunk::Kind kind,
@@ -238,23 +187,13 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitWaitForStreamsThunk(const HloInstruction* inst,
                                        GpuBackendConfig& gpu_config,
                                        bool is_async_done);
-  template <typename ThunkType, typename OpT>
-  absl::Status EmitReplicaOrPartitionId(mlir::Operation* op);
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
-  absl::Status EmitCollectivePermute(mlir::Operation* op);
   absl::Status EmitCollectivePermute(
       const HloCollectivePermuteInstruction* instr);
 
-  absl::Status EmitOp(
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
-
   absl::Status EmitHloInstruction(const HloInstruction* instr);
-
-  static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -390,41 +329,11 @@ class IrEmitterUnnested : public IrEmitter {
   //   ```
   absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
-  absl::StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(
-      mlir::OperandRange operands);
-
   int64_t ByteSizeOf(const Shape& shape) const {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-  // Emits kernel thunk for a custom fusion implemented with hand written custom
-  // device kernels.
-  absl::StatusOr<FusionEmissionResult> EmitCustomFusion(
-      const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
-      const CustomFusionConfig& config);
-
-  // Builds a kernel thunk for a non-fusion operation, without reuse.
-  //
-  // All input and output tensors of `op` are passed to the kernel.
-  //
-  // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                           std::vector<llvm_ir::IrArray> /*outputs*/>>
-  BuildKernelThunkForNonFusionOp(mlir::Operation* op,
-                                 const LaunchDimensions& launch_dimensions);
-
-  // Builds a kernel thunk for a non-fusion operation, without reuse.
-  //
-  // Only the tensors specified in `needed_operands` are passed to the kernel.
-  //
-  // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                           std::vector<llvm_ir::IrArray> /*outputs*/>>
-  BuildKernelThunkForNonFusionOp(mlir::Operation* op,
-                                 mlir::ValueRange needed_operands,
-                                 const LaunchDimensions& launch_dimensions);
 
   absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
                            std::vector<llvm_ir::IrArray> /*outputs*/>>
@@ -441,12 +350,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
-      mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo,
-      std::optional<int64_t> trip_count);
-
   absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
       std::optional<int64_t> trip_count);
@@ -474,11 +377,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
-
-  // Begin optional members for XLA HLO -> LMHLO:
-  absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
-      scratch_nested_computations_;
-  // End optional members for XLA HLO -> LMHLO.
 
   // Returns the ShapedSlices for the given operands.
   absl::StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
