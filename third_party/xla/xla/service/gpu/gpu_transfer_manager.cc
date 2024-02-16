@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_transfer_manager.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IR/DataLayout.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
@@ -36,12 +42,15 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -189,6 +198,126 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
   return absl::OkStatus();
+}
+
+// Chunks `size` into chunks of `chunk_size` and calls `callback` for each.
+static void ForEachChunk(
+    size_t size, size_t chunk_size,
+    absl::FunctionRef<void(size_t chunk_offset, size_t chunk_size)> callback) {
+  int64_t num_chunks = CeilOfRatio(size, chunk_size);
+
+  for (int64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
+    callback(
+        /*chunk_offset=*/chunk_index * chunk_size,
+        /*chunk_size=*/std::min(chunk_size, size - chunk_index * chunk_size));
+  }
+}
+
+absl::Status GpuTransferManager::TransferBufferFromDevice(
+    se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
+    void* destination) {
+  if (source.size() < size) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Source allocation on device not large enough for data transfer: "
+        "%d < %d",
+        source.size(), size));
+  }
+
+  VLOG(5) << "Transfer buffer from device: size="
+          << tsl::strings::HumanReadableNumBytes(size);
+
+  TF_ASSIGN_OR_RETURN(auto staging_buffer,
+                      GetOrCreateStagingBuffer(stream->parent()));
+
+  absl::MutexLock lock(&staging_buffer->mutex);
+  void* staging = staging_buffer->allocation->opaque();
+
+  // Transfer chunk of data from device to destination via staging buffer.
+  auto transfer_chunk = [&](size_t chunk_offset, size_t chunk_size) {
+    VLOG(5) << "Transfer buffer chunk from device: offset=" << chunk_offset
+            << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
+
+    se::DeviceMemoryBase chunk = source.GetByteSlice(chunk_offset, chunk_size);
+    stream->ThenMemcpy(staging, chunk, chunk_size);
+
+    void* dst = reinterpret_cast<char*>(destination) + chunk_offset;
+    stream->ThenDoHostCallback([=] { std::memcpy(dst, staging, chunk_size); });
+  };
+
+  stream->ThenWaitFor(staging_buffer->transfer_completed.get());
+  ForEachChunk(size, kStagingBufferSize, transfer_chunk);
+  stream->ThenRecordEvent(staging_buffer->transfer_completed.get());
+
+  return absl::OkStatus();
+}
+
+absl::Status GpuTransferManager::TransferBufferToDevice(
+    se::Stream* stream, int64_t size, const void* source,
+    se::DeviceMemoryBase* destination) {
+  if (destination->size() < size) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Destination allocation on device not large enough for data transfer: "
+        "%d < %d",
+        destination->size(), size));
+  }
+
+  VLOG(5) << "Transfer buffer to device: size="
+          << tsl::strings::HumanReadableNumBytes(size);
+
+  TF_ASSIGN_OR_RETURN(auto staging_buffer,
+                      GetOrCreateStagingBuffer(stream->parent()));
+
+  absl::MutexLock lock(&staging_buffer->mutex);
+  void* staging = staging_buffer->allocation->opaque();
+
+  // Transfer chunk of data from device to destination.
+  auto transfer_chunk = [&](size_t chunk_offset, size_t chunk_size) {
+    VLOG(5) << "Transfer buffer chunk to device: offset=" << chunk_offset
+            << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
+
+    const void* src = reinterpret_cast<const char*>(source) + chunk_offset;
+    stream->ThenDoHostCallback([=] { std::memcpy(staging, src, chunk_size); });
+
+    auto chunk = destination->GetByteSlice(chunk_offset, chunk_size);
+    stream->ThenMemcpy(&chunk, staging, chunk_size);
+  };
+
+  stream->ThenWaitFor(staging_buffer->transfer_completed.get());
+  ForEachChunk(size, kStagingBufferSize, transfer_chunk);
+  stream->ThenRecordEvent(staging_buffer->transfer_completed.get());
+
+  return absl::OkStatus();
+}
+
+GpuTransferManager::StagingBuffer::StagingBuffer(
+    std::unique_ptr<se::MemoryAllocation> allocation,
+    std::unique_ptr<se::Event> transfer_completed)
+    : allocation(std::move(allocation)),
+      transfer_completed(std::move(transfer_completed)) {}
+
+absl::StatusOr<GpuTransferManager::StagingBuffer*>
+GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
+  absl::MutexLock lock(&mutex_);
+  if (auto it = staging_buffers_.find(executor); it != staging_buffers_.end()) {
+    return &it->second;
+  }
+
+  VLOG(3) << absl::StreamFormat(
+      "Allocate staging buffer of %s for executor %p (device_ordinal=%d)",
+      tsl::strings::HumanReadableNumBytes(kStagingBufferSize), executor,
+      executor->device_ordinal());
+
+  TF_ASSIGN_OR_RETURN(auto staging_buffer,
+                      executor->HostMemoryAllocate(kStagingBufferSize));
+
+  auto transfer_completed = std::make_unique<se::Event>(executor);
+  if (!transfer_completed->Init()) {
+    return absl::InternalError("Failed to initialize transfer completed event");
+  }
+
+  auto emplaced = staging_buffers_.try_emplace(
+      executor, std::move(staging_buffer), std::move(transfer_completed));
+  return &emplaced.first->second;
 }
 
 }  // namespace gpu
