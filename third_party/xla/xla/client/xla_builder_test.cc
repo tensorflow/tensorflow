@@ -249,6 +249,30 @@ TEST(XlaBuilderTest, XPlusX) {
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0), m::Parameter(0))));
 }
 
+TEST(XlaBuilderTest, TestBinaryOpImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2, 2]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[2,2]"));
+  Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, TestBinaryOpImplicitBroadcastBounded) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[<=2, <=2]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[<=2, <=2]"));
+  Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, ShapeInferenceError) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(U32, {2, 4, 6}), "x");
@@ -1774,11 +1798,8 @@ TEST(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast1) {
   TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
-  EXPECT_THAT(
-      BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
-                         "*shape) Unimplemented implicit broadcast.")));
+  EXPECT_THAT(BuildHloModule(b),
+              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
 TEST(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast2) {
@@ -1788,11 +1809,8 @@ TEST(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast2) {
   TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
-  EXPECT_THAT(
-      BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr(
-                   "!is_unbounded_dynamic Unimplemented implicit broadcast.")));
+  EXPECT_THAT(BuildHloModule(b),
+              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
 TEST(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast3) {
@@ -2196,11 +2214,8 @@ TEST(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast1) {
   TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
   Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
          Parameter(&b, 2, ehs, "ehs"));
-  EXPECT_THAT(
-      BuildHloModule(b),
-      StatusIs(_,
-               HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
-                         "*shape) Unimplemented implicit broadcast.")));
+  EXPECT_THAT(BuildHloModule(b),
+              StatusIs(_, HasSubstr("Unimplemented implicit broadcast.")));
 }
 
 TEST(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast2) {
