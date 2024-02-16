@@ -1003,6 +1003,8 @@ tf_kernel_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:types",
     ],
 )

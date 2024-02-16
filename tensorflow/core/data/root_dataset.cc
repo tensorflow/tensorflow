@@ -401,6 +401,10 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
       params_(std::move(params)) {
   owned_input_ = std::move(input);
   input_ = owned_input_.get();
+  random_indexing_compatible_ = absl::OkStatus();
+  if (input_ != nullptr) {
+    random_indexing_compatible_ = input_->RandomIndexingCompatible();
+  }
   AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 

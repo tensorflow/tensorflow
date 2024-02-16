@@ -19,12 +19,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/types.h"
 
 namespace tensorflow {
@@ -186,6 +188,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         output_dtypes_(output_dtypes),
         replicate_on_split_(replicate_on_split) {}
 
+  absl::Status RandomIndexingCompatible() const override {
+    return absl::OkStatus();
+  }
+
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
@@ -275,6 +281,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      if (ctx->index_mapper() != nullptr) {
+        return Get(ctx, out_tensors, end_of_sequence);
+      }
       int64_t value;
       if (split_provider_ != nullptr) {
         Tensor split;
@@ -290,6 +299,20 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         }
       }
       out_tensors->reserve(1);
+      return ConvertOutputTypes(output_dtypes(), out_tensors, value);
+    }
+
+    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) {
+      tsl::mutex_lock l(mu_);
+      if (element_count_ >=
+          (dataset()->stop_ - dataset()->start_) / dataset()->step_) {
+        *end_of_sequence = true;
+        return absl::OkStatus();
+      }
+      int64_t output_index = ctx->index_mapper()(element_count_++);
+      int64_t value = dataset()->start_ + output_index * dataset()->step_;
+      *end_of_sequence = false;
       return ConvertOutputTypes(output_dtypes(), out_tensors, value);
     }
 
@@ -339,6 +362,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
    private:
     std::unique_ptr<RangeCounter> counter_;
     std::shared_ptr<SplitProvider> split_provider_;
+
+    mutable tsl::mutex mu_;
+    // Count of elements produced by this iterator when it runs in the random
+    // access mode.
+    int64_t element_count_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const int64_t start_;
