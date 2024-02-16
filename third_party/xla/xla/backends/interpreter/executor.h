@@ -171,11 +171,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return nullptr;
   }
 
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override {
-    return nullptr;
-  }
-
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
     return std::unique_ptr<internal::StreamInterface>(

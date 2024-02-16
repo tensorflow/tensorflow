@@ -214,7 +214,7 @@ gpu_only_cc_library(
     hdrs = ["gpu_executor.h"],
     deps = [
         ":gpu_collectives_header",
-        ":gpu_kernel_header",
+        ":gpu_driver_header",
         ":gpu_types_header",
         "//xla/stream_executor",
         "//xla/stream_executor:platform",
@@ -287,10 +287,12 @@ gpu_only_cc_library(
     hdrs = ["gpu_kernel.h"],
     deps = [
         ":gpu_driver_header",
+        ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

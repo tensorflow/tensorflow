@@ -15,21 +15,21 @@ limitations under the License.
 
 #include "xla/stream_executor/kernel.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
-#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -55,35 +55,9 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
 
 absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
     StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
-  auto kernel = absl::WrapUnique(new Kernel(executor));
+  TF_ASSIGN_OR_RETURN(auto kernel, executor->implementation()->CreateKernel());
   TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
   return kernel;
-}
-
-Kernel::Kernel(StreamExecutor *parent)
-    : parent_(parent),
-      implementation_(parent->implementation()->CreateKernelImplementation()) {}
-
-Kernel::~Kernel() {
-  if (parent_) {
-    parent_->UnloadKernel(this);
-  }
-}
-
-unsigned Kernel::Arity() const { return implementation_->Arity(); }
-
-void Kernel::SetPreferredCacheConfig(KernelCacheConfig config) {
-  return implementation_->SetPreferredCacheConfig(config);
-}
-
-KernelCacheConfig Kernel::GetPreferredCacheConfig() const {
-  return implementation_->GetPreferredCacheConfig();
-}
-
-absl::StatusOr<int32_t> Kernel::GetMaxOccupiedBlocksPerCore(
-    ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
-  return implementation_->GetMaxOccupiedBlocksPerCore(
-      threads, dynamic_shared_memory_bytes);
 }
 
 void Kernel::set_name(absl::string_view name) {

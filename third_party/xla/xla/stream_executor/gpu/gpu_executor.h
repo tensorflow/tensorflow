@@ -38,8 +38,9 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
@@ -52,6 +53,7 @@ class StreamExecutor;
 
 namespace gpu {
 
+class GpuKernel;
 class GpuCommandBuffer;
 
 // CUDA-platform implementation of the platform-agnostic
@@ -267,10 +269,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
 
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override;
-
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
+
+  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
 
   absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) override;
@@ -325,7 +326,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Prints to VLOG(2) information about the kernel's occupancy and how it might
   // be improved.
-  void VlogOccupancyInfo(const Kernel& kernel, const ThreadDim& thread_dims,
+  void VlogOccupancyInfo(const DeviceDescription& device_description,
+                         const Kernel& kernel, const ThreadDim& thread_dims,
                          const BlockDim& block_dims);
 
   // (supported on CUDA only)

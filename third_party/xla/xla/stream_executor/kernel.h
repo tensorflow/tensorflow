@@ -98,10 +98,6 @@ namespace stream_executor {
 class Kernel;
 class StreamExecutor;
 
-namespace internal {
-class KernelInterface;
-}  // namespace internal
-
 //===----------------------------------------------------------------------===//
 // Kernel cache config
 //===----------------------------------------------------------------------===//
@@ -239,29 +235,15 @@ class Kernel {
   static absl::StatusOr<std::unique_ptr<Kernel>> Create(
       StreamExecutor *executor, const MultiKernelLoaderSpec &spec);
 
-  // Releases resources associated with the kernel instance (i.e.
-  // platform-specific implementation).
-  ~Kernel();
+  Kernel() = default;
+  virtual ~Kernel() = default;
 
   Kernel(const Kernel &) = delete;
   void operator=(const Kernel &) = delete;
 
   // Returns the number of parameters that this kernel accepts. (Arity refers to
   // nullary, unary, ...).
-  unsigned Arity() const;
-
-  // Returns the StreamExecutor that represents the platform this kernel
-  // executes upon.
-  StreamExecutor *parent() const { return parent_; }
-
-  // Returns a const pointer to the (opaque) platform-dependent implementation.
-  const internal::KernelInterface *implementation() const {
-    return implementation_.get();
-  }
-
-  // Returns a non-const pointer to the (opaque) platform-dependent
-  // implementation.
-  internal::KernelInterface *implementation() { return implementation_.get(); }
+  virtual unsigned Arity() const = 0;
 
   void set_metadata(const KernelMetadata &metadata) { metadata_ = metadata; }
 
@@ -269,15 +251,15 @@ class Kernel {
 
   // Sets the preferred cache configuration for a kernel. This is just a
   // suggestion to the runtime, and may not be honored during execution.
-  void SetPreferredCacheConfig(KernelCacheConfig config);
+  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
 
   // Gets the preferred cache configuration for a kernel.
-  KernelCacheConfig GetPreferredCacheConfig() const;
+  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
 
   // Returns the maximum number of blocks (per multiprocessor) occupied by the
   // kernel given the number of threads per block and shared memory size.
-  absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
-      ThreadDim threads, size_t dynamic_shared_memory_bytes) const;
+  virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
+      ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
   // Sets custom kernels arguments packing function for a kernel.
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
@@ -293,14 +275,6 @@ class Kernel {
   std::string_view demangled_name() const { return demangled_name_; }
 
  private:
-  explicit Kernel(StreamExecutor *parent);
-
-  // The StreamExecutor that loads this kernel object.
-  StreamExecutor *parent_;
-
-  // Implementation delegated to for platform-specific functionality.
-  std::unique_ptr<internal::KernelInterface> implementation_;
-
   std::string name_;
   std::string demangled_name_;
 
