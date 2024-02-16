@@ -181,14 +181,12 @@ tf_cc_test(
 tf_proto_library(
     name = "op_reg_offset_proto",
     srcs = ["op_reg_offset.proto"],
-    cc_api_version = 3,
     visibility = ["//tensorflow:internal"],
 )
 
 tf_proto_library(
     name = "kythe_metadata_proto",
     srcs = ["kythe_metadata.proto"],
-    cc_api_version = 3,
     visibility = ["//tensorflow:internal"],
 )
 
