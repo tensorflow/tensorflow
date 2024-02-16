@@ -129,7 +129,6 @@ limitations under the License.
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
-#include "triton/Target/PTX/TmaMetadata.h"
 
 namespace xla {
 namespace gpu {
@@ -751,17 +750,10 @@ absl::Status CreateTritonPipeline(
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 
-  // Not supported for now.
-  const bool enable_warp_specialization = false;
-  // If we ever set this to a non-null pointer, the object will have to live at
-  // least until pm.run() is called.
-  // TODO(b/316566238): Use TMA info collected here in XLA runtime.
-  mlir::triton::gpu::TMAMetadataTy* const out_tma_infos = nullptr;
-
   // Based on make_ttir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mt::createCombineOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mt::createReorderBroadcastPass());
@@ -775,8 +767,6 @@ absl::Status CreateTritonPipeline(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mt::gpu::createCoalescePass());
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
-  pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
   pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
@@ -784,61 +774,34 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mlir::createCSEPass());
 
-  if (cc.IsAtLeastHopper() && enable_warp_specialization) {
-    // Triton currently doesn't support warp specialization for num_warps != 4.
-    // TODO from Triton to add support here:
-    // https://github.com/openai/triton/blob/1bc9c0ea67e4cbec2c77d4acde3173aa7d51c8f9/python/triton/compiler/backends/cuda.py#L119
-    if (config.num_warps != 4) {
-      return absl::UnimplementedError(
-          "Triton currently doesn't support warp specialization for "
-          "num_warps != 4.");
-    }
-    // Ideally, we should run
-    // 'mlir::createTritonNvidiaGPUWSFeasibilityCheckingPass(ccAsInt)' at this
-    // point on the IR to check if warp specialization is feasible. Instead, we
-    // are relying on failures as indication of infeasibility during
-    // auto-tuning.
-    pm.addPass(mlir::createTritonNvidiaGPUWSDecomposingPass(ccAsInt));
-    pm.addPass(mlir::createTritonNvidiaGPUWSPipelinePass(
-        config.num_stages, config.num_warps, ccAsInt));
-    pm.addPass(mlir::createTritonNvidiaGPUWSMutexPass(ccAsInt));
-    pm.addPass(mlir::createTritonNvidiaGPUWSMaterializationPass(ccAsInt));
-    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-    pm.addPass(mlir::createCSEPass());
-  } else if (ccAsInt >= 80) {
+  if (cc.IsAtLeastAmpere()) {
     pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
                                            config.num_ctas, ccAsInt));
   }
+  if (!cc.IsAtLeastHopper()) {
+    pm.addPass(mt::gpu::createPrefetchPass());
+  }
 
-  pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass(
-      config.num_warps, ccAsInt));
   pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
   pm.addPass(mt::gpu::createReduceDataDuplicationPass());
-  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   if (cc.IsAtLeastHopper()) {
     pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
   }
-  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm.addPass(mlir::createTritonNvidiaGPUAddDescriptorArgs());
   pm.addPass(mlir::triton::gpu::createDecomposeUnsupportedConversionsPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
   pm.addPass(mlir::triton::gpu::createAllocateSharedMemoryPass());
-  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt,
-                                                  /*target=*/mlir::triton::NVVM,
-                                                  out_tma_infos));
-  if (cc.IsAtLeastHopper() && enable_warp_specialization) {
-    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-    pm.addPass(mlir::createCSEPass());
-  }
+  pm.addPass(
+      mt::createConvertTritonGPUToLLVMPass(ccAsInt,
+                                           /*target=*/mlir::triton::NVVM));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());

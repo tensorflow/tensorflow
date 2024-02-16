@@ -562,7 +562,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@triton//:TritonDialects",
-        "@triton//:TritonTmaMetadata",
         "@triton//:TritonTransforms",
     ] + if_cuda_is_configured([
         "@triton//:NVGPUToLLVM",
