@@ -51,66 +51,18 @@ void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
   shape->mutable_layout()->set_memory_space(memory_space_color);
 }
 
-StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
-  bool split_at_least_one = false;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() != HloOpcode::kBroadcast ||
-          !instruction->HasConstantOperand()) {
-        continue;
-      }
-      absl::InlinedVector<HloUse, 8> uses;
-      for (HloInstruction* user : instruction->users()) {
-        for (int64_t i = 0; i < user->operand_count(); ++i) {
-          if (user->operand(i) != instruction) {
-            continue;
-          }
-          uses.push_back(HloUse{user, i, /*operand_index=*/{}});
-        }
-      }
-
-      if (uses.size() <= 1) {
-        continue;
-      }
-
-      VLOG(1) << "Splitting broadcast " << instruction->ToString()
-              << " which has " << uses.size() << " uses";
-      split_at_least_one = true;
-      // Don't create a new broadcast for the first use; we can still use the
-      // original.
-      for (int i = 1; i < uses.size(); ++i) {
-        const HloUse& use = uses[i];
-        HloInstruction* new_broadcast =
-            instruction->parent()->AddInstruction(instruction->Clone());
-        VLOG(2) << "New broadcast " << new_broadcast->ToString();
-        TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
-            use.operand_number, new_broadcast));
-      }
-    }
-  }
-  return split_at_least_one;
-}
-
 // Checks if all of the HloPositions of this HloValue, apart from the defining
 // position, are allowed when doing memory-only offload.
 bool AllPositionsAreAllowed(const HloValue* value) {
   // Given an HloValue, validate that none of its positions are doing any
   // compute.
-  // TODO(b/319167527):
-  //  Add kCopy to the list after ensuring that it is always safe to
-  //  do so.
-  static constexpr std::array kAllowedPositionOpcodes = {
-      HloOpcode::kTuple, HloOpcode::kGetTupleElement,
-      HloOpcode::kOptimizationBarrier, HloOpcode::kParameter,
-      HloOpcode::kWhile};
   for (const HloPosition& position : value->positions()) {
     if (position == value->defining_position()) {
       // Skip defining positions.
       continue;
     }
     // Check if this position is of an allowed type.
-    if (!absl::c_linear_search(kAllowedPositionOpcodes,
+    if (!absl::c_linear_search(HostOffloader::GetAllowedPositionOpcodes(),
                                position.instruction->opcode())) {
       VLOG(1) << "Position " << position.instruction->ToString()
               << " is not supported.";
@@ -562,16 +514,6 @@ StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-
-  // Split broadcasts so that each HloUse of a broadcast instruction will get
-  // its own copy.
-  // TODO(b/319293925): Do not blindly duplicate all broadcasts, instead do it
-  // only when necessary.
-  TF_ASSIGN_OR_RETURN(bool duplicated_at_least_one_broadcast,
-                      DuplicateBroadcastForEachUse(module));
-  if (duplicated_at_least_one_broadcast) {
-    changed = true;
-  }
 
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));

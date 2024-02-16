@@ -5781,6 +5781,57 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "host_offload_legalize",
+    srcs = ["host_offload_legalize.cc"],
+    hdrs = ["host_offload_legalize.h"],
+    deps = [
+        ":hlo_alias_analysis",
+        ":hlo_buffer",
+        ":hlo_pass",
+        ":hlo_value",
+        ":host_memory_offload_annotations_hdr",
+        ":host_offloader",
+        ":pattern_matcher",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "host_offload_legalize_test",
+    srcs = ["host_offload_legalize_test.cc"],
+    deps = [
+        ":host_memory_offload_annotations_hdr",
+        ":host_offload_legalize",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "host_offloader",
     srcs = ["host_offloader.cc"],
     hdrs = ["host_offloader.h"],
@@ -5814,6 +5865,7 @@ xla_cc_test(
     shard_count = 12,
     deps = [
         ":host_memory_offload_annotations_hdr",
+        ":host_offload_legalize",
         ":host_offloader",
         ":pattern_matcher",
         ":pattern_matcher_gmock",

@@ -45,6 +45,9 @@ class HostOffloader : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  static absl::Span<const HloOpcode> GetAllowedPositionOpcodes() {
+    return kAllowedPositionOpcodes;
+  }
 
  private:
   const int64_t kHostMemorySpaceColor;
@@ -76,6 +79,11 @@ class HostOffloader : public HloModulePass {
   Status MemoryOnlyOffloadInsertCopies(HloInstruction* custom_call);
 
   Status DynamifySlice(HloInstruction* slice);
+
+  static constexpr std::array kAllowedPositionOpcodes = {
+      HloOpcode::kTuple, HloOpcode::kGetTupleElement,
+      HloOpcode::kOptimizationBarrier, HloOpcode::kParameter,
+      HloOpcode::kWhile};
 };
 
 }  // namespace xla

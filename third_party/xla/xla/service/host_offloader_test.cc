@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/host_offload_legalize.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -51,9 +52,15 @@ class HostOffloaderTest : public HloTestBase {
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
-
+    bool changed = false;
+    HostOffloadLegalize host_offload_legalize(kHostMemorySpaceColor,
+                                              /*after_layout=*/false);
+    TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
+    changed |= legal_changed;
     HostOffloader host_offloader(kHostMemorySpaceColor);
-    return host_offloader.Run(module);
+    TF_ASSIGN_OR_RETURN(bool offload_changed, host_offloader.Run(module));
+    changed |= offload_changed;
+    return changed;
   }
 
   void TestShapeHasMemorySpace(const Shape& shape, int64_t memory_space) {
