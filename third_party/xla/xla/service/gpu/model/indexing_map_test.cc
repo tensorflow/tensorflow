@@ -395,6 +395,30 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivGcdGreater1) {
     )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
+  auto serialized_map =
+      "()[s0, s1, s2, s3] -> ((s0 * 458752 + s1 + s2 * 4 + s3 * 512) mod "
+      "20000)";
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap(serialized_map, &mlir_context_), {}, {872, 4, 128, 896});
+  indexing_map.Simplify();
+  // TODO(jreiffers): Get rid of the division here. The important thing is that
+  // s1 was extracted from the mod and is not in the subtracted value, but we'd
+  // prefer the result to be:
+  //   (s0 * 458752 + s2 * 4 + s3 * 512) mod 20000 + s1
+  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+      ()[s0, s1, s2, s3] -> (
+        s0 * 458752 + s1 + s2 * 4 + s3 * 512 -
+        ((s0 * 14336 + s3 * 16 + s2 floordiv 8) floordiv 625) * 20000
+      )
+      domain:
+      s0 in [0, 871]
+      s1 in [0, 3]
+      s2 in [0, 127]
+      s3 in [0, 895]
+    )"));
+}
+
 TEST_F(IndexingMapTest, RangeEvaluatorTest) {
   RangeEvaluator range_evaluator(
       {Range{0, 9}, Range{-10, -1}, Range{-1, 2}, Range{0, 0}}, {},
