@@ -373,14 +373,6 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     const bool has_i32_output = IsI32F32UniformQuantizedType(
         op.getResult().getType().cast<TensorType>().getElementType());
 
-    if (has_i32_output) {
-      if (failed(MatchUsers(op.getResult()))) {
-        LLVM_DEBUG(llvm::dbgs() << "Failed to match subsequent requantize for "
-                                   "quantized dot_general op.\n");
-        return failure();
-      }
-    }
-
     if (failed(MatchInputDotGeneralCommonPattern(op.getLhs()))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match input for quantized dot_general.\n");
@@ -523,6 +515,15 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         return failure();
       }
     }
+
+    // If the op has a fusible bias, make sure the bias is a constant.
+    if (auto add_op = FindUserOfType<stablehlo::AddOp>(op);
+        add_op != nullptr &&
+        !isa<stablehlo::ConstantOp>(add_op->getOperand(1).getDefiningOp())) {
+      LLVM_DEBUG(llvm::dbgs() << "Expected a `stablehlo.constant` as the "
+                              << "rhs of `stablehlo.add`.\n");
+    }
+
     return success();
   }
 
@@ -572,32 +573,6 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
           llvm::dbgs()
           << "Expected a per-tensor uniform quantized (i8->f32) type. Got: "
           << output_element_type << ".\n");
-      return failure();
-    }
-    return success();
-  }
-
-  static LogicalResult MatchUsers(const Value output) {
-    auto output_op = output.getDefiningOp();
-
-    if (!output_op->hasOneUse()) {
-      LLVM_DEBUG(llvm::dbgs() << "Expected output to be used only once.\n");
-      return failure();
-    }
-    // TODO: b/309896242 - Add support for fused op case.
-    if (Operation* requantize_op = dyn_cast_or_null<TFL::QuantizeOp>(
-            *output_op->getResult(0).getUsers().begin())) {
-      const Type requantize_element_type = requantize_op->getResult(0)
-                                               .getType()
-                                               .cast<TensorType>()
-                                               .getElementType();
-      if (!IsI8F32UniformQuantizedType(requantize_element_type)) {
-        LLVM_DEBUG(llvm::dbgs() << "Expected a quantize (i8->f32) type. Got: "
-                                << requantize_element_type << ".\n");
-        return failure();
-      }
-    } else {
-      // Op not followed by a requantization is not supported.
       return failure();
     }
     return success();
@@ -687,37 +662,96 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
                                    .getElementType()
                                    .cast<UniformQuantizedType>()
                                    .getScale();
-    TFL::QConstOp bias_constant_op = CreateTflConstOpForDummyBias(
-        op.getLoc(), input_scale, new_filter_constant_op, rewriter,
-        is_per_channel, *op.getContext());
+    TFL::QConstOp bias_tfl_op;
+    bool fuse_bias_constant =
+        FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
+    // Get the desired output type and extract any existing fusible bias
+    // as `TFL::QConstOp` so that it can be fused with TFL::FullyConnectedOp`.
+    TensorType output_type = GetOutputTypeAndOptionallyUpdateBias(
+        op, rewriter, &bias_tfl_op, has_i32_output, fuse_bias_constant);
 
-    UniformQuantizedType new_result_quantized_type;
-    if (has_i32_output) {
-      // TODO: b/309896242 = Add support for dot_general with bias fusion.
-      auto requantize_op = FindUserOfType<TFL::QuantizeOp>(op);
-      const auto result_quantized_type = requantize_op->getResult(0)
-                                             .getType()
-                                             .cast<TensorType>()
-                                             .getElementType()
-                                             .cast<UniformQuantizedType>();
-      // Below is mlir::TypeAttr, need mlir::TypeRange
-      new_result_quantized_type = CreateI8F32UniformQuantizedType(
-          requantize_op->getLoc(), *rewriter.getContext(),
-          result_quantized_type.getScale(),
-          result_quantized_type.getZeroPoint());
+    // If there is no explicit bias, create a dummy value filled with zeroes.
+    if (!fuse_bias_constant) {
+      bias_tfl_op = CreateTflConstOpForDummyBias(
+          op.getLoc(), input_scale, new_filter_constant_op, rewriter,
+          is_per_channel, *op.getContext());
     }
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
-        op, /*output=*/
-        (has_i32_output ? op.getResult().getType().cast<TensorType>().clone(
-                              new_result_quantized_type)
-                        : op.getResult().getType()),
+        op, /*output=*/output_type,
         /*input=*/lhs_value,
         /*filter=*/new_filter_constant_op.getResult(),
-        /*bias=*/bias_constant_op.getResult(),
+        /*bias=*/bias_tfl_op.getResult(),
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
         /*keep_num_dims=*/rewriter.getBoolAttr(false),
         asymmetric_quantize_inputs);
+  }
+
+  static TensorType GetOutputTypeAndOptionallyUpdateBias(
+      Operation* op, PatternRewriter& rewriter, TFL::QConstOp* bias_tfl_op,
+      const bool has_i32_output, const bool fuse_bias_constant) {
+    TensorType output_type;
+    if (has_i32_output) {
+      Operation* uniform_quantize_op;
+      if (fuse_bias_constant) {
+        Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
+        uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(add_op);
+        auto filter_quantized_type = op->getOperand(1)
+                                         .getType()
+                                         .cast<TensorType>()
+                                         .getElementType()
+                                         .cast<UniformQuantizedType>();
+        double bias_scale = GetBiasScale(
+            /*input_scale=*/op->getOperand(0)
+                .getType()
+                .cast<TensorType>()
+                .getElementType()
+                .cast<UniformQuantizedType>()
+                .getScale(),
+            /*filter_scale=*/filter_quantized_type.getScale());
+        ArrayRef<int64_t> output_shape =
+            op->getResult(0).getType().cast<TensorType>().getShape();
+        const SmallVector<int64_t, 1> bias_shape = {
+            output_shape[output_shape.size() - 1]};
+        auto bias_quantized_type = CreateI32F32UniformQuantizedType(
+            op->getLoc(), *op->getContext(), std::move(bias_scale),
+            op->getResult(0)
+                .getType()
+                .cast<TensorType>()
+                .getElementType()
+                .cast<UniformQuantizedType>()
+                .getZeroPoint());
+        Operation* stablehlo_bias_op = add_op->getOperand(1).getDefiningOp();
+        auto bias_type = RankedTensorType::getChecked(op->getLoc(), bias_shape,
+                                                      bias_quantized_type);
+        auto bias_value = cast<DenseIntElementsAttr>(
+            cast<stablehlo::ConstantOp>(stablehlo_bias_op).getValue());
+
+        *bias_tfl_op = rewriter.create<TFL::QConstOp>(
+            op->getLoc(),
+            /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
+      } else {
+        uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(op);
+      }
+
+      auto result_quantized_type = uniform_quantize_op->getResult(0)
+                                       .getType()
+                                       .cast<TensorType>()
+                                       .getElementType()
+                                       .cast<UniformQuantizedType>();
+      auto new_result_quantized_type = CreateI8F32UniformQuantizedType(
+          uniform_quantize_op->getLoc(), *rewriter.getContext(),
+          result_quantized_type.getScale(),
+          result_quantized_type.getZeroPoint());
+      output_type = op->getResult(0).getType().cast<TensorType>().clone(
+          new_result_quantized_type);
+      // Omit any bias and requantize ops as `tfl.fully_connected` outputs a
+      // fused `qi8` type.
+      FindUserOfType<>(uniform_quantize_op)->setOperand(0, op->getResult(0));
+    } else {
+      output_type = op->getResult(0).getType().cast<TensorType>();
+    }
+    return output_type;
   }
 };
 
@@ -912,12 +946,15 @@ class RewriteQuantizedConvolutionOp
           result_quantized_type.getZeroPoint());
       output_type = op.getResult().getType().cast<TensorType>().clone(
           new_result_quantized_type);
+      // Omit any bias and requantize ops as `tfl.fully_connected` outputs a
+      // fused `qi8` type.
+      FindUserOfType<>(uniform_quantize_op)->setOperand(0, op->getResult(0));
     } else {
       output_type = op.getResult().getType();
     }
-    auto tfl_conv2d_op = rewriter.create<TFL::Conv2DOp>(
+    rewriter.replaceOpWithNewOp<TFL::Conv2DOp>(
         // op result should be recasted to desired quantized type.
-        op.getLoc(), output_type,
+        op, output_type,
         /*input=*/input_value,
         /*filter=*/new_filter_constant_op, /*bias=*/bias.getResult(),
         /*dilation_h_factor=*/rewriter.getI32IntegerAttr(dilation_h_factor),
@@ -926,14 +963,6 @@ class RewriteQuantizedConvolutionOp
         /*padding=*/rewriter.getStringAttr("VALID"),
         /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
         /*stride_w=*/rewriter.getI32IntegerAttr(stride_w));
-
-    rewriter.replaceAllUsesWith(op.getResult(), tfl_conv2d_op.getResult());
-    rewriter.eraseOp(op);
-    // Patterns from StableHLO Quantizer have `stablehlo.uniform_quantize`
-    // op that transforms `qi32 -> qi8`.
-    if (has_i32_output) {
-      uniform_quantize_op->setOperand(0, tfl_conv2d_op.getResult());
-    }
   }
 
  private:
