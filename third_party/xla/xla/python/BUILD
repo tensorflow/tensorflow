@@ -251,7 +251,9 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/pjrt:exceptions",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
         "@pybind11",
     ],
