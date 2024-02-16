@@ -328,8 +328,6 @@ class GpuPriorityFusionQueue {
     // Collect the instructions whose priorities need to be updated.
     for (HloInstruction* operand : fusion->operands()) {
       if (operand == original_producer ||
-          original_producer->opcode() == HloOpcode::kBroadcast ||
-          operand->opcode() == HloOpcode::kBroadcast ||
           operand->opcode() == HloOpcode::kConstant ||
           operand->opcode() == HloOpcode::kGetTupleElement) {
         continue;
