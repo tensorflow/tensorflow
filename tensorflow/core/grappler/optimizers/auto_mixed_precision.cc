@@ -1064,19 +1064,19 @@ class AutoMixedPrecisionImpl {
   std::unique_ptr<AutoMixedPrecisionLists> get_mixed_precision_lists() const {
     switch (mode_) {
       case AutoMixedPrecisionMode::CUDA:
-        return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
-                                                             cudnn_version_);
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            cuda_version_, cudnn_version_, AutoMixedPrecisionMode::CUDA);
       case AutoMixedPrecisionMode::BF16:
-        return std::make_unique<AutoMixedPrecisionListsMkl>(
-            AutoMixedPrecisionMode::BF16);
+        return std::make_unique<AutoMixedPrecisionListsMkl>();
       case AutoMixedPrecisionMode::CPU:
-        // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
+        // Note: this is not a typo here. AutoMixedPrecisionListsFp16 is used
         // intentionally to make CPU and GPU have the same fp16 ops.
-        return std::make_unique<AutoMixedPrecisionListsCuda>(
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
             /*cuda_version=*/10000,   // Hardcode cuda and cudnn version so
-            /*cudnn_version=*/8000);  // CPU emulates the same ops on GPU.
+            /*cudnn_version=*/8000,   // CPU emulates the same ops on GPU.
+            AutoMixedPrecisionMode::CPU);
       case AutoMixedPrecisionMode::FP16_CPU:
-        return std::make_unique<AutoMixedPrecisionListsMkl>(
+        return std::make_unique<AutoMixedPrecisionListsFp16>(0, 0,
             AutoMixedPrecisionMode::FP16_CPU);
     }
   }
@@ -1865,8 +1865,7 @@ void AutoMixedPrecisionImpl::AddInferToAllowIfFollowAllow(
     const absl::flat_hash_set<int>& deny_set,
     absl::flat_hash_set<int>* allow_set) const {
   // Currently only target for oneDNN
-  if (mode_ != AutoMixedPrecisionMode::BF16 &&
-      mode_ != AutoMixedPrecisionMode::FP16_CPU) {
+  if (mode_ != AutoMixedPrecisionMode::BF16) {
     return;
   }
   for (int item_idx = 0; item_idx < graph_type_view_.num_nodes(); ++item_idx) {
@@ -2319,7 +2318,6 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     LOG(WARNING) << "No support for " << name() << " graph optimizer on CPU";
     return OkStatus();
   }
-  LOG(INFO) << "Running " << name() << " graph optimizer ";
 
   if (num_gpus >= 1 && mode_ == AutoMixedPrecisionMode::BF16) {
     LOG(WARNING) << "Note: GPUs detected. Using " << name()
@@ -2332,7 +2330,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (item.id == "tf_graph") {
     LOG(INFO) << "Running " << name() << " graph optimizer";
   } else {
-    LOG(INFO) << "Running " << name() << " graph optimizer on " << item.id;
+    VLOG(1) << "Running " << name() << " graph optimizer on " << item.id;
   }
   Status status = optimizer.Optimize();
   if (!status.ok()) {

@@ -372,16 +372,12 @@ Status MetaOptimizer::InitializeOptimizers(
       optimizers->push_back(std::make_unique<ShapeOptimizer>());
   }
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision()) &&
-      AutoMixedPrecisionEnabled(
-          plugin_configs.toggle_config["auto_mixed_precision"])) {
-    if (device_types.size() == 1 &&
-        device_types.find("CPU") != device_types.end()) {
-      optimizers->push_back(
-          std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::FP16_CPU));
-    } else {
-      optimizers->push_back(
-          std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
-    }
+    AutoMixedPrecisionEnabled(
+        plugin_configs.toggle_config["auto_mixed_precision"])) {
+    optimizers->push_back(
+        std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::FP16_CPU));
+    optimizers->push_back(
+        std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
 #ifdef INTEL_MKL
   if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16()) &&
