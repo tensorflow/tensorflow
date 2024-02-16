@@ -69,6 +69,14 @@ message OverviewPageAnalysis {
   // BEGIN-INTERNAL
   // Program Goodput metric in percentage.
   double program_goodput_percent = 18;
+  // Sparse core step time in ms average.
+  double sc_step_time_ms_average = 19;
+  // Sparse core infeed time in ms average.
+  double sc_infeed_time_ms_avg = 20;
+  // Sparse core outfeed time in ms average.
+  double sc_outfeed_time_ms_avg = 21;
+  // Sparse core idle time in ms average.
+  double sc_idle_time_ms_avg = 22;
   // END-INTERNAL
 }
 
