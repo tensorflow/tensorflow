@@ -861,7 +861,8 @@ class TFLiteConverterBase:
                     qc.RepresentativeDatasetConfig(
                         tf_record=qc.TfRecordFile(path=tfrecord_file_path)
                     )
-                ]
+                ],
+                enable_per_channel_quantized_weight=True,
             )
         )
 
