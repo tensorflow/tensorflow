@@ -479,9 +479,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes",
+        "//tensorflow/compiler/mlir/lite/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:rename_entrypoint_to_main",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_stablehlo",
+        "//tensorflow/compiler/mlir/lite/stablehlo:unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
