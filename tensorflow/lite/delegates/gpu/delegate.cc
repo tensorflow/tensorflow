@@ -589,9 +589,19 @@ absl::Status DelegateKernelCore::InitializeOpenGlApi(
   auto delegate_options = delegate_->options();
   gl::InferenceOptions options;
   options.usage = ToUsage(delegate_options.inference_preference);
-  options.priority1 = ToPriority(delegate_options.inference_priority1);
-  options.priority2 = ToPriority(delegate_options.inference_priority2);
-  options.priority3 = ToPriority(delegate_options.inference_priority3);
+  // If is_precision_loss_allowed == -1, then just use priorities instead
+  // of paying attention to is_precision_loss_allowed value.
+  if (delegate_options.is_precision_loss_allowed == -1) {
+    options.priority1 = ToPriority(delegate_options.inference_priority1);
+    options.priority2 = ToPriority(delegate_options.inference_priority2);
+    options.priority3 = ToPriority(delegate_options.inference_priority3);
+  } else {
+    if (delegate_options.is_precision_loss_allowed == 0) {
+      options.priority1 = InferencePriority::MAX_PRECISION;
+    } else {
+      options.priority1 = InferencePriority::MIN_LATENCY;
+    }
+  }
   RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                        options, builder));
   enforce_same_thread_ = true;
