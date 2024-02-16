@@ -107,7 +107,7 @@ bool IsQuantizedTensorType(const Type type) {
 // %6 = stablehlo.concatenate %5, %0, %1, %2, dim = 0 :
 //          (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
 //            -> tensor<4xi32>
-// %7 = stablehlo.dynamic_broadcast_in_dims %arg2, %6
+// %7 = stablehlo.dynamic_broadcast_in_dim %arg2, %6
 // %8 = stablehlo.add %3, %7
 // ```
 //
@@ -115,15 +115,15 @@ bool IsQuantizedTensorType(const Type type) {
 // ```
 // %3 = stablehlo.convolution(%%arg0, %%arg1) :
 //          (tensor<?x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<?x3x4x2xf32>
-// %4 = stablehlo.broadcast_in_dims %arg2, %3
+// %4 = stablehlo.broadcast_in_dim %arg2, %3
 // %5 = stablehlo.add %3, %4
 // ```
 template <typename T>
 Operation* GetBroadcastedUserOp(Operation* op) {
   // Broadcast bias for known input shape.
-  auto broadcast_in_dims_op = FindUserOfType<BroadcastInDimOp>(op);
-  if (broadcast_in_dims_op != nullptr) {
-    auto target_op = FindUserOfType<T>(broadcast_in_dims_op);
+  auto broadcast_in_dim_op = FindUserOfType<BroadcastInDimOp>(op);
+  if (broadcast_in_dim_op != nullptr) {
+    auto target_op = FindUserOfType<T>(broadcast_in_dim_op);
     if (target_op != nullptr) return target_op;
   }
   // Broadcast bias for unknown input shape.
@@ -245,12 +245,12 @@ void CreateAndReturnQuantizedBiasPattern(
 
   // Broadcast bias value if unmatched with output shape.
   auto bcast_op = TryCast<BroadcastInDimOp>(bias_op.getDefiningOp(),
-                                            /*name=*/"broadcast_in_dims_op");
+                                            /*name=*/"broadcast_in_dim_op");
 
   if (failed(bcast_op)) {
     bcast_op = TryCast<DynamicBroadcastInDimOp>(
         bias_op.getDefiningOp(),
-        /*name=*/"dynamic_broadcast_in_dims_op");
+        /*name=*/"dynamic_broadcast_in_dim_op");
   }
   // Update the bias type for both static and dynamic broadcasts.
   if (succeeded(bcast_op)) {
