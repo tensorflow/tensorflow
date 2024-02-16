@@ -1,1 +1,48 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+--- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
++++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+@@ -663,6 +663,12 @@
+   void VisitInitListExpr(const InitListExpr *S) {
+     QualType Type = S->getType();
+ 
++    if (Type->isUnionType()) {
++      if (auto *Val = Env.createValue(Type))
++        Env.setValue(*S, *Val);
++      return;
++    }
++
+     if (!Type->isStructureOrClassType()) {
+       // Until array initialization is implemented, we don't need to care about
+       // cases where `getNumInits() > 1`.
+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+--- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
++++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+@@ -2367,6 +2367,27 @@
+       });
+ }
+ 
++TEST(TransferTest, InitListExprAsUnion) {
++  // This is a crash repro.
++  std::string Code = R"cc(
++    class target {
++      union {
++        int *a;
++        bool *b;
++      } F;
++
++     public:
++      constexpr target() : F{nullptr} {}
++    };
++  )cc";
++  runDataflow(
++      Code,
++      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
++         ASTContext &ASTCtx) {
++        // Just verify that it doesn't crash.
++      });
++}
++
+ TEST(TransferTest, CopyConstructor) {
+   std::string Code = R"(
+     struct A {
