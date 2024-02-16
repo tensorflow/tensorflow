@@ -58,12 +58,19 @@ using OperationSetTy = SmallPtrSet<Operation*, 4>;
 using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
 
 #define GEN_PASS_DEF_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
+#define GEN_PASS_DECL_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-class ConvertControlToDataOutputsPass
+struct ConvertControlToDataOutputsPass
     : public impl::ExecutorConvertControlToDataOutputsPassBase<
           ConvertControlToDataOutputsPass> {
- public:
+  ConvertControlToDataOutputsPass() = default;
+  explicit ConvertControlToDataOutputsPass(
+      bool composite_tpuexecute_side_effects)
+      : ExecutorConvertControlToDataOutputsPassBase(
+            ExecutorConvertControlToDataOutputsPassOptions{
+                composite_tpuexecute_side_effects}) {}
+
   void runOnOperation() override;
 };
 
@@ -127,7 +134,7 @@ void CollectChainResources(
     func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
     const TF::SideEffectAnalysis::Info& side_effect_analysis,
-    const DataFlowSolver& solver) {
+    const DataFlowSolver& solver, bool composite_tpuexecute_side_effects) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   // For each op in the graph, get the resources it uses and update the access
@@ -144,7 +151,8 @@ void CollectChainResources(
     // TPUExecute* ops. So we don't need to track resources for it.
     // TODO(b/325290168): Do this check per resource, not per op.
     if (auto execute = llvm::dyn_cast<TF::TPUExecuteAndUpdateVariablesOp>(op)) {
-      if (OnlyOperatesOnCompositeDevices(execute, solver)) {
+      if (composite_tpuexecute_side_effects &&
+          OnlyOperatesOnCompositeDevices(execute, solver)) {
         return WalkResult::advance();
       }
     }
@@ -444,7 +452,7 @@ void ConvertControlToDataOutputs(
     func::FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
     OperationSetTy& recompute_analysis_for_funcs,
     const TF::SideEffectAnalysis::Info& side_effect_analysis,
-    const DataFlowSolver& solver) {
+    const DataFlowSolver& solver, bool composite_tpuexecute_side_effects) {
   if (while_callers.empty()) return;
 
   // Collect access information for each resource in the while body that needs
@@ -454,7 +462,7 @@ void ConvertControlToDataOutputs(
   llvm::EquivalenceClasses<ResourceId> resource_equivalence_classes;
   CollectChainResources(while_body, chain_resource_to_ops_map,
                         resource_equivalence_classes, side_effect_analysis,
-                        solver);
+                        solver, composite_tpuexecute_side_effects);
 
   // Check for presence of unknown side-effecting ops within the while loop
   // body. These ops act as barriers and the optimization would not yield much
@@ -566,7 +574,8 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
     }
     ConvertControlToDataOutputs(
         while_body, while_callers, recompute_analysis_for_funcs,
-        side_effect_analysis.GetAnalysisForFunc(while_body), solver);
+        side_effect_analysis.GetAnalysisForFunc(while_body), solver,
+        composite_tpuexecute_side_effects_);
   }
 }
 
@@ -575,6 +584,13 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass() {
   return std::make_unique<ConvertControlToDataOutputsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass(
+    bool composite_tpuexecute_side_effects) {
+  return std::make_unique<ConvertControlToDataOutputsPass>(
+      composite_tpuexecute_side_effects);
 }
 
 }  // namespace tf_executor

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-executor-convert-control-to-data-outputs -split-input-file %s | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(tf-executor-convert-control-to-data-outputs{composite-tpuexecute-side-effects})' -split-input-file -verify-diagnostics | FileCheck %s
 
 !tf_res = tensor<!tf_type.resource<tensor<f32>>>
 
