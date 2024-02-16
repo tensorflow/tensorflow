@@ -97,7 +97,10 @@ py_strict_binary(
     srcs = ["freeze_graph.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [":freeze_graph_lib"],
+    deps = [
+        "//tensorflow/python:_pywrap_tensorflow",
+        ":freeze_graph_lib"
+    ],
 )
 
 py_strict_binary(
@@ -355,7 +358,10 @@ py_strict_binary(
     srcs = ["saved_model_cli.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    deps = [":saved_model_cli_lib"],
+    deps = [
+        ":saved_model_cli_lib",
+        "//tensorflow/python:_pywrap_tensorflow",
+    ],
 )
 
 py_strict_library(
@@ -456,6 +462,7 @@ py_strict_binary(
     srcs = ["make_aot_compile_models.py"],
     python_version = "PY3",
     deps = [
+        "//tensorflow/python:_pywrap_tensorflow",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
@@ -479,6 +486,7 @@ genrule(
     name = "create_models_for_aot_compile",
     outs = EMITTED_AOT_SAVE_MODEL_OBJECTS,
     cmd = (
+        "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
     tags = ["no_rocm"],

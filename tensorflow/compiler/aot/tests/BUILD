@@ -70,6 +70,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:_pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
@@ -119,6 +120,7 @@ genrule(
     # concurrently with tests, and tests need to be able to assume that they
     # have control of the full GPU.
     cmd = "CUDA_VISIBLE_DEVICES='' " +
+          "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
           "$(location :make_test_graphs) --out_dir $(@D)",
     tags = ["manual"],
     tools = [":make_test_graphs"],

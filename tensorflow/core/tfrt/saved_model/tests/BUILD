@@ -148,6 +148,7 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:_pywrap_tensorflow",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/eager:def_function",
@@ -169,6 +170,7 @@ pytype_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:_pywrap_tensorflow",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:def_function",
@@ -550,7 +552,8 @@ genrule(
     outs = [
         "pow_v2/saved_model.pb",
     ],
-    cmd = "$(location gen_pow_v2) --saved_model_path=$(RULEDIR)/pow_v2",
+    cmd = "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+        "$(location gen_pow_v2) --saved_model_path=$(RULEDIR)/pow_v2",
     tools = ["gen_pow_v2"],
 )
 
@@ -560,7 +563,8 @@ genrule(
     outs = [
         "data/saved_model.pb",
     ],
-    cmd = "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
+    cmd = "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+        "$(location gen_data) --saved_model_path=$(RULEDIR)/data",
     tools = ["gen_data"],
 )
 

@@ -26,6 +26,7 @@ def gen_op_libraries(
         "//tensorflow/compiler/mlir/tfr:op_reg_gen",
         "//tensorflow/compiler/mlir/tfr:tfr_gen",
         "//tensorflow/compiler/mlir/tfr:composite",
+        "//tensorflow/python:_pywrap_tensorflow",
     ] + deps
 
     gen_op_lib_exec = src[:-3]  # Strip off the .py
@@ -42,7 +43,9 @@ def gen_op_libraries(
         name = registered_op,
         srcs = [],
         outs = [name + ".inc.cc"],
-        cmd = "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
+        cmd =
+            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+            "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
         tools = [":" + gen_op_lib_exec],
         tags = tags,
     )
@@ -105,7 +108,9 @@ def gen_op_libraries(
         name = name + "_mlir",
         srcs = [],
         outs = [name + ".mlir"],
-        cmd = "$(location %s) --output=$@ --gen_register_op=false" % gen_tfr_lib_exec,
+        cmd =
+            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+            "$(location %s) --output=$@ --gen_register_op=false" % gen_tfr_lib_exec,
         tools = [":" + gen_tfr_lib_exec],
         tags = tags,
     )
