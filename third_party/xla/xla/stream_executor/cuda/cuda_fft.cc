@@ -482,5 +482,6 @@ void initialize_cufft() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_cufft,
-                            { stream_executor::initialize_cufft(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cufft, {
+  stream_executor::initialize_cufft();
+});

@@ -1076,4 +1076,4 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_executor, {});
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(rocm_executor, {});

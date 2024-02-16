@@ -186,5 +186,5 @@ static void InitializeCudaPlatform() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(cuda_platform,
-                            stream_executor::InitializeCudaPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    cuda_platform, stream_executor::InitializeCudaPlatform());

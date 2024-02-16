@@ -1412,5 +1412,6 @@ void initialize_rocblas() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_rocblas,
-                            { stream_executor::initialize_rocblas(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_rocblas, {
+  stream_executor::initialize_rocblas();
+});

@@ -158,5 +158,5 @@ static void InitializeROCmPlatform() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_platform,
-                            stream_executor::InitializeROCmPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    rocm_platform, stream_executor::InitializeROCmPlatform());

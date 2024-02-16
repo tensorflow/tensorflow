@@ -10606,5 +10606,6 @@ void initialize_cudnn() {
 #pragma clang diagnostic pop
 #endif
 
-REGISTER_MODULE_INITIALIZER(register_cudnn,
-                            { stream_executor::initialize_cudnn(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cudnn, {
+  stream_executor::initialize_cudnn();
+});

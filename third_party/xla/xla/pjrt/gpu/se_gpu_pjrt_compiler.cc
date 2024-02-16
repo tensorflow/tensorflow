@@ -196,7 +196,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 #endif
 }
 
-REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
   PjRtRegisterCompiler(CudaName(),
                        std::make_unique<StreamExecutorGpuCompiler>());
 });

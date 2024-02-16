@@ -85,6 +85,6 @@ static void InitializeXlaInterpreterPlatform() {
 }  // namespace interpreter
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
     interpreter_platform,
     stream_executor::interpreter::InitializeXlaInterpreterPlatform());

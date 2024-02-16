@@ -4707,5 +4707,6 @@ void initialize_miopen() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_miopen,
-                            { stream_executor::initialize_miopen(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_miopen, {
+  stream_executor::initialize_miopen();
+});
