@@ -250,6 +250,16 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "pjrt_gpu_client_registration_test",
     size = "small",
