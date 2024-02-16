@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -378,7 +379,7 @@ class GpuPriorityFusionQueue {
     }
 
     // Don't fuse if we can't fuse in all users.
-    if (auto fusion_decision = CanFuseWithAllUsers(producer);
+    if (auto fusion_decision = CanFuseWithAllNonBitcastUsers(producer);
         !fusion_decision) {
       if (fusion_process_dump_) {
         absl::MutexLock lock(&fusion_process_dump_mutex_);
@@ -419,6 +420,10 @@ class GpuPriorityFusionQueue {
 
     if (!IsFusible(*consumer)) {
       return "the consumer is not fusible";
+    }
+
+    if (consumer->opcode() == HloOpcode::kBitcast) {
+      return "not fusing into a single bitcast as consumer";
     }
 
     // Scatter is special as it has no elemental version but is still input
@@ -524,19 +529,27 @@ class GpuPriorityFusionQueue {
     return fusion_decision;
   }
 
-  FusionDecision CanFuseWithAllUsers(HloInstruction* producer) {
+  FusionDecision CanFuseWithAllNonBitcastUsers(HloInstruction* producer) {
     if (producer->users().empty()) {
       return "No users to fuse";
     }
 
     FusionDecision result;
+    bool has_non_bitcast_user = false;
     for (const auto& user : producer->users()) {
+      if (user->opcode() == HloOpcode::kBitcast) {
+        continue;
+      }
+      has_non_bitcast_user = true;
       if (auto fusion_decision = CanFuseCached(producer, user);
           !fusion_decision) {
         VLOG(10) << "Cannot fuse " << producer->name() << " with "
                  << user->name() << ", because: " << fusion_decision.Explain();
         return fusion_decision;
       }
+    }
+    if (!has_non_bitcast_user) {
+      return "not fusing because there are only bitcast users";
     }
     return {};
   }
@@ -682,6 +695,11 @@ absl::StatusOr<bool> GpuPriorityFusion::Run(
       auto producer = fusion_queue->current_producer();
 
       for (auto* consumer : fusion_queue->current_consumers()) {
+        // Don't fuse into single bitcasts. We ignore them in the check
+        // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
+        if (consumer->opcode() == HloOpcode::kBitcast) {
+          continue;
+        }
         if (!ConsumeFuel(producer, consumer)) continue;
 
         VLOG(5) << "next: " << consumer->name() << "(" << consumer << ") + "
