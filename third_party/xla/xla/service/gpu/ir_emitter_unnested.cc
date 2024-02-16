@@ -1783,7 +1783,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
       CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
                           ir_emitter_context_->cuda_compute_capability(),
                           ir_emitter_context_->gpu_device_info(), gemm_config,
-                          triton_module.release(),
+                          triton_module.get(),
                           ir_emitter_context_->llvm_module(), mlir_context));
 
   llvm::Function* impl_fn =

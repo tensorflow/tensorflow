@@ -2236,7 +2236,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   // Compile Triton kernel to LLVM.
   const HloModule* hlo_module = hlo_computation->parent();
   return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), cc,
-                             device_info, config, triton_module.release(),
+                             device_info, config, triton_module.get(),
                              llvm_module, mlir_context);
 }
 
