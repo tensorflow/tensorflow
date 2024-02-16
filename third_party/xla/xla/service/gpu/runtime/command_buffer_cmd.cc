@@ -1160,16 +1160,11 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& params,
                 params.buffer_allocations->device_ordinal(),
                 params.buffer_allocations->memory_allocator(), params.stream));
 
-  TF_ASSIGN_OR_RETURN(
-      auto nested_cmd,
-      se::CommandBuffer::Trace(
-          params.stream->parent(), params.command_buffer_trace_stream,
-          [&](se::Stream* stream) {
-            return RunAllReduce(nccl_api(), reduction_kind_, device_buffers,
-                                *stream, comm);
-          }));
-
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return AddTracedCommandBuffer(
+      params, state, command_buffer, [&](se::Stream* stream) {
+        return RunAllReduce(nccl_api(), reduction_kind_, device_buffers,
+                            *stream, comm);
+      });
 }
 
 CommandBufferCmd::BufferUsageVector AllReduceCmd::buffers() {
@@ -1230,16 +1225,11 @@ absl::Status ReduceScatterCmd::Record(const Thunk::ExecuteParams& params,
                 params.buffer_allocations->device_ordinal(),
                 params.buffer_allocations->memory_allocator(), params.stream));
 
-  TF_ASSIGN_OR_RETURN(
-      auto nested_cmd,
-      se::CommandBuffer::Trace(
-          params.stream->parent(), params.command_buffer_trace_stream,
-          [&](se::Stream* stream) {
-            return RunReduceScatter(nccl_api(), reduction_kind_, device_buffers,
-                                    *stream, comm);
-          }));
-
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return AddTracedCommandBuffer(
+      params, state, command_buffer, [&](se::Stream* stream) {
+        return RunReduceScatter(nccl_api(), reduction_kind_, device_buffers,
+                                *stream, comm);
+      });
 }
 
 CommandBufferCmd::BufferUsageVector ReduceScatterCmd::buffers() {
@@ -1297,15 +1287,10 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& params,
                 params.buffer_allocations->device_ordinal(),
                 params.buffer_allocations->memory_allocator(), params.stream));
 
-  TF_ASSIGN_OR_RETURN(
-      auto nested_cmd,
-      se::CommandBuffer::Trace(
-          params.stream->parent(), params.command_buffer_trace_stream,
-          [&](se::Stream* stream) {
-            return RunAllGather(nccl_api(), device_buffers, *stream, comm);
-          }));
-
-  return command_buffer->AddNestedCommandBuffer(*nested_cmd);
+  return AddTracedCommandBuffer(
+      params, state, command_buffer, [&](se::Stream* stream) {
+        return RunAllGather(nccl_api(), device_buffers, *stream, comm);
+      });
 }
 
 CommandBufferCmd::BufferUsageVector AllGatherCmd::buffers() {

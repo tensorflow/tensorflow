@@ -689,7 +689,7 @@ class CustomCallCmd : public CommandBufferCmd {
 // CollectiveCmd
 //===----------------------------------------------------------------------===//
 
-class CollectiveCmd : public CommandBufferCmd {
+class CollectiveCmd : public TracedCommandBufferCmd {
  public:
   CollectiveCmd(NcclApi* nccl_api, NcclCollectiveConfig config);
 
