@@ -440,6 +440,9 @@ check_deps = rule(
 def get_compatible_with_portable():
     return []
 
+def get_compatible_with_libtpu_portable():
+    return []
+
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
 
