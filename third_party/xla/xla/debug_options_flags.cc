@@ -22,10 +22,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -403,17 +405,62 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
   // Custom "sub-parser" lambda for xla_gpu_enable_command_buffer.
   auto setter_for_xla_gpu_enable_command_buffer =
-      [debug_options](const std::string& values) {
-        debug_options->clear_xla_gpu_enable_command_buffer();
-        for (const absl::string_view value : absl::StrSplit(values, ',')) {
+      [debug_options](const std::string& input) {
+        auto is_command_type = [](absl::string_view value) {
           DebugOptions::CommandBufferCmdType cmd_type;
-          if (!DebugOptions::CommandBufferCmdType_Parse(
-                  absl::AsciiStrToUpper(value), &cmd_type)) {
-            return false;
+          return DebugOptions::CommandBufferCmdType_Parse(
+              absl::AsciiStrToUpper(value), &cmd_type);
+        };
+
+        auto is_add_or_remove_command_type = [&](absl::string_view value) {
+          if (absl::StartsWith(value, "+") || absl::StartsWith(value, "-")) {
+            return (is_command_type(value.substr(1)));
           }
-          debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
+          return false;
+        };
+
+        auto parse_command_type = [](absl::string_view value) {
+          DebugOptions::CommandBufferCmdType cmd_type;
+          DebugOptions::CommandBufferCmdType_Parse(absl::AsciiStrToUpper(value),
+                                                   &cmd_type);
+          return cmd_type;
+        };
+
+        auto erase_command_type = [](tsl::protobuf::RepeatedField<int>* enabled,
+                                     DebugOptions::CommandBufferCmdType type) {
+          auto it = enabled->begin();
+          while (it != enabled->end()) {
+            if (*it == type) {
+              it = enabled->erase(it);
+            } else {
+              it++;
+            }
+          }
+        };
+
+        std::vector<absl::string_view> values = absl::StrSplit(input, ',');
+        if (absl::c_all_of(values, is_command_type)) {
+          debug_options->clear_xla_gpu_enable_command_buffer();
+          for (const absl::string_view value : values) {
+            debug_options->add_xla_gpu_enable_command_buffer(
+                parse_command_type(value));
+          }
+          return true;
+        } else if (absl::c_all_of(values, is_add_or_remove_command_type)) {
+          for (const absl::string_view value : values) {
+            DebugOptions::CommandBufferCmdType cmd_type =
+                parse_command_type(value.substr(1));
+            if (absl::StartsWith(value, "+")) {
+              debug_options->add_xla_gpu_enable_command_buffer(cmd_type);
+            } else if (absl::StartsWith(value, "-")) {
+              tsl::protobuf::RepeatedField<int>* enabled =
+                  debug_options->mutable_xla_gpu_enable_command_buffer();
+              erase_command_type(enabled, cmd_type);
+            }
+          }
+          return true;
         }
-        return true;
+        return false;
       };
 
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
@@ -1028,7 +1075,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_command_buffer", setter_for_xla_gpu_enable_command_buffer,
       command_types_to_string(debug_options->xla_gpu_enable_command_buffer()),
-      "The types of the commands that are recorded into command buffers"));
+      "The types of the commands that are recorded into command buffers. It"
+      " can either be a list of command types or a list of command types with"
+      " + and - as prefix, which indicate adding or removing a command type"
+      " to/from the default list."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(
