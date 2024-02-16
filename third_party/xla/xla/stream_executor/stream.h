@@ -33,13 +33,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
@@ -187,32 +185,6 @@ class Stream {
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
   Stream &ThenRecordEvent(Event *event);
-
-  /////////////////
-  // BLAS support
-
-  template <typename InputType, typename OutputType>
-  absl::Status ThenBlasGemmWithAlgorithm(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, const DeviceMemory<InputType> &a, int lda,
-      const DeviceMemory<InputType> &b, int ldb, DeviceMemory<OutputType> *c,
-      int ldc, blas::ComputationType computation_type,
-      blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result,
-      blas::CallContext context) {
-    OutputType alpha{1};
-    OutputType beta{0};
-
-    blas::BlasSupport *blas = parent()->AsBlas();
-    if (!blas) {
-      return absl::InternalError(
-          "Attempting to perform BLAS operation using "
-          "StreamExecutor without BLAS support");
-    }
-    return blas->BlasGemmWithAlgorithm(
-        this, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
-        computation_type, algorithm, NumericOptions{}, output_profile_result,
-        context);
-  }
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory

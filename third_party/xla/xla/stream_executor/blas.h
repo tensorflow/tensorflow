@@ -522,6 +522,23 @@ class BlasSupport {
     return st;
   }
 
+  template <typename InputType, typename OutputType>
+  absl::Status BlasGemmWithAlgorithm(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64 n, uint64_t k, const DeviceMemory<InputType> &a,
+      int lda, const DeviceMemory<InputType> &b, int ldb,
+      DeviceMemory<OutputType> *c, int ldc,
+      blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result, blas::CallContext context) {
+    OutputType alpha{1};
+    OutputType beta{0};
+
+    return BlasGemmWithAlgorithm(stream, transa, transb, m, n, k, alpha, a, lda,
+                                 b, ldb, beta, c, ldc, computation_type,
+                                 algorithm, NumericOptions{},
+                                 output_profile_result, context);
+  }
+
   template <typename InputType, typename OutputType, typename ConstantType>
   absl::Status BlasGemmStridedBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
