@@ -37,21 +37,6 @@ fi
 
 ROCM_PATH=$ROCM_INSTALL_DIR
 
-# Explicitly delete the old whl packages in the /tmp/tensorflow_pkg dir
-# Doing so comes in handy when the TF version number changes, because
-# it will cause the last line in this script (pip3 install ...) to fail.
-# Not deleting the old whl packages results in the last line installing
-# TF from the previous whl pakcage (if present) and not the current one
-# that was just built by this script. Since this error is not apparent, it
-# can lead to a lot of frustation and lost time trying to figure why the
-# changes made in the current build are not working!
-TF_PKG_LOC=/tmp/tensorflow_pkg
-if [[ -n $nightly ]]; then
-	rm -f $TF_PKG_LOC/tf_nightly_rocm*.whl
-else
-	rm -f $TF_PKG_LOC/tensorflow*.whl
-fi
-
 PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
 export TF_PYTHON_VERSION=$PYTHON_VERSION
 # Explicitly define resource constraints on bazel to avoid overload on rocm-ci
@@ -63,25 +48,36 @@ fi
 
 if [ -f /usertools/rocm.bazelrc ]; then
 	# Use the bazelrc files in /usertools if available
+	# Also, this is likely a tensorflow-build container so put the whl in /tf/pkg
+        TF_PKG_LOC=/tf/pkg
 	if [[ -n $nightly ]]; then
+		# Remove any previous builds and build nightly
+	        rm -f $TF_PKG_LOC/tf_nightly_rocm*.whl
 		python3 tensorflow/tools/ci_build/update_version.py --nightly --rocm_version &&
 		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
-		./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tf/pkg --rocm --nightly_flag &&
+		./bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --nightly_flag &&
 		pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
 	else
+		# Remove any previous builds and build release
+	        rm -f $TF_PKG_LOC/tensorflow*.whl
 		python3 tensorflow/tools/ci_build/update_version.py --rocm_version &&
 		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
-		./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tf/pkg --rocm --project_name tensorflow_rocm &&
+		./bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --project_name tensorflow_rocm &&
 		pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
 	fi
 else
 	# Legacy style: run configure then build
+        TF_PKG_LOC=/tmp/tensorflow_pkg
 	yes "" | TF_NEED_CLANG=0 ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure &&
 	if [[ -n $nightly ]]; then
+		# Remove any previous builds and build nightly
+	        rm -f $TF_PKG_LOC/tf_nightly_rocm*.whl
 		bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 		bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --nightly_flag &&
 		pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
 	else
+		# Remove any previous builds and build release
+	        rm -f $TF_PKG_LOC/tensorflow*.whl
 		bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 		bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm &&
 		pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
