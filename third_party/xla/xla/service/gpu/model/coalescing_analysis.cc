@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/coalescing_analysis.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <optional>
@@ -27,12 +28,14 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
@@ -88,9 +91,122 @@ namespace {
 
 using mlir::AffineExpr;
 using mlir::AffineMap;
+using mlir::getAffineConstantExpr;
 using mlir::MLIRContext;
 
-bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map) {
+// Performs backtracking to find all feasible dimensions, symbols that satisfy
+// the constraints and then evaluates the affine map at those.
+// For example, for the following indexing map:
+//   (d0)[s0] -> (d0 + s0)
+//   domain:
+//   d0 in [0, 3]
+//   s0 in [0, 1, 2]
+//   s0 mod 2 in [0, 0]
+// The function will compute the following indices [0, 2, 1, 3, 2, 4, 3, 5].
+void FindAllIndices(const IndexingMap& thread_id_to_physical_index,
+                    MLIRContext* mlir_context, int dim_id, int symbol_id,
+                    std::vector<AffineExpr>* dimensions,
+                    std::vector<AffineExpr>* symbols,
+                    std::vector<int64_t>* indices) {
+  if (dim_id < thread_id_to_physical_index.GetDimensionCount()) {
+    Range dim_range = thread_id_to_physical_index.GetDimensionRange(dim_id);
+    for (int64_t dim_value = dim_range.lower_bound;
+         dim_value <= dim_range.upper_bound; ++dim_value) {
+      dimensions->push_back(getAffineConstantExpr(dim_value, mlir_context));
+      FindAllIndices(thread_id_to_physical_index, mlir_context, dim_id + 1,
+                     symbol_id, dimensions, symbols, indices);
+      dimensions->pop_back();
+    }
+    return;
+  }
+  if (symbol_id < thread_id_to_physical_index.GetSymbolCount()) {
+    Range symbol_range = thread_id_to_physical_index.GetSymbolRange(symbol_id);
+    for (int64_t symbol_value = symbol_range.lower_bound;
+         symbol_value <= symbol_range.upper_bound; ++symbol_value) {
+      symbols->push_back(getAffineConstantExpr(symbol_value, mlir_context));
+      FindAllIndices(thread_id_to_physical_index, mlir_context, dim_id,
+                     symbol_id + 1, dimensions, symbols, indices);
+      symbols->pop_back();
+    }
+    return;
+  }
+  if (!thread_id_to_physical_index.ConstraintsSatisfied(*dimensions,
+                                                        *symbols)) {
+    return;
+  }
+  indices->push_back(
+      thread_id_to_physical_index.Evaluate(*dimensions, *symbols).front());
+}
+
+// Computes contiguous intervals of accessed elements.
+// For example, for an indexing map
+//   (thread_x) -> (thread_x * 4 + s0 + (thread_x floordiv 16) * 1984)
+//   d0 in [0, 31]
+//   s0 in [0, 3]
+// The intervals are [0, 63] and [2047, 2111].
+// TODO(b/325613460): Make it faster than O(number of elements in the domain).
+std::vector<Range> FindContiguousIntervals(
+    const IndexingMap& thread_id_to_physical_index) {
+  CHECK(thread_id_to_physical_index.GetAffineMap().getNumResults() == 1)
+      << "Expects an affine map that maps to 1D.";
+  MLIRContext* mlir_context = thread_id_to_physical_index.GetMLIRContext();
+
+  // Find all linear indices, sort and deduplicate them.
+  std::vector<AffineExpr> dimensions, symbols;
+  std::vector<int64_t> linear_indices;
+  FindAllIndices(thread_id_to_physical_index, mlir_context,
+                 /*dim_id=*/0,
+                 /*symbol_id=*/0, &dimensions, &symbols, &linear_indices);
+  std::sort(linear_indices.begin(), linear_indices.end());
+  linear_indices.erase(
+      std::unique(linear_indices.begin(), linear_indices.end()),
+      linear_indices.end());
+
+  // Scan over the sorted unique indices and combine them in intervals.
+  std::vector<Range> intervals;
+  for (int i = 0, start, end; i < linear_indices.size(); ++i) {
+    start = linear_indices[i++];
+    end = start;
+    while (i < linear_indices.size() && linear_indices[i] == end + 1) {
+      ++end;
+      ++i;
+    }
+    intervals.push_back(Range{start, end});
+  }
+  return intervals;
+}
+
+int64_t CeilDiv(int64_t a, int64_t b) { return a / b + (a % b != 0); }
+
+// Approximately estimate the number of memory transactions needed to load all
+// elements in every range and compare it with the "ideal" number of memory
+// transactions, i.e. total number of elements in all ranges / WarpSize().
+// Note, that later we would need to take the element type into account.
+bool EstimateCoalescingViaMemoryTransactionsCount(
+    absl::Span<const Range> intervals, PrimitiveType element_type) {
+  constexpr int64_t kBytesPerMemoryTransaction = 128;
+  int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  int memory_transactions = 0;
+  int total_num_elements = 0;
+  for (const auto& range : intervals) {
+    int64_t num_elements = range.upper_bound - range.lower_bound + 1;
+    memory_transactions +=
+        CeilDiv(num_elements * type_size, kBytesPerMemoryTransaction);
+    total_num_elements += num_elements;
+  }
+  if (memory_transactions == 0) {
+    return true;
+  }
+  int memory_transactions_lower_bound =
+      CeilDiv(total_num_elements * type_size, kBytesPerMemoryTransaction);
+  // The magic value chosen by an uneducated guess.
+  constexpr float kIsCoalescedThreshold = 0.9;
+  return memory_transactions_lower_bound >
+         memory_transactions * kIsCoalescedThreshold;
+}
+
+bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
+                 PrimitiveType element_type) {
   MLIRContext* mlir_context = thread_id_to_input_indexing_map.GetMLIRContext();
   AffineExpr thread_x_dim = mlir::getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
@@ -102,12 +218,10 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map) {
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;
   thread_x_to_linearized_input.Simplify();
-  thread_x_to_linearized_input.RemoveUnusedSymbols();
-  // That's quite a naive condition. It would be better to estimate the number
-  // of memory transactions needed to cover the elements of the indexing map's
-  // codomain.
-  return thread_x_to_linearized_input.GetAffineMap().getResult(0) ==
-         thread_x_dim;
+  // TODO(b/325462001): Re-enable unused symbols removal.
+  // thread_x_to_linearized_input.RemoveUnusedSymbols();
+  return EstimateCoalescingViaMemoryTransactionsCount(
+      FindContiguousIntervals(thread_x_to_linearized_input), element_type);
 }
 
 }  // namespace
@@ -193,14 +307,15 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
         coalescing_per_operand_[operand] = false;
         break;
       }
-      IndexingMap physical_output_to_linearized_physical_input_map =
+      IndexingMap logical_output_to_linearized_physical_input_map =
           operand_indexing_map * operand_logical_to_linearized_physical_shape;
       IndexingMap thread_id_to_linearized_physical_input_map =
           *thread_id_to_logical_output_map *
-          physical_output_to_linearized_physical_input_map;
+          logical_output_to_linearized_physical_input_map;
       thread_id_to_linearized_physical_input_map.Simplify();
       bool is_coalesced =
-          IsCoalesced(thread_id_to_linearized_physical_input_map);
+          IsCoalesced(thread_id_to_linearized_physical_input_map,
+                      operand->shape().element_type());
       auto [it, inserted] =
           coalescing_per_operand_.insert({operand, is_coalesced});
       if (!inserted) {

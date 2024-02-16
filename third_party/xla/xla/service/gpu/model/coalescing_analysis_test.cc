@@ -177,9 +177,30 @@ TEST_F(CoalescingTest, TransposeOnlyOuterDims) {
       ROOT %fusion = f32[32, 100, 64] fusion(%input), kind=kLoop, calls=fusion
   })";
   // thread_x to linearized input mapping for thread_x in [0, 31]:
-  // (thread_x) -> (thread_x * 4 + s0 + (thread_x floordiv 16) * 1984)
+  // Operand 1:
+  //   (thread_x) -> (thread_x * 4 + s0 + (thread_x floordiv 16) * 1984)
   //   for s0 in [0, 3]
-  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false));
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, PadOp) {
+  absl::string_view ir = R"(
+    HloModule module
+    fusion {
+      p0 = f32[997, 436] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[1024, 512] pad(p0, p1), padding=10_17x24_52
+    }
+    ENTRY entry {
+      p0 = f32[997, 436] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT %fusion = f32[1024, 512] fusion(p0, p1), kind=kLoop, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (d0)[s0] -> (d0 * 4 + s0 - 4384)
+  //   for s0 in [0, 3]
+  // Operand 2: (d0) -> ()
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true));
 }
 
 }  // namespace
