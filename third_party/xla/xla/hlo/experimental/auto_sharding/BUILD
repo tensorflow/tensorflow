@@ -2,6 +2,7 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.bzl", "auto_sharding_deps", "auto_sharding_solver_deps", "xla_cc_binary", "xla_cc_test")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -28,6 +29,7 @@ cc_library(
     hdrs = [
         "auto_sharding.h",
     ],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
@@ -82,6 +84,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver_impl",
     srcs = ["auto_sharding_solver_impl.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
@@ -93,6 +96,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver",
     srcs = ["auto_sharding_solver.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
@@ -119,6 +123,7 @@ cc_library(
         "auto_sharding_solver.h",
         "auto_sharding_strategy.h",
     ],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_proto_cc",
         "//xla:shape_util",
@@ -135,6 +140,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_cost_graph",
     hdrs = ["auto_sharding_cost_graph.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_strategy",
         ":matrix",
@@ -152,6 +158,7 @@ cc_library(
     name = "auto_sharding_option",
     srcs = ["auto_sharding_option.cc"],
     hdrs = ["auto_sharding_option.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_util",
         "@com_google_absl//absl/algorithm:container",
@@ -164,6 +171,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_wrapper",
     hdrs = ["auto_sharding_wrapper.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
@@ -179,6 +187,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_impl",
     srcs = ["auto_sharding_impl.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_option",
@@ -195,6 +204,7 @@ cc_library(
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
@@ -205,6 +215,7 @@ cc_library(
     name = "cluster_environment",
     srcs = ["cluster_environment.cc"],
     hdrs = ["cluster_environment.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_option",
         ":auto_sharding_strategy",
@@ -218,6 +229,7 @@ cc_library(
 cc_library(
     name = "profiling_result",
     hdrs = ["profiling_result.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [":auto_sharding_strategy"],
 )
 
@@ -225,6 +237,7 @@ cc_library(
     name = "auto_sharding_util",
     srcs = ["auto_sharding_util.cc"],
     hdrs = ["auto_sharding_util.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_strategy",
         "//xla:array",
@@ -257,12 +270,14 @@ cc_library(
     name = "metrics",
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = ["@local_tsl//tsl/lib/monitoring:counter"],
 )
 
 xla_cc_binary(
     name = "auto_sharding_runner",
     srcs = ["auto_sharding_runner.cc"],
+    compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
         "//xla:status",
