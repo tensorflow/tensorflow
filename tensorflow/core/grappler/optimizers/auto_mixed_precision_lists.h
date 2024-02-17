@@ -112,9 +112,13 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
       : cuda_version_(cuda_version), cudnn_version_(cudnn_version) {
     if (mode == AutoMixedPrecisionMode::CUDA ||
         mode == AutoMixedPrecisionMode::CPU) {
+      // Note: this is not a typo here. use_cuda_ is set to true for the CPU
+      // intentionally to make CPU and GPU have the same fp16 ops.
       use_cuda_ = true;
+      use_onednn_ = false;
     } else if (mode == AutoMixedPrecisionMode::FP16_CPU) {
       use_onednn_ = true;
+      use_cuda_ = false;
     }
   }
 
@@ -421,12 +425,10 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "BiasAddGrad",
                                      "BiasAddV1",
                                      "Erf",
-                                     "Erfc",
                                      "FusedBatchNormV2",
                                      "FusedBatchNormGradV2",
                                      "FusedBatchNormV3",
                                      "FusedBatchNormGradV3",
-                                     "Inv",
                                      "LeakyRelu",
                                      "LeakyReluGrad",
                                      "Mul",
@@ -509,7 +511,6 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "Greater",
         "GreaterEqual",
         "Identity",
-        "IdentityN",
         "IsFinite",
         "IsInf",
         "IsNan",

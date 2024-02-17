@@ -1069,8 +1069,6 @@ class AutoMixedPrecisionImpl {
       case AutoMixedPrecisionMode::BF16:
         return std::make_unique<AutoMixedPrecisionListsMkl>();
       case AutoMixedPrecisionMode::CPU:
-        // Note: this is not a typo here. AutoMixedPrecisionListsFp16 is used
-        // intentionally to make CPU and GPU have the same fp16 ops.
         return std::make_unique<AutoMixedPrecisionListsFp16>(
             /*cuda_version=*/10000,   // Hardcode cuda and cudnn version so
             /*cudnn_version=*/8000,   // CPU emulates the same ops on GPU.
@@ -2308,14 +2306,14 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // No GPUs to run AutoMixedPrecision in FP16.
-    LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
+    VLOG(1) << "No (suitable) GPUs detected, skipping " << name()
                  << " graph optimizer";
     return OkStatus();
   }
   // Check if CPU supports FP16
   if (mode_ == AutoMixedPrecisionMode::FP16_CPU &&
       !IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF)) {
-    LOG(WARNING) << "No support for " << name() << " graph optimizer on CPU";
+    VLOG(1) << "No support for " << name() << " graph optimizer on CPU";
     return OkStatus();
   }
 

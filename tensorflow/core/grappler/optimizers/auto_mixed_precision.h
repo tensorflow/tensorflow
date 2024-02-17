@@ -51,8 +51,8 @@ class AutoMixedPrecision : public GraphOptimizer {
       case AutoMixedPrecisionMode::CPU:
         return "auto_mixed_precision_cpu";
       case AutoMixedPrecisionMode::FP16_CPU:
-        // Note: use same config for FP16 on CPU & GPU.
-        return "auto_mixed_precision";
+        // Note: using different name than GPU for ease of debugging.
+        return "auto_mixed_precision_onednn_float16";
       default:
         LOG(FATAL) << "Invalid value for AutoMixedPrecisionMode: "  // Crash Ok
                    << static_cast<int>(mode_);

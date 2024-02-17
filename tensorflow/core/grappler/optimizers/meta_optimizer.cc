@@ -231,6 +231,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
 #ifdef INTEL_MKL
   if (IsMKLEnabled()) {
+    MK_OPT("auto_mixed_precision", "auto_mixed_precision",
+           new AutoMixedPrecision(AutoMixedPrecisionMode::FP16_CPU));
     MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
            new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
     MK_OPT("auto_mixed_precision_onednn_bfloat16",
