@@ -240,6 +240,38 @@ TEST_F(SymbolicTileTest,
                                  "()[s0, s1, s2, s3, s4, s5] -> (s5, s2)")));
 }
 
+TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
+  // TODO(325488844): Add additional concat test cases with constraints.
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2,5,7] parameter(0)
+      p1 = f32[2,11,7] parameter(1)
+      p2 = f32[2,17,7] parameter(2)
+      ROOT concat = f32[2,33,7] concatenate(p0, p1, p2), dimensions={1}
+    }
+  )");
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3 - 5, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[2].begin()),
+      Optional(MatchSymbolicTile(
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3 - 16, s6)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, s7)",
+          "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
