@@ -56,6 +56,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -118,7 +119,7 @@ TEST(IfrtServingExecutableTest, Basic) {
   std::vector<tensorflow::Tensor> inputs{x, y};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   const auto expected_out =
       AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
@@ -171,10 +172,10 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
 
   std::vector<tensorflow::Tensor> outputs1, outputs2;
   for (int i = 0; i < 3; i++) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        outputs1, executable.Execute(absl::MakeSpan(inputs1), {}, {}));
-    TF_ASSERT_OK_AND_ASSIGN(
-        outputs2, executable.Execute(absl::MakeSpan(inputs2), {}, {}));
+    TF_ASSERT_OK_AND_ASSIGN(outputs1,
+                            executable.Execute(absl::MakeSpan(inputs1), {}));
+    TF_ASSERT_OK_AND_ASSIGN(outputs2,
+                            executable.Execute(absl::MakeSpan(inputs2), {}));
   }
 
   ASSERT_EQ(executable.num_executables(), 2);
@@ -227,7 +228,7 @@ TEST(IfrtServingExecutableTest, Spmd) {
 
   std::vector<tensorflow::Tensor> inputs{x, y, z};
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
 }
@@ -278,7 +279,7 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
   std::vector<tensorflow::Tensor> inputs{x, y, z};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
@@ -319,7 +320,7 @@ TEST(IfrtServingExecutableTest, NoReturn) {
   std::vector<tensorflow::Tensor> inputs{x, y};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}, {}));
+                          executable.Execute(absl::MakeSpan(inputs), {}));
 
   ASSERT_EQ(result.size(), 0);
 }
@@ -355,7 +356,6 @@ TEST_P(VariableInputTest, InterleaveVariable) {
 
   std::vector<tensorflow::Tensor> inputs;
   std::vector<int> loaded_variable_indices;
-  std::vector<std::string> loaded_variable_names;
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
       std::string variable_name = absl::StrCat("variable_", i);
@@ -371,17 +371,22 @@ TEST_P(VariableInputTest, InterleaveVariable) {
 
             return array;
           }));
-      loaded_variable_names.push_back(variable_name);
       loaded_variable_indices.push_back(i);
 
+      // Use string tensor containing the key (name) in place of variable
+      // tensor.
+      tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
+      key_tensor.scalar<tsl::tstring>()() = variable_name;
+      inputs.push_back(key_tensor);
     } else {
       inputs.push_back(GetParam().in_tensors[i]);
     }
   }
 
+  ASSERT_EQ(inputs.size(), GetParam().is_variable.size());
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, executable.Execute(absl::MakeSpan(inputs),
-                                      absl::MakeSpan(loaded_variable_names),
                                       absl::MakeSpan(loaded_variable_indices)));
 
   EXPECT_THAT(result,

@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -58,12 +59,15 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/platform/tstring.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tf_mlrt {
 namespace {
+using tensorflow::test::AsScalar;
+using tensorflow::test::ExpectEqual;
 
 static absl::string_view kVariableName = "test_variable";
 
@@ -117,6 +121,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
     mlrt::testing::SymbolTable regs;
 
     function_ctor.construct_input_regs(1).Assign({regs.Def("input_tensor")});
+    function_ctor.construct_output_regs(1).Assign({regs.Def("output_tensor")});
 
     const int kNumKernels = 2 + (redundant_ifrt_load_variable_op ? 1 : 0);
     auto kernels_ctor = function_ctor.construct_kernels(kNumKernels);
@@ -128,6 +133,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
       kernel_ctor.construct_attributes(2).Assign(
           {attributes.GetHandle("sharding_config"),
            attributes.GetHandle("variable_name")});
+      kernel_ctor.construct_results(1).Assign({regs.Use("output_tensor")});
       kernel_ctor.construct_arguments(1).Assign({regs.Use("input_tensor")});
       kernel_ctor.construct_last_uses(1).Assign({1});
       kernel_index++;
@@ -135,6 +141,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
     if (redundant_ifrt_load_variable_op) {
       auto kernel_ctor = kernels_ctor.ConstructAt(kernel_index);
       kernel_ctor.set_code(kernels.Use("tf_mlrt.ifrt_load_variable"));
+      kernel_ctor.construct_results(1).Assign({regs.Def("dummy")});
       kernel_ctor.construct_attributes(2).Assign(
           {attributes.GetHandle("sharding_config"),
            attributes.GetHandle("variable_name")});
@@ -146,6 +153,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
     {
       auto kernel_ctor = kernels_ctor.ConstructAt(kernel_index);
       kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("output_tensor")});
       kernel_index++;
     }
     DCHECK_EQ(kernel_index, kNumKernels);
@@ -239,6 +247,9 @@ TEST(KernelTest, IfrtLoadVariableOp) {
                    ->GetLoadedVariableRegistry()
                    .GetLoadedVariable(kVariableName)
                    .status());
+
+  ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
+              AsScalar(tsl::tstring(kVariableName)));
 }
 
 TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
@@ -325,6 +336,9 @@ TEST(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
                    ->GetLoadedVariableRegistry()
                    .GetLoadedVariable(kVariableName)
                    .status());
+
+  ExpectEqual(results[0].Get<tfrt_stub::FallbackTensor>().tensor(),
+              AsScalar(tsl::tstring(kVariableName)));
 }
 
 }  // namespace

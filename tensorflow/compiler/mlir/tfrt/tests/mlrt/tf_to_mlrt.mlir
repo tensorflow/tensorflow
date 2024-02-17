@@ -461,7 +461,7 @@ func.func @xla_func(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entr
 
 // -----
 
-// Test lowering of IfrtLoadVariableOp 
+// Test lowering of IfrtLoadVariableOp
 
 // CHECK-LABEL: func @ifrt_load_variable_test
 func.func @ifrt_load_variable_test() -> () {
@@ -471,7 +471,7 @@ func.func @ifrt_load_variable_test() -> () {
   // CHECK-NEXT: "tf_mlrt.ifrt_load_variable"([[HANDLE]])
   // CHECK-SAME: device_sharding_config_proto_text
   // CHECK-SAME: name = "__variable"
-  "tf.IfrtLoadVariable"(%0) <{device_sharding_config_proto_text = "sharding { } device_ids: 0 device_ids: 1 ", name = "__variable"}> {__op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> () 
+  %1 = "tf.IfrtLoadVariable"(%0) <{device_sharding_config_proto_text = "sharding { } device_ids: 0 device_ids: 1 ", name = "__variable"}> {__op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> (tensor<!tf_type.string>)
   // CHECK-NEXT: return
   func.return
 }

@@ -332,8 +332,10 @@ class IfrtLoadVariableOpConversion
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::IfrtLoadVariableOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
+    llvm::SmallVector<mlir::Type> result_types(
+        op->getNumResults(), rewriter.getType<tf_mlrt::TFTensorType>());
     auto new_op = rewriter.create<tf_mlrt::IfrtLoadVariableOp>(
-        op.getLoc(), adaptor.getOperands()[0],
+        op.getLoc(), result_types, adaptor.getOperands()[0],
         op.getDeviceShardingConfigProtoTextAttr(), op.getNameAttr());
     rewriter.replaceOp(op, new_op);
 

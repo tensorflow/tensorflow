@@ -25,7 +25,6 @@ REGISTER_OP("IfrtCall")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("program_id: int")
-    .Attr("variable_names: list(string)")
     .Attr("variable_arg_indices: list(int)")
     .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
@@ -43,17 +42,16 @@ automatically inserts this op with graph rewrite.
 program_id: int64 id that can be used to look up compiled programs from
 ServingExecutableRegistry`.
 
-variable_names: names of variable tensors. A name can be used to look up
-corresponding loaded array of that variable tensor.
-
-variable_arg_indices: variable_arg_indices[k] indicates the position of tensor
-`variable_names[k]` in the argument list of the TPU program. This array must be
-in sorted ascending order.
+variable_arg_indices: must be in sorted ascending order. The argument at position
+variable_arg_indices[k] in tpu program is already loaded as an ifrt array and
+the input `args[variable_arg_indices[k]]` is the key to look for this loaded array.
 )");
 
 REGISTER_OP("IfrtLoadVariable")
     .Input("variable: Tin")
+    .Output("array_key: Tout")
     .Attr("Tin: type")
+    .Attr("Tout: type")
     .Attr("config: string")
     .Attr("name: string")
     .SetIsStateful()

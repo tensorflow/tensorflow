@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace tf_mlrt {
@@ -93,6 +94,7 @@ struct MlrtIfrtLoadVariableKernel : mlrt::KernelFrame {
 };
 
 void MlrtIfrtLoadVariableKernel::Invoke() {
+  DCHECK_EQ(1, results().size());
   std::optional<tensorflow::ifrt_serving::IfrtModelContext*>
       ifrt_model_context =
           context()
@@ -116,6 +118,11 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
     execution_context().Fail(status);
     return;
   }
+
+  // Return the name as the key
+  tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
+  key_tensor.scalar<tsl::tstring>()() = std::string(name());
+  results()[0].Set(tensorflow::tfrt_stub::FallbackTensor(key_tensor));
 }
 void RegisterTfMlrtIfrtKernels(mlrt::KernelRegistry& registry) {
   registry.Register<MlrtIfrtLoadVariableKernel>();
