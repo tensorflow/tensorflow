@@ -41,6 +41,10 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
+namespace mlir {
+class DialectRegistry;
+}  // namespace mlir
+
 namespace xla {
 namespace cpu {
 
@@ -182,8 +186,12 @@ class CpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
       const std::string& serialized_aot_result) override;
 
+  // The optional `registry` supports MLIR dialects and plugins to be loaded
+  // during optimization. If non-null, it will be used to construct relevant
+  // MLIR contexts.
   StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
-      std::unique_ptr<HloModule> module);
+      std::unique_ptr<HloModule> module,
+      mlir::DialectRegistry* registry = nullptr);
 
  private:
   // Initialize the LLVM target.

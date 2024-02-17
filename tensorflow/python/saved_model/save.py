@@ -847,15 +847,35 @@ def _trace_gradient_functions(graph: ops.Graph, saveable_view: _SaveableView):
 def _strip_debug_nodes(meta_graph_def: meta_graph_pb2.MetaGraphDef) -> None:
   """An experimental function to remove debug nodes from the final graph.
 
-  This function removes all assert nodes from the meta_graph. It strips the
-  assert operators in both the nodes and in all of the function defs, replacing
-  them with `NoOp`s. In addition to this, it replaces all of the inputs that
-  are not already control inputs to control inputs. For more information about
-  control inputs please see go/how-tensors-flow#control-dependencies.
+  This function removes all Assert and CheckNumerics nodes from the meta_graph.
+  It strips the operators in both the nodes and in all of the function defs,
+  with the Assert ops being replaced by `NoOp`s and the CheckNumerics ops being
+  transformed into `Identity` ops. In addition to this, it creates control
+  inputs for the nodes that are not relevant for the op. For more information
+  about control inputs please see go/how-tensors-flow#control-dependencies.
 
   Args:
    meta_graph_def: The meta_graph that will be exported.
   """
+
+  def erase_regular_node_attributes(node: node_def_pb2.NodeDef) -> None:
+    """Erases regular node attributes."""
+    attributes_to_remove = [
+        attribute
+        for attribute in node.attr.keys()
+        if not attribute.startswith("_")
+    ]
+    for attribute in attributes_to_remove:
+      node.attr.pop(attribute)
+
+  def prune_all_non_t_attributes(node: node_def_pb2.NodeDef) -> None:
+    """Prunes all attributes that are not `T`."""
+    if "T" in node.attr:
+      t_value = node.attr["T"]
+      node.ClearField("attr")
+      node.attr["T"].CopyFrom(t_value)
+    else:
+      node.ClearField("attr")
 
   def is_control_input(name: str) -> str:
     """Returns whether or not the input is a control input."""
@@ -866,16 +886,25 @@ def _strip_debug_nodes(meta_graph_def: meta_graph_pb2.MetaGraphDef) -> None:
     return "^" + name.split(":")[0]
 
   def maybe_do_strip(node: node_def_pb2.NodeDef) -> None:
-    """Strips the graph by making it a NoOp if it is an Assert node.
+    """Strips the graph from Assert and CheckNumerics ops.
 
-    This function also rewrites all of the inputs to the nodes that were
-    transformed by making them into control dependencies.
+    For Assert ops, this function also rewrites all of the inputs to the nodes
+    that were transformed by making them into control dependencies. It also
+    removes all of the regular node attributes, that is all node attributes
+    that do not start with `_`.
+
+    For CheckNumerics ops, this function turns the op into an Identity op,
+    which will be pruned later (according to the original implementation in
+    grappler's `debug_stripper.cc`. Then, since Identity ops only take one
+    input, it leaves the first input as is while transforming the other ones
+    into control dependencies.
 
     Args:
       node: The node to potentally strip.
     """
-    if node.op == "Assert":
+    if node.op == "Assert" or node.op == "PrintV2":
       node.op = "NoOp"
+      erase_regular_node_attributes(node)
       new_inputs = []
       for inp in node.input:
         if not is_control_input(inp):
@@ -884,6 +913,15 @@ def _strip_debug_nodes(meta_graph_def: meta_graph_pb2.MetaGraphDef) -> None:
           new_inputs.append(inp)
       node.ClearField("input")
       node.input.extend(new_inputs)
+    elif node.op == "CheckNumerics" or node.op == "Print":
+      # The identity op will be pruned later.
+      node.op = "Identity"
+      prune_all_non_t_attributes(node)
+      # As Identity op only takes one input, mark redundant inputs as control
+      # inputs.
+      for i in range(1, len(node.input)):
+        if not is_control_input(node.input[i]):
+          node.input[i] = as_control_dep(node.input[i])
 
   # First, we strip the assert nodes from the graph.
   for node in meta_graph_def.graph_def.node:

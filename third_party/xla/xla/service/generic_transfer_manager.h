@@ -16,10 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_GENERIC_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_GENERIC_TRANSFER_MANAGER_H_
 
-#include <vector>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/node_hash_map.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/literal.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -54,6 +68,7 @@ class GenericTransferManager : public TransferManager {
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
+
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     MutableBorrowingLiteral literal) override;
 
@@ -73,6 +88,42 @@ class GenericTransferManager : public TransferManager {
   // bytes are never packed on the host. By default, returns false, so a byte
   // can only hold one value, but subclasses can override this.
   virtual bool PackSubbyteTypes() const { return false; }
+
+  // Transfer a memory block of the given size from the device source into the
+  // 'destination' buffer.
+  //
+  // size is the size to transfer to destination in bytes.
+  virtual Status TransferBufferFromDevice(se::Stream* stream,
+                                          const se::DeviceMemoryBase& source,
+                                          int64_t size, void* destination);
+
+  // Transfer a memory block of the given size from 'source' buffer to the given
+  // destination of the device.
+  //
+  // size is the size to transfer from source in bytes.
+  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
+                                        const void* source,
+                                        se::DeviceMemoryBase* destination);
+
+  // Transfers a buffer of packed int4 values from the device to the host, then
+  // unpacks them on the host. 'source' is a buffer with (num_elements+1)/2
+  // bytes where each byte stores two int4 values. 'destination' is a buffer
+  // with num_elements bytes, where a single int4 value will be written to each
+  // byte in the lower 4 bits.
+  virtual Status TransferInt4ArrayFromDevice(se::Stream* stream,
+                                             const se::DeviceMemoryBase& source,
+                                             int64_t num_elements,
+                                             void* destination);
+
+  // Packs an array of int4 values then transfers the packed buffer from the
+  // host to the device. 'source' is a buffer with num_elements bytes, where the
+  // lower 4 bits of each byte stores an int4 value. 'destination' is a buffer
+  // with (num_elements+1)/2 bytes, where two int4 values will be written into
+  // each byte.
+  virtual Status TransferInt4ArrayToDevice(se::Stream* stream,
+                                           int64_t num_elements,
+                                           const void* source,
+                                           se::DeviceMemoryBase* destination);
 
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;

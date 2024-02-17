@@ -605,7 +605,7 @@ Status FunctionLibraryRuntimeImpl::GetRetTypes(Handle h,
   }
   const FunctionBody* fbody = GetFunctionBody(h);
   *ret_types = fbody->ret_types;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(
@@ -732,7 +732,7 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     CHECK_NOTNULL(f_body);
     *g_body = SymbolicGradient(*f_body);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool FunctionLibraryRuntimeImpl::IsLocalTarget(
@@ -792,7 +792,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
                                 " not found in items.");
       }
       ++item_handle->second->instantiation_counter;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -859,7 +859,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     TF_RETURN_IF_ERROR(GetOrCreateItem(local_handle, &item));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
@@ -872,7 +872,7 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   {
     mutex_lock l(mu_);
     // Return directly if all items has already been released.
-    if (items_ == nullptr) return OkStatus();
+    if (items_ == nullptr) return absl::OkStatus();
 
     auto it = items_->find(h);
     if (it == items_->end()) {
@@ -1005,7 +1005,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
       (*item)->exec = exec.release();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryRuntimeImpl::GetOrCreateItem(LocalHandle local_handle,
@@ -1019,7 +1019,7 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(LocalHandle local_handle,
     }
     *item = iter->second.get();
     if ((*item)->exec != nullptr) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   // NOTE: We need to call CreateItem out of mu_ because creating an
@@ -1307,7 +1307,7 @@ Status FunctionLibraryRuntimeImpl::PrepareRunSync(
       device_name_, handle, /*include_multi_device=*/true);
   if (local_handle == kInvalidLocalHandle) {
     *out_item = nullptr;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RETURN_IF_ERROR(GetOrCreateItem(local_handle, out_item));
@@ -1317,7 +1317,7 @@ Status FunctionLibraryRuntimeImpl::PrepareRunSync(
   }
   DCHECK(run_opts->runner != nullptr);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionLibraryRuntimeImpl::RunSync(Options opts, Handle handle,
@@ -1384,7 +1384,7 @@ Status FunctionLibraryRuntimeImpl::Clone(
                                     skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
   if (*out_flr != nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Internal("Cloning FunctionLibraryRuntime failed.");
   }

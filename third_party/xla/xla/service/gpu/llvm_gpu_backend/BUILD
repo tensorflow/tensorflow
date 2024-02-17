@@ -1,3 +1,4 @@
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -5,7 +6,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
@@ -26,7 +28,6 @@ cc_library(
         "gpu_backend_lib.h",
         "utils.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla:statusor",

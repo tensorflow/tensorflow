@@ -128,6 +128,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       only_allow_divisible = option.only_allow_divisible_intermediate;
     }
 
+    bool is_follow_necessary_for_correctness = false;
     switch (opcode) {
       case HloOpcode::kParameter: {
         auto it = while_body_args_to_input_tuple.find(ins);
@@ -139,6 +140,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           VLOG(5) << "Following while input " << while_input_tuple->name();
           strategy_group = CreateTupleStrategyGroup(instruction_id);
           strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
+          // We use this following relationship to ensure that the input tuple
+          // of the while loop, and the parameter of the body of that while
+          // loop. Therefore, this followinf relationship is necessary for
+          // correctness, and is not merely an optmization.
+          is_follow_necessary_for_correctness = true;
           for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
             std::unique_ptr<StrategyGroup> child_strategies =
                 MaybeFollowInsStrategyGroup(
@@ -378,8 +384,17 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
           // Find output shardings.
           switch (opcode) {
+            case HloOpcode::kSlice: {
+              bool is_1d_sharding =
+                  VectorGreaterThanOneElementCount(
+                      input_spec.tile_assignment().dimensions()) == 1;
+              output_spec = PropagateDimwiseShardingSlice(
+                  input_spec, operand->shape(), ins->shape(),
+                  is_1d_sharding ? cluster_env.device_mesh_1d_
+                                 : cluster_env.device_mesh_);
+              break;
+            }
             case HloOpcode::kPad:
-            case HloOpcode::kSlice:
             case HloOpcode::kConcatenate:
             case HloOpcode::kDynamicSlice:
             case HloOpcode::kDynamicUpdateSlice:
@@ -724,6 +739,27 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                 strategy_group, replicated_penalty);
         break;
       }
+      case HloOpcode::kSend: {
+        strategy_group = CreateTupleStrategyGroup(instruction_id);
+        strategy_group->childs.reserve(ins->shape().tuple_shapes_size());
+        for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
+          std::unique_ptr<StrategyGroup> child_strategies =
+              CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
+                                      strategy_groups);
+          AddReplicatedStrategy(ins, ins->shape().tuple_shapes(i), cluster_env,
+                                strategy_map, child_strategies, 0);
+          child_strategies->tuple_element_idx = i;
+          strategy_group->childs.push_back(std::move(child_strategies));
+        }
+        break;
+      }
+      case HloOpcode::kSendDone: {
+        strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
+                                                 strategy_map, strategy_groups);
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                              strategy_group, 0);
+        break;
+      }
       case HloOpcode::kAfterAll: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
@@ -747,10 +783,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       if (!LeafVectorsAreConsistent(strategy_group->strategies,
                                     strategy_group->following->strategies)) {
         // It confuses the solver if two instructions have different number of
-        // sharding strategies but share the same ILP variable. The solver
-        // would run much longer and/or return infeasible solutions.
-        // So if two strategies' strategiess are inconsistent, we unfollow
-        // them.
+        // sharding strategies but share the same ILP variable. The solver would
+        // run much longer and/or return infeasible solutions. So if two
+        // strategies are inconsistent, we unfollow them.
+        CHECK(!is_follow_necessary_for_correctness)
+            << "Reverting a following decision that is necessary for "
+               "correctness. Please report this as a bug.";
         strategy_group->following = nullptr;
       }
     } else if (strategy_group->is_tuple) {
@@ -759,6 +797,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             !LeafVectorsAreConsistent(
                 strategy_group->childs.at(i)->strategies,
                 strategy_group->childs.at(i)->following->strategies)) {
+          CHECK(!is_follow_necessary_for_correctness)
+              << "Reverting a following decision that is necessary for "
+                 "correctness. Please report this as a bug.";
           strategy_group->childs.at(i)->following = nullptr;
         }
       }

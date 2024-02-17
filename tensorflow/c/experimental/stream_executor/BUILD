@@ -80,6 +80,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
     ],
 )

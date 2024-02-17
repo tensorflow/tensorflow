@@ -11,6 +11,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
     "if_cuda_or_rocm",
+    "internal_visibility",
 )
 load("@local_tsl//tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("@local_tsl//tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
@@ -21,7 +22,10 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        ":friends",
+    ]),
     licenses = ["notice"],
 )
 
@@ -44,13 +48,10 @@ pytype_strict_library(
     ],
 )
 
-exports_files(
-    [
-        "xla_client.py",
-        "xla_client.pyi",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    "xla_client.py",
+    "xla_client.pyi",
+])
 
 pyx_library(
     name = "custom_call_for_test",
@@ -178,7 +179,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -206,7 +207,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -224,7 +225,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla:util",
@@ -243,7 +243,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         ":python_ref_manager",
         # placeholder for index annotation deps
@@ -251,7 +251,9 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/pjrt:exceptions",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
         "@pybind11",
     ],
@@ -267,7 +269,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":traceback",
         "//xla:statusor",
@@ -313,7 +314,6 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":callback",
         ":pprof_profile_builder",
@@ -392,7 +392,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":python_ref_manager",
         "//xla:comparison_util",
@@ -423,7 +422,6 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":callback",
         "//xla:comparison_util",
@@ -450,7 +448,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":py_client",
         ":python_ref_manager",
@@ -480,7 +477,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
     deps = [
         ":py_client",
         ":python_ref_manager",
@@ -505,7 +502,6 @@ cc_library(
     name = "inspect_sharding",
     srcs = ["inspect_sharding.cc"],
     hdrs = ["inspect_sharding.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
@@ -525,7 +521,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
         ":inspect_sharding",
         # placeholder for index annotation deps
@@ -553,7 +549,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":types",
         # placeholder for index annotation deps
@@ -579,7 +574,6 @@ cc_library(
     name = "outfeed_receiver",
     srcs = ["outfeed_receiver.cc"],
     hdrs = ["outfeed_receiver.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -607,7 +601,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
         ":jax_jit",
         ":py_client",
@@ -636,7 +630,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
         ":jax_jit",
         ":py_client",
@@ -693,7 +687,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":outfeed_receiver",
         ":py_client",
@@ -741,7 +734,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         ":pytree_proto_cc",
         # placeholder for index annotation deps
@@ -768,7 +761,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":refine_polymorphic_shapes",
         ":types",
@@ -802,7 +794,6 @@ cc_library(
     name = "refine_polymorphic_shapes",
     srcs = ["refine_polymorphic_shapes.cc"],
     hdrs = ["refine_polymorphic_shapes.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/mlir/utils:error_util",
         "@com_google_absl//absl/status",
@@ -832,7 +823,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":types",
         ":xplane_to_profile_instructions",
@@ -873,7 +863,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = [":friends"],
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/base:core_headers",
@@ -895,7 +885,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla:util",
@@ -917,7 +906,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/cleanup",
@@ -938,7 +927,6 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":py_client",
         ":types",
@@ -982,7 +970,6 @@ tf_proto_library(
     name = "py_host_callback_proto",
     srcs = ["py_host_callback.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
 )
 
 # TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
@@ -991,7 +978,6 @@ tf_proto_library(
 config_setting(
     name = "link_gpu_plugin",
     define_values = {"xla_python_enable_gpu": "true"},
-    visibility = ["//visibility:public"],
 )
 
 bool_flag(
@@ -1004,7 +990,6 @@ config_setting(
     flag_values = {
         ":enable_gpu": "True",
     },
-    visibility = ["//visibility:public"],
 )
 
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
@@ -1019,14 +1004,12 @@ config_setting(
     flag_values = {
         ":jax_cuda_pip_rpaths": "True",
     },
-    visibility = ["//visibility:public"],
 )
 
 # We cannot nest select and if_cuda_is_configured so we introduce
 # a standalone cc_library target.
 cc_library(
     name = "gpu_plugin_deps",
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/service:gpu_plugin",
     ] + if_cuda_is_configured([
@@ -1080,7 +1063,6 @@ cc_library(
         "//conditions:default": [],
     }),
     features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
     deps = [
         ":custom_call_sharding",
         ":dlpack",
@@ -1167,7 +1149,6 @@ cc_library(
     name = "xplane_to_profile_instructions",
     srcs = ["xplane_to_profile_instructions.cc"],
     hdrs = ["xplane_to_profile_instructions.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
         "//xla:xla_proto_cc",
@@ -1212,7 +1193,6 @@ xla_cc_test(
 cc_library(
     name = "status_casters",
     hdrs = ["status_casters.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/pjrt:status_casters",
     ],

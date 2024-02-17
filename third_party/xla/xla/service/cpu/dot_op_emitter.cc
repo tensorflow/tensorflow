@@ -326,7 +326,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             /*outputs=*/mlir::ValueRange{a},
             /*indexingMaps=*/
             mlir::AffineMap::inferFromExprList(
-                {b_exprs, c_exprs, parallel_exprs}),
+                {b_exprs, c_exprs, parallel_exprs}, context),
             /*iteratorTypes=*/iteratorTypes,
             [](mlir::OpBuilder& b, mlir::Location loc, mlir::ValueRange args) {
               mlir::ArithBuilder ab(b, loc);

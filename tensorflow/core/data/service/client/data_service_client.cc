@@ -133,7 +133,7 @@ Status DataServiceClient::Initialize() {
                       params_.address),
       deadline_micros));
   initialized_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<GetNextResult> DataServiceClient::GetNext(
@@ -425,7 +425,7 @@ Status DataServiceClient::AddTask(const TaskInfo& task_info)
     std::mt19937 rng;
     std::shuffle(tasks_.begin(), tasks_.end(), rng);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DataServiceClient::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
@@ -808,10 +808,10 @@ Status DataServiceClient::MaybeRemoveTask(Task& task, int64_t deadline_micros,
     result.ready = true;
     result.skip = true;
     get_next_cv_.notify_all();
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Failed to remove task for worker " << task.info.worker_address();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
@@ -857,7 +857,7 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, *result));
       mutex_lock l(mu_);
       if (result->skip) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     int64_t backoff_until = std::min(
@@ -874,11 +874,11 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       // task before returning to this one.
       result->ready = true;
       result->skip = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   ProcessGetElementResponse(enqueue_result, get_element_result, result, *task);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool DataServiceClient::ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

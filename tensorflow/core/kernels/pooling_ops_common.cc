@@ -113,7 +113,7 @@ Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
                                    "window size ",
                                    window_cols);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 PoolParameters::PoolParameters(OpKernelContext* context,
@@ -220,7 +220,7 @@ Status PoolParameters::forward_output_shape(TensorShape* shape) {
     *shape = TensorShape(
         {tensor_in_batch, tensor_in_rows, tensor_in_cols, out_depth});
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

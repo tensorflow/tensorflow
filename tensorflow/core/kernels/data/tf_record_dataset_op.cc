@@ -97,10 +97,10 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -116,7 +116,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         this, {filenames, compression_type, buffer_size}, output));
     Node* byte_offsets = nullptr;
     TF_RETURN_IF_ERROR(b->AddVector(byte_offsets_, &byte_offsets));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -145,7 +145,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
             bytes_counter->IncrementBy(
                 out_tensors->back().scalar<tstring>()().size());
             *end_of_sequence = false;
-            return OkStatus();
+            return absl::OkStatus();
           }
           out_tensors->pop_back();
           if (!errors::IsOutOfRange(s)) {
@@ -166,7 +166,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         // Iteration ends when there are no more files to process.
         if (current_file_index_ == dataset()->filenames_.size()) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
@@ -187,7 +187,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
           *num_skipped += last_num_skipped;
           if (s.ok()) {
             *end_of_sequence = false;
-            return OkStatus();
+            return absl::OkStatus();
           }
           if (!errors::IsOutOfRange(s)) {
             // In case of other errors e.g., DataLoss, we still move forward
@@ -207,7 +207,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         // Iteration ends when there are no more files to process.
         if (current_file_index_ == dataset()->filenames_.size()) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
@@ -230,7 +230,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(prefix(), kOffset, reader_->TellOffset()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -247,7 +247,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         TF_RETURN_IF_ERROR(reader_->SeekOffset(offset));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -269,7 +269,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             reader_->SeekOffset(dataset()->byte_offsets_[current_file_index_]));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Resets all reader streams.

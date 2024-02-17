@@ -143,7 +143,7 @@ The input to output maps
 -   input_i -> output: $(d_0, d_1) \mapsto (d_0, d_1)$ for $\boldsymbol{d} \in
     {\rm Dom}(output)$
 
-### Broadcast
+### [Broadcast](https://openxla.org/xla/operation_semantics#broadcastindim)
 
 Broadcasting means that some of the dimensions will be removed when we map
 output to input and added when we map input to output.
@@ -168,12 +168,12 @@ mapping. Those are the symbols that represent ranges of values. For example, in
 this particular case every element of input with index $d_0$ is mapped to a
 10x1x30 slice of the output.
 
-### Constant and Iota
+### Constant and [Iota](https://openxla.org/xla/operation_semantics#iota)
 
 Conveniently, they do not have any input parameters, so there is nothing to
 compute indexing for.
 
-### Transpose
+### [Transpose](https://openxla.org/xla/operation_semantics#transpose)
 
 Indexing map for transpose is a permutation of input/output dimensions.
 
@@ -192,7 +192,7 @@ The input to output map:
 -   input -> output: $(d_0, d_1, d_2, d_3) \mapsto (d_0, d_2, d_3, d_1)$ for
     $\boldsymbol{d} \in {\rm Dom}(input)$
 
-### Reverse
+### [Reverse](https://openxla.org/xla/operation_semantics#rev_reverse)
 
 Indexing map for reverse changes the reverted dimensions to $upper\_bound(d_i) -
 d_i$:
@@ -212,7 +212,7 @@ The input to output map:
 -   input -> output: $(d_0, d_1, d_2, d_3) \mapsto (d_0, -d_1 + 16, -d_2 + 8,
     d_3)$ for $\boldsymbol{d} \in {\rm Dom}(input)$
 
-### **(Variadic)Reduce**
+### **[(Variadic)Reduce](https://openxla.org/xla/operation_semantics#reduce)**
 
 Variadic reduction have several inputs and several inits, the map from output to
 input adds the reduced dimensions. So, it behaves like an inverse to a broadcast
@@ -242,7 +242,7 @@ The input to output maps:
 
 for $i, j = 0, \ldots, INPUT\\_COUNT$.
 
-### Slice
+### [Slice](https://openxla.org/xla/operation_semantics#slice)
 
 Indexing from output to input for slice results in a strided indexing map which
 is valid for every element of the output. Mapping from the input to output is
@@ -267,7 +267,7 @@ The input to output map:
 
 **TBD**: input-to-output indexing
 
-### Reshape
+### [Reshape](https://openxla.org/xla/operation_semantics#reshape)
 
 Reshapes come in different flavors.
 
@@ -369,7 +369,7 @@ A bitcast op can be represented as a
 Therefore, its indexing maps are just a composition of indexing maps for this
 sequence.
 
-### Concatenate
+### [Concatenate](https://openxla.org/xla/operation_semantics#concatenate)
 
 Output-to-input mapping for concat is defined for all inputs, but with
 non-overlapping domains, i.e. only one of the inputs will be used at a time.
@@ -399,7 +399,7 @@ The inputs to output map:
 -   input 2 -> output: $(d_0, d_1) \mapsto (d_0, d_1 + 50)$ for $\boldsymbol{d}
     \in {\rm Dom}(input_2)$.
 
-### Dot (output-to-input implemented
+### [Dot](https://openxla.org/xla/operation_semantics#dot)
 
 Indexing maps for dot are very similar to the ones of reduce.
 
@@ -425,9 +425,43 @@ The inputs to output maps:
 -   input_2 -> output: $(d_0, d_1, d_2) \mapsto (d_0, s_0, d_1)$ for
     $\boldsymbol{d} \in {\rm Dom}(input_2)$ and $\boldsymbol{s} \in [0, 127]$
 
-### Reduce-window (TBD)
+### [Pad](https://openxla.org/xla/operation_semantics#pad)
 
-### Pad (TBD)
+Indexing of PadOp is inverse of SliceOp indexing.
+
+```c+
+p0 = f32[4, 4] parameter(0)
+p1 = f32[] parameter(1)
+pad = f32[12, 16] pad(p0, p1), padding=1_4_1x4_8_0
+```
+
+The padding config `1_4_1x4_8_0` denotes `lowPad_highPad_interiorPad_dim_0 x lowPad_highPad_interiorPad_dim_1`.
+
+The output to input maps:
+
+-   output -> input: $(d_0, d_1) \mapsto ((d_0 - 1) / 2, d_1 - 4)$
+    for $\boldsymbol{d} \in [1, 7] \times [4, 7]$ and $(d_0 - 1) \mod 2 \equiv 0$
+-   output -> init: $(d_0, d_1) \mapsto ()$ for $\boldsymbol{d} \in {\rm Dom}(output)$
+
+
+### [ReduceWindow](https://openxla.org/xla/operation_semantics#reducewindow)
+
+ReduceWindow in XLA also performs padding. Therefore, the indexing maps can be
+computed as a composition of ReduceWindow indexing that does not do any padding
+and PadOp's indexing.
+
+
+```c+
+c_inf = f32[] constant(-inf)
+p0 = f32[1024, 514] parameter(0)
+reduce-window = f32[1024, 3] reduce-window(p0, c_inf),
+  window={size=1x512 pad=0_0x0_0}, to_apply=max
+```
+
+The output to input maps:
+
+-   output -> input: $(d_0, d_1) \mapsto (d_0, d_1 + s_0)$ for $\boldsymbol{d} \in [0, 1023] \times [0, 2]$ and $\boldsymbol{s} \in [0, 511]$
+-   output -> init: $(d_0, d_1) \mapsto ()$ for $\boldsymbol{d} \in {\rm Dom}(output)$
 
 ## Indexing Maps for Fusion
 
@@ -474,7 +508,6 @@ f {
 The output-to-input indexing map for `p0` in this case is just $(d_0, d_1, d_2)
 \mapsto (d_2, d_0, d_1)$.
 
-​
 
 ### Softmax
 

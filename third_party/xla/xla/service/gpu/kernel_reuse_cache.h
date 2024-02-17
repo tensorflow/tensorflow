@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 namespace gpu {
@@ -38,7 +40,8 @@ class KernelReuseCache {
   struct Entry {
     std::string kernel_name;
     LaunchDimensions launch_dimensions;
-    int64_t shmem_bytes;
+    std::optional<se::ClusterDim> cluster_dim;
+    int64_t shmem_bytes = 0;
   };
 
   // Retrieves the cache entry for the given computation, or generates it using
@@ -52,6 +55,17 @@ class KernelReuseCache {
       const HloComputation* fused_computation,
       absl::Span<const KernelArgument> kernel_arguments,
       absl::string_view discriminator,
+      const std::function<absl::StatusOr<Entry>()>& generator);
+
+  // Retrieves the cache entry for the given fingerprint, or generates it using
+  // the given generator function and stores it in the cache.
+  //
+  // The returned pointer is never nullptr.
+  //
+  // A non-OK status is returned if the entry is not found and the generator
+  // failed.
+  std::pair<absl::StatusOr<const Entry*>, bool /*was_cached*/> GetWithStatus(
+      std::string fingerprint,
       const std::function<absl::StatusOr<Entry>()>& generator);
 
  private:

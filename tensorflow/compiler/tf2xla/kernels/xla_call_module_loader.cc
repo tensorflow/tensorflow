@@ -264,7 +264,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
           ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
       mlir::RankedTensorType type =
           mlir::RankedTensorType::get(xla_dimensions, element_type);
-      // TODO(burmako): This fails with an obscure compilation error.
+      // TODO(burmako): This fails with an obscure compilation error on Windows.
       // TF_ASSIGN_OR_RETURN(
       //     mlir::Type type,
       //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));

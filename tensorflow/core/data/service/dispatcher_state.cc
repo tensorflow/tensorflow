@@ -92,7 +92,7 @@ Status DispatcherState::Apply(const Update& update) {
       return errors::Internal("Update type not set.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DispatcherState::RegisterDataset(
@@ -141,7 +141,7 @@ Status DispatcherState::JobFromId(int64_t job_id,
     return errors::NotFound("Job with id ", job_id, " not found");
   }
   job = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DispatcherState::JobByName(const std::string& job_name,
@@ -151,7 +151,7 @@ Status DispatcherState::JobByName(const std::string& job_name,
     return errors::NotFound("Job with name ", job_name, " not found");
   }
   job = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DispatcherState::CreateIteration(
@@ -330,7 +330,7 @@ Status DispatcherState::DatasetFromId(
     return errors::NotFound("Dataset id ", id, " not found");
   }
   dataset = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DispatcherState::WorkerFromAddress(
@@ -340,7 +340,7 @@ Status DispatcherState::WorkerFromAddress(
     return errors::NotFound("Worker with address ", address, " not found.");
   }
   worker = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Worker>>
@@ -370,7 +370,7 @@ Status DispatcherState::IterationFromId(
     return errors::NotFound("Iteration id ", id, " not found");
   }
   iteration = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DispatcherState::IterationByKey(
@@ -382,7 +382,7 @@ Status DispatcherState::IterationByKey(
                             " not found");
   }
   iteration = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t DispatcherState::NextAvailableJobId() const {
@@ -400,7 +400,7 @@ Status DispatcherState::IterationForIterationClientId(
     return errors::NotFound("Iteration client id not found: ",
                             iteration_client_id);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<int64_t> DispatcherState::ListActiveClientIds() {
@@ -424,7 +424,7 @@ Status DispatcherState::TaskFromId(int64_t id,
     return errors::NotFound("Task ", id, " not found");
   }
   task = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DispatcherState::TasksForIteration(
@@ -439,7 +439,7 @@ Status DispatcherState::TasksForIteration(
   for (const auto& task : it->second) {
     tasks.push_back(task);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DispatcherState::TasksForWorker(
@@ -456,7 +456,7 @@ Status DispatcherState::TasksForWorker(
   for (const auto& task : worker_tasks) {
     tasks.push_back(task.second);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t DispatcherState::NextAvailableTaskId() const {

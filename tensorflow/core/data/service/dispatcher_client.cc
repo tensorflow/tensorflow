@@ -49,7 +49,7 @@ namespace data {
 Status DataServiceDispatcherClient::Initialize() {
   mutex_lock l(mu_);
   if (stub_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
@@ -81,7 +81,7 @@ Status DataServiceDispatcherClient::Initialize() {
         "same version of TensorFlow. If you're running an MPM binary, make "
         "sure the server is running an up-to-date MPM.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
@@ -109,7 +109,7 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to send worker update", status);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
@@ -123,7 +123,7 @@ Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
     return grpc_util::WrapError("Failed to get dataset def", status);
   }
   dataset_def = resp.dataset_def();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
@@ -148,7 +148,7 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
       return errors::Internal("Failed to parse split tensor proto");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::Snapshot(
@@ -167,7 +167,7 @@ Status DataServiceDispatcherClient::Snapshot(
   if (!status.ok()) {
     return grpc_util::WrapError("Failed to snapshot", status);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetSnapshotSplit(
@@ -190,13 +190,13 @@ Status DataServiceDispatcherClient::GetSnapshotSplit(
   local_split_index = resp.local_split_index();
   end_of_splits = resp.end_of_splits();
   if (end_of_splits) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!split.FromProto(resp.split())) {
     return errors::Internal("Failed to parse split tensor proto: ",
                             resp.split().DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::RegisterDataset(
@@ -218,7 +218,7 @@ Status DataServiceDispatcherClient::RegisterDataset(
     return grpc_util::WrapError("Failed to register dataset", status);
   }
   dataset_id = resp.dataset_id();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
@@ -248,7 +248,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
         status);
   }
   job_id = resp.job_id();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateIteration(
@@ -267,7 +267,7 @@ Status DataServiceDispatcherClient::GetOrCreateIteration(
         status);
   }
   iteration_client_id = resp.iteration_client_id();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::ReleaseIterationClient(
@@ -284,7 +284,7 @@ Status DataServiceDispatcherClient::ReleaseIterationClient(
                      iteration_client_id),
         status);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
@@ -303,7 +303,7 @@ Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
     return grpc_util::WrapError("Failed to call MaybeRemoveTask", status);
   }
   removed = resp.removed();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::ClientHeartbeat(
@@ -314,7 +314,7 @@ Status DataServiceDispatcherClient::ClientHeartbeat(
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetWorkers(
@@ -331,7 +331,7 @@ Status DataServiceDispatcherClient::GetWorkers(
   for (auto& worker : resp.workers()) {
     workers.push_back(worker);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDataServiceMetadata(
@@ -346,7 +346,7 @@ Status DataServiceDispatcherClient::GetDataServiceMetadata(
     return grpc_util::WrapError("Failed to get data service metadata", s);
   }
   metadata = resp.metadata();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::GetDataServiceConfig(
@@ -360,7 +360,7 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
     return grpc_util::WrapError("Failed to get data service config", s);
   }
   config = response.config();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
@@ -376,7 +376,7 @@ Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
     return grpc_util::WrapError(
         "Failed to get runtime compression disabling decision", s);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {

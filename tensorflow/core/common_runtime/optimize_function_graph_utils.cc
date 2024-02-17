@@ -72,7 +72,7 @@ Status ValidateNoListArguments(
           " and outputs");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateMultiDeviceOptions(
@@ -107,7 +107,7 @@ Status ValidateMultiDeviceOptions(
         options.output_devices.size(),
         " number of arguments = ", signature.output_arg_size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
@@ -133,7 +133,7 @@ Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const string* AssignedOrRequestedDeviceName(const Node& node) {
@@ -202,7 +202,7 @@ Status WriteToCache(const std::string& dir_name, const std::string& file_name,
           << absl::ToInt64Milliseconds(cache_writing_duration)
           << " msecs, file name: " << file_name;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Retrieves the OptimizedFunctionGraphInfo from a cache file.
@@ -294,7 +294,7 @@ Status GetGraphAndArgRets(const string& function_name, AttrSlice attrs,
   for (const Node* node : fbody->control_ret_nodes) {
     control_ret_node_names->push_back(node->name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -460,7 +460,7 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
       node->set_assigned_device_name(output_devices[index]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(

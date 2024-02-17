@@ -35,10 +35,6 @@ class HloCostAnalysis;
 // an error will be returned.
 class HostOffloader : public HloModulePass {
  public:
-  static constexpr absl::string_view kPipelineForwardTarget = "PipelineForward";
-  static constexpr absl::string_view kPipelineBackwardTarget =
-      "PipelineBackward";
-
   explicit HostOffloader(int64_t host_memory_space_color)
       : kHostMemorySpaceColor(host_memory_space_color) {}
   ~HostOffloader() override = default;
@@ -49,11 +45,15 @@ class HostOffloader : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  static absl::Span<const HloOpcode> GetAllowedPositionOpcodes() {
+    return kAllowedPositionOpcodes;
+  }
 
  private:
   const int64_t kHostMemorySpaceColor;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
-  absl::flat_hash_set<HloInstruction*> expected_reload_annotations_;
+  absl::flat_hash_set<HloInstruction*> found_host_to_device_annotations_;
+  absl::flat_hash_set<HloInstruction*> expected_host_to_device_annotations_;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_remove_;
   absl::flat_hash_set<HloInstruction*> broadcasts_to_replace_;
   absl::flat_hash_set<HloPosition> positions_to_move_to_host_memory_;
@@ -79,6 +79,11 @@ class HostOffloader : public HloModulePass {
   Status MemoryOnlyOffloadInsertCopies(HloInstruction* custom_call);
 
   Status DynamifySlice(HloInstruction* slice);
+
+  static constexpr std::array kAllowedPositionOpcodes = {
+      HloOpcode::kTuple, HloOpcode::kGetTupleElement,
+      HloOpcode::kOptimizationBarrier, HloOpcode::kParameter,
+      HloOpcode::kWhile};
 };
 
 }  // namespace xla

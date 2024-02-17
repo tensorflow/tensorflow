@@ -2,10 +2,12 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_binary")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//learning/brain/mlir:xla_friends"]),
     licenses = ["notice"],
 )
 
@@ -13,7 +15,6 @@ cc_library(
     name = "mhlo_to_lhlo_with_xla",
     srcs = ["mhlo_to_lhlo_with_xla.cc"],
     hdrs = ["mhlo_to_lhlo_with_xla.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -66,7 +67,6 @@ cc_library(
     name = "translate_registration",
     testonly = True,
     srcs = ["translate_registration.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":mhlo_to_lhlo_with_xla",
         "@llvm-project//mlir:TranslateLib",

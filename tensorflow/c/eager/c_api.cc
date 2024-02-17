@@ -555,7 +555,7 @@ class CAPICustomDeviceTensorHandle
     }
     summary = std::string(reinterpret_cast<const char*>(summary_buffer->data),
                           summary_buffer->length);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

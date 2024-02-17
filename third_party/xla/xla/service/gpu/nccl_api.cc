@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
@@ -26,17 +29,31 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "third_party/nccl/nccl.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif  // TF_ROCM_VERSION >= 50200
+#else
+#include "third_party/nccl/nccl.h"
+#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla::gpu {
 
@@ -281,6 +298,18 @@ class DefaultNcclApi final : public NcclApi {
                                              const NcclCliqueId& clique_id,
                                              int32_t rank) final;
 
+  absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
+      int32_t nranks, const NcclCliqueId& clique_id,
+      absl::Span<const DeviceRank> ranks) final;
+
+  absl::StatusOr<OwnedNcclComm> CommSplit(NcclCommHandle comm,
+                                          std::optional<int32_t> color,
+                                          int32_t key) final;
+
+  absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
+      absl::Span<const DeviceComm> comms,
+      absl::Span<const int32_t> ranks) final;
+
   absl::Status CommAbort(NcclCommHandle comm) final;
   absl::Status CommFinalize(NcclCommHandle comm) final;
   absl::Status CommDestroy(NcclCommHandle comm) final;
@@ -358,6 +387,63 @@ absl::StatusOr<NcclApi::OwnedNcclComm> DefaultNcclApi::CommInitRank(
       ncclCommInitRank(&comm, nranks, AsNcclUniqueId(clique_id), rank));
 
   return OwnedNcclComm(Cast(comm), NcclCommDeleter{this});
+}
+
+absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>>
+DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
+                              absl::Span<const DeviceRank> ranks) {
+  VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
+          << " devices; hash(id)=" << absl::HashOf(clique_id.data());
+
+  std::vector<OwnedNcclComm> comms;
+
+  TF_RETURN_IF_ERROR(GroupStart());
+  for (const DeviceRank& rank : ranks) {
+    se::gpu::ScopedActivateExecutorContext activate_context(rank.device);
+    TF_ASSIGN_OR_RETURN(comms.emplace_back(),
+                        CommInitRank(nranks, clique_id, rank.rank));
+  }
+  TF_RETURN_IF_ERROR(GroupEnd());
+
+  return comms;
+}
+
+absl::StatusOr<NcclApi::OwnedNcclComm> DefaultNcclApi::CommSplit(
+    NcclCommHandle comm, std::optional<int32_t> color, int32_t key) {
+  VLOG(1) << "Split NCCL communicator " << comm << " with color "
+          << color.value_or(NCCL_SPLIT_NOCOLOR) << " and key " << key;
+
+  ncclComm_t split_comm = nullptr;
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comm),
+                                         color.value_or(NCCL_SPLIT_NOCOLOR),
+                                         key, &split_comm, /*config=*/nullptr));
+
+  return OwnedNcclComm(Cast(split_comm), NcclCommDeleter{this});
+}
+
+absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
+    absl::Span<const DeviceComm> comms, absl::Span<const int32_t> ranks) {
+  VLOG(1) << "Split " << comms.size() << " NCCL communicators with"
+          << " participating split ranks [" << absl::StrJoin(ranks, ",") << "]";
+
+  std::vector<OwnedNcclComm> split_comms;
+
+  TF_RETURN_IF_ERROR(GroupStart());
+  for (int32_t rank = 0; rank < comms.size(); ++rank) {
+    se::gpu::ScopedActivateExecutorContext activate_context(comms[rank].device);
+
+    if (auto it = absl::c_find(ranks, rank); it != ranks.end()) {
+      TF_ASSIGN_OR_RETURN(split_comms.emplace_back(),
+                          CommSplit(comms[rank].comm, /*color=*/0,
+                                    /*key=*/std::distance(ranks.begin(), it)));
+    } else {
+      TF_RETURN_IF_ERROR(
+          CommSplit(comms[rank].comm, std::nullopt, rank).status());
+    }
+  }
+  TF_RETURN_IF_ERROR(GroupEnd());
+
+  return split_comms;
 }
 
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {
@@ -510,9 +596,10 @@ DefaultNcclApi::RegisterBuffer(NcclCommHandle comm,
       "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
       buffer.opaque(), buffer.size(), comm);
   void* handle = nullptr;
+#if (NCCL_VERSION_CODE >= 21901)
   XLA_NCCL_RETURN_IF_ERROR(
       ncclCommRegister(Cast(comm), buffer.opaque(), buffer.size(), &handle));
-
+#endif  // NCCL_VERSION_CODE >= 21901
   return reinterpret_cast<NcclRegisteredBufferHandle>(handle);
 }
 
@@ -522,8 +609,10 @@ DefaultNcclApi::DeregisterBuffer(NcclCommHandle comm,
   VLOG(3) << absl::StreamFormat(
       "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle,
       comm);
+#if (NCCL_VERSION_CODE >= 21901)
   return XLA_NCCL_STATUS(
       ncclCommDeregister(Cast(comm), reinterpret_cast<void*>(handle)));
+#endif  // NCCL_VERSION_CODE >= 21901
 }
 
 }  // namespace xla::gpu

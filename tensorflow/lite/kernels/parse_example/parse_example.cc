@@ -467,7 +467,7 @@ Status FastParseExampleLite(
   std::vector<SparseBuffer> varlen_dense_buffers(config.dense.size());
   Status status_of_minibatch;
   for (size_t e = 0; e < count; ++e) {
-    Status status_of_minibatch = FastParseSerializedExample(
+    status_of_minibatch = FastParseSerializedExample(
         GetString(serialized, e),
         (!example_names.empty() ? example_names[e] : "<unknown>"), e, config,
         quick_filter, quick_filter_size, config_index, config_index_size,

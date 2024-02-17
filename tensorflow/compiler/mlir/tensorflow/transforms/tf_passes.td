@@ -516,6 +516,13 @@ def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-
   }];
 
   let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
+
+  let options = [
+    Option<"composite_tpuexecute_side_effects_", "composite-tpuexecute-side-effects", "bool",
+           /*default=*/"false",
+           "Enables certain TPUExecute ops to run in parallel if they only "
+           "operate on resources that live on composite devices.">
+  ];
 }
 
 def ExecutorUpdateControlDependenciesPass : Pass<"tf-executor-update-control-dependencies", "ModuleOp"> {

@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "absl/strings/str_cat.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
-#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -68,7 +68,7 @@ absl::Status TypedTopK(se::Stream* stream, se::DeviceMemoryBase data,
                        size_t batch_size) {
   constexpr size_t max_kv_size = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(k) * max_kv_size * WAVEFRONT_SIZE;
+  int shmem_size = absl::bit_ceil(k) * max_kv_size * GetTopKWaveFrontSize<T>();
   int num_threads = NumThreads(num_elements, k, batch_size);
   if (num_threads == 0) {
     return absl::FailedPreconditionError(
@@ -110,8 +110,8 @@ absl::Status RunTopk(se::Stream* stream, PrimitiveType dtype,
       return TypedTopK<float>(stream, data, num_elements, top_elements,
                               top_indices, k, batch_size);
     case PrimitiveType::BF16:
-      return TypedTopK<Eigen::bfloat16>(
-          stream, data, num_elements, top_elements, top_indices, k, batch_size);
+      return TypedTopK<bfloat16>(stream, data, num_elements, top_elements,
+                                 top_indices, k, batch_size);
     default:
       return absl::UnimplementedError("GpuTopK not implemented for this dtype");
   }

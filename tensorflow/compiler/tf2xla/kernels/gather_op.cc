@@ -86,7 +86,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 
     *gather_output =
         xla::Broadcast(XlaHelpers::Zero(builder, dtype), out_shape.dim_sizes());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (int64_t i = 0; i < num_index_dims; ++i) {
@@ -152,7 +152,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   }
 
   *gather_output = xla::Gather(input, indices, dim_numbers, slice_sizes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
@@ -236,7 +236,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
                   /*indices_are_nd=*/false, context->expected_output_dtype(0),
                   index_type, context->builder(), gather_output));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 class GatherOp : public XlaOpKernel {
  public:

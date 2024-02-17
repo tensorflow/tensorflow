@@ -862,8 +862,8 @@ StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
           << " i: " << i << ", shape: " << shape.ToString()
           << ", operand_shape: " << operand_shape->ToString();
     } else {
-      // Non-broadcast dimensions must not be dynamic.
-      TF_RET_CHECK(!shape.is_dynamic_dimension(i));
+      // Non-broadcast dimensions must be static.
+      TF_RET_CHECK(shape.is_static_dimension(i));
     }
   }
   return AddInstruction(std::move(instr), HloOpcode::kBroadcast, {operand});
@@ -898,7 +898,7 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
           operand_shape->is_dynamic_dimension(i));
     } else {
       TF_RET_CHECK(operand_shape->dimensions(i) == 1 &&
-                   !operand_shape->is_dynamic_dimension(i))
+                   operand_shape->is_static_dimension(i))
           << "An explicit broadcast sequence requires the broadcasted "
              "dimensions to be trivial; operand shape: "
           << *operand_shape << "; output_shape: " << output_shape;
@@ -935,6 +935,57 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
   });
 }
 
+namespace {
+
+// Broadcasts an origin XLA op to the rank of target_shape.
+// Does not broadcast rank dimensions to match, only expands rank.
+// Is identity function if origin rank matches target rank.
+StatusOr<XlaOp> BroadcastToTargetRank(
+    XlaOp origin, const Shape& origin_shape, const Shape& target_shape,
+    absl::Span<const int64_t> broadcast_dimensions) {
+  const int64_t origin_rank = origin_shape.rank();
+  const int64_t target_rank = target_shape.rank();
+
+  // Identity op if ranks match, shold never be larger than target.
+  if (origin_rank >= target_rank) {
+    return origin;
+  }
+
+  // Update target_size with origin sizes using broadcast_dimensions
+  absl::Span<const int64_t> target_dimensions = target_shape.dimensions();
+  std::vector<int64_t> target_size{target_dimensions.begin(),
+                                   target_dimensions.end()};
+  for (int64_t origin_dim = 0; origin_dim < origin_rank; origin_dim++) {
+    int64_t target_dim = broadcast_dimensions[origin_dim];
+    target_size[target_dim] = origin_shape.dimensions(origin_dim);
+  }
+  return xla::BroadcastInDim(origin, target_size, broadcast_dimensions);
+}
+
+// For ternary ops, only scalar broadcasting is supported.
+// Return the non-scalar shape that all scalars should be broadcasted too
+// Returns status if non-scalar operands do not match.
+StatusOr<std::optional<Shape>> InferScalarBroadcastShape(
+    const Shape* lhs_shape, const Shape* rhs_shape, const Shape* ehs_shape) {
+  // The shape is not scalar, it may have unbounded/bounded dynamic
+  // dimensions.
+  std::optional<Shape> broadcasted_shape;
+  for (const Shape* shape : {lhs_shape, rhs_shape, ehs_shape}) {
+    if (!shape->IsArray() || shape->rank() == 0) continue;
+    if (!broadcasted_shape.has_value()) {
+      broadcasted_shape = ShapeUtil::MakeStaticShape(*shape);
+    }
+    // TODO(jpienaar): The case where we need to compute the broadcasted
+    // shape by considering multiple of the shapes is not implemented.
+    // Consider reusing getBroadcastedType from mlir/Dialect/Traits.h.
+    TF_RET_CHECK(ShapeUtil::SameDimensions(broadcasted_shape.value(), *shape))
+        << "Unimplemented implicit broadcast.";
+  }
+  return broadcasted_shape;
+}
+
+}  // namespace
+
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions,
                            std::optional<ComparisonDirection> direction,
@@ -946,40 +997,12 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         Shape shape, ShapeInference::InferBinaryOpShape(
                          binop, *lhs_shape, *rhs_shape, broadcast_dimensions));
 
-    const int64_t lhs_rank = lhs_shape->rank();
-    const int64_t rhs_rank = rhs_shape->rank();
-
-    XlaOp updated_lhs = lhs;
-    XlaOp updated_rhs = rhs;
-    if (!broadcast_dimensions.empty() && lhs_rank != rhs_rank) {
-      const bool should_broadcast_lhs = lhs_rank < rhs_rank;
-      XlaOp from = should_broadcast_lhs ? lhs : rhs;
-      const Shape& from_shape = should_broadcast_lhs ? *lhs_shape : *rhs_shape;
-
-      std::vector<int64_t> to_size;
-      std::vector<bool> to_size_is_dynamic;
-      const auto rank = shape.rank();
-      to_size.reserve(rank);
-      to_size_is_dynamic.reserve(rank);
-      for (int i = 0; i < rank; i++) {
-        to_size.push_back(shape.dimensions(i));
-        to_size_is_dynamic.push_back(false);
-      }
-      for (int64_t from_dim = 0; from_dim < from_shape.rank(); from_dim++) {
-        int64_t to_dim = broadcast_dimensions[from_dim];
-        to_size[to_dim] = from_shape.dimensions(from_dim);
-        to_size_is_dynamic[to_dim] = from_shape.is_dynamic_dimension(from_dim);
-      }
-
-      const Shape& broadcasted_shape = ShapeUtil::MakeShape(
-          from_shape.element_type(), to_size, to_size_is_dynamic);
-      TF_ASSIGN_OR_RETURN(
-          XlaOp broadcasted_operand,
-          InDimBroadcast(broadcasted_shape, from, broadcast_dimensions));
-
-      updated_lhs = should_broadcast_lhs ? broadcasted_operand : lhs;
-      updated_rhs = !should_broadcast_lhs ? broadcasted_operand : rhs;
-    }
+    TF_ASSIGN_OR_RETURN(
+        XlaOp updated_lhs,
+        BroadcastToTargetRank(lhs, *lhs_shape, shape, broadcast_dimensions));
+    TF_ASSIGN_OR_RETURN(
+        XlaOp updated_rhs,
+        BroadcastToTargetRank(rhs, *rhs_shape, shape, broadcast_dimensions));
 
     TF_ASSIGN_OR_RETURN(const Shape* updated_lhs_shape,
                         GetShapePtr(updated_lhs));
@@ -1058,23 +1081,11 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
       TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
       TF_ASSIGN_OR_RETURN(const Shape* ehs_shape, GetShapePtr(ehs));
 
-      // The shape is not scalar, it may have unbounded/bounded dynamic
-      // dimensions.
-      std::optional<Shape> non_scalar_shape;
-      for (const Shape* shape : {lhs_shape, rhs_shape, ehs_shape}) {
-        if (shape->IsArray() && shape->rank() != 0) {
-          if (non_scalar_shape.has_value()) {
-            // TODO(jpienaar): The case where we need to compute the broadcasted
-            // shape by considering multiple of the shapes is not implemented.
-            // Consider reusing getBroadcastedType from mlir/Dialect/Traits.h.
-            TF_RET_CHECK(
-                ShapeUtil::SameDimensions(non_scalar_shape.value(), *shape))
-                << "Unimplemented implicit broadcast.";
-          } else {
-            non_scalar_shape = ShapeUtil::MakeStaticShape(*shape);
-          }
-        }
-      }
+      TF_ASSIGN_OR_RETURN(
+          std::optional<Shape> non_scalar_shape,
+          InferScalarBroadcastShape(lhs_shape, rhs_shape, ehs_shape));
+
+      // Scalar broadcast if mix of scalars and non-scalars
       if (non_scalar_shape.has_value()) {
         bool is_unbounded_dynamic = non_scalar_shape->is_unbounded_dynamic();
         if (ShapeUtil::IsScalar(*lhs_shape)) {
@@ -3921,7 +3932,7 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64_t dimension) {
                                          *operand_shape, dimension));
     // Calling GetDimensionSize on a static dimension returns a constant
     // instruction.
-    if (!operand_shape->is_dynamic_dimension(dimension)) {
+    if (operand_shape->is_static_dimension(dimension)) {
       return ConstantR0<int32_t>(this, operand_shape->dimensions(dimension));
     }
     *instr.mutable_shape() = shape.ToProto();

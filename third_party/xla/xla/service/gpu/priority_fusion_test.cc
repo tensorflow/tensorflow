@@ -141,6 +141,24 @@ CHECK-NEXT: ROOT {{.*}} tuple(%[[FUSION_0]], %[[FUSION_1]])
   )");
 }
 
+TEST_F(PriorityFusionTest, FuseBroadcastIntoBitcastConsumers) {
+  absl::string_view kHlo = R"(
+    HloModule test_module
+
+    ENTRY main {
+      param_0 = f32[96]{0} parameter(0)
+      broadcast = f32[8,96,128,7]{3,2,1,0} broadcast(param_0), dimensions={1}
+      bitcast.6079.2 = f32[8,24,4,128,7]{4,3,2,1,0} bitcast(broadcast)
+      ROOT transpose.1990.2 = f32[8,24,128,7,4]{4,3,2,1,0} transpose(bitcast.6079.2), dimensions={0,1,3,4,2}
+    }
+  )";
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK:      ENTRY
+CHECK-NEXT: %[[PARAM:.*]] = f32[96]{0} parameter(0)
+CHECK-NEXT: ROOT %{{.*}} fusion(%[[PARAM]])
+  )");
+}
+
 TEST_F(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
   absl::string_view kHlo = R"(
     HloModule test_module
@@ -158,8 +176,9 @@ TEST_F(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
 CHECK:      ENTRY
 CHECK-NEXT: %[[PARAM:.*]] = f16[512]{0} parameter(0)
 CHECK-NEXT: %[[FUSION_F32:.*]] = f32[512]{0} fusion(%[[PARAM]])
-CHECK-NEXT: %[[FUSION_S32:.*]] = s32[512]{0} fusion(%[[PARAM]])
-CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[FUSION_S32]])
+CHECK-NEXT: %[[CONVERT_FUSION:.*]] = f32[512]{0} fusion(%[[PARAM]])
+CHECK-NEXT: %[[BITCAST:.*]] = s32[512]{0} bitcast(%[[CONVERT_FUSION]])
+CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[BITCAST]])
   )");
 }
 
@@ -203,7 +222,8 @@ CHECK-COUNT-3: fusion
 }
 
 TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
-  // Regression test for epilogue fusion of convert+bitcast into a reduction.
+  // Regression test for epilogue fusion of convert into a reduction, even if
+  // the convert has a bitcast as consumer.
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -252,7 +272,7 @@ TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK: ENTRY
-CHECK: ROOT {{.*}} fusion(
+CHECK: ROOT {{.*}} bitcast({{.*}}fusion{{.*}})
   )");
 }
 

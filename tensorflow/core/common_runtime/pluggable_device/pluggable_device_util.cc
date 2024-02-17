@@ -96,7 +96,7 @@ static Status PrepareCopy(Device* device, const DeviceContext* ctx,
     return errors::Internal("PluggableDevice copy from non-DMA",
                             DataTypeString(src.dtype()), " tensor.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static void* GetBase(const Tensor* src) {
@@ -163,7 +163,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
           LOG(FATAL) << "PluggableDevice->PluggableDevice Memcpy "  // Crash OK
                      << "failed.";
         }
-        done(OkStatus());
+        done(absl::OkStatus());
       });
   send_dev_context->MaintainLifetimeOnStream(input,
                                              send_device_to_device_stream);
@@ -212,7 +212,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
           LOG(FATAL) << "PluggableDevice->CPU Memcpy failed.";  // Crash OK
         }
         input_ref.Unref();
-        done(OkStatus());
+        done(absl::OkStatus());
       });
 }
 
@@ -261,7 +261,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
         if (!recv_host_to_device_stream->ok()) {
           LOG(FATAL) << "CPU->PluggableDevice Memcpy failed.";  // Crash OK
         }
-        done(OkStatus());
+        done(absl::OkStatus());
       });
 }
 
@@ -284,7 +284,7 @@ Status PluggableDeviceUtil::SyncAll(Device* device) {
       !dev_info->stream->ok()) {
     return errors::Internal("PluggableDevice SyncAll failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // static
@@ -311,7 +311,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
     send_stream->ThenMemcpy(&device_dst_ptr, device_src_ptr, total_bytes);
   }
 
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 }  // namespace tensorflow

@@ -120,7 +120,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   Status GetConfigProto(const ConfigProto** config_proto) const override {
     *config_proto = ctx_->function_library()->config_proto();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void MaybeDeleteConfigProto(const ConfigProto* config_proto) const override {
@@ -131,7 +131,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
   Status GetFunctionLibraryDefinition(
       const FunctionLibraryDefinition** flib_def) const override {
     *flib_def = ctx_->function_library()->GetFunctionLibraryDefinition();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void MaybeDeleteFunctionLibraryDefinition(
@@ -143,7 +143,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
   Status GetResourceHandle(int index,
                            const ResourceHandle** handle) const override {
     *handle = &HandleFromInput(ctx_, index);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void MaybeDeleteResourceHandle(const ResourceHandle* handle) const override {
@@ -162,7 +162,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   Status SetOutput(int index, const Tensor& tensor) override {
     ctx_->set_output(index, tensor);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void CtxFailure(const Status& status) override { ctx_->CtxFailure(status); }

@@ -3275,7 +3275,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedContractionNode(RemapperContext* ctx,
@@ -3328,7 +3328,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*invalidated_nodes)[matched.activation] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedContractionNode(
@@ -3382,7 +3382,7 @@ Status AddFusedContractionNode(
   (*nodes_to_delete)[matched.bias_add] = true;
   (*invalidated_nodes)[matched.activation] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedConvNode(RemapperContext* ctx,
@@ -3437,7 +3437,7 @@ Status AddFusedConvNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.squeeze] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedConv2DNode(RemapperContext* ctx,
@@ -3476,7 +3476,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.fused_batch_norm] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedConv2DNode(RemapperContext* ctx,
@@ -3521,7 +3521,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*nodes_to_delete)[matched.fused_batch_norm] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedContractionNode(RemapperContext* ctx,
@@ -3575,7 +3575,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   (*nodes_to_delete)[matched.contraction] = true;
   (*nodes_to_delete)[matched.bias_add] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
@@ -3616,7 +3616,7 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
   } else {
     VLOG(2) << "Pad fusion with " << contraction.op() << " is invalidated, "
             << "it requires padding dim sizes to be constant.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
@@ -3627,7 +3627,7 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
 
   (*invalidated_nodes)[matched.contraction_idx] = true;
   (*nodes_to_delete)[matched.pad_idx] = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedContractionNode(
@@ -3674,7 +3674,7 @@ Status AddFusedContractionNode(
   (*nodes_to_delete)[matched.bias_add] = true;
   (*nodes_to_delete)[matched.contraction] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FuseContractionWithBiasAddAndHardSwish(
@@ -3715,7 +3715,7 @@ Status FuseContractionWithBiasAddAndHardSwish(
   for (const auto& node_idx : *remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FuseConv2DSwish(RemapperContext* ctx,
@@ -3768,7 +3768,7 @@ Status FuseConv2DSwish(RemapperContext* ctx,
     (*nodes_to_delete)[node_index] = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedMatMulBiasAddAndGelu(
@@ -3811,7 +3811,7 @@ Status AddFusedMatMulBiasAddAndGelu(
   for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddMklLayerNorm(RemapperContext* ctx,
@@ -3844,7 +3844,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReplaceMulMaximumWithLeakyRelu(
@@ -3880,7 +3880,7 @@ Status ReplaceMulMaximumWithLeakyRelu(
     (*nodes_to_delete)[node_index] = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReplaceSigmoidMulWithSwish(
@@ -3912,7 +3912,7 @@ Status ReplaceSigmoidMulWithSwish(
   for (const auto& node_index : remove_node_indices) {
     (*nodes_to_delete)[node_index] = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedBatchNormExNode(RemapperContext* ctx,
@@ -3982,7 +3982,7 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
     (*nodes_to_delete)[matched.invalidated] = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
@@ -4055,7 +4055,7 @@ Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
     (*nodes_to_delete)[matched.activation_grad] = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
@@ -4288,7 +4288,7 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
   (*invalidated_nodes)[matched.string_to_hash_bucket] = true;
   (*nodes_to_delete)[matched.as_string] = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddFusedBatchMatMul(RemapperContext* ctx,
@@ -4321,7 +4321,7 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   for (const auto& node_idx : remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function to get data of type T from a given tensor and
@@ -4359,19 +4359,19 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
 
   if (!mean_axes_node || mean_axes_node->op() != "Const") {
     VLOG(2) << "Mean reduction axes node is not valid, abort fusion";
-    return OkStatus();
+    return absl::OkStatus();
   }
   DataType dtype;
   Tensor mean_axes_tensor;
   if (!mean_axes_tensor.FromProto(
           mean_axes_node->attr().at("value").tensor())) {
     VLOG(2) << "Unable to get mean reduction axes, abort fusion";
-    return OkStatus();
+    return absl::OkStatus();
   }
   dtype = mean_axes_tensor.dtype();
   if (dtype != DT_INT32 && dtype != DT_INT64) {
     VLOG(2) << "Unexpected mean reduction axes data type, abort fusion";
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<int> reduction_axes =
       (dtype == DT_INT32) ? GetTensorValues<int32, int>(mean_axes_tensor)
@@ -4383,11 +4383,11 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
         ctx->graph_view.GetNode(matched_nodes_map->at("activation"))->node();
     if (!activation_node) {
       VLOG(2) << "Error to retrieve activation node, abort fusion";
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (!IsLeakyRelu(*activation_node) && !IsRelu(*activation_node)) {
       VLOG(2) << "Unsupported activation node, abort fusion";
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -4445,7 +4445,7 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
   for (const auto& node_idx : *remove_node_indices) {
     (*nodes_to_delete)[node_idx] = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This function supports below patterns that require inferred
@@ -4617,7 +4617,7 @@ Status ReplaceSoftplusTanhAndMulWithMish(
     (*nodes_to_delete)[node_index] = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Check if a node is a candidate to one of the patterns that require inferred
@@ -5139,7 +5139,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   *optimized_graph = std::move(mutable_item.graph);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace grappler

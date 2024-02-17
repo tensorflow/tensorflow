@@ -24,11 +24,11 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(Status, OK) {
-  EXPECT_EQ(OkStatus().code(), error::OK);
-  EXPECT_EQ(OkStatus().message(), "");
-  TF_EXPECT_OK(OkStatus());
-  TF_ASSERT_OK(OkStatus());
-  EXPECT_EQ(OkStatus(), Status());
+  EXPECT_EQ(absl::OkStatus().code(), error::OK);
+  EXPECT_EQ(absl::OkStatus().message(), "");
+  TF_EXPECT_OK(absl::OkStatus());
+  TF_ASSERT_OK(absl::OkStatus());
+  EXPECT_EQ(absl::OkStatus(), Status());
   Status s;
   EXPECT_TRUE(s.ok());
 }
@@ -73,7 +73,7 @@ TEST(Status, MoveAssign) {
 
 TEST(Status, Update) {
   Status s;
-  s.Update(OkStatus());
+  s.Update(absl::OkStatus());
   ASSERT_TRUE(s.ok());
   Status a(errors::InvalidArgument("Invalid"));
   s.Update(a);
@@ -81,12 +81,12 @@ TEST(Status, Update) {
   Status b(errors::Internal("Internal"));
   s.Update(b);
   ASSERT_EQ(s.ToString(), a.ToString());
-  s.Update(OkStatus());
+  s.Update(absl::OkStatus());
   ASSERT_EQ(s.ToString(), a.ToString());
   ASSERT_FALSE(s.ok());
 }
 
-TEST(Status, EqualsOK) { ASSERT_EQ(OkStatus(), Status()); }
+TEST(Status, EqualsOK) { ASSERT_EQ(absl::OkStatus(), Status()); }
 
 TEST(Status, EqualsSame) {
   Status a(errors::InvalidArgument("Invalid"));
@@ -114,10 +114,10 @@ TEST(Status, EqualsDifferentMessage) {
 
 TEST(StatusGroup, OKStatusGroup) {
   StatusGroup c;
-  c.Update(OkStatus());
-  c.Update(OkStatus());
-  ASSERT_EQ(c.as_summary_status(), OkStatus());
-  ASSERT_EQ(c.as_concatenated_status(), OkStatus());
+  c.Update(absl::OkStatus());
+  c.Update(absl::OkStatus());
+  ASSERT_EQ(c.as_summary_status(), absl::OkStatus());
+  ASSERT_EQ(c.as_concatenated_status(), absl::OkStatus());
 }
 
 TEST(StatusGroup, AggregateWithSingleErrorStatus) {
@@ -197,7 +197,7 @@ TEST(Status, ErasePayloadRemovesIt) {
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
   tensorflow::Status s = (state.max_iterations < 0)
                              ? errors::InvalidArgument("Invalid")
-                             : OkStatus();
+                             : absl::OkStatus();
   for (auto i : state) {
     TF_CHECK_OK(s);
   }

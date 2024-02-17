@@ -1,3 +1,4 @@
+load("//tsl:tsl.bzl", "internal_visibility")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
@@ -11,27 +12,27 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tensorflow/core/lib/io:__pkg__",
+        "//tsl/lib/io:__pkg__",
+    ]),
     licenses = ["notice"],
 )
 
-exports_files(
-    [
-        "snappy_compression_options.h",
-        "snappy_inputbuffer.h",
-        "snappy_inputstream.h",
-        "snappy_outputbuffer.h",
-        "snappy_inputstream.cc",
-        "snappy_test.cc",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    "snappy_compression_options.h",
+    "snappy_inputbuffer.h",
+    "snappy_inputstream.h",
+    "snappy_outputbuffer.h",
+    "snappy_inputstream.cc",
+    "snappy_test.cc",
+])
 
 cc_library(
     name = "snappy_inputbuffer",
     srcs = ["snappy_inputbuffer.cc"],
     hdrs = ["snappy_inputbuffer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/lib/io:inputstream_interface",
         "//tsl/platform:env",
@@ -48,7 +49,6 @@ cc_library(
     name = "snappy_outputbuffer",
     srcs = ["snappy_outputbuffer.cc"],
     hdrs = ["snappy_outputbuffer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:env",
@@ -64,7 +64,6 @@ cc_library(
     name = "snappy_inputstream",
     srcs = ["snappy_inputstream.cc"],
     hdrs = ["snappy_inputstream.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/lib/io:inputstream_interface",
         "//tsl/platform:errors",
@@ -77,7 +76,6 @@ cc_library(
 cc_library(
     name = "snappy_compression_options",
     hdrs = ["snappy_compression_options.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:types",
     ],
@@ -88,7 +86,6 @@ tsl_cc_test(
     name = "snappy_test",
     size = "small",
     srcs = ["snappy_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":snappy_inputbuffer",
         ":snappy_inputstream",

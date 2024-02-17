@@ -244,10 +244,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
  protected:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false,
-                  bool ignore_memory_space = false, bool ignore_tiles = false,
-                  bool ignore_trailing_padding_alignment_in_elements = false);
+  bool ShapesSame(const Shape& a, const Shape& b, Shape::Equal equal = {});
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
@@ -270,19 +267,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
-  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
-                                     bool minor_to_major_only = false) {
-    if (!opts_.layout_sensitive) {
-      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
-    }
-    Shape::Equal equal;
-    if (minor_to_major_only) {
-      equal.MinorToMajorOnlyInLayout();
-    }
-    equal.IgnoreFpPrecision();
-    return equal(a, b);
-  }
-
   std::string StringifyShape(const Shape& s) {
     return opts_.layout_sensitive ? ShapeUtil::HumanStringWithLayout(s)
                                   : ShapeUtil::HumanString(s);

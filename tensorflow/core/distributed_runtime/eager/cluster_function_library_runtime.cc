@@ -249,7 +249,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
             return;
           }
         }
-        done(OkStatus());
+        done(absl::OkStatus());
       });
 }
 

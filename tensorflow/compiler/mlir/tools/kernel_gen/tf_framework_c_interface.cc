@@ -162,8 +162,8 @@ void InitializeLlvmCompiler() {
 llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
-    llvm::SmallVectorImpl<int64_t>& unroll_factors, int64_t max_supported_rank,
-    bool enable_ftz, bool index_64bit) {
+    llvm::SmallVectorImpl<int64_t>& unroll_factors, bool enable_ftz,
+    bool index_64bit) {
   std::string cache_dir;
   if (const char* dir = getenv(kTFJitCacheDirEnvVar.data())) {
     cache_dir = dir;
@@ -197,7 +197,6 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForHloCode(
             context, code, architectures, tile_sizes, unroll_factors,
-            max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
             index_64bit,
             /*jit_compile=*/false,
@@ -261,8 +260,7 @@ llvm::SmallVector<T, 8> SmallVectorFromCArray(int64_t num_elements,
 extern "C" void* _mlir_ciface_tf_jit_compile(
     void* op_kernel_ctx, char* code, int64_t num_tile_sizes,
     int64_t* tile_sizes_ptr, int64_t num_unroll_factors,
-    int64_t* unroll_factors_ptr, int64_t max_supported_rank, bool enable_ftz,
-    bool index_64bit) {
+    int64_t* unroll_factors_ptr, bool enable_ftz, bool index_64bit) {
   // Get the resource manager.
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   tensorflow::ResourceMgr* rm = ctx->resource_manager();
@@ -303,8 +301,8 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
 
   // Lookup or compile the execution module.
   ExecutionEngine* engine = jit_cache->LookupOrCompile(code, [&]() {
-    return Compile(code, architectures, tile_sizes, unroll_factors,
-                   max_supported_rank, enable_ftz, index_64bit);
+    return Compile(code, architectures, tile_sizes, unroll_factors, enable_ftz,
+                   index_64bit);
   });
   if (engine == nullptr) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT compilation failed.");

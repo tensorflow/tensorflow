@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass applies quantization propagation on TFLite dialect.
+#include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -217,7 +219,9 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 bool PrepareQuantizePass::RemoveRedundantStats(func::FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec);
+  return RemoveRedundantStatsOps(
+      func, std::bind(GetOpQuantSpec, std::placeholders::_1,
+                      quant_specs_.disable_per_channel_for_dense_layers));
 }
 
 static Value Quantized(Operation* user) {
@@ -402,12 +406,19 @@ void PrepareQuantizePass::runOnOperation() {
 
   SanityCheckAndAdjustment(func);
 
+  // Bind the getter with the fixed configuration parameter for the correct
+  // quantization settings of the ops.
+  std::function<std::unique_ptr<quant::OpQuantSpec>(Operation*)>
+      op_quant_spec_getter =
+          std::bind(GetOpQuantSpec, std::placeholders::_1,
+                    quant_specs_.disable_per_channel_for_dense_layers);
+
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, bit_width,
-      disable_per_channel_ || quant_specs_.disable_per_channel, GetOpQuantSpec,
-      infer_tensor_range, quant_specs_.legacy_float_scale,
+      disable_per_channel_ || quant_specs_.disable_per_channel,
+      op_quant_spec_getter, infer_tensor_range, quant_specs_.legacy_float_scale,
       (is_qdq_conversion_ ||
        quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone));
 }

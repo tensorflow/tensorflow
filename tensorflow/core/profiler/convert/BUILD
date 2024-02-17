@@ -324,6 +324,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:device_caps_utils",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
+        "//tensorflow/core/profiler/utils:hlo_proto_map",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",

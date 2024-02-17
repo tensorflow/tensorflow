@@ -2,13 +2,14 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "api",
     hdrs = ["//xla/ffi/api:api_headers"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = ["//xla/ffi/api:c_api"],
 )
 
@@ -16,7 +17,6 @@ cc_library(
     name = "call_frame",
     srcs = ["call_frame.cc"],
     hdrs = ["call_frame.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:types",
         "//xla:xla_data_proto_cc",
@@ -33,7 +33,6 @@ cc_library(
 cc_library(
     name = "ffi",
     hdrs = ["ffi.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":api",
         "//xla:shape_util",
@@ -54,7 +53,6 @@ cc_library(
     name = "ffi_api",
     srcs = ["ffi_api.cc"],
     hdrs = ["ffi_api.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":api",
         ":call_frame",

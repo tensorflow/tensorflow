@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace quantization {
-namespace {
+namespace mlir_dump_test {
 
 class NoOpPass
     : public mlir::PassWrapper<NoOpPass, mlir::OperationPass<mlir::ModuleOp>> {
@@ -88,6 +88,12 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateParentPass() {
   return std::make_unique<ParentPass>();
 }
 
+}  // namespace mlir_dump_test
+
+namespace {
+
+using namespace tensorflow::quantization::mlir_dump_test;
+
 class EnableIrPrintingTest : public ::testing::Test {
  protected:
   EnableIrPrintingTest() : env_(tsl::Env::Default()) {
@@ -125,18 +131,19 @@ TEST_F(EnableIrPrintingTest, PassSuccessfullyRuns) {
   mlir::PassManager pm = {ctx_.get()};
   pm.addPass(CreateNoOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
 
   EnableIrPrinting(pm, "dump");
 
   constexpr absl::string_view program = R"mlir(
 module{
+  func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+    return %arg0 : tensor<10xf32>
+  }
   func.func @func1(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
     %0 = stablehlo.add %arg0, %arg1 : tensor<10xf32>
     %1 = stablehlo.add %arg0, %arg1 : tensor<10xf32>
     return %0 : tensor<10xf32>
-  }
-  func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
-    return %arg0 : tensor<10xf32>
   }
 })mlir";
   auto module_op = mlir::parseSourceString<mlir::ModuleOp>(program, ctx_.get());
@@ -146,14 +153,14 @@ module{
 
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
       tsl::io::JoinPath(test_dir_,
-                        "dump_0001_tensorflow::quantization::(anonymous "
-                        "namespace)::NoOpPass_before.mlir")));
-  TF_EXPECT_OK(tsl::Env::Default()->FileExists(tsl::io::JoinPath(
-      test_dir_, "dump_0002_Canonicalizer_func1_before.mlir")));
-  TF_EXPECT_OK(tsl::Env::Default()->FileExists(tsl::io::JoinPath(
-      test_dir_, "dump_0003_Canonicalizer_func1_after.mlir")));
-  TF_EXPECT_OK(tsl::Env::Default()->FileExists(tsl::io::JoinPath(
-      test_dir_, "dump_0004_Canonicalizer_main_before.mlir")));
+                        "dump_0001_tensorflow::quantization::mlir_dump_test"
+                        "::NoOpPass_before.mlir")));
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(
+      tsl::io::JoinPath(test_dir_, "dump_0002_Canonicalizer_before.mlir")));
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(
+      tsl::io::JoinPath(test_dir_, "dump_0002_Canonicalizer_after.mlir")));
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(
+      tsl::io::JoinPath(test_dir_, "dump_0003_Canonicalizer_before.mlir")));
 }
 
 TEST_F(EnableIrPrintingTest, NestedPassSuccessfullyRuns) {
@@ -175,12 +182,12 @@ TEST_F(EnableIrPrintingTest, NestedPassSuccessfullyRuns) {
 
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
       tsl::io::JoinPath(test_dir_,
-                        "dump_0001_tensorflow::quantization::(anonymous "
-                        "namespace)::ParentPass_before.mlir")));
+                        "dump_0001_tensorflow::quantization::mlir_dump_test"
+                        "::ParentPass_before.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
       tsl::io::JoinPath(test_dir_,
-                        "dump2_0001_tensorflow::quantization::(anonymous "
-                        "namespace)::NoOpPass_before.mlir")));
+                        "dump2_0001_tensorflow::quantization::mlir_dump_test"
+                        "::NoOpPass_before.mlir")));
 }
 }  // namespace
 }  // namespace quantization

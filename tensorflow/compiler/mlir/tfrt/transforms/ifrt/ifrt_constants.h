@@ -26,6 +26,14 @@ namespace ifrt_serving {
 inline constexpr absl::string_view kMetadataTextAttrName =
     "__tpu_compile_metadata_text";
 
+// Name of a variable as loaded IFRT array .
+inline constexpr absl::string_view kVariableArrayNameAttr =
+    "__variable_array_name";
+
+// Attribute of a text `VariableDeviceShardingConfigProto`.
+inline constexpr absl::string_view kVariableShardingConfigTextAttr =
+    "__variable_sharding_config_text";
+
 }  // namespace ifrt_serving
 }  // namespace tensorflow
 

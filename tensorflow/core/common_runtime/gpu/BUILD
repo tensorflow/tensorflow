@@ -264,34 +264,17 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "gpu_virtual_mem_allocator",
-    srcs = [
-        "gpu_virtual_mem_allocator.cc",
-    ],
     hdrs = [
         "gpu_virtual_mem_allocator.h",
     ],
     copts = tf_copts(),
-    cuda_deps = [
-        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
-        "@local_xla//xla/stream_executor/gpu:gpu_types_header",
-    ],
     features = [
         "-layering_check",
         "parse_headers",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":gpu_id",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor/integrations:gpu_virtual_mem_allocator",
     ],
 )
 
@@ -335,6 +318,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:gpu_virtual_mem_allocator",
     ],
 )
 
@@ -470,24 +454,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
-    ],
-)
-
-tf_cc_test(
-    name = "gpu_virtual_mem_allocator_test",
-    size = "small",
-    srcs = ["gpu_virtual_mem_allocator_test.cc"],
-    features = ["-layering_check"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":gpu_virtual_mem_allocator",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
 )

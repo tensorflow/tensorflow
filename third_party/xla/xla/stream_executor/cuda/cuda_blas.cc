@@ -1446,5 +1446,6 @@ void initialize_cublas() {
 }  // namespace cuda
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_cublas,
-                            { stream_executor::cuda::initialize_cublas(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cublas, {
+  stream_executor::cuda::initialize_cublas();
+});

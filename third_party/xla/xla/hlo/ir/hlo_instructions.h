@@ -264,6 +264,10 @@ class HloAsyncInstruction : public HloInstruction {
   // *end(GetAsyncChain()) is the async-done op.
   std::vector<HloAsyncInstruction*> GetAsyncChain() const;
 
+  bool HasSideEffect() const override {
+    return async_wrapped_instruction()->HasSideEffect();
+  }
+
  protected:
   // Helper to constructs async-{start,update,done}.
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
@@ -606,6 +610,8 @@ class HloRecvInstruction : public HloSendRecvInstruction {
 class HloRecvDoneInstruction : public HloSendRecvInstruction {
  public:
   explicit HloRecvDoneInstruction(HloRecvInstruction* operand,
+                                  bool is_host_transfer);
+  explicit HloRecvDoneInstruction(HloInstruction* operand, int64_t channel_id,
                                   bool is_host_transfer);
 
   static bool ClassOf(const HloInstruction* hlo) {

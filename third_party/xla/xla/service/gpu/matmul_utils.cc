@@ -26,8 +26,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/primitive_util.h"
@@ -557,21 +559,25 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   se::DeviceMemory<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
-  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
-      stream->parent()->AsBlas(), &workspace);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
+
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
 
   if (output.batch_size != 1) {
-    return stream->ThenBlasGemmStridedBatchedWithAlgorithm(
-        lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
-        lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
+    return blas->BlasGemmStridedBatchedWithAlgorithm(
+        stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
+        alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
         rhs.cast<Input>(), rhs.leading_dim_stride, rhs.batch_stride, beta,
         &output_data, output.leading_dim_stride, output.batch_stride,
         output.batch_size, computation_type, algorithm, numeric_options,
         profile_result, context);
   } else {
-    return stream->ThenBlasGemmWithAlgorithm(
-        lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
-        lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
+    return blas->BlasGemmWithAlgorithm(
+        stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
+        alpha, lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
         rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
         computation_type, algorithm, numeric_options, profile_result, context);
   }
@@ -590,10 +596,13 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Output> output_data(output.data);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
 
   // Set a workspace for all Blas operations launched below.
-  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(
-      stream->parent()->AsBlas(), &workspace);
+  se::blas::BlasSupport::ScopedWorkspace scoped_workspace(blas, &workspace);
 
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
@@ -602,19 +611,19 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
   }
 
   if (output.batch_size != 1) {
-    return stream->ThenBlasGemmStridedBatched(
-        lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
-        lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
+    return blas->BlasGemmStridedBatched(
+        stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
+        alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
         rhs.cast<Input>(), rhs.leading_dim_stride, rhs.batch_stride, beta,
         &output_data, output.leading_dim_stride, output.batch_stride,
         output.batch_size, numeric_options, context);
   }
 
-  return stream->ThenBlasGemm(
-      lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
-      lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
-      rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
-      numeric_options, context);
+  return blas->BlasGemm(stream, lhs.transpose, rhs.transpose, output.m,
+                        output.n, output.k, alpha, lhs.cast<Input>(),
+                        lhs.leading_dim_stride, rhs.cast<Input>(),
+                        rhs.leading_dim_stride, beta, &output_data,
+                        output.leading_dim_stride, numeric_options, context);
 }
 
 }  // namespace
@@ -805,16 +814,20 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 }  // namespace gpublas_lt
 
-/*static*/ TritonGemmConfig TritonGemmConfig::FromProto(
+/*static*/ StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
     const AutotuneResult::TritonGemmKey& proto) {
-  TritonGemmConfig config;
-  config.block_m = proto.block_m();
-  config.block_n = proto.block_n();
-  config.block_k = proto.block_k();
-  config.split_k = proto.split_k();
-  config.num_stages = proto.num_stages();
-  config.num_warps = proto.num_warps();
-  return config;
+  // Sanity check to avoid loading incomplete data.
+  TF_RET_CHECK(proto.block_m() > 0);
+  TF_RET_CHECK(proto.block_n() > 0);
+  TF_RET_CHECK(proto.block_k() > 0);
+  TF_RET_CHECK(proto.split_k() > 0);
+  TF_RET_CHECK(proto.num_stages() > 0);
+  TF_RET_CHECK(proto.num_warps() > 0);
+  TF_RET_CHECK(proto.num_ctas() > 0);
+
+  return TritonGemmConfig(proto.block_m(), proto.block_n(), proto.block_k(),
+                          proto.split_k(), proto.num_stages(),
+                          proto.num_warps(), proto.num_ctas());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -825,6 +838,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_split_k(split_k);
   key.set_num_stages(num_stages);
   key.set_num_warps(num_warps);
+  key.set_num_ctas(num_ctas);
   return key;
 }
 
@@ -832,7 +846,7 @@ std::string TritonGemmConfig::ToString() const {
   return absl::StrCat("{block_m:", block_m, ",block_n:", block_n,
                       ",block_k:", block_k, ",split_k:", split_k,
                       ",num_stages:", num_stages, ",num_warps:", num_warps,
-                      "}");
+                      ",num_ctas:", num_ctas, "}");
 }
 
 }  // namespace gpu

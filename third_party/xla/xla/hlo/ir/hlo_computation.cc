@@ -1068,7 +1068,13 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
-  TF_RETURN_IF_ERROR(async_done->CopyAllControlDepsFrom(instruction));
+  for (HloInstruction* control_pred : instruction->control_predecessors()) {
+    TF_RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
+  }
+  for (HloInstruction* control_successor : instruction->control_successors()) {
+    TF_RETURN_IF_ERROR(async_done->AddControlDependencyTo(control_successor));
+  }
+
   if (replace) {
     TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
     TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
@@ -1299,11 +1305,7 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   // But still this seems to be better than nothing.
   bool overwrite_op_name = new_instruction->metadata().op_name().empty() &&
                            !old_instruction->metadata().op_name().empty();
-  bool overwrite_pass_id =
-      new_instruction->metadata().op_name().empty() &&
-      new_instruction->metadata().logical_creation_pass_id() == 0 &&
-      old_instruction->metadata().logical_creation_pass_id() != 0;
-  if (overwrite_op_name || overwrite_pass_id) {
+  if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
   if (new_instruction->frontend_attributes().map().empty()) {

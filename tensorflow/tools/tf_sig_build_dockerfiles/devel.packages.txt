@@ -36,8 +36,6 @@ autoconf
 automake
 build-essential
 ca-certificates
-# TODO(b/308399490) Remove CMake once dm-tree (Keras dependency) has 3.12 wheels
-cmake
 llvm-17
 clang-17
 clang-tidy-17

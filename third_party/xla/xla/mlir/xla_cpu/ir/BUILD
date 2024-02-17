@@ -1,9 +1,14 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
+load(
+    "@local_tsl//tsl:tsl.default.bzl",
+    "get_compatible_with_portable",
+)
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//learning/brain/mlir:xla_friends"]),
 )
 
 td_library(
@@ -92,7 +97,6 @@ cc_library(
         "xla_cpu.cc",
     ],
     hdrs = ["xla_cpu.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":xla_cpu_dialect_inc_gen",
         ":xla_cpu_enums_inc_gen",

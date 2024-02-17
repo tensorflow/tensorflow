@@ -64,7 +64,7 @@ class ListDatasetOp::Dataset : public DatasetBase {
                                 split_providers) const override {
     split_providers->push_back(
         std::make_unique<IndexSplitProvider>(num_elements_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -82,10 +82,10 @@ class ListDatasetOp::Dataset : public DatasetBase {
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return OkStatus(); }
+  Status CheckExternalState() const override { return absl::OkStatus(); }
 
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
@@ -95,7 +95,7 @@ class ListDatasetOp::Dataset : public DatasetBase {
     for (int i = 0; i < num_components_; ++i) {
       out_tensors->push_back(tensors_[i + num_components_ * index]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -119,7 +119,7 @@ class ListDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(input_types_, &input_types);
     TF_RETURN_IF_ERROR(b->AddDataset(this, {}, {{0, tensors}},
                                      {{kTinputTypes, input_types}}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -138,7 +138,7 @@ class ListDatasetOp::Dataset : public DatasetBase {
         TF_ASSIGN_OR_RETURN(split_provider_,
                             GetSingleSplitProvider(ctx, dataset()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -147,7 +147,7 @@ class ListDatasetOp::Dataset : public DatasetBase {
       Tensor split;
       TF_RETURN_IF_ERROR(split_provider_->GetNext(&split, end_of_sequence));
       if (*end_of_sequence) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       int64_t index = split.scalar<int64_t>()();
       out_tensors->reserve(dataset()->num_components_);
@@ -156,7 +156,7 @@ class ListDatasetOp::Dataset : public DatasetBase {
             dataset()->tensors_[i + dataset()->num_components_ * index]);
       }
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:

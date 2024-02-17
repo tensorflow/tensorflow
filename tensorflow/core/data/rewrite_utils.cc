@@ -131,7 +131,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
     RemoveFakeSinks(&function_def);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // anonymous namespace
 
@@ -245,7 +245,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
     });
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(

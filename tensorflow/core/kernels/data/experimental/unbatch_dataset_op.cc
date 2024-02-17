@@ -116,7 +116,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -130,7 +130,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -157,7 +157,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         *end_of_sequence = false;
         while (!*end_of_sequence) {
@@ -177,7 +177,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             if (current_index_ >= current_batch_size_) {
               ctx->MergeCheckpoint(input_ckpt_.get());
             }
-            return OkStatus();
+            return absl::OkStatus();
           }
           current_index_ = 0;
           current_batch_size_ = 0;
@@ -207,7 +207,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           }
         }
         input_impl_.reset();
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -244,7 +244,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
                 full_name(StrCat("tensors[", i, "]")), tensors_[i]));
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -267,7 +267,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         if (current_index_ < current_batch_size_) {
           TF_RETURN_IF_ERROR(RestoreTensors(ctx, reader));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -298,7 +298,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           shapes_[i] = tensors_[i].shape();
           shapes_[i].RemoveDim(0);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       mutex mu_;

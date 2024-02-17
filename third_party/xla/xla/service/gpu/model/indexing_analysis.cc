@@ -319,9 +319,9 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
     AffineExpr dim_expr = getAffineDimExpr(output_dim_id, mlir_context);
     dimension_ranges.push_back(Range{pad_low, output_dim - 1 - pad_high});
     if (pad_interior == 0) {
-      exprs.push_back(dim_expr + pad_low);
+      exprs.push_back(dim_expr - pad_low);
     } else {
-      exprs.push_back(dim_expr.floorDiv(pad_interior + 1) + pad_low);
+      exprs.push_back((dim_expr - pad_low).floorDiv(pad_interior + 1));
       constraints.push_back(
           {(dim_expr - pad_low) % (pad_interior + 1), Range{0, 0}});
     }
@@ -813,8 +813,16 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
   return out;
 }
 
+AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
+                             const Tiling& tiling) {
+  return AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, exprs,
+                        exprs[0].getContext());
+}
+
+}  // namespace
+
 llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
-    mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
+    AffineExpr linear, absl::Span<const int64_t> sizes,
     absl::Span<const int64_t> strides) {
   llvm::SmallVector<AffineExpr, 4> result;
   result.reserve(sizes.size());
@@ -832,14 +840,6 @@ llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(
   }
   return result;
 }
-
-AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
-                             const Tiling& tiling) {
-  return AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, exprs,
-                        exprs[0].getContext());
-}
-
-}  // namespace
 
 IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
                                                       MLIRContext* ctx) {
@@ -1031,6 +1031,29 @@ GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
     }
   }
   return grouped_indexing_maps;
+}
+
+bool FuseProducerConsumerOutputToInputIndexing(
+    const HloInstruction* producer_instr,
+    absl::flat_hash_map<const HloInstruction*, IndexingMapSet>*
+        consumer_indexing,
+    MLIRContext* mlir_context) {
+  auto producer_indexing = ComputeOutputToInputIndexing(
+      producer_instr, /*output_id=*/0, mlir_context);
+  auto consumer_indexing_maps = (*consumer_indexing)[producer_instr];
+  for (const auto& [producer_operand_id, producer_operand_indexing] :
+       llvm::enumerate(producer_indexing.indexing_maps)) {
+    const HloInstruction* producer_operand_instr =
+        producer_instr->operand(producer_operand_id);
+    for (const IndexingMap& producer_map : producer_operand_indexing) {
+      for (const IndexingMap& consumer_map : consumer_indexing_maps) {
+        (*consumer_indexing)[producer_operand_instr].insert(
+            ComposeIndexingMaps(producer_map, consumer_map));
+      }
+    }
+  }
+  consumer_indexing->erase(producer_instr);
+  return true;
 }
 
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,

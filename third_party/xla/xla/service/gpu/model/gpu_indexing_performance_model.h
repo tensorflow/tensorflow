@@ -44,7 +44,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
         mlir_context_(mlir_context) {}
 
   EstimateRunTimeData EstimateRunTimeForFusion(
-      const HloFusionAnalysis& fusion_analysis);
+      const HloFusionAnalysis& fusion_analysis, bool is_coalesced = true);
 
   EstimateRunTimeData EstimateRunTimeForInstruction(
       const HloInstruction* producer);

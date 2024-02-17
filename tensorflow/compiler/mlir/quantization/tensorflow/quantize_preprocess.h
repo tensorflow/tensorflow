@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -57,6 +58,8 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
       session, /*run_tf_to_stablehlo=*/false,
       /*deserialize_xla_call_module=*/false);
 }
+
+void AddTFToStablehloPasses(mlir::PassManager& pm);
 
 }  // namespace quantization
 }  // namespace tensorflow

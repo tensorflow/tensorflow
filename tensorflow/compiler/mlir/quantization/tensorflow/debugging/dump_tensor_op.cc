@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/env.h"
@@ -72,7 +74,19 @@ class DumpTensorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("node_name", &node_name));
     OP_REQUIRES_OK(ctx, ctx->env()->RecursivelyCreateDir(log_dir_path));
 
-    tensor_data_path_ = io::JoinPath(log_dir_path, file_name);
+    std::string tensor_data_path = io::JoinPath(log_dir_path, file_name);
+    std::unique_ptr<tsl::WritableFile> tensor_data_file;
+    OP_REQUIRES_OK(
+        ctx, ctx->env()->NewWritableFile(tensor_data_path, &tensor_data_file));
+
+    // Turn on Zlib compression.
+    io::RecordWriterOptions options =
+        io::RecordWriterOptions::CreateRecordWriterOptions(
+            io::compression::kZlib);
+    tensor_data_writer_ =
+        std::make_unique<io::RecordWriter>(tensor_data_file.release(), options);
+    OP_REQUIRES(ctx, tensor_data_writer_ != nullptr,
+                absl::AbortedError("Could not create record writer"));
 
     // Fetch func_name and node_name from attributes and save as proto.
     quantization::UnitWiseQuantizationSpec::QuantizationUnit quant_unit_proto;
@@ -80,28 +94,31 @@ class DumpTensorOp : public OpKernel {
     quant_unit_proto.set_node_name(node_name);
 
     string quant_unit_path = io::JoinPath(log_dir_path, "quant_unit.pb");
-
     OP_REQUIRES_OK(
         ctx, SaveSerializedProtoToFile(quant_unit_proto.SerializeAsString(),
                                        quant_unit_path, ctx->env()));
   }
 
+  ~DumpTensorOp() override {
+    (void)tensor_data_writer_->Flush();
+    (void)tensor_data_writer_->Close();
+  }
+
   void Compute(OpKernelContext* ctx) override {
-    if (enabled_) {
-      const Tensor& tensor_data = ctx->input(0);
+    if (!enabled_) return;
 
-      TensorProto tensor_proto;
-      tensor_data.AsProtoTensorContent(&tensor_proto);
+    const Tensor& tensor_data = ctx->input(0);
 
-      OP_REQUIRES_OK(ctx,
-                     SaveSerializedProtoToFile(tensor_proto.SerializeAsString(),
-                                               tensor_data_path_, ctx->env()));
-    }
+    TensorProto tensor_proto;
+    tensor_data.AsProtoTensorContent(&tensor_proto);
+
+    OP_REQUIRES_OK(ctx, tensor_data_writer_->WriteRecord(
+                            tensor_proto.SerializeAsString()));
   }
 
  private:
-  std::string tensor_data_path_;
   bool enabled_;
+  std::unique_ptr<io::RecordWriter> tensor_data_writer_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DumpTensor").Device(DEVICE_CPU), DumpTensorOp);

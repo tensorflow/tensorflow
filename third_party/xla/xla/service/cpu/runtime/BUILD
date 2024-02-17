@@ -1,7 +1,8 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -23,7 +24,6 @@ cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -40,7 +40,6 @@ cc_library(
     name = "convolution",
     srcs = ["convolution.cc"],
     hdrs = ["convolution.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:executable_run_options",
         "//xla/runtime:memref_view",
@@ -68,7 +67,6 @@ cc_library(
     name = "convolution_call",
     srcs = ["convolution_call.cc"],
     hdrs = ["convolution_call.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":convolution",
         "//xla:executable_run_options",
@@ -82,7 +80,6 @@ cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:xla_proto_cc",
@@ -100,7 +97,6 @@ cc_library(
     name = "fft_call",
     srcs = ["fft_call.cc"],
     hdrs = ["fft_call.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:executable_run_options",
         "//xla:xla_proto_cc",
@@ -120,7 +116,6 @@ cc_library(
     name = "xfeed",
     srcs = ["xfeed.cc"],
     hdrs = ["xfeed.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:executable_run_options",
         "//xla:shape_util",
@@ -137,7 +132,6 @@ cc_library(
     name = "rng",
     srcs = ["rng.cc"],
     hdrs = ["rng.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:executable_run_options",
         "//xla/runtime:memref_view",
@@ -150,7 +144,6 @@ cc_library(
     name = "rng_call",
     srcs = ["rng_call.cc"],
     hdrs = ["rng_call.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":rng",
         "//xla:executable_run_options",

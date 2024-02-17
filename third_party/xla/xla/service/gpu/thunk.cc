@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -51,10 +52,11 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(CliquesMap cliques_map)
+Thunk::CollectiveCliques::CollectiveCliques(
+    NcclClique::AcquiredCliquesMap cliques_map)
     : cliques_map_(std::move(cliques_map)) {}
 
-absl::StatusOr<NcclComm::Lock> Thunk::CollectiveCliques::GetComm(
+absl::StatusOr<NcclApi::NcclCommHandle> Thunk::CollectiveCliques::GetComm(
     const NcclCliqueKey& clique_key, int32_t rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
@@ -71,7 +73,7 @@ absl::StatusOr<NcclComm::Lock> Thunk::CollectiveCliques::GetComm(
                                             clique_key.ToString()));
   }
 
-  return (*communicator)->Acquire();
+  return *communicator;
 }
 
 absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
@@ -127,18 +129,20 @@ Thunk::CollectiveExecuteParams::Create(
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
-  return CollectiveExecuteParams(run_options.run_options().run_id(),
+  return CollectiveExecuteParams(run_options.stream()->parent(),
+                                 run_options.run_options().run_id(),
                                  local_device_ordinal, global_device_id,
                                  run_options.run_options().device_assignment(),
                                  device_id_map, nccl_callback);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
-    RunId run_id, int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-    const DeviceAssignment* device_assn,
+    se::StreamExecutor* executor, RunId run_id, int64_t local_device_ordinal,
+    GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const NcclCliqueIdCallback* nccl_clique_id_callback)
-    : run_id(run_id),
+    : executor(executor),
+      run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
       device_assn(device_assn),

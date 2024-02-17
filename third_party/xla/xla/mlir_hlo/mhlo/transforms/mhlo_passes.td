@@ -334,23 +334,6 @@ def SparseRewritingPass : Pass<"mhlo-sparse-rewriting", "func::FuncOp"> {
   let constructor = "createSparseRewritingPass()";
 }
 
-/// Rank specialization passes.
-
-def RankSpecializationClusterPass
-    : Pass<"mhlo-rank-specialization-cluster", "func::FuncOp"> {
-  let constructor = "createRankSpecializationClusterPass()";
-}
-
-def RankSpecializationToSCFPass
-    : Pass<"mhlo-rank-specialization-to-scf", "func::FuncOp"> {
-  let constructor = "createRankSpecializationToSCFPass()";
-  let options = [
-    Option<"max_target_rank_", "max-target-rank", "int", /*default=*/"8",
-           "The maximum supported rank after rank specialization. Any argument "
-           "of greater rank may result in a runtime failure.">,
-  ];
-}
-
 def MhloExpandOpsSimplifierPass
     : Pass<"mhlo-expand-ops-simplifier", "func::FuncOp"> {
   let summary = "Expand feature rich mhlo ops into a set of simpler mhlo ops.";

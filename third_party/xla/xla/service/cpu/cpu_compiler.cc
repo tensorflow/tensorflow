@@ -380,7 +380,7 @@ class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
 };
 
 runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
-    const HloModule& module) {
+    const HloModule& module, mlir::DialectRegistry* custom_registry) {
   runtime::CpuPipelineOptions copts;
   runtime::JitExecutable::Options opts;
   copts.xla_cpu_sparse_cuda_threads =
@@ -389,10 +389,13 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       options::ExperimentalOverriddenPipeline(module.config());
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
-      [](xla::runtime::DialectRegistry& dialects) {
+      [custom_registry](xla::runtime::DialectRegistry& dialects) {
         dialects->insert<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect>();
         runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
         RegisterHloXlaRuntimePipelineDialects(*dialects);
+        if (custom_registry) {
+          custom_registry->appendTo(*dialects);
+        }
       };
   opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
       [](runtime::DirectCustomCallRegistry& registry) {
@@ -906,14 +909,12 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (!is_aot_compile) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
     pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
                                            compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnMatMulRewriter pass.
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -1502,9 +1503,10 @@ namespace {
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     const HloModule& hlo_module, mlir::ModuleOp mlir_module,
     absl::string_view entry_point,
-    const XlaFrameworkMapping& xla_framework_mapping) {
+    const XlaFrameworkMapping& xla_framework_mapping,
+    mlir::DialectRegistry* registry) {
   runtime::JitExecutable::Options opts =
-      GetXlaRuntimeJitExecutableOptions(hlo_module);
+      GetXlaRuntimeJitExecutableOptions(hlo_module, registry);
   std::string serialized_mlir = llvm_ir::DumpToString(mlir_module);
 
   absl::StatusOr<runtime::JitExecutable> jit_executable =
@@ -1522,7 +1524,7 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
 
 StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileXlaRuntimeCpuExecutable(
-    std::unique_ptr<HloModule> hlo_module) {
+    std::unique_ptr<HloModule> hlo_module, mlir::DialectRegistry* registry) {
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
@@ -1558,6 +1560,9 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   }
 
   mlir::MLIRContext mlir_context;
+  if (registry) {
+    mlir_context.appendDialectRegistry(*registry);
+  }
   XlaFrameworkMapping xla_framework_mapping;
   TF_ASSIGN_OR_RETURN(
       auto mlir_module,
@@ -1567,7 +1572,7 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   TF_ASSIGN_OR_RETURN(
       auto xla_runtime_executable,
       GetXlaRuntimeCpuExecutable(*hlo_module, *mlir_module, "main",
-                                 xla_framework_mapping));
+                                 xla_framework_mapping, registry));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
     TF_ASSIGN_OR_RETURN(std::string_view obj_file,
@@ -1585,7 +1590,7 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
     [[maybe_unused]] se::StreamExecutor* stream_exec,
-    [[maybe_unused]] const CompileOptions& options) {
+    const CompileOptions& options) {
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
@@ -1598,8 +1603,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   std::unique_ptr<CpuExecutable> cpu_executable;
   if (module->config().debug_options().xla_cpu_use_xla_runtime()) {
-    TF_ASSIGN_OR_RETURN(cpu_executable,
-                        CompileXlaRuntimeCpuExecutable(std::move(module)));
+    TF_ASSIGN_OR_RETURN(
+        cpu_executable,
+        CompileXlaRuntimeCpuExecutable(std::move(module), options.registry));
   } else {
     TF_ASSIGN_OR_RETURN(cpu_executable,
                         CompileLegacyCpuExecutable(std::move(module)));

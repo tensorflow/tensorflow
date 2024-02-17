@@ -322,6 +322,8 @@ absl::Status PopulateQuantizationSpecs(
       toco_flags.enable_mlir_dynamic_range_quantizer();
   quant_specs->enable_mlir_variable_quantization =
       toco_flags.enable_mlir_variable_quantization();
+  quant_specs->disable_per_channel_for_dense_layers =
+      toco_flags.disable_per_channel_quantization_for_dense_layers();
   return absl::OkStatus();
 }
 

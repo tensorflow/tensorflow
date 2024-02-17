@@ -19,9 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/shape_util.h"
@@ -113,6 +116,16 @@ class NcclApi {
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
 
+  struct DeviceRank {
+    se::StreamExecutor* device;
+    int32_t rank;
+  };
+
+  struct DeviceComm {
+    se::StreamExecutor* device;
+    NcclCommHandle comm;
+  };
+
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
   static se::DeviceMemoryBase Slice(se::DeviceMemoryBase buff,
@@ -132,6 +145,28 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
   virtual absl::StatusOr<OwnedNcclComm> CommInitRank(
       int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) = 0;
+
+  // Creates new communicators for given devices.
+  //
+  // This API doesn't have a corresponding API in NCCL and implemented as
+  // multiple calls to CommInitRank within a single group.
+  virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
+      int32_t nranks, const NcclCliqueId& clique_id,
+      absl::Span<const DeviceRank> ranks) = 0;
+
+  // Creates a new communicator by splitting an existing one.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommsplit
+  virtual absl::StatusOr<OwnedNcclComm> CommSplit(NcclCommHandle comm,
+                                                  std::optional<int32_t> color,
+                                                  int32_t key) = 0;
+
+  // Creates new communicators by splitting existing ones.
+  //
+  // This API doesn't have a corresponding API in NCCL and implemented as
+  // multiple calls to CommSplit within a single group.
+  virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
+      absl::Span<const DeviceComm> comms, absl::Span<const int32_t> ranks) = 0;
 
   // Abort any uncompleted operations and destroys the communicator. Frees
   // resources that are allocated to a communicator object comm.

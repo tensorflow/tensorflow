@@ -670,6 +670,7 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
                 first_bmm_pattern, unfused_scaled_bmm_subpattern))))) {
     // bmm1 - (scale) - softmax
     match_result.matched_bmm_1 = bmm_1;
+    match_result.matched_scale = scale;
     match_result.matched_custom_call_name =
         has_dropout ? kCudnnfMHASoftmaxDropoutCallTarget
                     : kCudnnfMHASoftmaxCallTarget;

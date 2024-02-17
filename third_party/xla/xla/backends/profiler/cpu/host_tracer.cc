@@ -81,7 +81,7 @@ absl::Status HostTracer::Start() {  // TENSORFLOW_STATUS_OK
   if (!recording_) {
     return tsl::errors::Internal("Failed to start TraceMeRecorder");
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HostTracer::Stop() {  // TENSORFLOW_STATUS_OK
@@ -90,7 +90,7 @@ absl::Status HostTracer::Stop() {  // TENSORFLOW_STATUS_OK
   }
   events_ = tsl::profiler::TraceMeRecorder::Stop();
   recording_ = false;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
@@ -100,14 +100,14 @@ absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
     return tsl::errors::Internal("TraceMeRecorder not stopped");
   }
   if (events_.empty()) {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
   tensorflow::profiler::XPlane* plane =
       tsl::profiler::FindOrAddMutablePlaneWithName(
           space, tsl::profiler::kHostThreadsPlaneName);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
                                 plane);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

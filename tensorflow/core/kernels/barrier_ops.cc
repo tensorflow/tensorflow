@@ -396,7 +396,7 @@ class Barrier : public ResourceBase {
       TF_RETURN_IF_ERROR(ready_queue_->ValidateTuple(ready_tuple));
       ready_tuples->push_back(ready_tuple);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
@@ -485,7 +485,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
           " but requested component shapes were ",
           TensorShapeUtils::ShapeListString(value_component_shapes_));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataTypeVector value_component_types_;

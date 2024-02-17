@@ -45,7 +45,6 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
-constexpr StringRef kQuantizeTargetOpAttr = "tf_quant.composite_function";
 constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
 constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
 

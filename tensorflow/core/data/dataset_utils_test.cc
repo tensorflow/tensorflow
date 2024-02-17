@@ -200,19 +200,19 @@ TEST(DatasetUtilsTest, BoolConstructor) {
 class TestSplitProvider : public SplitProvider {
  public:
   Status GetNext(Tensor* split, bool* end_of_splits) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Reset() override { return OkStatus(); }
+  Status Reset() override { return absl::OkStatus(); }
 
   Status Save(std::function<std::string(std::string)> key_name_fn,
               IteratorStateWriter* writer) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Restore(std::function<std::string(std::string)> key_name_fn,
                  IteratorStateReader* reader) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

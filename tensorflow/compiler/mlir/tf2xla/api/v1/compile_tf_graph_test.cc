@@ -214,9 +214,9 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
   EXPECT_EQ(compilation_status.Delta("kOldBridgeNoMlirSuccess"), 1);
 }
 
-TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
+TEST_F(CompileTFGraphTest, SuccessfullyCompilesWithManualSharding) {
   // MLIR module from failing test.
-  constexpr char kUnsupportedManualSharding[] = R"(
+  constexpr char kSupportedManualSharding[] = R"(
     module @module___inference_tpu_function_41 attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1617 : i32}} {
       func.func @main(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32> {mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"}) {
         %0 = tf_executor.graph {
@@ -224,7 +224,7 @@ TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
           %outputs_0, %control_1 = tf_executor.island wraps "tf.XlaSharding"(%outputs) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<2x2xf32>
           %outputs_2, %control_3 = tf_executor.island wraps "tf.XlaSpmdFullToShardShape"(%outputs_0) {dim = -1 : i64, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<1x2xf32>
           %control_4 = tf_executor.island wraps "tf._XlaHostComputeMlir"(%outputs_2) {host_mlir_module = "", manual_sharding = true, recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : (tensor<1x2xf32>) -> ()
-          %outputs_5, %control_6 = tf_executor.island(%control_4) wraps "tf._XlaHostComputeMlir"() {host_mlir_module = "", manual_sharding = true, recv_key = "host_compute_channel_1_retvals", send_key = "host_compute_channel_1_args"} : () -> tensor<1x2xf32>
+          %outputs_5, %control_6 = tf_executor.island(%control_4) wraps "tf._XlaHostComputeMlir"() {host_mlir_module = "module {\0A func.func @host_func() -> tensor<1x2xf32> {\0A %0 = \22tf.Const\22() {value = dense<0.1> : tensor<1x2xf32>} : () -> tensor<1x2xf32> \0A return %0 : tensor<1x2xf32>}}", manual_sharding = true, recv_key = "host_compute_channel_1_retvals", send_key = "host_compute_channel_1_args"} : () -> tensor<1x2xf32>
           %outputs_7, %control_8 = tf_executor.island wraps "tf.XlaSpmdShardToFullShape"(%outputs_5) {dim = -1 : i64, full_shape = #tf_type.shape<2x2>, manual_sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<1x2xf32>) -> tensor<2x2xf32>
           %outputs_9, %control_10 = tf_executor.island wraps "tf.XlaSharding"(%outputs_7) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", sharding = "\08\03\1A\02\02\01\22\02\00\01", unspecified_dims = []} : (tensor<2x2xf32>) -> tensor<2x2xf32>
           tf_executor.fetch %outputs_9 : tensor<2x2xf32>
@@ -233,13 +233,11 @@ TEST_F(CompileTFGraphTest, CatchesErrorMissedByPassManagerRun) {
       }
     }
   )";
-  auto mlir_to_hlo_args = CreateTestMlirToHloArgs(kUnsupportedManualSharding);
+  auto mlir_to_hlo_args = CreateTestMlirToHloArgs(kSupportedManualSharding);
 
   auto result = CompileWithComputation(mlir_to_hlo_args);
 
-  ASSERT_THAT(result.ok(), false);
-  EXPECT_THAT(result.status().message(),
-              testing::ContainsRegex("op manual_sharding"));
+  EXPECT_TRUE(result.ok());
 }
 
 TEST_F(CompileTFGraphTest, DoesNotInlineStatelessRandomOps) {

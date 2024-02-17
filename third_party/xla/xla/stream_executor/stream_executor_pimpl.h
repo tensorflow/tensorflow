@@ -41,13 +41,12 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -187,10 +186,8 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void* HostMemoryAllocate(uint64_t size);
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  void HostMemoryDeallocate(void* location);
+  absl::StatusOr<std::unique_ptr<HostMemoryAllocation>> HostMemoryAllocate(
+      uint64_t size);
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
@@ -373,6 +370,10 @@ class StreamExecutor {
   friend class Stream;
   template <typename... Params>
   friend class TypedKernel;
+  friend class HostMemoryAllocation;
+
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
+  void HostMemoryDeallocate(void* data, uint64_t size);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,

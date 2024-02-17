@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -357,6 +358,20 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
                                   dims.block_counts(), kernel, *kernel_args);
 }
 
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   const se::ClusterDim& cluster_dim,
+                                   se::Stream* stream) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
+      se::PackKernelArgs(args, kernel.metadata()));
+
+  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
+                                  dims.block_counts(), cluster_dim, kernel,
+                                  *kernel_args);
+}
+
 // Unimplemented for integers yet.
 template <typename T, typename Generator>
 typename std::enable_if<std::is_integral<T>::value,
@@ -471,6 +486,20 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
   return Internal("Unexpected convolution kind");
 }
 
+absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
+    CudnnNormKind kind) {
+  switch (kind) {
+    case CudnnNormKind::kLayerForwardInfer:
+      return se::dnn::LAYER_FWD_INFER;
+    case CudnnNormKind::kLayerForwardTrain:
+      return se::dnn::LAYER_FWD_TRAIN;
+    case CudnnNormKind::kLayerBackward:
+      return se::dnn::LAYER_BWD;
+    default:
+      return Internal("Unexpected norm kind");
+  }
+}
+
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind) {
   switch (kind) {
@@ -522,7 +551,7 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     default:
       break;
   }
-  return Internal("Unsupported convolution datatype");
+  return Internal("Unsupported datatype");
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {

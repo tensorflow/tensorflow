@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -33,19 +35,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/barrier.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -101,22 +103,23 @@ static absl::Duration TerminateTimeout() {
 
 NcclCliqueCommunicators::NcclCliqueCommunicators(
     NcclCliqueKey clique_key, NcclCliqueId clique_id,
-    absl::node_hash_map<int32_t, NcclComm> communicators)
+    absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators)
     : clique_key_(std::move(clique_key)),
       clique_id_(std::move(clique_id)),
       communicators_(std::move(communicators)) {}
 
-std::optional<NcclComm*> NcclCliqueCommunicators::comm(int32_t rank) {
+std::optional<NcclApi::NcclCommHandle> NcclCliqueCommunicators::comm(
+    int32_t rank) {
   if (auto it = communicators_.find(rank); it != communicators_.end()) {
-    return &it->second;
+    return it->second.get();
   }
   return std::nullopt;
 }
 
 void NcclCliqueCommunicators::ForEachComm(
-    absl::FunctionRef<void(int32_t, NcclComm&)> fn) {
+    absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn) {
   for (auto& [rank, comm] : communicators_) {
-    fn(rank, comm);
+    fn(rank, comm.get());
   }
 }
 
@@ -127,7 +130,7 @@ std::string NcclCliqueCommunicators::DebugString() const {
   int32_t cnt = 0;
   for (const auto& [rank, comm] : communicators_) {
     if (cnt++) absl::StrAppend(&out, ", ");
-    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank, comm.value());
+    absl::StrAppendFormat(&out, "[rank=%d, comm=%p]", rank, comm.get());
   }
   return out;
 }
@@ -150,26 +153,6 @@ static NcclCliques& GetNcclCliques() {
   return *cliques;
 }
 
-// Acquires a NCCL clique for a given key. Should be used with extra care if
-// executed outside of a rendezvous callback as it's unsafe to launch unrelated
-// collective operations using the same clique out of order.
-//
-// If NCCL clique for a given key is not initialized returns an empty lock.
-// Caller must always check if lock is valid before trying to use it.
-static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
-    const NcclCliqueKey& clique_key, RunId run_id,
-    int32_t num_local_participants) {
-  NcclCliques& cliques = GetNcclCliques();
-
-  absl::MutexLock lock(&cliques.mu);
-  if (auto it = cliques.map.find(clique_key); it != cliques.map.end()) {
-    return it->second.Acquire();
-  }
-
-  // Return empty lock if we do not have a clique for `clique_key`.
-  return NcclClique::Lock();
-}
-
 //===----------------------------------------------------------------------===//
 // NcclClique Heart Beat Monitor
 //===----------------------------------------------------------------------===//
@@ -177,17 +160,14 @@ static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
 // Runs an async error check for a `comm` and aborts it if it is in the
 // error state. It will free resources that are allocated to a communicator
 // and abort any uncompleted operations before destroying the communicator.
-static absl::Status CheckComm(NcclComm& lockable_comm) {
-  if (NcclComm::Lock comm = lockable_comm.TryAcquire()) {
-    absl::Status async_err = NcclApi::Default()->CommGetAsyncError(*comm);
-    if (!async_err.ok()) {
-      LOG(ERROR) << "Aborting communicator: " << comm
-                 << " due to async NCCL error: " << async_err;
-      TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(*comm));
-    }
-    return async_err;
+static absl::Status CheckComm(NcclApi::NcclCommHandle comm) {
+  absl::Status async_err = NcclApi::Default()->CommGetAsyncError(comm);
+  if (!async_err.ok()) {
+    LOG(ERROR) << "Aborting communicator: " << comm
+               << " due to async NCCL error: " << async_err;
+    TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(comm));
   }
-  return absl::OkStatus();
+  return async_err;
 }
 
 // Runs async check on all communicators in a clique.
@@ -196,7 +176,7 @@ static void CheckClique(const NcclCliqueKey& clique_key,
   if (NcclClique::Lock clique = lockable_clique.TryAcquire()) {
     VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
             << " for async errors; num_communicators=" << clique->size();
-    clique->ForEachComm([](int32_t rank, NcclComm& comm) {
+    clique->ForEachComm([](int32_t rank, NcclApi::NcclCommHandle comm) {
       if (auto status = CheckComm(comm); !status.ok()) LOG(ERROR) << status;
     });
   } else {
@@ -233,38 +213,24 @@ static void StartNcclCliqueHeartBeatMonitor() {
 
 // NcclClique initialization must be executed together by all participants, and
 // we rely on rendezvous to guarantee that all ranks are ready to initialize
-// NCCL communicators.
+// NCCL communicators. In general collective operations are expected to be
+// executed concurrently by all participating ranks, and when some ranks do not
+// join the operation it  leads to deadlocks. We use a combination of rendezvous
+// and locking to guarantee that all collective operations in XLA have a well
+// defined order and do not deadlock inside underlying collective communication
+// library.
 
-namespace {
-// Local (in-process) NCCL clique initialization state. Once initialization is
-// complete NCCL clique added to the NcclCliques container (see above).
-struct InitializationState {
-  using Ranks = absl::Span<const int32_t* const>;
-  InitializationState(NcclCliqueId clique_id, Ranks ranks);
-
-  NcclCliqueId clique_id;
-  absl::node_hash_map<int32_t, absl::StatusOr<NcclApi::OwnedNcclComm>> comms;
-
-  // Signals when all participants updated entries in `comms`.
-  std::unique_ptr<absl::Barrier> ready;
-};
-
-}  // namespace
-
-InitializationState::InitializationState(NcclCliqueId clique_id, Ranks ranks)
-    : clique_id(clique_id), ready(new absl::Barrier(ranks.size())) {
-  // Initialize `comms` for all ranks so that each participating thread can
-  // write into it without synchronization.
-  for (const int32_t* rank : ranks) {
-    comms[*rank] = absl::InternalError("uninitialized NCCL communicator");
-  }
+static auto DeviceRanksToString(absl::Span<const NcclApi::DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    str->append(std::to_string(rank.rank));
+  });
 }
 
-// Creates a new NCCL communicator for a given `rank` and joins a rendezvous to
-// initialize a clique for a `clique_key`. Returns a lock that gives exclusive
-// access to a NCCL clique.
+// Joins a NcclClique initialization rendezvous for a `clique_key` and returns
+// a lock that gives an access to initialized clique (access is shared between
+// all participating ranks that own a shared pointer).
 static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
-    RunId run_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback,
     int32_t num_local_participants, int32_t rank) {
   int nranks = clique_key.devices().size();
@@ -275,12 +241,56 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // Start NCCL clique heart beat monitor when create a first clique.
   StartNcclCliqueHeartBeatMonitor();
 
-  // Creates initialization state for participating ranks.
-  auto create_initialization_state = [&](absl::Span<const int32_t* const> ranks)
-      -> absl::StatusOr<InitializationState> {
+  // Initializes a NcclClique for given device ranks and returns a lock that
+  // gives access to clique communicators.
+  auto initialize = [&](absl::Span<const NcclApi::DeviceRank* const> args)
+      -> absl::StatusOr<NcclClique::Lock> {
     TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(clique_key));
-    VLOG(3) << "Created unique clique id (hash): " << absl::HashOf(clique_id);
-    return InitializationState(clique_id, ranks);
+
+    std::vector<NcclApi::DeviceRank> ranks;
+    ranks.reserve(args.size());
+    for (auto* arg : args) ranks.emplace_back(*arg);
+
+    // Sort device ranks, mainly to get more readable logs below, NCCL does
+    // not care in what order ranks are initialized.
+    absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
+
+    VLOG(3) << absl::StreamFormat(
+        "Create NCCL communicators for clique %s; ranks=[%s]; hash(id)=%d",
+        clique_key.ToString(), DeviceRanksToString(ranks),
+        absl::HashOf(clique_id));
+
+    TF_ASSIGN_OR_RETURN(
+        std::vector<NcclApi::OwnedNcclComm> created_comms,
+        NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks));
+
+    absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> comms;
+    for (size_t i = 0; i < ranks.size(); ++i) {
+      comms[ranks[i].rank] = std::move(created_comms[i]);
+    }
+
+    VLOG(3) << absl::StreamFormat(
+        "Created NCCL communicators for clique %s; ranks=[%s]; hash(id)=%d",
+        clique_key.ToString(), DeviceRanksToString(ranks),
+        absl::HashOf(clique_id));
+
+    NcclCliques& cliques = GetNcclCliques();
+    absl::MutexLock lock(&cliques.mu);
+
+    // Create a new clique with given clique id and communicators.
+    auto emplaced = cliques.map.try_emplace(clique_key, clique_key, clique_id,
+                                            std::move(comms));
+
+    // We can have a race to create a clique for a given key, the winner
+    // inserts it into a map and the looser destroys all communicators.
+    if (!emplaced.second) {
+      VLOG(3) << "Clique already exists: "
+              << emplaced.first->second.DebugString();
+    } else {
+      VLOG(3) << "Created new clique: " << emplaced.first->second.DebugString();
+    }
+
+    return emplaced.first->second.Acquire();
   };
 
   // We include `run_id` to a rendezvous key to make sure that multiple
@@ -291,163 +301,54 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
       "create clique initialization state for rank %d; clique=%s; run_id=%d",
       rank, clique_key.ToString(), run_id.ToInt());
 
-  // Do a round of rendezvous to wait for all participants to join NCCL clique
-  // initialization process.
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<InitializationState> state,
-                      RendezvousSingle<absl::StatusOr<InitializationState>>(
-                          initialization_rendezvous_name, rendezvous_key, rank,
-                          num_local_participants, create_initialization_state,
-                          WarnStuckTimeout(), TerminateTimeout()));
-
-  VLOG(3) << "Create NCCL communicator for clique " << clique_key.ToString()
-          << " rank #" << rank << " of " << nranks
-          << "; num_local_participants=" << num_local_participants;
-
-  absl::StatusOr<NcclApi::OwnedNcclComm> comm =
-      NcclApi::Default()->CommInitRank(nranks, state->clique_id, rank);
-
-  if (comm.ok()) {
-    state->comms[rank] = std::move(*comm);
-  } else {
-    state->comms[rank] = comm.status();
-  }
-
-  // Wait for all participants to complete communicator initialization.
-  bool completed_initialization = state->ready->Block();
-
-  // Check that all ranks successfully initialize communicators.
-  for (const auto& [rank, comm] : state->comms) {
-    TF_RETURN_IF_ERROR(comm.status());
-  }
-
-  // If we are the leader who completed the clique initialization we should
-  // update the local (in-process) cliques state.
-  if (completed_initialization) {
-    NcclCliques& cliques = GetNcclCliques();
-
-    // Create NCCL communicators from handles.
-    absl::node_hash_map<int32_t, NcclComm> communicators;
-    for (auto& [rank, comm] : state->comms) {
-      if (*comm == nullptr) {
-        return absl::InternalError(absl::StrFormat(
-            "uninitialized NCCL communicator for rank %d", rank));
-      }
-      communicators.try_emplace(rank, comm->release());
-    }
-
-    VLOG(3) << "Completed NCCL clique initialization for a clique "
-            << clique_key.ToString();
-
-    // Create a new clique with given clique id and communicators.
-    absl::MutexLock lock(&cliques.mu);
-    auto emplaced = cliques.map.try_emplace(
-        clique_key, clique_key, state->clique_id, std::move(communicators));
-
-    // We can have a race to create a clique for a given key, the winner inserts
-    // it into a map and the looser destroys all communicators.
-    if (!emplaced.second) {
-      VLOG(3) << "Clique already exists: "
-              << emplaced.first->second.DebugString();
-    } else {
-      VLOG(3) << "Created new clique: " << emplaced.first->second.DebugString();
-    }
-  }
-
-  // Do one more round of rendezvous to guarantee that all ranks that
-  // participated in clique initialization will share an exclusive access to all
-  // communicators in a NCCL clique.
-  auto initialized_rendezvous_name = absl::StrFormat(
-      "acquire initialized clique for rank %d; clique=%s; run_id=%d", rank,
-      clique_key.ToString(), run_id.ToInt());
+  NcclApi::DeviceRank device_rank = {device, rank};
 
   return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
-      initialized_rendezvous_name, rendezvous_key, num_local_participants,
-      [&] {
-        return AcquireNcclClique(clique_key, run_id, num_local_participants);
-      },
-      WarnStuckTimeout(), TerminateTimeout());
+      initialization_rendezvous_name, rendezvous_key, device_rank,
+      num_local_participants, initialize, WarnStuckTimeout(),
+      TerminateTimeout());
 }
 
 //===----------------------------------------------------------------------===//
 
+using AcquiredCliquesMap = NcclClique::AcquiredCliquesMap;
+
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
-    RunId run_id, OpId op_id, NcclCliqueKey clique_key,
+    se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    size_t num_local_participants, bool may_skip_rendezvous) {
+    size_t num_local_participants, const AcquiredCliquesMap& acquired_cliques) {
   VLOG(2) << "Acquire NCCL clique " << clique_key.ToString() << "; run"
-          << run_id.ToString() << "; op" << op_id.value() << "; rank " << rank
+          << run_id.ToString() << "; rank " << rank
           << "; num_local_participants=" << num_local_participants
-          << "; may_skip_rendezvous=" << may_skip_rendezvous;
+          << "; acquired_cliques=" << acquired_cliques.size();
 
-  // If we prefer to skip rendezvous check if NcclClique is already available
-  // for a given key.
-  // TODO(ezhulenev): Remove this code path as it leads to deadlocks.
-  if (may_skip_rendezvous) {
-    TF_ASSIGN_OR_RETURN(
-        NcclClique::Lock clique,
-        AcquireNcclClique(clique_key, run_id, num_local_participants));
-
-    // If lock is not null return it to the caller.
-    if (clique) return std::make_shared<NcclClique::Lock>(std::move(clique));
-
-  } else {
-    // Get the clique lock via the rendezvous process.
-    auto rendezvous_key = std::make_tuple(run_id, clique_key);
-    auto rendezvous_name =
-        absl::StrFormat("acquire clique for rank %d; clique=%s; run_id=%d",
-                        rank, clique_key.ToString(), run_id.ToInt());
-
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<NcclClique::Lock> clique,
-        RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
-            rendezvous_name, rendezvous_key, num_local_participants,
-            [&] {
-              return AcquireNcclClique(clique_key, run_id,
-                                       num_local_participants);
-            },
-            WarnStuckTimeout(), TerminateTimeout()));
-
-    // If lock is not null return it to the caller.
-    if (*clique) return clique;
-  }
-
-  // If NCCL clique is not found try to initialize a new one for a given key.
-  return InitializeNcclClique(run_id, clique_key, clique_id_callback,
-                              num_local_participants, rank);
-}
-
-absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
-    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
-    size_t num_local_participants,
-    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
-    int64_t stream_id, bool enable_clique_optimization) {
-  // Ensure that this group of threads have exclusive access to the clique to
-  // prevent threads from different groups locking communicators in the clique.
-  // The enable_clique_optimization value is only used for asynchronous
-  // collective stream currently. For synchronous collectives, we should always
-  // enable the optimization. For P2P stream, we currently have to always enable
-  // the optimization, because we initially implement this optimization to
-  // workaround an NCCL bug related to P2P operations.
-  NcclCliqueKey clique_key(std::move(participants), stream_id);
+  // Get the clique lock via the rendezvous to guarantee that all clique
+  // members participate in XLA run.
+  auto rendezvous_key = std::make_tuple(run_id, clique_key);
+  auto rendezvous_name =
+      absl::StrFormat("acquire clique for rank %d; clique=%s; run_id=%d", rank,
+                      clique_key.ToString(), run_id.ToInt());
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<NcclClique::Lock> clique,
-      AcquireNcclClique(
-          run_id, op_id, clique_key, clique_id_callback, rank,
-          num_local_participants,
-          enable_clique_optimization ||
-              stream_id != GetStreamId(/*is_async=*/true,
-                                       AsyncStreamKind::kCollective)));
+      RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
+          rendezvous_name, rendezvous_key, num_local_participants,
+          [&] {
+            NcclCliques& cliques = GetNcclCliques();
+            absl::MutexLock lock(&cliques.mu);
+            // Returns empty lock if we do not have a clique for `clique_key`.
+            auto it = cliques.map.find(clique_key);
+            return it == cliques.map.end() ? NcclClique::Lock()
+                                           : it->second.Acquire();
+          },
+          WarnStuckTimeout(), TerminateTimeout()));
 
-  // Check that clique has a communicator for our rank.
-  auto communicator = (*clique)->comm(rank);
-  if (!communicator.has_value()) {
-    return absl::InternalError(absl::StrCat("Communicator for rank ", rank,
-                                            " not found in a NCCL clique ",
-                                            clique_key.ToString()));
-  }
+  // If lock is not null return it to the caller.
+  if (*clique) return clique;
 
-  return (*communicator)->Acquire();
+  // If NCCL clique is not found try to initialize a new one for a given key.
+  return InitializeNcclClique(device, run_id, clique_key, clique_id_callback,
+                              num_local_participants, rank);
 }
 
 }  // namespace xla::gpu

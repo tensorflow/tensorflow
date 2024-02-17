@@ -57,7 +57,7 @@ REGISTER_OP("DTensorAllScatter")
       if (!c->RankKnown(in)) {
         // Input shape unknown, so set unknown output shape.
         c->set_output(0, in);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string input_layout_string;
@@ -100,7 +100,7 @@ REGISTER_OP("DTensorAllScatter")
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DTensorAllGather")
@@ -117,7 +117,7 @@ REGISTER_OP("DTensorAllGather")
       if (!c->RankKnown(in)) {
         // Input shape unknown, so set unknown output shape.
         c->set_output(0, in);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string input_layout_string;
@@ -159,7 +159,7 @@ REGISTER_OP("DTensorAllGather")
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DTensorAllToAll")
@@ -173,7 +173,7 @@ REGISTER_OP("DTensorAllToAll")
       if (!c->RankKnown(in)) {
         // Input shape unknown, so set unknown output shape.
         c->set_output(0, in);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string input_layout_string;
@@ -218,7 +218,7 @@ REGISTER_OP("DTensorAllToAll")
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace dtensor

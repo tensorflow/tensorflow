@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
@@ -239,7 +238,7 @@ static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
   return NcclCliqueKey(std::move(participants), stream_id);
 }
 
-absl::StatusOr<NcclComm::Lock> GetNcclComm(
+absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -250,51 +249,6 @@ absl::StatusOr<NcclComm::Lock> GetNcclComm(
 
   std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
   return collective_cliques.GetComm(std::move(clique_key), *rank);
-}
-
-// TODO(ezhulenev): This is a deprecated code path and should be removed after
-// all users in legacy XLA runtime are removed.
-absl::StatusOr<NcclComm::Lock> LockNcclComm(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization) {
-  GlobalDeviceId global_device_id = params.global_device_id;
-
-  TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(global_device_id, *params.device_assn,
-                              replica_groups, group_mode));
-
-  if (IsGlobalNcclConfig() &&
-      (participants.size() != params.device_assn->replica_count())) {
-    return InvalidArgument(
-        "Partial replica groups are not allowed when using NCCL_COMM_ID "
-        "environment configuration.");
-  }
-
-  auto it = absl::c_find(participants, global_device_id);
-  TF_RET_CHECK(it != participants.end());
-  int rank = it - participants.begin();
-
-  std::vector<GlobalDeviceId> local_devices;
-  if (params.global_device_id_map) {
-    local_devices.reserve(params.global_device_id_map->size());
-    for (const auto& entry : *params.global_device_id_map) {
-      local_devices.push_back(entry.second);
-    }
-  }
-  size_t num_local_participants = GetNumLocalParticipants(
-      participants, params.global_device_id_map ? &local_devices : nullptr);
-
-  bool is_local = participants.size() == num_local_participants;
-  TF_ASSIGN_OR_RETURN(
-      const NcclCliqueIdCallback* clique_id_callback,
-      GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
-
-  return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
-                         num_local_participants, *clique_id_callback, rank,
-                         stream_id, enable_clique_optimization);
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -467,7 +421,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
                                 Thunk::KindToString(kind()));
   const int64_t stream_id = GetStreamId();
   TF_ASSIGN_OR_RETURN(
-      NcclComm::Lock comm,
+      NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode, stream_id));
 
@@ -481,7 +435,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Wait for main compute stream to make sure all buffers are ready.
     async_stream.ThenWaitFor(params.stream);
 
-    TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, *comm));
+    TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, comm));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
@@ -489,7 +443,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   } else {
     // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, *comm));
+    TF_RETURN_IF_ERROR(RunNcclCollective(params, *params.stream, comm));
   }
 
   // After a first execution of this instance of collective operation do a

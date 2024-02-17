@@ -315,6 +315,10 @@ auto* tf_data_error = tsl::monitoring::Counter<2>::New(
     "The number of times an error of this type occurred with this status code.",
     "error_type", "status_code");
 
+auto* tf_data_framework_type = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/framework_type",
+    "The framework type used to build the tf.data.Dataset.", "framework_type");
+
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
     "The number of dense features parsed by ops for parsing tf.Example.");
@@ -685,6 +689,10 @@ void RecordTFDataDebug(const string& event) {
 
 void RecordTFDataError(const string& error_type, const string& status_code) {
   tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
+}
+
+void RecordTFDataFrameworkType(const std::string& framework_type) {
+  tf_data_framework_type->GetCell(framework_type)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {

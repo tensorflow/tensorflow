@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -50,66 +51,18 @@ void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
   shape->mutable_layout()->set_memory_space(memory_space_color);
 }
 
-StatusOr<bool> DuplicateBroadcastForEachUse(HloModule* module) {
-  bool split_at_least_one = false;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() != HloOpcode::kBroadcast ||
-          !instruction->HasConstantOperand()) {
-        continue;
-      }
-      absl::InlinedVector<HloUse, 8> uses;
-      for (HloInstruction* user : instruction->users()) {
-        for (int64_t i = 0; i < user->operand_count(); ++i) {
-          if (user->operand(i) != instruction) {
-            continue;
-          }
-          uses.push_back(HloUse{user, i, /*operand_index=*/{}});
-        }
-      }
-
-      if (uses.size() <= 1) {
-        continue;
-      }
-
-      VLOG(1) << "Splitting broadcast " << instruction->ToString()
-              << " which has " << uses.size() << " uses";
-      split_at_least_one = true;
-      // Don't create a new broadcast for the first use; we can still use the
-      // original.
-      for (int i = 1; i < uses.size(); ++i) {
-        const HloUse& use = uses[i];
-        HloInstruction* new_broadcast =
-            instruction->parent()->AddInstruction(instruction->Clone());
-        VLOG(2) << "New broadcast " << new_broadcast->ToString();
-        TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
-            use.operand_number, new_broadcast));
-      }
-    }
-  }
-  return split_at_least_one;
-}
-
 // Checks if all of the HloPositions of this HloValue, apart from the defining
 // position, are allowed when doing memory-only offload.
 bool AllPositionsAreAllowed(const HloValue* value) {
   // Given an HloValue, validate that none of its positions are doing any
   // compute.
-  // TODO(b/319167527):
-  //  Add kCopy to the list after ensuring that it is always safe to
-  //  do so.
-  static constexpr std::array kAllowedPositionOpcodes = {
-      HloOpcode::kTuple, HloOpcode::kGetTupleElement,
-      HloOpcode::kOptimizationBarrier, HloOpcode::kParameter,
-      HloOpcode::kWhile};
   for (const HloPosition& position : value->positions()) {
     if (position == value->defining_position()) {
       // Skip defining positions.
       continue;
     }
     // Check if this position is of an allowed type.
-    if (!absl::c_linear_search(kAllowedPositionOpcodes,
+    if (!absl::c_linear_search(HostOffloader::GetAllowedPositionOpcodes(),
                                position.instruction->opcode())) {
       VLOG(1) << "Position " << position.instruction->ToString()
               << " is not supported.";
@@ -147,8 +100,39 @@ StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
   return result;
 }
 
+template <typename MatcherType>
+StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
+    const HloBuffer& buffer, MatcherType matcher) {
+  std::vector<HloInstruction*> result;
+  for (const HloValue* value : buffer.values()) {
+    VLOG(3) << "Buffer defined at " << value->defining_instruction()->name()
+            << " has positions ["
+            << absl::StrJoin(value->positions(), ", ",
+                             [](std::string* out, const HloPosition& position) {
+                               out->append(position.instruction->name());
+                             })
+            << "]";
+    for (const HloPosition& position : value->positions()) {
+      VLOG(4) << "  Position " << position.instruction->name() << " has users ["
+              << absl::StrJoin(
+                     position.instruction->users(), ", ",
+                     [](std::string* out, const HloInstruction* user) {
+                       out->append(user->name());
+                     })
+              << "]";
+      for (HloInstruction* user : position.instruction->users()) {
+        if (Match(user, matcher)) {
+          result.emplace_back(user);
+        }
+      }
+    }
+  }
+  return result;
+}
+
 HloInstruction* FindDSAnnotation(HloInstruction* hlo) {
-  while (!hlo->IsCustomCall(HostOffloader::kPipelineBackwardTarget)) {
+  while (!hlo->IsCustomCall(
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
     if (hlo->opcode() != HloOpcode::kReshape &&
         hlo->opcode() != HloOpcode::kBitcast) {
       break;
@@ -219,14 +203,19 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
         value->defining_position().instruction;
     if (defining_instruction->opcode() == HloOpcode::kBroadcast) {
       if (broadcast_value != nullptr) {
-        LOG(WARNING) << "Already found one broadcast value for this buffer";
+        LOG(WARNING) << "Already found one broadcast ("
+                     << broadcast_value->defining_position().instruction->name()
+                     << ") value for this buffer. This one is "
+                     << defining_instruction->name();
       }
       broadcast_value = value;
     } else if (defining_instruction->opcode() ==
                HloOpcode::kDynamicUpdateSlice) {
       if (dus_value != nullptr) {
-        LOG(WARNING)
-            << "Already found one dynamic-update-slice value for this buffer";
+        LOG(WARNING) << "Already found one dynamic-update-slice ("
+                     << dus_value->defining_position().instruction->name()
+                     << ") value for this buffer. This one is "
+                     << defining_instruction->name();
       }
       dus_value = value;
     } else {
@@ -276,37 +265,58 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithDus(
   // Make sure that nothing is expecting the result of the broadcast, as we'll
   // be replacing it.
 
-  // Check that this buffer is finally an input to dynamic-slice.
+  // Check that this buffer is finally an input to at least one slice or
+  // dynamic-slice.
   TF_ASSIGN_OR_RETURN(
-      HloInstruction * consuming_ds,
-      BufferHasPositionWithUser(unique_buffer, match::DynamicSlice()));
-  if (consuming_ds == nullptr) {
+      std::vector<HloInstruction*> consuming_slices,
+      GetBufferUsersOfType(
+          unique_buffer,
+          match::AnyOf<HloInstruction>(match::Slice(), match::DynamicSlice())));
+  VLOG(2) << dynamic_update_slice->name()
+          << " is consumed by [dynamic-]slices: ["
+          << absl::StrJoin(consuming_slices, ", ",
+                           [](std::string* out, const HloInstruction* inst) {
+                             out->append(inst->name());
+                           })
+          << ']';
+  if (consuming_slices.empty()) {
     return Internal(
-        "The dynamic-update-slice (%s) never feeds into a dynamic-slice.",
+        "The dynamic-update-slice (%s) never feeds into a slice nor "
+        "dynamic-slice.",
         dynamic_update_slice->name());
   }
 
-  // The dynamic_slice should feed into another annotation.
-  if (consuming_ds->user_count() != 1) {
-    return Internal(
-        "Dynamic-slice should only have one user. It should be an annotation "
-        "to load the data back on the device. Instead, it has users [%s]",
-        absl::StrJoin(consuming_ds->users(), ", ",
-                      [](std::string* out, const HloInstruction* inst) {
-                        out->append(inst->name());
-                      }));
+  // Each dynamic_slice and slice should feed into another annotation.
+  for (HloInstruction* consuming_slice : consuming_slices) {
+    VLOG(1) << "Host data produced by " << dynamic_update_slice->name()
+            << " is consumed by " << consuming_slice->name();
+    if (consuming_slice->user_count() != 1) {
+      return Internal(
+          "Slice/Dynamic-slice %s should only have one user. It should be an "
+          "annotation "
+          "to load the data back on the device. Instead, it has users [%s]",
+          consuming_slice->name(),
+          absl::StrJoin(consuming_slice->users(), ", ",
+                        [](std::string* out, const HloInstruction* inst) {
+                          out->append(inst->name());
+                        }));
+    }
+    HloInstruction* consuming_slice_user =
+        FindDSAnnotation(consuming_slice->users()[0]);
+    if (consuming_slice_user->opcode() != HloOpcode::kCustomCall) {
+      return Internal(
+          "Slice/Dynamic-slice %s does not have a matching annotation.",
+          consuming_slice->name());
+    }
+    if (consuming_slice_user->custom_call_target() !=
+        host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
+      return Internal(
+          "Found custom-call (%s) is not the expected matching host offload "
+          "annotation",
+          consuming_slice_user->name());
+    }
+    expected_host_to_device_annotations_.emplace(consuming_slice_user);
   }
-  HloInstruction* consuming_ds_user =
-      FindDSAnnotation(consuming_ds->users()[0]);
-  if (consuming_ds_user->opcode() != HloOpcode::kCustomCall) {
-    return Internal("Dynamic-slice does not have a matching annotation.");
-  }
-  if (consuming_ds_user->custom_call_target() != kPipelineBackwardTarget) {
-    return Internal(
-        "Found custom-call is not the expected matching host offload "
-        "annotation");
-  }
-  expected_reload_annotations_.emplace(consuming_ds_user);
 
   // Save the broadcast to later be replaced with a
   // custom-call("AllocateBuffer")
@@ -396,12 +406,13 @@ Status HostOffloader::MemoryOnlyOffloadStartingWithCopy(
   if (consuming_copy_user->opcode() != HloOpcode::kCustomCall) {
     return Internal("Copy does not have a matching annotation.");
   }
-  if (consuming_copy_user->custom_call_target() != kPipelineBackwardTarget) {
+  if (consuming_copy_user->custom_call_target() !=
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
     return Internal(
         "Found custom-call is not the expected matching host offload "
         "annotation");
   }
-  expected_reload_annotations_.emplace(consuming_copy_user);
+  expected_host_to_device_annotations_.emplace(consuming_copy_user);
 
   AddAllPositionsToBeMovedToHostMemory(unique_buffer);
   return OkStatus();
@@ -426,15 +437,17 @@ Status HostOffloader::MemoryOnlyOffloadInsertCopies(
   // Check that this buffer is finally an input to a load-from-host custom-call.
   TF_ASSIGN_OR_RETURN(
       HloInstruction * matching_annotation,
-      BufferHasPositionWithUser(unique_buffer,
-                                match::CustomCall({kPipelineBackwardTarget})));
+      BufferHasPositionWithUser(
+          unique_buffer,
+          match::CustomCall({host_memory_offload_annotations::
+                                 kMoveToDeviceCustomCallTarget})));
   if (matching_annotation == nullptr) {
     return Internal(
         "The offloaded data (from %s) never feeds into a matching \"load\" "
         "annotation.",
         custom_call->name());
   }
-  expected_reload_annotations_.emplace(matching_annotation);
+  expected_host_to_device_annotations_.emplace(matching_annotation);
 
   // This fits the pattern that we're looking for. Now insert copies to do the
   // offload and reload.
@@ -470,15 +483,7 @@ Status HostOffloader::HandlePipelineBackwardCustomCall(
   VLOG(2) << "Found a custom call annotating end-of-host-offload: "
           << custom_call->ToString();
   // Save a pointer to this custom call for later removal.
-  auto it = absl::c_find(expected_reload_annotations_, custom_call);
-  if (it == expected_reload_annotations_.end()) {
-    return Internal(
-        "Found an annotation to move data to the device without a matching "
-        "annotation to move data to the host");
-  } else {
-    expected_reload_annotations_.erase(it);
-  }
-  custom_calls_to_remove_.emplace(custom_call);
+  found_host_to_device_annotations_.emplace(custom_call);
   return OkStatus();
 }
 
@@ -510,16 +515,6 @@ StatusOr<bool> HostOffloader::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  // Split broadcasts so that each HloUse of a broadcast instruction will get
-  // its own copy.
-  // TODO(b/319293925): Do not blindly duplicate all broadcasts, instead do it
-  // only when necessary.
-  TF_ASSIGN_OR_RETURN(bool duplicated_at_least_one_broadcast,
-                      DuplicateBroadcastForEachUse(module));
-  if (duplicated_at_least_one_broadcast) {
-    changed = true;
-  }
-
   // Run HloAliasAnalysis on module.
   TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
 
@@ -531,25 +526,36 @@ StatusOr<bool> HostOffloader::Run(
       if (instruction->opcode() != HloOpcode::kCustomCall) {
         continue;
       }
-      if (instruction->custom_call_target() == kPipelineForwardTarget) {
+      if (instruction->custom_call_target() ==
+          host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
         TF_RETURN_IF_ERROR(HandlePipelineForwardCustomCall(instruction));
-      } else if (instruction->custom_call_target() == kPipelineBackwardTarget) {
+      } else if (instruction->custom_call_target() ==
+                 host_memory_offload_annotations::
+                     kMoveToDeviceCustomCallTarget) {
         TF_RETURN_IF_ERROR(HandlePipelineBackwardCustomCall(instruction));
       }
     }
   }
 
-  for (HloInstruction* instr : expected_reload_annotations_) {
-    // We never addressed a reload annotation. Something likely went wrong.
-    LOG(WARNING) << "Never handled annotation " << instr->name();
-  }
-  if (!expected_reload_annotations_.empty()) {
+  // Check that we found all the annotations that we expected.
+  if (found_host_to_device_annotations_ !=
+      expected_host_to_device_annotations_) {
     return Internal(
-        "Have unhandled annotation(s) %s",
-        absl::StrJoin(expected_reload_annotations_, ", ",
-                      [](std::string* out, const HloInstruction* inst) {
-                        out->append(inst->name());
+        "There is a mismatch between the expected host-to-device annotations "
+        "(%s) and the found host-to-device annotations (%s)",
+        absl::StrJoin(expected_host_to_device_annotations_, ", ",
+                      [](std::string* str, HloInstruction* instr) {
+                        str->append(instr->name());
+                      }),
+        absl::StrJoin(found_host_to_device_annotations_, ", ",
+                      [](std::string* str, HloInstruction* instr) {
+                        str->append(instr->name());
                       }));
+  }
+
+  // Remove these host-to-device annotations.
+  for (HloInstruction* instr : found_host_to_device_annotations_) {
+    custom_calls_to_remove_.emplace(instr);
   }
 
   absl::flat_hash_set<HloInstruction*> slices_to_dynamify;
@@ -590,20 +596,7 @@ StatusOr<bool> HostOffloader::Run(
   for (HloInstruction* custom_call : custom_calls_to_remove_) {
     CHECK_EQ(custom_call->operand_count(), 1);
     HloInstruction* operand = custom_call->operands()[0];
-
-    if (!Layout::Equal().IgnoreMemorySpace()(custom_call->shape().layout(),
-                                             operand->shape().layout())) {
-      // LayoutAssignment might change the layout of the operand but leave the
-      // custom call layout unchanged. In that case, insert a copy.
-      // TODO(b/319686942): Once LayoutAssignment propagates the layout through
-      // this specific custom call, remove this insertion of a copy.
-      TF_RETURN_IF_ERROR(custom_call->ReplaceAllUsesWith(
-          custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
-              custom_call->shape(), HloOpcode::kCopy, operand))));
-    } else {
-      CHECK_OK(custom_call->ReplaceAllUsesWith(operand));
-    }
-
+    CHECK_OK(custom_call->ReplaceAllUsesWith(operand));
     TF_RETURN_IF_ERROR(custom_call->parent()->RemoveInstruction(custom_call));
     changed = true;
   }

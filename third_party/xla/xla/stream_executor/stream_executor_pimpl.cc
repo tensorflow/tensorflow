@@ -21,15 +21,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 
-#include "absl/base/const_init.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -38,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -292,18 +291,23 @@ absl::Status StreamExecutor::CollectiveMemoryDeallocate(void* location) {
   return implementation_->CollectiveMemoryDeallocate(location);
 }
 
-void* StreamExecutor::HostMemoryAllocate(uint64_t size) {
+absl::StatusOr<std::unique_ptr<HostMemoryAllocation>>
+StreamExecutor::HostMemoryAllocate(uint64_t size) {
   void* buffer = implementation_->HostMemoryAllocate(size);
   VLOG(1) << "Called StreamExecutor::HostMemoryAllocate(size=" << size
           << ") returns " << buffer << StackTraceIfVLOG10();
-  return buffer;
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
+  return std::make_unique<HostMemoryAllocation>(buffer, size, implementation());
 }
 
-void StreamExecutor::HostMemoryDeallocate(void* location) {
-  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(location=" << location
-          << ")" << StackTraceIfVLOG10();
+void StreamExecutor::HostMemoryDeallocate(void* data, uint64_t size) {
+  VLOG(1) << "Called StreamExecutor::HostMemoryDeallocate(data=" << data << ")"
+          << StackTraceIfVLOG10();
 
-  return implementation_->HostMemoryDeallocate(location);
+  return implementation_->HostMemoryDeallocate(data);
 }
 
 bool StreamExecutor::SynchronizeAllActivity() {
@@ -557,18 +561,15 @@ absl::StatusOr<Stream*> StreamExecutorMemoryAllocator::GetStream(
       << "The logic below only works for synchronous allocators";
   TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
                       GetStreamExecutor(device_ordinal));
-  Stream* out = [&] {
-    absl::MutexLock lock(&mutex_);
-    if (!streams_.count(device_ordinal)) {
-      auto p = streams_.emplace(std::piecewise_construct,
-                                std::forward_as_tuple(device_ordinal),
-                                std::forward_as_tuple(executor));
-      p.first->second.Init();
-      return &p.first->second;
-    }
-    return &streams_.at(device_ordinal);
-  }();
-  return out;
+  absl::MutexLock lock(&mutex_);
+  if (!streams_.count(device_ordinal)) {
+    auto p = streams_.emplace(std::piecewise_construct,
+                              std::forward_as_tuple(device_ordinal),
+                              std::forward_as_tuple(executor));
+    TF_RETURN_IF_ERROR(p.first->second.Initialize());
+    return &p.first->second;
+  }
+  return &streams_.at(device_ordinal);
 }
 
 }  // namespace stream_executor

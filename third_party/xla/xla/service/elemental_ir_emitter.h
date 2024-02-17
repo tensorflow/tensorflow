@@ -236,9 +236,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                           llvm::Value* accumulator,
                           xla::PrimitiveType primitive_type);
 
-  // Identifier of the thread unique among all threads on the device
-  virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
-
   StatusOr<llvm::Value*> EmitElementalSelect(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,

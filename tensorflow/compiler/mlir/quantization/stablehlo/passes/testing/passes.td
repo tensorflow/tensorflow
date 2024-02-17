@@ -48,3 +48,30 @@ def TestPostCalibrationComponentPass : Pass<"stablehlo-test-post-calibration-com
     "mlir::quantfork::QuantizationForkDialect",
   ];
 }
+
+def TestTFToStablehloPass : Pass<"stablehlo-test-tf-to-stablehlo", "mlir::ModuleOp"> {
+  let summary = "Test-only pass to test TFToStablehloPasses.";
+  let description = [{
+    Runs the TFToStablehloPasses.
+  }];
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
+    "mlir::chlo::ChloDialect", "mlir::quant::QuantizationDialect",
+    "mlir::mhlo::MhloDialect", "mlir::shape::ShapeDialect",
+    "mlir::sparse_tensor::SparseTensorDialect", "mlir::vhlo::VhloDialect",
+  ];
+}
+
+def TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass :
+    Pass<"stablehlo-test-lift-quantizable-spots-as-functions-with-quantization-specs", "mlir::ModuleOp"> {
+  let summary = "Test-only pass for testing the LiftQuantizableSpotsAsFunctionsPass with a predefined QuantizationSpecs.";
+  let description = [{
+    This test-only pass is the same as `LiftQuantizableSpotsAsFunctionsPass` but
+    has predefined `QuantizationSpecs` to make FileCheck testing easier.
+  }];
+  let dependentDialects = [
+      "mlir::func::FuncDialect",
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+  ];
+}

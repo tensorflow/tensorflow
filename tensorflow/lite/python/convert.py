@@ -230,6 +230,7 @@ def mlir_quantize(
     denylisted_ops=None,
     denylisted_nodes=None,
     enable_variable_quantization=False,
+    disable_per_channel_for_dense_layers=False,
 ):
   """Quantize `input_data_str` with calibration results.
 
@@ -255,6 +256,9 @@ def mlir_quantize(
     enable_variable_quantization: Experimental. Subject to change. Bool
       indicating whether to enable quantization of the residual variables
       remaining after the variable freezing pass.
+    disable_per_channel_for_dense_layers: Bool indicating whether to do
+      per-channel or per-tensor quantization in Fully Connected layers. Default
+      value is False meaning per-channel quantization is enabled.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
@@ -272,6 +276,7 @@ def mlir_quantize(
       denylisted_ops,
       denylisted_nodes,
       enable_variable_quantization,
+      disable_per_channel_for_dense_layers,
   )
 
 
@@ -419,15 +424,12 @@ Alternative, use virtualenv.""")
   output_filename: str = None
   try:
     # Build all input files
-    with _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_conversion, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_model, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_input, _tempfile.NamedTemporaryFile(
-        delete=False
-    ) as fp_debug:
+    with (
+        _tempfile.NamedTemporaryFile(delete=False) as fp_conversion,
+        _tempfile.NamedTemporaryFile(delete=False) as fp_model,
+        _tempfile.NamedTemporaryFile(delete=False) as fp_input,
+        _tempfile.NamedTemporaryFile(delete=False) as fp_debug,
+    ):
       conversion_filename = fp_conversion.name
       input_filename = fp_input.name
       model_filename = fp_model.name
@@ -502,7 +504,7 @@ def build_model_flags(
     saved_model_version=0,
     saved_model_tags=None,
     saved_model_exported_names=None,
-    **_
+    **_,
 ):
   """Builds the model flags object from params.
 
@@ -592,7 +594,8 @@ def build_conversion_flags(
     use_buffer_offset=False,
     reduce_type_precision=False,
     qdq_conversion_mode=None,
-    **_
+    disable_per_channel_quantization_for_dense_layers=False,
+    **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
 
@@ -718,6 +721,9 @@ def build_conversion_flags(
       This could have side effects e.g. reduced flatbuffer size.
     qdq_conversion_mode: If set, assume input model is a quantized model
       represented with QDQ ops and convert to quantized kernels.
+    disable_per_channel_quantization_for_dense_layers: If set, disables per
+      channel end enables per tensor integer quantization for weights in Dense
+      layers. The flag works only for integer quantized model.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -835,6 +841,9 @@ def build_conversion_flags(
     conversion_flags.reduce_type_precision = reduce_type_precision
   if qdq_conversion_mode is not None:
     conversion_flags.qdq_conversion_mode = qdq_conversion_mode
+  conversion_flags.disable_per_channel_quantization_for_dense_layers = (
+      disable_per_channel_quantization_for_dense_layers
+  )
   return conversion_flags
 
 
@@ -846,7 +855,7 @@ def convert_graphdef_with_arrays(
     input_arrays_with_shape,
     output_arrays,
     control_output_arrays,
-    **kwargs
+    **kwargs,
 ):
   """Convert a frozen GraphDef that can't be loaded in TF.
 

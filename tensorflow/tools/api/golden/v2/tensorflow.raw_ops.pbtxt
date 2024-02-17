@@ -1945,6 +1945,10 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "GlobalShuffleDataset"
+    argspec: "args=[\'input_dataset\', \'seed\', \'seed2\', \'seed_generator\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'\', \'None\'], "
+  }
+  member_method {
     name: "Greater"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

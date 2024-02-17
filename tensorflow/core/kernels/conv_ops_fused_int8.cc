@@ -705,11 +705,13 @@ void operator()(
         std::get<se::DeviceMemoryBase>(runner_and_scratch), conv_input_ptr,
         filter_ptr, side_input_ptr, bias_ptr, output_ptr);
   } else {
-    cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
-        conv_input_desc, conv_input_ptr, conv_scale, filter_desc, filter_ptr,
-        conv_desc, side_input_ptr, side_input_scale, bias_desc, bias_ptr,
-        dnn_activation_mode, output_desc, &output_ptr, &scratch_allocator,
-        autotune_entry.GetAlgorithmConfig(),
+    auto dnn = stream->parent()->AsDnn();
+    OP_REQUIRES(ctx, dnn != nullptr, absl::InternalError("No DNN for stream."));
+    cudnn_launch_status = dnn->FusedConvolveWithAlgorithm(
+        stream, conv_input_desc, conv_input_ptr, conv_scale, filter_desc,
+        filter_ptr, conv_desc, side_input_ptr, side_input_scale, bias_desc,
+        bias_ptr, dnn_activation_mode, output_desc, &output_ptr,
+        &scratch_allocator, autotune_entry.GetAlgorithmConfig(),
         /*output_profile_result=*/nullptr);
   }
 

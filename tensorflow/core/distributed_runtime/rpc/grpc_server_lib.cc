@@ -179,7 +179,7 @@ Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
                             "\" was not defined in cluster");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::Init(const GrpcServerOptions& opts) {
@@ -356,7 +356,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   LocalMaster::Register(target(), master_impl_.get(),
                         config.operation_timeout_in_ms());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
@@ -383,7 +383,7 @@ Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
     }
     TF_RETURN_IF_ERROR(channel_spec->AddHostPortsJob(job.name(), host_ports));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
@@ -422,7 +422,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   }
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
       channel_cache, grpc_worker_env(), worker_impl(), name_prefix);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::Start() {
@@ -455,11 +455,11 @@ Status GrpcServer::Start() {
 
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
-      return OkStatus();
+      return absl::OkStatus();
     }
     case STARTED:
       LOG(INFO) << "Server already started (target: " << target() << ")";
-      return OkStatus();
+      return absl::OkStatus();
     case STOPPED:
       return errors::FailedPrecondition("Server has stopped.");
     default:
@@ -502,7 +502,7 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
       worker_env_.collective_executor_mgr.get();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
@@ -512,7 +512,7 @@ Status GrpcServer::SetCoordinationServiceAgentInstance(
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceAgentInstance(agent);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::SetCoordinationServiceInstance(
@@ -520,7 +520,7 @@ Status GrpcServer::SetCoordinationServiceInstance(
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceInstance(service);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::StopCoordinationService() {
@@ -534,7 +534,7 @@ Status GrpcServer::StopCoordinationService() {
   TF_RETURN_IF_ERROR(SetCoordinationServiceInstance(nullptr));
   coordination_service_->Shutdown();
   worker_env()->session_mgr->TeardownCoordinationService();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GrpcServer::Stop() {
@@ -542,13 +542,13 @@ Status GrpcServer::Stop() {
   switch (state_) {
     case NEW:
       state_ = STOPPED;
-      return OkStatus();
+      return absl::OkStatus();
     case STARTED:
       return errors::Unimplemented(
           "Clean shutdown is not currently implemented");
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
-      return OkStatus();
+      return absl::OkStatus();
     default:
       LOG(FATAL);
   }
@@ -560,7 +560,7 @@ Status GrpcServer::Join() {
     case NEW:
       // Prevent the server from being started subsequently.
       state_ = STOPPED;
-      return OkStatus();
+      return absl::OkStatus();
     case STARTED:
     case STOPPED:
       master_thread_.reset();
@@ -569,7 +569,7 @@ Status GrpcServer::Join() {
       for (auto& thread : extra_service_threads_) {
         thread.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     default:
       LOG(FATAL);
   }
@@ -609,7 +609,7 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
     return s;
   }
   *out_server = std::move(ret);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */
@@ -627,7 +627,7 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
     return s;
   }
   out_server->reset(dynamic_cast<GrpcServer*>(server.release()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

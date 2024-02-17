@@ -42,7 +42,7 @@ namespace {
 PJRT_Client* CreateClient(const PJRT_Api* api) {
   PJRT_Client_Create_Args create_args;
   create_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-  create_args.priv = nullptr;
+  create_args.extension_start = nullptr;
   create_args.create_options = nullptr;
   create_args.num_options = 0;
   create_args.kv_get_callback = nullptr;
@@ -67,7 +67,7 @@ PjrtCApiTestBase::~PjrtCApiTestBase() { destroy_client(client_); }
 void PjrtCApiTestBase::destroy_client(PJRT_Client* client) {
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-  destroy_args.priv = nullptr;
+  destroy_args.extension_start = nullptr;
   destroy_args.client = client;
   PJRT_Error* error = api_->PJRT_Client_Destroy(&destroy_args);
   CHECK_EQ(error, nullptr);
@@ -76,7 +76,7 @@ void PjrtCApiTestBase::destroy_client(PJRT_Client* client) {
 int PjrtCApiTestBase::GetDeviceId(PJRT_DeviceDescription* device_desc) const {
   PJRT_DeviceDescription_Id_Args args = PJRT_DeviceDescription_Id_Args{
       .struct_size = PJRT_DeviceDescription_Id_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .device_description = device_desc,
       .id = -1,
   };
@@ -96,7 +96,7 @@ bool PjrtCApiTestBase::IsValidDeviceId(PJRT_Device* device) const {
 int PjrtCApiTestBase::GetLocalHardwareId(PJRT_Device* device) const {
   PJRT_Device_LocalHardwareId_Args args = PJRT_Device_LocalHardwareId_Args{
       .struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .device = device,
       .local_hardware_id = -1,
   };
@@ -108,7 +108,7 @@ int PjrtCApiTestBase::GetLocalHardwareId(PJRT_Device* device) const {
 absl::Span<PJRT_Device* const> PjrtCApiTestBase::GetClientDevices() const {
   PJRT_Client_Devices_Args dev_args;
   dev_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
-  dev_args.priv = nullptr;
+  dev_args.extension_start = nullptr;
   dev_args.client = client_;
   PJRT_Error* error = api_->PJRT_Client_Devices(&dev_args);
   CHECK(error == nullptr);
@@ -136,7 +136,7 @@ absl::Span<PJRT_Device* const> PjrtCApiTestBase::GetClientAddressableDevices()
     const {
   PJRT_Client_AddressableDevices_Args addr_args;
   addr_args.struct_size = PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
-  addr_args.priv = nullptr;
+  addr_args.extension_start = nullptr;
   addr_args.client = client_;
   PJRT_Error* error = api_->PJRT_Client_AddressableDevices(&addr_args);
   CHECK(error == nullptr);
@@ -151,7 +151,7 @@ PjrtCApiTestBase::CreateBufferFromHostBufferArgs(
     PJRT_Device* device) {
   PJRT_Client_BufferFromHostBuffer_Args args;
   args.struct_size = PJRT_Client_BufferFromHostBuffer_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
 
   args.data = data.data();
   args.type = ::pjrt::ConvertToPjRtBufferType(shape.element_type());
@@ -195,7 +195,7 @@ PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
 
   PJRT_Buffer_ReadyEvent_Args get_event_args;
   get_event_args.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
-  get_event_args.priv = nullptr;
+  get_event_args.extension_start = nullptr;
   get_event_args.buffer = buffer.get();
   auto ready_event_error =
       ToUniquePtr(api_->PJRT_Buffer_ReadyEvent(&get_event_args));

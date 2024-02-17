@@ -3912,6 +3912,36 @@ func.func @ConvertStridedSliceToSlice(%arg0: tensor<2x3872x1x128xf32>) -> tensor
   // CHECK: return %[[slice]]
 }
 
+// CHECK-LABEL: @FuseExcessBroadcastingOnReshapes
+func.func @FuseExcessBroadcastingOnReshapes(%arg0: tensor<1x8xf32>) -> tensor<1x1x1x128xf32> {
+    %cst = arith.constant dense<[1, 1, 1, 8, 1, 1]> : tensor<6xi32>
+    %cst_0 = arith.constant dense<[1, 1, 1, 8, 16, 1]> : tensor<6xi32>
+    %cst_1 = arith.constant dense<[1, 1, 1, 128]> : tensor<4xi32>
+    %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x8xf32>, tensor<6xi32>) -> tensor<1x1x1x8x1x1xf32>
+    %1 = "tfl.broadcast_to"(%0, %cst_0) : (tensor<1x1x1x8x1x1xf32>, tensor<6xi32>) -> tensor<1x1x1x8x16x1xf32>
+    %2 = "tfl.reshape"(%1, %cst_1) : (tensor<1x1x1x8x16x1xf32>, tensor<4xi32>) -> tensor<1x1x1x128xf32>
+    return %2 : tensor<1x1x1x128xf32>
+    // CHECK: %cst = arith.constant dense<1.000000e+00> : tensor<8x16xf32>
+    // CHECK: %cst_0 = arith.constant dense<[1, 1, 1, 128]> : tensor<4xi32>
+    // CHECK: %cst_1 = arith.constant dense<[8, 1]> : tensor<2xi32>
+    // CHECK: %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<1x8xf32>, tensor<2xi32>) -> tensor<8x1xf32>
+    // CHECK: %1 = tfl.mul(%0, %cst) {fused_activation_function = "NONE"} : (tensor<8x1xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+    // CHECK: %2 = "tfl.reshape"(%1, %cst_0) : (tensor<8x16xf32>, tensor<4xi32>) -> tensor<1x1x1x128xf32>
+    // CHECK: return %2 : tensor<1x1x1x128xf32>
+}
+
+// CHECK-LABEL: @FuseExcessBroadcastingOnReshapesDynamicShapes
+func.func @FuseExcessBroadcastingOnReshapesDynamicShapes(%arg0: tensor<?x10x1xf32>, %arg1: tensor<6xi32>, %arg2: tensor<6xi32>, %arg3: tensor<2xi32>) -> tensor<?x50xf32> {
+    %1196 = "tfl.reshape"(%arg0, %arg1) : (tensor<?x10x1xf32>, tensor<6xi32>) -> tensor<1x?x1x10x1x1xf32>
+    %1197 = "tfl.broadcast_to"(%1196, %arg2) : (tensor<1x?x1x10x1x1xf32>, tensor<6xi32>) -> tensor<1x?x1x10x5x1xf32>
+    %1198 = "tfl.reshape"(%1197, %arg3) : (tensor<1x?x1x10x5x1xf32>, tensor<2xi32>) -> tensor<?x50xf32>
+    return %1198 : tensor<?x50xf32>
+
+    // CHECK: %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<?x10x1xf32>, tensor<6xi32>) -> tensor<1x?x1x10x1x1xf32>
+    // CHECK: %1 = "tfl.broadcast_to"(%0, %arg2) : (tensor<1x?x1x10x1x1xf32>, tensor<6xi32>) -> tensor<1x?x1x10x5x1xf32>
+    // CHECK: %2 = "tfl.reshape"(%1, %arg3) : (tensor<1x?x1x10x5x1xf32>, tensor<2xi32>) -> tensor<?x50xf32>
+    // CHECK: return %2 : tensor<?x50xf32>
+}
 
 // CHECK-LABEL: @broadcast_to_f32_low_dim
 func.func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {

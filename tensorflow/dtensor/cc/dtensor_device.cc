@@ -249,7 +249,7 @@ class DTensorDevice {
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ClearTPUCoreIDs() { Mesh::tpu_core_ids().clear(); }
@@ -1582,7 +1582,7 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
             to_run, stack_traces));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<DTensorDevice::DTensorOperationLoweringContext>

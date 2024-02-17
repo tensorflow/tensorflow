@@ -171,7 +171,7 @@ Status IteratorResource::Save(OpKernelContext* ctx,
     }
     LOG(INFO) << "Saving symbolic checkpoint";
     TF_RETURN_IF_ERROR(checkpoint.Save(writer));
-    return OkStatus();
+    return absl::OkStatus();
   }
   SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy;
@@ -231,7 +231,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
@@ -280,14 +280,15 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
   new_state->DowncastAndSetIteratorAndDataset(std::move(iterator), dataset);
+  new_state->SetModel(iter_ctx.model());
   new_state->MergeCheckpoint(iter_ctx.checkpoint());
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
   tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
-      env_, iterator_state_->iterator());
+      env_, iterator_state_->iterator(), iterator_state_->model());
   EnsureIteratorMemoryLoggerStarted();
   TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void IteratorResource::State::DowncastAndSetIteratorAndDataset(
@@ -303,6 +304,10 @@ void IteratorResource::State::MergeCheckpoint(MemoryCheckpoint* other) {
   if (SymbolicCheckpointEnabled(dataset_->options())) {
     checkpoint_.Merge(other);
   }
+}
+
+void IteratorResource::State::SetModel(std::shared_ptr<model::Model> model) {
+  model_ = model;
 }
 
 namespace {
@@ -344,7 +349,7 @@ class IteratorVariantSerializer {
     }
     num_tensors_ = variants_.size();
     can_serialize_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Initializes `this` from `serialized_t` while restoring the iterator state.
@@ -365,7 +370,7 @@ class IteratorVariantSerializer {
     }
     reader_ = std::make_unique<VariantTensorDataReader>(data);
     num_tensors_ = data.size();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t NumTensors() { return num_tensors_; }
@@ -385,7 +390,7 @@ class IteratorVariantSerializer {
       }
       serialized->vec<Variant>()(i) = variants_[i];
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns an IteratorStateReader to restore iterator state. Expects that
@@ -462,7 +467,7 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
                     context->env(), output_dtypes_, output_shapes_,
                     std::move(device_mgr), std::move(flib_def), std::move(pflr),
                     flr);
-                return OkStatus();
+                return absl::OkStatus();
               }));
 
       Status s = VerifyResource(resource);
@@ -485,7 +490,7 @@ Status IteratorHandleOp::VerifyResource(IteratorResource* resource) {
       VerifyTypesMatch(output_dtypes_, resource->output_dtypes()));
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
@@ -544,7 +549,7 @@ Status AnonymousIteratorHandleOp::CreateResource(
   *resource = new IteratorResource(ctx->env(), output_dtypes_, output_shapes_,
                                    std::move(device_mgr), std::move(flib_def),
                                    std::move(pflr), lib);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HybridAsyncOpKernel::HybridAsyncOpKernel(OpKernelConstruction* ctx,
@@ -659,7 +664,7 @@ class ToSingleElementOp : public AsyncOpKernel {
     if (!end_of_sequence) {
       return errors::InvalidArgument("Dataset had more than one element.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   IteratorMetricsCollector metrics_collector_;
@@ -770,7 +775,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
                       ctx->env(), output_dtypes_, output_shapes_,
                       /*device_mgr=*/nullptr, std::move(flib_def),
                       std::move(pflr), flr);
-                  return OkStatus();
+                  return absl::OkStatus();
                 }));
 
     core::ScopedUnref unref_iterator(*iterator);
@@ -810,7 +815,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
     TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(ctx, dataset));
     (*iterator)->Ref();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ProduceOutput(OpKernelContext* ctx, const DoneCallback& done) {
@@ -901,7 +906,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {

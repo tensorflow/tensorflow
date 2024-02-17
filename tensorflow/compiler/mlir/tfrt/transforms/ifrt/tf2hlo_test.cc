@@ -35,8 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -124,13 +122,12 @@ TEST(Tf2HloTest, Tuple) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({1, 3}));
-  tensorflow::Tensor y(DT_FLOAT, tensorflow::TensorShape({3, 1}));
-  tensors.push_back(x);
-  tensors.push_back(y);
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {1, 3}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {3, 1}});
+  auto result =
+      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
+                     tensorflow::IdentityShapeRepresentationFn());
 
   TF_ASSERT_OK(result.status());
 }
@@ -158,12 +155,11 @@ TEST(Tf2HloTest, Spmd) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({4, 64}));
-  tensors.push_back(x);
-
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {4, 64}});
+  auto result =
+      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
+                     tensorflow::IdentityShapeRepresentationFn());
 
   LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
@@ -227,16 +223,13 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({4, 64}));
-  tensorflow::Tensor y(DT_FLOAT, tensorflow::TensorShape({64, 10}));
-  tensorflow::Tensor z(DT_FLOAT, tensorflow::TensorShape({1, 4}));
-  tensors.push_back(x);
-  tensors.push_back(y);
-  tensors.push_back(z);
-
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {4, 64}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {64, 10}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {1, 4}});
+  auto result =
+      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
+                     tensorflow::IdentityShapeRepresentationFn());
 
   LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
@@ -326,13 +319,13 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_INT32, tensorflow::TensorShape({1}));
-  tensors.push_back(x);
-  tensorflow::Tensor y(DT_INT32, tensorflow::TensorShape({1}));
-  tensors.push_back(y);
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+
+  auto result =
+      CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main", *client,
+                     tensorflow::IdentityShapeRepresentationFn());
 
   TF_ASSERT_OK(result.status());
 

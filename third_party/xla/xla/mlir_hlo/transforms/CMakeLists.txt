@@ -48,7 +48,6 @@ add_mlir_library(MLIRBufferTransforms
   LINK_LIBS PUBLIC
   ChloOps
   MLIRGPUDialect
-  MLIRHLOAnalysis
   MLIRIR
   MLIRMathTransforms
   MLIRPass
@@ -74,7 +73,6 @@ add_mlir_library(MLIRHLOGPUTransforms
   LINK_LIBS PUBLIC
   MLIRArithTransforms
   MLIRGPUDialect
-  MLIRHLOAnalysis
   MLIRIR
   MLIRMemRefTransforms
   MLIRPass

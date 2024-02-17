@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -46,7 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/runtime3/annotation.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_parser.h"
@@ -256,7 +257,7 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     auto start_micros = tsl::Env::Default()->NowMicros();
 
-    Thunk::CollectiveCliques::CliquesMap cliques_map;
+    NcclClique::AcquiredCliquesMap cliques_map;
 
     for (const auto& [clique_key, num_local_participants] : cliques_) {
       std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
@@ -272,10 +273,11 @@ class ResourceRequests : public Thunk::ResourceRequests {
           const NcclCliqueIdCallback* clique_id_callback,
           GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
-      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
-                          AcquireNcclClique(params.run_id, OpId(0), clique_key,
-                                            *clique_id_callback, *rank,
-                                            num_local_participants, false));
+      TF_ASSIGN_OR_RETURN(
+          std::shared_ptr<NcclClique::Lock> clique,
+          AcquireNcclClique(params.executor, params.run_id, clique_key,
+                            *clique_id_callback, *rank, num_local_participants,
+                            cliques_map));
 
       cliques_map[clique_key] = std::move(clique);
     }
@@ -292,8 +294,9 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
  private:
   // Keep all clique requests in an ordered container so that we acquire cliques
-  // in the same order for all participants and do not create a deadlock.
-  absl::btree_map<NcclCliqueKey, int64_t> cliques_;
+  // in the same order for all participants and do not create a deadlock. We use
+  // greater ordering to acquire largest cliques first.
+  absl::btree_map<NcclCliqueKey, int64_t, std::greater<NcclCliqueKey>> cliques_;
 };
 
 absl::Status MaybeSyncAndProfile(
@@ -422,8 +425,7 @@ absl::Status ExecuteThunks(
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    tsl::profiler::ScopedAnnotation annotation(
-        [&] { return thunk->profile_annotation(); });
+    tsl::profiler::ScopedAnnotation annotation(thunk->profile_annotation());
     VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
     if (NeedsAsyncCommsStream(*thunk)) {
       for (se::Stream* async_stream : async_comms_streams) {

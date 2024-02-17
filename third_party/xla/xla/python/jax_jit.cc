@@ -311,7 +311,7 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
       }
     }
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void BuildJaxjitSubmodule(py::module& m) {

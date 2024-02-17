@@ -285,7 +285,6 @@ class StableHloQuantizationPattern : public RewritePattern {
 };
 
 // Gemm Style Op: glossary/gemm.
-// Populates conversion patterns to unfuse batch normalization operations.
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns,
                                     bool enable_per_channel_quantized_weight);
@@ -294,6 +293,10 @@ void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
 // stablehlo.reduce_window op.
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
                                          RewritePatternSet& patterns);
+
+// Populates conversion patterns for unary data movement ops.
+void PopulateQuantizeSingularOpPatterns(MLIRContext& ctx,
+                                        RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 

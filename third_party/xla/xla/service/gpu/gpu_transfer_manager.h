@@ -16,13 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_GPU_GPU_TRANSFER_MANAGER_H_
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/literal.h"
 #include "xla/service/generic_transfer_manager.h"
-#include "xla/service/gpu/infeed_manager.h"
-#include "xla/service/transfer_manager.h"
-#include "xla/shape_tree.h"
-#include "xla/statusor.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -34,7 +44,6 @@ namespace gpu {
 class GpuTransferManager : public GenericTransferManager {
  public:
   GpuTransferManager(se::Platform::Id id, unsigned pointer_size);
-  ~GpuTransferManager() override;
 
   absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                        const LiteralSlice& literal) override;
@@ -45,10 +54,42 @@ class GpuTransferManager : public GenericTransferManager {
                                  Shape* device_shape) override;
 
  private:
+  // We use a fixed-size staging buffers and split transfer into multiple
+  // operations if literal does not fit into it.
+  static constexpr int64_t kStagingBufferSize = 128 * 1024 * 1024;
+
+  // We use host memory allocation (pinned host memory) as a staging buffer for
+  // transfering literals to and from device. We keep a separate staging
+  // allocation per device so we don't need to do cross-device synchronization.
+  // All transfers to and from a device are ordered via stream dependencies.
+  struct StagingBuffer {
+    StagingBuffer(std::unique_ptr<se::MemoryAllocation> allocation,
+                  std::unique_ptr<se::Event> transfer_completed);
+
+    absl::Mutex mutex;
+    std::unique_ptr<se::MemoryAllocation> allocation ABSL_GUARDED_BY(mutex);
+    std::unique_ptr<se::Event> transfer_completed ABSL_GUARDED_BY(mutex);
+  };
+
   GpuTransferManager(const GpuTransferManager&) = delete;
   GpuTransferManager& operator=(const GpuTransferManager&) = delete;
 
   bool PackSubbyteTypes() const override { return true; }
+
+  // Returns or creates the staging buffer for the given executor.
+  absl::StatusOr<StagingBuffer*> GetOrCreateStagingBuffer(
+      se::StreamExecutor* executor);
+
+  absl::Status TransferBufferFromDevice(se::Stream* stream,
+                                        const se::DeviceMemoryBase& source,
+                                        int64_t size,
+                                        void* destination) override;
+
+  absl::Status TransferBufferToDevice(
+      se::Stream* stream, int64_t size, const void* source,
+      se::DeviceMemoryBase* destination) override;
+
+  // TODO(ezhulenev): Unify this with staged buffers for transfering literals.
 
   // This class keeps a pool of pinned memory
   // (StreamExecutor::HostMemoryAllocate()) that serves ReadDynamicShapes().
@@ -82,7 +123,7 @@ class GpuTransferManager : public GenericTransferManager {
   //
   // Lazy initialization works around this, because at that point we have a
   // stream, and therefore we have an already-initialized StreamExecutor.
-  void EnsurePinnedBuffersAllocated(se::StreamExecutor* executor)
+  absl::Status EnsurePinnedBuffersAllocated(se::StreamExecutor* executor)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static constexpr int64_t kPinnedChunkBytes = 128 * 1024;
@@ -96,11 +137,16 @@ class GpuTransferManager : public GenericTransferManager {
 
   // Chunk of pinned memory of size kPinnedChunkBytes.  The pointers in
   // pinned_buffers_ point into this chunk.  Lazily initialized.
-  char* pinned_chunk_ ABSL_GUARDED_BY(mu_) = nullptr;
+  std::unique_ptr<se::MemoryAllocation> pinned_chunk_ ABSL_GUARDED_BY(mu_);
 
   // Host buffers for reading dynamic shapes.  Each buffer has size
   // kPinnedBufferBytes.  Lazily initialized.
   std::vector<void*> pinned_buffers_ ABSL_GUARDED_BY(mu_);
+
+  // Staging buffers allocated for transfers to and from device.
+  absl::Mutex mutex_;
+  absl::node_hash_map<se::StreamExecutor*, StagingBuffer> staging_buffers_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

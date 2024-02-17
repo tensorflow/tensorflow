@@ -821,16 +821,16 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           }
         }
 
-        OP_REQUIRES_OK(context,
-                       stream->ThenBlasGemm(
-                           blas_transpose_b, blas_transpose_a, n, m, k,
+        OP_REQUIRES_OK(
+            context,
+            blas->BlasGemm(stream, blas_transpose_b, blas_transpose_a, n, m, k,
                            *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
                            adj_x || trans_x ? m : k, c_ptrs[0], n,
                            GetNumericOptions(), call_context));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(
-            context, stream->ThenBlasGemmStridedBatched(
-                         blas_transpose_b, blas_transpose_a, n, m, k,
+            context, blas->BlasGemmStridedBatched(
+                         stream, blas_transpose_b, blas_transpose_a, n, m, k,
                          static_cast<Coefficient>(1.0), *b_ptrs[0],
                          adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                          adj_x || trans_x ? m : k, a_stride,
@@ -1081,7 +1081,7 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -1107,7 +1107,7 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
     if (in1.dims() < 2) {
       return errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

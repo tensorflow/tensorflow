@@ -857,14 +857,13 @@ GpuExecutor::CreateEventImplementation() {
   return std::unique_ptr<internal::EventInterface>(new GpuEvent(this));
 }
 
-std::unique_ptr<internal::KernelInterface>
-GpuExecutor::CreateKernelImplementation() {
-  return std::unique_ptr<internal::KernelInterface>(new GpuKernel());
-}
-
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
+}
+
+absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {
+  return std::make_unique<GpuKernel>(this);
 }
 
 absl::StatusOr<std::unique_ptr<CommandBuffer>> GpuExecutor::CreateCommandBuffer(
@@ -1076,4 +1075,4 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_executor, {});
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(rocm_executor, {});

@@ -196,7 +196,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   }
 
   TF_ASSIGN_OR_RETURN(*constant_literal, HostTensorToLiteral(temp));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts an int16, int32 or int64 scalar literal to an int64.
@@ -214,7 +214,7 @@ static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
   } else {
     return errors::InvalidArgument("value must be int16, int32, or int64");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts an float32 or float64 scalar literal to a float64.
@@ -230,7 +230,7 @@ static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
   } else {
     return errors::InvalidArgument("value must be either float32 or float64");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntScalar(
@@ -273,7 +273,7 @@ static Status LiteralToPredVector(const xla::LiteralSlice& literal,
   for (int64_t i = 0; i < size; ++i) {
     out->push_back(literal.Get<bool>({i}));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
@@ -288,7 +288,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
     // TODO(b/176993339): Support resolving dynamism across computations so
     // resolving dynamism will not fail in those cases.
     *out = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Tensor dynamism = dynamism_or_status.value();
 
@@ -302,7 +302,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
 
   TF_ASSIGN_OR_RETURN(literal, HostTensorToLiteral(temp));
   *out = literal.Get<bool>({});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
@@ -332,7 +332,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
             .Broadcast(xla::ShapeUtil::MakeShape(xla::PRED, new_dims), {})
             .value();
 
-    return OkStatus();
+    return absl::OkStatus();
   }
   Tensor dynamism = dynamism_or_status.value();
 
@@ -346,7 +346,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
   }
 
   TF_ASSIGN_OR_RETURN(*dynamism_literal, HostTensorToLiteral(temp));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
@@ -377,7 +377,7 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntVector(
@@ -424,11 +424,11 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(
       for (int64_t i = 0; i < src_data.size(); ++i) {
         out->data<int64_t>()[i] = src_data[i];
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     case xla::S64:
       *out = std::move(literal);
-      return OkStatus();
+      return absl::OkStatus();
 
     default:
       return errors::InvalidArgument(
@@ -462,7 +462,7 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
           ", result: ", num_elements);
   }
   *shape = TensorShape(dims);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputAsPartialShape(
@@ -478,12 +478,12 @@ Status XlaOpKernelContext::ConstantInputAsPartialShape(
           "Cannot convert value to PartialTensorShape: ", shape_val);
     }
     *shape = PartialTensorShape();  // Shape with unknown rank.
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = PartialTensorShape(dims);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::InputList(absl::string_view name,
@@ -498,7 +498,7 @@ Status XlaOpKernelContext::InputList(absl::string_view name,
         XlaExpression::CastExpressionFromTensor(input)->AsXlaOp(builder()));
     shapes->push_back(input.shape());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
@@ -510,7 +510,7 @@ Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
   for (int i = start; i < stop; ++i) {
     TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i], mode));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
@@ -571,7 +571,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
     TF_ASSIGN_OR_RETURN(xla::Literal literal,
                         HostTensorToLiteral(*expression->constant_value()));
     *value = xla::ConstantLiteral(ctx->builder(), literal);
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto shape_determination_fns =
       ctx->compiler()->options().shape_determination_fns;
@@ -590,7 +590,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   } else {
     *value = xla::Reshape(variable->value(), variable->shape().dim_sizes());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -625,7 +625,7 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   }
   *type = variable->type();
   *shape = variable->shape();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void XlaOpKernelContext::SetOutputExpression(int index,
@@ -656,7 +656,7 @@ void XlaOpKernelContext::SetOutputExpression(int index,
     }
     XlaExpression::AssignExpressionToTensor(expression,
                                             context_->mutable_output(index));
-    return OkStatus();
+    return absl::OkStatus();
   }();
   if (!status.ok()) {
     SetStatus(status);
@@ -697,7 +697,7 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
       XlaExpression::CastExpressionFromTensor(context_->input(index));
   TF_RET_CHECK(expression->resource() != nullptr);
   *resource = expression->resource();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

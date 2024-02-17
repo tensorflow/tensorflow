@@ -2,7 +2,8 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/mlir:__subpackages__"],
     licenses = ["notice"],
 )
 
