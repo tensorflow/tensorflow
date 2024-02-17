@@ -65,9 +65,7 @@ class SymbolicTileTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
-
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromDotOutputToInputsWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileFromDotOutputToInputs) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -114,8 +112,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
           "-> (s5, s8, s11)")));
 }
 
-TEST_F(SymbolicTileTest,
-       FailsToPropagateTileThroughReshapeWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, FailsToPropagateTileThroughReshape) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -129,8 +126,7 @@ TEST_F(SymbolicTileTest,
       std::nullopt);
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileThroughElementwiseOpWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileThroughElementwiseOp) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -147,8 +143,7 @@ TEST_F(SymbolicTileTest,
                                  "()[s0, s1, s2] -> (s2)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromBroadcastOutputToInputWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileFromBroadcastOutputToInput) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -164,8 +159,7 @@ TEST_F(SymbolicTileTest,
                                  "()[s0, s1, s2, s3, s4, s5] -> (s5)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromReduceOutputToInputWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileFromReduceOutputToInput) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     max {
@@ -188,8 +182,7 @@ TEST_F(SymbolicTileTest,
                                  "()[s0, s1, s2] -> (1, s2)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileThroughReverseWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -205,8 +198,7 @@ TEST_F(SymbolicTileTest,
                                  "()[s0, s1, s2] -> (s2)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileFromSliceOutputToInputWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
@@ -223,8 +215,7 @@ TEST_F(SymbolicTileTest,
           "()[s0, s1, s2, s3, s4, s5] -> (s2 * 2, s5 * 4)")));
 }
 
-TEST_F(SymbolicTileTest,
-       CanPropagateTileThroughTransposeWithoutSpecializedTileSizes) {
+TEST_F(SymbolicTileTest, CanPropagateTileThroughTranspose) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m
     ENTRY e {
