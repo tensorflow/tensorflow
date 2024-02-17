@@ -245,10 +245,6 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const NcclApi::DeviceRank* const> args)
       -> absl::StatusOr<NcclClique::Lock> {
-    // Do not run multiple clique initializations concurrently.
-    static absl::Mutex initialization_mutex(absl::kConstInit);
-    absl::MutexLock initialization_lock(&initialization_mutex);
-
     TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(clique_key));
 
     std::vector<NcclApi::DeviceRank> ranks;
