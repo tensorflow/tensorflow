@@ -32,8 +32,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateRewriteClusterToIfrtCallPass();
 
 // Creates a pass that sinks variable tensor argument to `tf.IfrtCall` as named
-// arrays and create`tf.IfrtLoadVariableOp` to load a variable tensor as a named
-// loaded IFRT array.
+// arrays and lowers `tf.ReadVariableOp` to `tf.IfrtLoadVariableOp`.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSinkVariableAsNamedArrayPass();
 

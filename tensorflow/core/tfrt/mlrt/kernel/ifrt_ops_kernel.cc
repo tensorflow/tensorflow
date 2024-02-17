@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -26,8 +27,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
@@ -37,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
 
@@ -75,11 +81,14 @@ struct MlrtIfrtLoadVariableKernel : mlrt::KernelFrame {
 
   static constexpr char kName[] = "tf_mlrt.ifrt_load_variable";
 
-  const tensorflow::Tensor& variable() const {
+  const ResourceHandle& variable() const {
     DCHECK_GE(arguments().size(), 1);
-    return arguments()[0].Get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
-  }
+    const auto& tensor =
+        arguments()[0].Get<tensorflow::tfrt_stub::FallbackTensor>().tensor();
 
+    DCHECK_EQ(tensor.NumElements(), 1);
+    return tensor.scalar<ResourceHandle>()();
+  }
   absl::string_view sharding_config_proto_text() const {
     DCHECK_EQ(attributes().size(), 2);
     return attributes().GetAs<mlrt::bc::String>(0).Get();
@@ -110,12 +119,20 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
   auto status =
       (*ifrt_model_context)
           ->GetLoadedVariableRegistry()
-          .TryRegisterLoadedVariable(name(), [&]() {
-            return LoadIfrtVariable(**ifrt_model_context, variable(),
-                                    sharding_config_proto_text(), name());
-          });
+          .TryRegisterLoadedVariable(
+              name(),
+              [&]() -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
+                core::RefCountPtr<Var> variable_resource;
+                TF_RETURN_IF_ERROR(
+                    LookupResource(&context().op_kernel_context(), variable(),
+                                   &variable_resource));
+
+                return LoadIfrtVariable(**ifrt_model_context,
+                                        *(variable_resource->tensor()),
+                                        sharding_config_proto_text(), name());
+              });
   if (!status.ok()) {
-    execution_context().Fail(status);
+    execution_context().Fail(std::move(status));
     return;
   }
 

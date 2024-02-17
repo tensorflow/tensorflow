@@ -84,17 +84,27 @@ class SinkVariableAsNamedArrayPass
       }
     }
 
-    // Insert IfrtLoadVariableOp after ReadVariableOp.
+    // Rewrite ReadVariableOp with IfrtLoadVariableOp
     llvm::SmallDenseMap<mlir::TF::ReadVariableOp, mlir::TF::IfrtLoadVariableOp>
         read_to_load;
     for (auto& [name, variable_config] : variable_config_by_name) {
       for (auto& read_variable_op : variable_config.read_variable_op) {
         builder.setInsertionPointAfter(read_variable_op);
+        // TODO(b/319045348): consider use resource alias analysis for this.
+        auto var_handle = GetDefiningOp<mlir::TF::VarHandleOp>(
+            read_variable_op.getResource());
+
+        if (!var_handle) {
+          read_variable_op->emitError(
+              "ReadVariableOp has no defining VarHandleOp.");
+          return signalPassFailure();
+        }
+
         auto load_variable_op = builder.create<mlir::TF::IfrtLoadVariableOp>(
             read_variable_op->getLoc(),
             mlir::RankedTensorType::get(
                 {}, builder.getType<mlir::TF::StringType>()),
-            read_variable_op.getValue(),
+            var_handle.getResult(),
             builder.getStringAttr(variable_config.device_sharding_config),
             builder.getStringAttr(name));
         read_to_load[read_variable_op] = load_variable_op;
@@ -150,6 +160,15 @@ class SinkVariableAsNamedArrayPass
 
       call.replaceAllUsesWith(updated_ifrt_call);
       call.erase();
+    }
+
+    // Delete all ReadVariableOps that are not used.
+    for (auto& [name, variable_config] : variable_config_by_name) {
+      for (auto& read_variable_op : variable_config.read_variable_op) {
+        if (read_variable_op.use_empty()) {
+          read_variable_op.erase();
+        }
+      }
     }
   }
 
