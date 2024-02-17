@@ -43,13 +43,6 @@ class HloToIrBindings {
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
                         ShapeIndexView shape_index = {});
 
-  // Unbinds all IR values that's defined in an LLVM function, e.g., function
-  // arguments and stack variables. Global variables will be kept in bindings_.
-  //
-  // This method is called after emitting code for each top-level HLO. The local
-  // IR values are out of scope at that point and should not be used.
-  void UnbindAllLocalIrValues();
-
   // Returns whether `hlo` is bound to an LLVM IR value.
   bool BoundToIrValue(const HloInstruction& hlo) const {
     return base_ptrs_.contains(&hlo);

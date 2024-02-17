@@ -135,20 +135,6 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
   return ir_array;
 }
 
-void HloToIrBindings::UnbindAllLocalIrValues() {
-  std::vector<const HloInstruction*> hlos_to_unbind;
-  for (auto& key_value : base_ptrs_) {
-    if (!llvm::isa<llvm::GlobalVariable>(
-            (key_value.second.element({}))->stripPointerCasts())) {
-      hlos_to_unbind.push_back(key_value.first);
-    }
-  }
-  for (const HloInstruction* hlo_to_unbind : hlos_to_unbind) {
-    VLOG(2) << "Unbinding " << hlo_to_unbind->ToString();
-    base_ptrs_.erase(hlo_to_unbind);
-  }
-}
-
 std::string HloToIrBindings::ToString() const {
   std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
