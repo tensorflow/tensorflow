@@ -96,14 +96,9 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
-  absl::StatusOr<OwnedNcclComm> CommSplit(NcclCommHandle comm,
-                                          std::optional<int32_t>,
-                                          int32_t) final {
-    return UnimplementedError();
-  }
-
   absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
-      absl::Span<const DeviceComm>, absl::Span<const int32_t>) final {
+      absl::Span<const NcclCommHandle>, int32_t,
+      absl::Span<const int32_t>) final {
     return UnimplementedError();
   }
 

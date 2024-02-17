@@ -85,7 +85,7 @@ absl::StatusOr<size_t> Thunk::CollectiveCliques::num_communicators(
                                             clique_key.ToString()));
   }
 
-  return (*clique->second)->size();
+  return (*clique->second)->num_communicators();
 }
 
 //===----------------------------------------------------------------------===//

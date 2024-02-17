@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -302,13 +301,9 @@ class DefaultNcclApi final : public NcclApi {
       int32_t nranks, const NcclCliqueId& clique_id,
       absl::Span<const DeviceRank> ranks) final;
 
-  absl::StatusOr<OwnedNcclComm> CommSplit(NcclCommHandle comm,
-                                          std::optional<int32_t> color,
-                                          int32_t key) final;
-
   absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
-      absl::Span<const DeviceComm> comms,
-      absl::Span<const int32_t> ranks) final;
+      absl::Span<const NcclCommHandle> comms, int32_t color,
+      absl::Span<const int32_t> keys) final;
 
   absl::Status CommAbort(NcclCommHandle comm) final;
   absl::Status CommFinalize(NcclCommHandle comm) final;
@@ -408,42 +403,44 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
   return comms;
 }
 
-absl::StatusOr<NcclApi::OwnedNcclComm> DefaultNcclApi::CommSplit(
-    NcclCommHandle comm, std::optional<int32_t> color, int32_t key) {
-  VLOG(1) << "Split NCCL communicator " << comm << " with color "
-          << color.value_or(NCCL_SPLIT_NOCOLOR) << " and key " << key;
-
-  ncclComm_t split_comm = nullptr;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comm),
-                                         color.value_or(NCCL_SPLIT_NOCOLOR),
-                                         key, &split_comm, /*config=*/nullptr));
-
-  return OwnedNcclComm(Cast(split_comm), NcclCommDeleter{this});
-}
-
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
-    absl::Span<const DeviceComm> comms, absl::Span<const int32_t> ranks) {
-  VLOG(1) << "Split " << comms.size() << " NCCL communicators with"
-          << " participating split ranks [" << absl::StrJoin(ranks, ",") << "]";
+    absl::Span<const NcclCommHandle> comms, int32_t color,
+    absl::Span<const int32_t> keys) {
+  VLOG(1) << absl::StreamFormat(
+      "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
+      color, absl::StrJoin(keys, ","));
 
-  std::vector<OwnedNcclComm> split_comms;
+  if (keys.size() != comms.size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Comms and keys must have the same size, but %d != %d",
+                        comms.size(), keys.size()));
+  }
+
+  std::vector<ncclComm_t> split_comms;
+  split_comms.resize(comms.size(), nullptr);
 
   TF_RETURN_IF_ERROR(GroupStart());
-  for (int32_t rank = 0; rank < comms.size(); ++rank) {
-    se::gpu::ScopedActivateExecutorContext activate_context(comms[rank].device);
-
-    if (auto it = absl::c_find(ranks, rank); it != ranks.end()) {
-      TF_ASSIGN_OR_RETURN(split_comms.emplace_back(),
-                          CommSplit(comms[rank].comm, /*color=*/0,
-                                    /*key=*/std::distance(ranks.begin(), it)));
-    } else {
-      TF_RETURN_IF_ERROR(
-          CommSplit(comms[rank].comm, std::nullopt, rank).status());
-    }
+  for (size_t i = 0; i < comms.size(); ++i) {
+    VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
+            << " and key " << keys[i];
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
+        Cast(comms[i]), color, keys[i], &split_comms[i], /*config=*/nullptr));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
-  return split_comms;
+  // Check that every split rank got a communicator and convert created
+  // communicators into owned RAII wrappers.
+  std::vector<OwnedNcclComm> split_owned_comms;
+  for (size_t i = 0; i < split_comms.size(); ++i) {
+    if (split_comms[i] == nullptr) {
+      return absl::InternalError(absl::StrFormat(
+          "Failed to create a split communicator with color %d for key %d",
+          color, keys[i]));
+    }
+    split_owned_comms.emplace_back(Cast(split_comms[i]), NcclCommDeleter{this});
+  }
+
+  return split_owned_comms;
 }
 
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {

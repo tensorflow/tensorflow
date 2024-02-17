@@ -25,7 +25,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/btree_map.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -79,28 +78,32 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
 class NcclCliqueCommunicators {
  public:
   NcclCliqueCommunicators(
-      NcclCliqueKey clique_key, NcclCliqueId clique_id,
-      absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators);
+      NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+      absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators);
 
   // Returns a NCCL communicator for a given rank if it's in a clique.
   std::optional<NcclApi::NcclCommHandle> comm(int32_t rank);
+
+  // Return true if clique is local: all communicators belong to current
+  // process. Non-local cliques spans multiple processes (typically hosts).
+  bool IsLocal() const;
 
   // Calls `fn` for each communicator in the clique.
   void ForEachComm(
       absl::FunctionRef<void(int32_t, NcclApi::NcclCommHandle)> fn);
 
   const NcclCliqueKey& clique_key() const { return clique_key_; }
-  const NcclCliqueId& clique_id() const { return clique_id_; }
-  size_t size() const { return communicators_.size(); }
+  const std::optional<NcclCliqueId>& clique_id() const { return clique_id_; }
+  size_t num_communicators() const { return communicators_.size(); }
 
   std::string DebugString() const;
 
  private:
   NcclCliqueKey clique_key_;
-  NcclCliqueId clique_id_;
+  std::optional<NcclCliqueId> clique_id_;
 
   // TODO(ezhulenev): Switch this map to GlobalDeviceId key.
-  absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators_;
+  absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators_;
 };
 
 struct NcclCliqueName {
@@ -116,10 +119,9 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
       absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
                       std::greater<NcclCliqueKey>>;
 
-  NcclClique(NcclCliqueKey clique_key, NcclCliqueId clique_id,
-             absl::flat_hash_map<int32_t, NcclApi::OwnedNcclComm> communicators)
-      : Lockable(NcclCliqueCommunicators{std::move(clique_key), clique_id,
-                                         std::move(communicators)}) {}
+  NcclClique(NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
+             absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)
+      : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
 
   std::string DebugString() const;
 };
@@ -129,7 +131,7 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
 // execution of all collective operations sharing a `clique_id`.
 //
 // If clique for a given key does not exist it will be initialized from newly
-// created communicators or created by splitting of the already acquired
+// created communicators or maybe created by splitting of the already acquired
 // cliques.
 absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,

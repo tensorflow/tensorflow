@@ -51,6 +51,13 @@ std::optional<int64_t> NcclCliqueKey::rank(GlobalDeviceId id) const {
   return std::nullopt;
 }
 
+bool NcclCliqueKey::IsSubsetOf(const NcclCliqueKey& other) const {
+  return stream_id_ == other.stream_id_ &&
+         absl::c_all_of(devices_, [&](GlobalDeviceId id) {
+           return absl::c_linear_search(other.devices_, id);
+         });
+}
+
 std::string NcclCliqueKey::ToString() const {
   return absl::StrFormat("devices=[%s]; stream=%d",
                          GlobalDeviceIdsToString(devices_), stream_id_);

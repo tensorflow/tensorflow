@@ -24,6 +24,22 @@ limitations under the License.
 
 namespace xla::gpu {
 
+TEST(NcclCliqueKeyTest, IsSubsetOf) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  NcclCliqueKey key0({id0, id1}, 0);
+  NcclCliqueKey key1({id0, id1, id2, id3}, 0);
+  NcclCliqueKey key2({id0, id1, id2, id3}, 1);
+  NcclCliqueKey key3({id1, id2, id3}, 0);
+
+  EXPECT_TRUE(key0.IsSubsetOf(key1));
+  EXPECT_FALSE(key0.IsSubsetOf(key2));
+  EXPECT_FALSE(key0.IsSubsetOf(key3));
+}
+
 TEST(NcclCliqueKeyTest, LargerCliqueGoFirst) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
