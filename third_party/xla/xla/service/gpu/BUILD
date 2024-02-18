@@ -971,7 +971,6 @@ cc_library(
     ),
     hdrs = ["nccl_api.h"],
     compatible_with = get_compatible_with_portable(),
-    defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),  # TODO(ezhulenev): Remove!
     deps = [
         ":nccl_clique_key",
         "//xla:shape_util",
@@ -1166,7 +1165,6 @@ cc_library(
     ]),
     # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
-    defines = if_cuda_is_configured(["XLA_ENABLE_XCCL"]),  # TODO(ezhulenev): Remove!
     tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = if_cuda_is_configured([
