@@ -158,8 +158,6 @@ static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
 
 absl::Status GpuCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
-  // TODO(ezhulenev): Check that graph is empty, because we should not be mixing
-  // graph tracing with explicit graph construction.
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   VLOG(5) << "Trace into GPU command buffer graph " << graph_

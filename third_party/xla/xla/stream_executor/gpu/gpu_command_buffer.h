@@ -108,11 +108,6 @@ class GpuCommandBuffer : public CommandBuffer {
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so
   // we have to be careful not to keep too many of them alive for too long, or
   // we have a higher risk of OOM errors.
-  //
-  // TODO(ezhulenev): We need to have a policy for how to evict unused
-  // executable graph instances from a device, currently lifetime of an
-  // executable graph is tied to a parent command buffer, and we can have
-  // thousands of command buffers alive at the same time.
   static int64_t AllocatedExecs();
   static int64_t AliveExecs();
 
