@@ -54,7 +54,7 @@ class Fingerprint:
     """Initializes the instance based on values in the SavedModel fingerprint.
 
     Args:
-      saved_model_checksum: Value of the`saved_model_checksum`.
+      saved_model_checksum: Value of the `saved_model_checksum`.
       graph_def_program_hash: Value of the `graph_def_program_hash`.
       signature_def_hash: Value of the `signature_def_hash`.
       saved_object_graph_hash: Value of the `saved_object_graph_hash`.
