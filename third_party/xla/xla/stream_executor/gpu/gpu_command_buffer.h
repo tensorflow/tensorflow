@@ -209,8 +209,18 @@ class GpuCommandBuffer : public CommandBuffer {
 
   Dependencies GetBarrier();
 
-  // Returns loaded no-op kernel used as a barrier, or loads it on a given
-  // stream executor. Loaded kernel owned by a current command buffer.
+  // Returns loaded auxiliary kernels, or loads them on a given stream executor.
+  // Loaded kernels owned by a current command buffer.
+  absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel(
+      StreamExecutor* executor);
   absl::StatusOr<NoOpKernel*> GetNoOpKernel(StreamExecutor* executor);
 
   // Recursively disable all nodes corresponding to barriers (including nested
@@ -292,7 +302,13 @@ class GpuCommandBuffer : public CommandBuffer {
 
   UpdateState update_state_;
 
-  // Loaded instance of a no-op kernel used as command buffer barrier.
+  // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
+  // barriers, updating conditional handles, etc.).
+  SetIfConditionKernel set_if_condition_kernel_;
+  SetIfElseConditionKernel set_if_else_condition_kernel_;
+  SetCaseConditionKernel set_case_condition_kernel_;
+  SetForConditionKernel set_for_condition_kernel_;
+  SetWhileConditionKernel set_while_condition_kernel_;
   NoOpKernel noop_kernel_;
 };
 
