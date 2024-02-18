@@ -293,10 +293,6 @@ class DefaultNcclApi final : public NcclApi {
  public:
   absl::StatusOr<NcclCliqueId> GetUniqueId() final;
 
-  absl::StatusOr<OwnedNcclComm> CommInitRank(int32_t nranks,
-                                             const NcclCliqueId& clique_id,
-                                             int32_t rank) final;
-
   absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
       int32_t nranks, const NcclCliqueId& clique_id,
       absl::Span<const DeviceRank> ranks) final;
@@ -368,35 +364,27 @@ absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
   return NcclCliqueId(id.internal);
 }
 
-absl::StatusOr<NcclApi::OwnedNcclComm> DefaultNcclApi::CommInitRank(
-    int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) {
-  VLOG(1) << "Initialize NCCL communicator for rank #" << rank << " of "
-          << nranks << "; hash(id)=" << absl::HashOf(clique_id.data());
-
-  if (rank < 0 || rank >= nranks)
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Invalid rank %d, it must be in [0, %d) range", rank, nranks));
-
-  ncclComm_t comm = nullptr;
-  XLA_NCCL_RETURN_IF_ERROR(
-      ncclCommInitRank(&comm, nranks, AsNcclUniqueId(clique_id), rank));
-
-  return OwnedNcclComm(Cast(comm), NcclCommDeleter{this});
-}
-
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>>
 DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
                               absl::Span<const DeviceRank> ranks) {
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
-          << " devices; hash(id)=" << absl::HashOf(clique_id.data());
+          << " devices; hash(id)=" << absl::HashOf(clique_id);
 
   std::vector<OwnedNcclComm> comms;
+  comms.reserve(ranks.size());
 
   TF_RETURN_IF_ERROR(GroupStart());
-  for (const DeviceRank& rank : ranks) {
-    se::gpu::ScopedActivateExecutorContext activate_context(rank.device);
-    TF_ASSIGN_OR_RETURN(comms.emplace_back(),
-                        CommInitRank(nranks, clique_id, rank.rank));
+  for (size_t i = 0; i < ranks.size(); ++i) {
+    VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
+            << " of " << nranks << "; hash(id)=" << absl::HashOf(clique_id);
+
+    se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
+
+    ncclComm_t comm_handle = nullptr;
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRank(
+        &comm_handle, nranks, AsNcclUniqueId(clique_id), ranks[i].rank));
+
+    comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
@@ -416,31 +404,28 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
                         comms.size(), keys.size()));
   }
 
-  std::vector<ncclComm_t> split_comms;
-  split_comms.resize(comms.size(), nullptr);
+  // In contrast to grouped initialization communicator splitting initializes
+  // communicators only after a successful call to `GroupEnd`, so we keep a
+  // vector of handles and after successful splitting convert to RAII wrappers.
+  std::vector<ncclComm_t> split_comms_handles;
+  split_comms_handles.resize(comms.size(), nullptr);
 
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < comms.size(); ++i) {
     VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
             << " and key " << keys[i];
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
-        Cast(comms[i]), color, keys[i], &split_comms[i], /*config=*/nullptr));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(Cast(comms[i]), color, keys[i],
+                                           &split_comms_handles[i],
+                                           /*config=*/nullptr));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
-  // Check that every split rank got a communicator and convert created
-  // communicators into owned RAII wrappers.
-  std::vector<OwnedNcclComm> split_owned_comms;
-  for (size_t i = 0; i < split_comms.size(); ++i) {
-    if (split_comms[i] == nullptr) {
-      return absl::InternalError(absl::StrFormat(
-          "Failed to create a split communicator with color %d for key %d",
-          color, keys[i]));
-    }
-    split_owned_comms.emplace_back(Cast(split_comms[i]), NcclCommDeleter{this});
+  std::vector<OwnedNcclComm> split_comms;
+  for (size_t i = 0; i < split_comms_handles.size(); ++i) {
+    split_comms.emplace_back(Cast(split_comms_handles[i]),
+                             NcclCommDeleter{this});
   }
-
-  return split_owned_comms;
+  return split_comms;
 }
 
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {

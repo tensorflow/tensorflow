@@ -137,16 +137,10 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclgetuniqueid
   virtual absl::StatusOr<NcclCliqueId> GetUniqueId() = 0;
 
-  // Creates a new communicator.
-  //
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
-  virtual absl::StatusOr<OwnedNcclComm> CommInitRank(
-      int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) = 0;
-
   // Creates new communicators for given devices.
   //
   // This API doesn't have a corresponding API in NCCL and implemented as
-  // multiple calls to CommInitRank within a single group.
+  // multiple calls to ncclCommInitRank within a single group.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
   virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
