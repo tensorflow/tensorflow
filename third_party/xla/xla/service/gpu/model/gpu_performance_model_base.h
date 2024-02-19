@@ -208,6 +208,17 @@ class GpuPerformanceModelBase {
   static absl::Duration CombineComputeAndMemoryAccessTime(
       absl::Duration compute_time, absl::Duration memory_access_time,
       const GpuPerformanceModelOptions& config);
+
+  // Logs estimates for the operand read if VLOG is enabled.
+  static void VLogOperandRead(const HloInstruction* operand,
+                              int64_t n_bytes_total, int64_t n_bytes_net,
+                              bool coalesced);
+
+  // Logs estimate results of the performance model if VLOG is enabled.
+  static void VLogResult(int64_t flops, int64_t bytes_read,
+                         int64_t bytes_written, int64_t num_threads,
+                         absl::Duration compute_time, absl::Duration read_time,
+                         absl::Duration write_time, absl::Duration exec_time);
 };
 
 }  // namespace gpu

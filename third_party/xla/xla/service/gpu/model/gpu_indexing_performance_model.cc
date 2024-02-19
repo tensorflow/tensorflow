@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -82,6 +83,8 @@ EstimateRunTimeData
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     const HloFusionAnalysis& fusion_analysis, bool is_coalesced) {
   auto& fusion_adaptor = fusion_analysis.fusion();
+  VLOG(5) << "EstimateRunTimeForFusion: " << fusion_adaptor.ToString();
+
   auto roots = fusion_adaptor.GetRoots();
   CHECK_EQ(roots.size(), 1)
       << "Indexing cost model doesn't support multi-output fusions.";
@@ -101,31 +104,40 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
       fusion_adaptor, roots[0], mlir_context_);
 
   int64_t flops = 0;
+  int64_t bytes_read = 0;
   absl::Duration read_time = absl::ZeroDuration();
 
   for (const auto& [instr, indexing_maps] : grouped_fusion_indexing) {
+    VLOG(10) << "instr: " << instr->name();
     HloInstructionAdaptor instr_adaptor(*instr);
 
+    // Instructions inside the fusion are computation and account for FLOPs
+    // count. Instructions outside the fusion are operands of the fusion and
+    // account for memory read time.
+    bool is_operand = !fusion_adaptor.ContainsInstruction(instr_adaptor);
+
+    auto element_type = instr->shape().element_type();
     int64_t n_bytes_total = 0;
     for (const auto& indexing_map : indexing_maps) {
+      VLOG(10) << indexing_map.ToString();
+
       int64_t num_iters = GetIterationSpaceSize(indexing_map, instr);
 
-      // Instructions inside the fusion are computation and account for FLOPs
-      // count. Instructions outside the fusion are operands of the fusion and
-      // account for memory read time.
-      if (fusion_adaptor.ContainsInstruction(instr_adaptor)) {
+      if (is_operand) {
+        int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+        n_bytes_total += type_size * num_iters;
+      } else {
         int64_t flops_per_element = FlopsPerElement(instr);
         flops += flops_per_element * num_iters;
-      } else {
-        int64_t type_size =
-            ShapeUtil::ByteSizeOfPrimitiveType(instr->shape().element_type());
-        n_bytes_total += type_size * num_iters;
       }
     }
 
-    if (n_bytes_total > 0) {
-      int64_t n_bytes_net = shape_size_(instr->shape());
-      auto element_type = instr->shape().element_type();
+    if (is_operand) {
+      int64_t operand_size = shape_size_(instr->shape());
+      int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+      bytes_read += n_bytes_total;
+
+      VLogOperandRead(instr, n_bytes_total, n_bytes_net, is_coalesced);
 
       read_time +=
           ReadTimeWithDRAMHeuristic(*device_info_, num_blocks, n_bytes_net,
@@ -141,6 +153,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, memory_access_time,
       GpuPerformanceModelOptions::PriorityFusion());
+
+  VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
+             read_time, write_time, exec_time);
 
   return EstimateRunTimeData{flops, bytes_written, num_threads, write_time,
                              exec_time};

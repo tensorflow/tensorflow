@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -370,6 +371,33 @@ absl::Duration GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
   return compute_time + memory_access_time -
          std::min(compute_time, memory_access_time) *
              config.memory_compute_parallelism;
+}
+
+/*static*/
+void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
+                                              int64_t n_bytes_total,
+                                              int64_t n_bytes_net,
+                                              bool coalesced) {
+  VLOG(8) << "operand " << operand->name()
+          << ", n_bytes_total: " << n_bytes_total
+          << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
+}
+
+/*static*/
+void GpuPerformanceModelBase::VLogResult(
+    int64_t flops, int64_t bytes_read, int64_t bytes_written,
+    int64_t num_threads, absl::Duration compute_time, absl::Duration read_time,
+    absl::Duration write_time, absl::Duration exec_time) {
+  if (VLOG_IS_ON(8)) {
+    LOG(INFO) << "FLOPs: " << flops;
+    LOG(INFO) << "Bytes read: " << bytes_read;
+    LOG(INFO) << "Bytes written: " << bytes_written;
+    LOG(INFO) << "Num threads: " << num_threads;
+    LOG(INFO) << "Compute time: " << compute_time;
+    LOG(INFO) << "Input read time: " << read_time;
+    LOG(INFO) << "Output write time: " << write_time;
+    LOG(INFO) << "Exec time: " << exec_time;
+  }
 }
 
 }  // namespace gpu
