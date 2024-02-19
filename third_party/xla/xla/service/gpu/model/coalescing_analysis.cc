@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -226,12 +227,14 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
 
 CoalescingAnalysis::CoalescingAnalysis(
     const HloInstruction* instr,
+    absl::Span<const HloInstruction* const> operands,
     HloFusionAnalysis::EmitterFusionKind fusion_kind,
     KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context,
     bool use_heuristic) {
-  if (!use_heuristic && ComputeCoalescingForAllOperands(
-                            instr, /*optional_producer=*/nullptr, fusion_kind,
-                            fusion_interface, mlir_context)) {
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(instr);
+  if (!use_heuristic &&
+      ComputeCoalescingForAllOperands(*fusion_adaptor, operands, fusion_kind,
+                                      fusion_interface, mlir_context)) {
     return;
   }
   // If ComputeCoalescingForAllOperands fails, fallback to using the heuristic.
@@ -241,11 +244,13 @@ CoalescingAnalysis::CoalescingAnalysis(
 
 CoalescingAnalysis::CoalescingAnalysis(
     const HloInstruction* producer, const HloInstruction* consumer,
+    absl::Span<const HloInstruction* const> operands,
     HloFusionAnalysis::EmitterFusionKind fusion_kind,
     KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context,
     bool use_heuristic) {
+  ProducerConsumerFusion fusion_adaptor(producer, consumer);
   if (!use_heuristic &&
-      ComputeCoalescingForAllOperands(producer, consumer, fusion_kind,
+      ComputeCoalescingForAllOperands(fusion_adaptor, operands, fusion_kind,
                                       fusion_interface, mlir_context)) {
     return;
   }
@@ -264,17 +269,14 @@ Shape GetLinearizedShape(const Shape& shape) {
 }
 
 bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
-    const HloInstruction* instr, const HloInstruction* optional_producer,
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const HloInstruction* const> operands,
     HloFusionAnalysis::EmitterFusionKind fusion_kind,
     KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context) {
   // Compute indexing from output to inputs for logical layout.
-  auto instr_indexing = ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  auto instr_indexing_keyed_by_operands =
-      GroupIndexingMapsByProducers(instr_indexing, instr);
-  if (optional_producer) {
-    DCHECK(FuseProducerConsumerOutputToInputIndexing(
-        optional_producer, &instr_indexing_keyed_by_operands, mlir_context));
-  }
+  auto instr_indexing_keyed_by_operands = ComputeGroupedOutputToInputIndexing(
+      fusion_adaptor, fusion_adaptor.GetRoots()[0], mlir_context);
+
   // Compute thread ID -> physical layout of output indexing map.
   std::optional<IndexingMap> thread_id_to_logical_output_map =
       fusion_interface->ComputeThreadIdToOutputIndexing(0, mlir_context);
@@ -285,8 +287,8 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
   }
   // For every operand compute thread ID -> physical layout of operand indexing
   // map.
-  for (const auto& [operand, indexing_maps] :
-       instr_indexing_keyed_by_operands) {
+  for (const HloInstruction* operand : operands) {
+    auto& indexing_maps = instr_indexing_keyed_by_operands.at(operand);
     const Shape& operand_shape = operand->shape();
     IndexingMap operand_logical_to_physical_map =
         GetIndexingMapFromLogicalToPhysicalLayout(operand_shape, mlir_context);

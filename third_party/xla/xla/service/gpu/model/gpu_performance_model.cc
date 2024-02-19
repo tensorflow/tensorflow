@@ -19,8 +19,8 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/time/time.h"
@@ -43,6 +43,27 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+std::vector<const HloInstruction*> GetUniqueFusionOperands(
+    const HloInstruction* producer, const HloInstruction* consumer) {
+  std::vector<const HloInstruction*> fusion_operands;
+  for (const HloInstruction* operand : producer->operands()) {
+    fusion_operands.push_back(operand);
+  }
+  for (const HloInstruction* operand : consumer->operands()) {
+    if (operand != producer) {
+      fusion_operands.push_back(operand);
+    }
+  }
+  std::sort(fusion_operands.begin(), fusion_operands.end());
+  fusion_operands.erase(
+      std::unique(fusion_operands.begin(), fusion_operands.end()),
+      fusion_operands.end());
+  return fusion_operands;
+}
+
+}  // namespace
 
 /*static*/ EstimateRunTimeData
 GpuPerformanceModel::EstimateRunTimeForInstruction(
@@ -73,7 +94,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
 
   CoalescingAnalysis coalescing_analysis(
-      instr, fusion_analysis.GetEmitterFusionKind());
+      instr, absl::MakeSpan(instr->operands()),
+      fusion_analysis.GetEmitterFusionKind());
 
   absl::Duration read_time;
   for (const auto [operand_id, operand] : llvm::enumerate(instr->operands())) {
@@ -207,17 +229,11 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   absl::Duration compute_time =
       ComputeTime(*device_info, fused_flops, num_threads);
 
-  absl::flat_hash_set<const HloInstruction*> fusion_operands;
-  for (auto* operand : producer->operands()) {
-    fusion_operands.insert(operand);
-  }
-  for (auto* operand : consumer->operands()) {
-    if (operand != producer) {
-      fusion_operands.insert(operand);
-    }
-  }
+  std::vector<const HloInstruction*> fusion_operands =
+      GetUniqueFusionOperands(producer, consumer);
   CoalescingAnalysis coalescing_analysis(
-      producer, consumer, fusion_analysis.GetEmitterFusionKind());
+      producer, consumer, absl::MakeSpan(fusion_operands),
+      fusion_analysis.GetEmitterFusionKind());
 
   absl::Duration read_time;
   for (const auto* operand : fusion_operands) {
