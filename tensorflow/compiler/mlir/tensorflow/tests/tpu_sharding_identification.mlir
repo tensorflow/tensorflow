@@ -603,6 +603,33 @@ func.func @func(%arg0: tensor<*xi32> {tf.aliasing_output = 1 : i64},
 
 // -----
 
+// CHECK-LABEL: func @check_symmetric_alias_propagation
+func.func @check_symmetric_alias_propagation(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["\01\02\03", "\04\05\06"]
+  // CHECK-SAME: output_sharding_configuration = ["\01\02\03", "\04\05\06"]
+  "tf_device.cluster_func"(%arg0, %arg1) {
+      func = @func,
+      use_spmd_for_xla_partitioning = false, num_cores_per_replica = 1 : i64
+  } : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
+  func.return
+}
+
+// CHECK-LABEL: func @func
+// CHECK-SAME: %arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"
+// CHECK-SAME: %arg1: tensor<*xi32> {mhlo.sharding = "\04\05\06"
+// CHECK-SAME: ->{{.*}}mhlo.sharding = "\01\02\03"{{.*}}mhlo.sharding = "\04\05\06"
+func.func @func(%arg0: tensor<*xi32> {tf.aliasing_output = 0 : i64},
+           %arg1: tensor<*xi32> {tf.aliasing_output = 1 : i64}) -> (tensor<*xi32>, tensor<*xi32>) {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+  %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+  %2 = "tf.B"(%arg1) : (tensor<*xi32>) -> (tensor<*xi32>)
+  %3 = "tf.XlaSharding"(%2) { _XlaSharding = "\04\05\06"} : (tensor<*xi32>) -> tensor<*xi32>
+  func.return %2, %3 : tensor<*xi32>, tensor<*xi32>
+}
+
+// -----
+
 // Partial tiled inputs using XlaSharding ops identified as REPLICATED should keep the sharding configuration.
 // The following xla.OpSharding is used:
 // Proto debug string:
