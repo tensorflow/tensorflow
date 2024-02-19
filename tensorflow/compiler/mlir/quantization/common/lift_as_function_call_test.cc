@@ -36,7 +36,6 @@ limitations under the License.
 namespace mlir::quant {
 namespace {
 
-using ::mlir::quant::QuantizationTestBase;
 using ::testing::NotNull;
 
 class LiftAsFunctionCallTest : public QuantizationTestBase {};

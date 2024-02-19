@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 
+#include <utility>
+
 #include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -31,31 +37,7 @@ namespace {
 using ::testing::NotNull;
 using ::testing::SizeIs;
 
-class ConstantFoldingTest : public ::testing::Test {
- protected:
-  ConstantFoldingTest() {
-    ctx_.loadDialect<func::FuncDialect, TF::TensorFlowDialect>();
-  }
-
-  // Parses `module_op_str` to create a `ModuleOp`. Checks whether the created
-  // module op is valid.
-  OwningOpRef<ModuleOp> ParseModuleOpString(absl::string_view module_op_str) {
-    auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, &ctx_);
-    EXPECT_TRUE(module_op_ref);
-    return module_op_ref;
-  }
-
-  // Returns the first operation with the given type in the function.
-  template <typename OpType>
-  OpType FindOperationOfType(func::FuncOp function) {
-    for (auto op : function.getBody().getOps<OpType>()) {
-      return op;
-    }
-    return nullptr;
-  }
-
-  MLIRContext ctx_{};
-};
+class ConstantFoldingTest : public QuantizationTestBase {};
 
 TEST_F(ConstantFoldingTest, FoldLargeConstant) {
   constexpr absl::string_view kModuleCode = R"mlir(
@@ -170,8 +152,8 @@ TEST_F(ConstantFoldingTest, FoldDepthwiseConvWeight) {
       module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
   ASSERT_THAT(test_func, NotNull());
 
-  RewritePatternSet patterns(&ctx_);
-  patterns.add<ConstantFoldQuantizableOperands>(&ctx_);
+  RewritePatternSet patterns(ctx_.get());
+  patterns.add<ConstantFoldQuantizableOperands>(ctx_.get());
   EXPECT_TRUE(
       succeeded(applyPatternsAndFoldGreedily(test_func, std::move(patterns))));
 
@@ -203,8 +185,8 @@ TEST_F(ConstantFoldingTest, DepthwiseConvWeightNotFoldable) {
       module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
   ASSERT_THAT(test_func, NotNull());
 
-  RewritePatternSet patterns(&ctx_);
-  patterns.add<ConstantFoldQuantizableOperands>(&ctx_);
+  RewritePatternSet patterns(ctx_.get());
+  patterns.add<ConstantFoldQuantizableOperands>(ctx_.get());
   EXPECT_TRUE(
       succeeded(applyPatternsAndFoldGreedily(test_func, std::move(patterns))));
 
