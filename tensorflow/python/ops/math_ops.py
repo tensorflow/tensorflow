@@ -5021,7 +5021,8 @@ def sampled_addmm(indices,
     dense_shape_static = tensor_util.constant_value(dense_shape)
     output_shape_static = tensor_util.constant_value(output_shape)
     if dense_shape_static is not None and output_shape_static is not None:
-      condition_static = np.all(np.equal(dense_shape_static, output_shape_static)) 
+      condition_static = np.all(np.equal(dense_shape_static, 
+                                         output_shape_static)) 
       if not condition_static:
         raise ValueError(
                 f"Dense shape: {dense_shape} does not match "
