@@ -213,6 +213,7 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
         "//xla/service/gpu/model:indexing_analysis",
+        "//xla/service/gpu/model:indexing_map",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "@com_google_absl//absl/numeric:bits",
