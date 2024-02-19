@@ -80,9 +80,10 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
 
-// Computes indexing for every instruction within a fusion cluster.
+// Computes output-to-input indexing for every instruction within a fusion
+// cluster starting with `target_instr` and going from def to use.
 GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
-    const HloFusionAdaptor& fusion_adaptor, int output_id,
+    const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
     mlir::MLIRContext* ctx);
 
 // Groups indexing maps by instructions.

@@ -211,7 +211,7 @@ HloInstructionIndexing ComputeOutputToInputFusionOpIndexing(
     MLIRContext* mlir_context) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
   auto grouped_indexing_maps = ComputeGroupedOutputToInputIndexing(
-      *fusion_adaptor, output_id, mlir_context);
+      *fusion_adaptor, fusion_adaptor->GetRoots()[output_id], mlir_context);
 
   // After the traversal, `grouped_indexing_maps` is keyed by
   // HloParameterInstructions. Convert them back to the operand id and return.
@@ -1001,26 +1001,33 @@ GroupedByOpIndexingMap GroupIndexingMapsByProducers(
 }
 
 GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
-    const HloFusionAdaptor& fusion_adaptor, int output_id, MLIRContext* ctx) {
-  auto root = fusion_adaptor.GetRoots()[output_id];
-
-  auto initial_map = CreateIdentityMap(root.instruction().shape(), ctx);
+    const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
+    MLIRContext* ctx) {
+  auto initial_map = CreateIdentityMap(target_instr.instruction().shape(), ctx);
 
   GroupedByOpIndexingMap grouped_indexing_maps;
-  grouped_indexing_maps[&root.instruction()].insert(initial_map);
+  grouped_indexing_maps[&target_instr.instruction()].insert(initial_map);
 
   auto post_order = fusion_adaptor.MakeInstructionPostOrder();
 
   // Iterator in reversed post-order (use-before-def).
-  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+  auto it = std::find(post_order.rbegin(), post_order.rend(), target_instr);
+  for (; it != post_order.rend(); ++it) {
     auto producer_indexing = ComputeOutputToInputIndexing(&it->instruction(),
                                                           /*output_id=*/0, ctx);
-    auto consumer_indexing_maps = grouped_indexing_maps[&it->instruction()];
+    auto consumer_indexing_maps =
+        grouped_indexing_maps.find(&it->instruction());
+    if (consumer_indexing_maps == grouped_indexing_maps.end()) {
+      continue;
+    }
+    // Indexing maps have to be copied because of rehashing. Consider using a
+    // different container to get better performance.
+    IndexingMapSet consumer_indexing_maps_copy = consumer_indexing_maps->second;
     for (const auto& [producer_operand_id, producer_operand_indexing] :
          llvm::enumerate(producer_indexing.indexing_maps)) {
       auto producer_operand_adaptor = it->GetOperand(producer_operand_id);
       for (const IndexingMap& producer_map : producer_operand_indexing) {
-        for (const IndexingMap& consumer_map : consumer_indexing_maps) {
+        for (const IndexingMap& consumer_map : consumer_indexing_maps_copy) {
           auto composed_map = ComposeIndexingMaps(consumer_map, producer_map);
           composed_map.Simplify();
           composed_map.RemoveUnusedSymbols();

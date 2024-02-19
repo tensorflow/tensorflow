@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_analysis.h"
 
-#include <optional>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -35,7 +33,6 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
-using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -119,7 +116,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   auto fusion_adaptor = ProducerConsumerFusion(transpose, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, /*output_id=*/0, &mlir_context_);
+      fusion_adaptor, fusion_adaptor.GetRoots()[0], &mlir_context_);
   EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingMap(R"(
@@ -146,6 +143,60 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
                         d0 in [0, 999]
                         d1 in [0, 999]
                       )")))));
+}
+
+TEST_F(IndexingAnalysisTest,
+       ComputeGroupedOutputToInputIndexingStartNotAtRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    f {
+      p0 = f32[15, 20] parameter(0)
+      p0_init = f32[] parameter(1)
+      p0_bcast = f32[15, 32, 20, 64] broadcast(p0), dimensions={0, 2}
+
+      ROOT reduce_2 = f32[15, 64] reduce(p0_bcast, p0_init),
+        dimensions={1, 2}, to_apply=max
+    }
+    ENTRY e {
+      p0 = f32[15, 20] parameter(0)
+      p0_init = f32[] constant(-inf)
+      ROOT fusion = f32[15, 64] fusion(p0, p0_init), kind=kLoop, calls=f
+    }
+  )");
+  EXPECT_TRUE(module.ok());
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      (*module)->entry_computation()->root_instruction());
+  auto root = fusion_adaptor->GetRoots()[0];
+  auto bcast = root.GetOperand(0);
+  auto parameter_0 = bcast.GetOperand(0);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, bcast, &mlir_context_);
+  EXPECT_THAT(
+      grouped_indexing,
+      UnorderedElementsAre(
+          Pair(&bcast.instruction(), ElementsAre(MatchIndexingMap(R"(
+            (d0, d1, d2, d3) -> (d0, d1, d2, d3)
+            domain:
+            d0 in [0, 14]
+            d1 in [0, 31]
+            d2 in [0, 19]
+            d3 in [0, 63]
+          )"))),
+          Pair(&parameter_0.instruction(), ElementsAre(MatchIndexingMap(R"(
+            (d0, d1, d2, d3) -> (d0, d2)
+            domain:
+            d0 in [0, 14]
+            d1 in [0, 31]
+            d2 in [0, 19]
+            d3 in [0, 63]
+          )")))));
 }
 
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {
