@@ -49,13 +49,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
-#include "third_party/gpus/cudnn/cudnn_adv_infer.h"
-#include "third_party/gpus/cudnn/cudnn_adv_train.h"
-#include "third_party/gpus/cudnn/cudnn_backend.h"
-#include "third_party/gpus/cudnn/cudnn_cnn_infer.h"
-#include "third_party/gpus/cudnn/cudnn_cnn_train.h"
-#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
-#include "third_party/gpus/cudnn/cudnn_ops_train.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -86,6 +79,22 @@ limitations under the License.
 // clang-format off
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
+
+#if CUDNN_VERSION >= 9000
+#include "third_party/gpus/cudnn/cudnn_adv.h"
+#include "third_party/gpus/cudnn/cudnn_cnn.h"
+#include "third_party/gpus/cudnn/cudnn_ops.h"
+#elif CUDNN_VERSION >= 8100
+#include "third_party/gpus/cudnn/cudnn_adv_infer.h"
+#include "third_party/gpus/cudnn/cudnn_adv_train.h"
+#include "third_party/gpus/cudnn/cudnn_cnn_infer.h"
+#include "third_party/gpus/cudnn/cudnn_cnn_train.h"
+#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
+#include "third_party/gpus/cudnn/cudnn_ops_train.h"
+#endif
+
+#include "third_party/gpus/cudnn/cudnn_backend.h"
+
 #if CUDNN_VERSION >= 8100
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
