@@ -1354,6 +1354,34 @@ TEST_F(IndexingAnalysisTest, PadOpNoInterior) {
                                       )"))));
 }
 
+TEST_F(IndexingAnalysisTest, PadOpNegativePadding) {
+  // The interior padding is applied first (even with negative padding), so we
+  // get a size of 5 (7 + 6 - 8).
+  // in:     0 1 2 3 4 5 6
+  // padded: 0 p 1 p 2 p 3 p 4 p 5 p 6
+  // sliced:       p 2 p 3 p
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[7] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[5] pad(p0, p1), padding=-3_-5_1
+    }
+  )");
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                                        (d0) -> ((d0 + 3) floordiv 2)
+                                        domain:
+                                        d0 in [0, 4]
+                                        (d0 + 3) mod 2 in [0, 0]
+                                      )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                                        (d0) -> ()
+                                        domain:
+                                        d0 in [0, 4]
+                                      )"))));
+}
+
 TEST_F(IndexingAnalysisTest, ReduceOp) {
   auto ir = R"(
     HloModule m

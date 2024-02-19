@@ -317,7 +317,9 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
   for (const auto [output_dim, pad_low, pad_high, pad_interior] :
        llvm::zip(output_dims, padding_low, padding_high, padding_interior)) {
     AffineExpr dim_expr = getAffineDimExpr(output_dim_id, mlir_context);
-    dimension_ranges.push_back(Range{pad_low, output_dim - 1 - pad_high});
+    dimension_ranges.push_back(
+        Range{std::max(int64_t{0}, pad_low),
+              std::min(output_dim - 1, output_dim - 1 - pad_high)});
     if (pad_interior == 0) {
       exprs.push_back(dim_expr - pad_low);
     } else {
