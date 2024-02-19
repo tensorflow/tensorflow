@@ -84,6 +84,17 @@ xla_cc_test(
     ],
 )
 
+xla_test(
+    name = "float_conversions_test",
+    srcs = ["float_conversions_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_codegen_test",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 xla_cc_test(
     name = "gpu_reduce_scatter_creator_test",
     srcs = ["gpu_reduce_scatter_creator_test.cc"],
