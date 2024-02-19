@@ -218,8 +218,6 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;
   thread_x_to_linearized_input.Simplify();
-  // TODO(b/325462001): Re-enable unused symbols removal.
-  // thread_x_to_linearized_input.RemoveUnusedSymbols();
   return EstimateCoalescingViaMemoryTransactionsCount(
       FindContiguousIntervals(thread_x_to_linearized_input), element_type);
 }

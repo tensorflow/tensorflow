@@ -181,6 +181,25 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesOnlyUnusedSymbols) {
                         )"));
 }
 
+TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+                     &mlir_context_),
+      {32}, {1, 2, 3, 4, 5});
+  indexing_map.AddConstraint(
+      ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Range{24, 459});
+  indexing_map.RemoveUnusedSymbols();
+  // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0)[s0, s1] -> (d0 * 4 + s0 + s1 - 42)
+                              domain:
+                              d0 in [0, 31]
+                              s0 in [0, 1]
+                              s1 in [0, 3]
+                              d0 * 4 + s0 + s1 in [24, 459]
+                            )"));
+}
+
 TEST_F(IndexingMapTest, ConstraintRangeSimplification_Sum) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0)", &mlir_context_), {100}, {});

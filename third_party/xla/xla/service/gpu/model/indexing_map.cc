@@ -864,13 +864,13 @@ void IndexingMap::RemoveUnusedSymbols() {
   std::vector<Range> compressed_symbol_ranges_;
   MLIRContext* mlir_context = GetMLIRContext();
   int64_t used_symbols_count = 0;
-  std::vector<AffineExpr> symbol_replacements;
-  symbol_replacements.reserve(num_symbols_after);
+  std::vector<AffineExpr> symbol_replacements(
+      num_symbols_before, getAffineConstantExpr(0, mlir_context));
   for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
     if (!unused_symbols_bit_vector[i]) {
       compressed_symbol_ranges_.push_back(symbol_ranges_[i]);
-      symbol_replacements.push_back(
-          getAffineSymbolExpr(used_symbols_count++, mlir_context));
+      symbol_replacements[i] =
+          getAffineSymbolExpr(used_symbols_count++, mlir_context);
     }
   }
   symbol_ranges_ = std::move(compressed_symbol_ranges_);
