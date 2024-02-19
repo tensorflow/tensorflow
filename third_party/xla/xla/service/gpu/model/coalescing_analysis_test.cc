@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
@@ -49,10 +48,10 @@ class CoalescingTest : public HloTestBase {
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.value().get());
     EXPECT_TRUE(emitter.ok());
 
-    CoalescingAnalysis coalescing_analysis(
-        root, absl::MakeSpan(root->operands()), analysis.GetEmitterFusionKind(),
-        fusion, &mlir_context_,
-        /*use_heuristic=*/false);
+    CoalescingAnalysis coalescing_analysis(root, root->operands(),
+                                           analysis.GetEmitterFusionKind(),
+                                           fusion, &mlir_context_,
+                                           /*use_heuristic=*/false);
 
     std::vector<bool> results;
     for (const HloInstruction* operand : root->operands()) {
