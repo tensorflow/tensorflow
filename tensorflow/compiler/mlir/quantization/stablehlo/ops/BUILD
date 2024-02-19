@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -24,6 +25,23 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "stablehlo_op_quant_spec_test",
+    srcs = ["stablehlo_op_quant_spec_test.cc"],
+    deps = [
+        ":stablehlo_op_quant_spec",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@stablehlo//:stablehlo_ops",
     ],
 )
