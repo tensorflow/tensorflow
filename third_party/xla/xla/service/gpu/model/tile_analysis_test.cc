@@ -263,6 +263,25 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, s8)")));
 }
 
+TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
+  // TODO(325488844): Add pad tests with defined constraints on tile input.
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4, 4] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[8,8] pad(p0, p1), padding=2_2_0x1_3_0
+    }
+  )");
+
+  EXPECT_THAT(
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
+      Optional(
+          MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s0 - 2, s3 - 1)",
+                            "()[s0, s1, s2, s3, s4, s5] -> (s1, s4)",
+                            "()[s0, s1, s2, s3, s4, s5] -> (s2, s5)")));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
