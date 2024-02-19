@@ -63,13 +63,6 @@ class QuantizationTestBase : public Test {
     return module_op_ref;
   }
 
-  // Gets the function with the given name from the module.
-  func::FuncOp GetFunctionFromModule(ModuleOp module,
-                                     absl::string_view function_name) {
-    SymbolTable symbol_table(module);
-    return symbol_table.lookup<func::FuncOp>(function_name);
-  }
-
   // Returns the first operation with the given type in the function.
   template <typename OpType>
   OpType FindOperationOfType(func::FuncOp function) {

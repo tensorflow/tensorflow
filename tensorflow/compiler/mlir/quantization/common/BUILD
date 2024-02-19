@@ -52,6 +52,7 @@ tf_cc_test(
     name = "lift_as_function_call_test",
     srcs = ["lift_as_function_call_test.cc"],
     deps = [
+        ":func",
         ":lift_as_function_call",
         ":test_base",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -62,6 +63,35 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "func",
+    srcs = ["func.cc"],
+    hdrs = ["func.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/cc/saved_model:signature_constants",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "func_test",
+    srcs = ["func_test.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":func",
+        ":test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -112,6 +142,7 @@ tf_cc_test(
     srcs = ["attrs_and_constraints_test.cc"],
     deps = [
         ":attrs_and_constraints",
+        ":func",
         ":test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

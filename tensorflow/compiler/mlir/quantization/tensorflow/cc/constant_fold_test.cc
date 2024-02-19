@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 
+#include <gmock/gmock.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -42,13 +43,6 @@ class ConstantFoldingTest : public ::testing::Test {
     auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, &ctx_);
     EXPECT_TRUE(module_op_ref);
     return module_op_ref;
-  }
-
-  // Gets the function with the given name from the module.
-  func::FuncOp GetFunctionFromModule(ModuleOp module,
-                                     absl::string_view function_name) {
-    SymbolTable symbol_table(module);
-    return symbol_table.lookup<func::FuncOp>(function_name);
   }
 
   // Returns the first operation with the given type in the function.
@@ -80,8 +74,10 @@ TEST_F(ConstantFoldingTest, FoldLargeConstant) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
-  func::FuncOp test_func =
-      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+  const auto test_func =
+      module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
+  ASSERT_THAT(test_func, NotNull());
+
   Operation* mul_op = FindOperationOfType<TF::MulOp>(test_func);
   SmallVector<Value> results = ConstantFoldOpIfPossible(mul_op);
   EXPECT_THAT(results, SizeIs(1));
@@ -106,8 +102,10 @@ TEST_F(ConstantFoldingTest, NotFoldingIdentity) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
-  func::FuncOp test_func =
-      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+  const auto test_func =
+      module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
+  ASSERT_THAT(test_func, NotNull());
+
   Operation* op_to_fold = FindOperationOfType<TF::MulOp>(test_func);
   SmallVector<Value> results = ConstantFoldOpIfPossible(op_to_fold);
   EXPECT_THAT(results, SizeIs(1));
@@ -135,8 +133,10 @@ TEST_F(ConstantFoldingTest, NotFoldingArgument) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
-  func::FuncOp test_func =
-      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+  const auto test_func =
+      module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
+  ASSERT_THAT(test_func, NotNull());
+
   Operation* op_to_fold = FindOperationOfType<TF::MulOp>(test_func);
   SmallVector<Value> results = ConstantFoldOpIfPossible(op_to_fold);
   EXPECT_THAT(results, SizeIs(1));
@@ -166,8 +166,9 @@ TEST_F(ConstantFoldingTest, FoldDepthwiseConvWeight) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
-  func::FuncOp test_func =
-      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+  const auto test_func =
+      module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
+  ASSERT_THAT(test_func, NotNull());
 
   RewritePatternSet patterns(&ctx_);
   patterns.add<ConstantFoldQuantizableOperands>(&ctx_);
@@ -198,8 +199,9 @@ TEST_F(ConstantFoldingTest, DepthwiseConvWeightNotFoldable) {
   )mlir";
 
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleCode);
-  func::FuncOp test_func =
-      GetFunctionFromModule(*module_op_ref, "test_fold_constant");
+  const auto test_func =
+      module_op_ref->lookupSymbol<func::FuncOp>("test_fold_constant");
+  ASSERT_THAT(test_func, NotNull());
 
   RewritePatternSet patterns(&ctx_);
   patterns.add<ConstantFoldQuantizableOperands>(&ctx_);

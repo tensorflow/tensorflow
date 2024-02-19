@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -71,19 +72,6 @@ class ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass
  private:
   void runOnOperation() override;
 };
-
-// Finds the main function from module_op. Returns nullptr if not found.
-// The model's signature keys will contain "@serving_default" as default TF
-// Model signature, or "@main" if it is in being exported from MLIR module to
-// GraphDef.
-func::FuncOp GetMainFunc(ModuleOp module_op) {
-  for (auto func_op : module_op.getOps<func::FuncOp>()) {
-    if (func_op.getSymName().equals("main") ||
-        func_op.getSymName().equals("serving_default"))
-      return func_op;
-  }
-  return nullptr;
-}
 
 // Creates a unique stablehlo function name based on op order.
 std::string CreateStablehloFunctionName(const int id) {
@@ -446,7 +434,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     runOnOperation() {
   ModuleOp module_op = getOperation();
 
-  func::FuncOp main_func = GetMainFunc(module_op);
+  func::FuncOp main_func = FindMainFuncOp(module_op);
   if (!main_func) return;
 
   DuplicateSmallConstantOps(module_op, main_func);
