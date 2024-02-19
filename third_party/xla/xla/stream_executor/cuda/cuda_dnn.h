@@ -19,17 +19,21 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
+#include <Eigen/Core>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/numeric_options.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace gpu {

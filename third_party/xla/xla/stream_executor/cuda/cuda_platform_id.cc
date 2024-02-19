@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 
+#include "xla/stream_executor/platform.h"
+
 namespace stream_executor {
 namespace cuda {
 

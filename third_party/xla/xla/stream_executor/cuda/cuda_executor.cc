@@ -15,9 +15,27 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <ios>
 #include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
+
+#include "absl/base/casts.h"
+#include "absl/numeric/int128.h"
+#include "absl/strings/str_join.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
