@@ -718,6 +718,9 @@ void LaunchConvBackpropInputOpImpl(
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(context, blas != nullptr,
+              absl::InternalError("No BLAS for stream."));
 
   bool is_grouped_convolution = filter_shape.dim_size(3) != dims.in_depth;
   if (!is_grouped_convolution && dims.filter_size(0) == 1 &&
@@ -740,10 +743,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
-                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions(),
-                                                 se::blas::CallContext::kNone));
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr,
+                                k, a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                                se::blas::CallContext::kNone));
     return;
   } else if (!is_grouped_convolution &&
              dims.filter_size(0) == dims.input_size(0) &&
@@ -765,10 +768,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
-                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions(),
-                                                 se::blas::CallContext::kNone));
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr,
+                                k, a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                                se::blas::CallContext::kNone));
     return;
   }
 

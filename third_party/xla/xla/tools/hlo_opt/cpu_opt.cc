@@ -31,7 +31,7 @@ class CpuOptProvider : public OptProvider {
 }  // namespace
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(cpu_opt_provider, {
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(cpu_opt_provider, {
   xla::OptProvider::RegisterForPlatform(
       "cpu", std::make_unique<xla::CpuOptProvider>());
 });

@@ -709,6 +709,10 @@ void WarnProtoConflicts(const protobuf::Message& src, protobuf::Message* dst) {
                         set_dst.end(), std::back_inserter(in_both));
 
   for (auto field : in_both) {
+    // Used for Job Instrumentation, users should not be warned.
+    if (field->name() == "framework_type") {
+      continue;
+    }
     if (field->type() == protobuf::FieldDescriptor::TYPE_MESSAGE) {
       WarnProtoConflicts(reflection->GetMessage(src, field),
                          reflection->MutableMessage(dst, field));

@@ -29,23 +29,21 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/logging.h"
 
-namespace stream_executor {
-namespace gpu {
+namespace stream_executor::gpu {
 
-// Wraps a GpuFunctionHandle to implement the platform-independent
-// KernelInterface.
-class GpuKernel : public internal::KernelInterface {
+class GpuKernel : public Kernel {
  public:
-  GpuKernel() = default;
+  explicit GpuKernel(GpuExecutor* gpu_executor) : gpu_executor_(gpu_executor) {}
 
   // Note that the function is unloaded when the module is unloaded, and the
   // module that the function is contained in is owned by the GpuExecutor.
-  ~GpuKernel() override {}
+  ~GpuKernel() override { gpu_executor_->UnloadKernel(this); }
 
   // As arity cannot be reflected upon using the CUDA API, the arity is
   // explicitly set during the GpuExecutor::GetKernel initialization process.
@@ -89,6 +87,7 @@ class GpuKernel : public internal::KernelInterface {
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
  private:
+  GpuExecutor* gpu_executor_ = nullptr;
   GpuContext* gpu_context_ = nullptr;  // context where kernel is loaded
   std::string name_;                   // kernel name
 
@@ -99,19 +98,14 @@ class GpuKernel : public internal::KernelInterface {
   KernelCacheConfig preferred_cache_config_ = KernelCacheConfig::kNoPreference;
 };
 
-// Given a platform-independent kernel datatype, returns the (const) internal
-// CUDA platform implementation pointer.
 inline const GpuKernel* AsGpuKernel(const Kernel* kernel) {
-  return static_cast<const GpuKernel*>(kernel->implementation());
+  return static_cast<const GpuKernel*>(kernel);
 }
 
-// Given a platform-independent kernel datatype, returns the (non-const)
-// internal CUDA platform implementation pointer.
 inline GpuKernel* AsGpuKernel(Kernel* kernel) {
-  return static_cast<GpuKernel*>(kernel->implementation());
+  return static_cast<GpuKernel*>(kernel);
 }
 
-}  // namespace gpu
-}  // namespace stream_executor
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_KERNEL_H_

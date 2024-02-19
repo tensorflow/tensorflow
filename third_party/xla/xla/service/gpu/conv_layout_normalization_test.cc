@@ -89,7 +89,8 @@ ENTRY %TestComputation {
   )");
 }
 
-TEST_F(ConvolutionLayoutNormalizationTest, FusedConv3D) {
+// TODO(rocm): No Conv3D
+TEST_F(ConvolutionLayoutNormalizationTest, DISABLED_ON_GPU_ROCM(FusedConv3D)) {
   const char* hlo = R"(
 HloModule TestModule
 

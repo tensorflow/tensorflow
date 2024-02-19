@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/statusor.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -87,6 +88,17 @@ bool HasInfinity(PrimitiveType type) {
     return FloatingPointTypeSwitch<bool>(
         [&](auto constant_type) -> bool {
           return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
+        },
+        type);
+  }
+  return false;
+}
+
+bool HasNegativeZero(PrimitiveType type) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
+          return has_negative_zero_v<NativeTypeOf<constant_type>>;
         },
         type);
   }

@@ -2,12 +2,14 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla:internal"]),
     licenses = ["notice"],
 )
 
@@ -15,7 +17,7 @@ cc_library(
     name = "gpu_helpers",
     srcs = ["gpu_helpers.cc"],
     hdrs = ["gpu_helpers.h"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
         "//xla:statusor",
         "//xla:types",
@@ -37,7 +39,7 @@ cc_library(
     srcs = ["se_gpu_pjrt_client.cc"],
     hdrs = ["se_gpu_pjrt_client.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
         ":gpu_helpers",
         ":gpu_metrics",
@@ -162,7 +164,6 @@ cc_library(
     name = "nccl_id_store",
     srcs = ["nccl_id_store.cc"],
     hdrs = ["nccl_id_store.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla:statusor",
@@ -212,7 +213,6 @@ cc_library(
     name = "gpu_topology",
     srcs = ["gpu_topology.cc"],
     hdrs = ["gpu_topology.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_topology_proto_cc",
     ],
@@ -223,7 +223,6 @@ cc_library(
     srcs = ["se_gpu_pjrt_compiler.cc"],
     hdrs = ["se_gpu_pjrt_compiler.h"],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":se_gpu_pjrt_client",
         "//xla:status_macros",
@@ -268,7 +267,6 @@ cc_library(
     name = "gpu_metrics",
     srcs = ["gpu_metrics.cc"],
     hdrs = ["gpu_metrics.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

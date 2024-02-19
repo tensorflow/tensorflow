@@ -1,3 +1,71 @@
+# Release 2.17.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+## Keras
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.lite`
+    * Quantization for `FullyConnected` layer is switched from per-tensor to
+      per-channel scales for dynamic range quantization use case (`float32`
+      inputs / outputs and `int8` weights). The change enables new quantization
+      schema globally in the converter and inference engine. The new behaviour
+      can be disabled via experimental
+      flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.16.0
 
 ## TensorFlow
@@ -59,7 +127,7 @@
 * <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
 * <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 
-*  Full aarch64 Linux and Arm64 macOS wheels are now published to the 
+*  Full aarch64 Linux and Arm64 macOS wheels are now published to the
   `tensorflow` pypi repository and no longer redirect to a separate package.
 
 ### Major Features and Improvements
@@ -68,7 +136,7 @@
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
 *  Support for Python 3.12 has been added.
-*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now 
+*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now
    available for easier TPU based installs.
 *  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
 
@@ -108,6 +176,13 @@
       from both the node defs and the function defs of the graph. Note that
       this currently only strips the `Assert` nodes from the graph and
       converts them into `NoOp`s instead.
+
+*   `tf.data`
+
+    * `tf.data` now has an `autotune_options.initial_parallelism` option to
+      control the initial parallelism setting used by autotune before the data
+      pipeline has started running. The default is 16. A lower value reduces
+      initial memory usage, while a higher value improves startup time.
 
 ## Keras
 

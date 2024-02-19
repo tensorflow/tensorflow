@@ -16,24 +16,32 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_blas.h"
 
 #include <complex>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_bf16.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cuda/include/library_types.h"
+#include "third_party/gpus/cuda/include/vector_types.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
-#include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -45,8 +53,11 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -1446,5 +1457,6 @@ void initialize_cublas() {
 }  // namespace cuda
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_cublas,
-                            { stream_executor::cuda::initialize_cublas(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cublas, {
+  stream_executor::cuda::initialize_cublas();
+});

@@ -40,8 +40,9 @@ class LoopTest : public HloTestBase {
   void SetUp() override {
     HloTestBase::SetUp();
 
-    printer_ = AffineMapPrinter(
-        {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"}, {"unroll_factor"});
+    printer_ =
+        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
+                         {"chunk_id", "unroll_id"});
   }
 
  protected:
@@ -51,15 +52,15 @@ class LoopTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
-absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
+absl::StatusOr<std::unique_ptr<KernelFusionInterface>> GetFusion(
     const HloFusionAnalysis& analysis) {
   TF_ASSIGN_OR_RETURN(
       auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
-  auto fusion = dynamic_cast<LoopFusion*>(emitter.get());
+  auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
   TF_RET_CHECK(fusion != nullptr);
 
   emitter.release();
-  return std::unique_ptr<LoopFusion>{fusion};
+  return std::unique_ptr<KernelFusionInterface>{fusion};
 }
 
 TEST_F(LoopTest, ThreadIndexingUnrolled) {
@@ -80,25 +81,30 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =
-      loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+      loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
+                                                   &mlir_context_);
 
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
-              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[unroll_factor] -> (
-                (th_x * 4 + bl_x * 512 + unroll_factor) floordiv 60000,
-                ((th_x * 4 + bl_x * 512 + unroll_factor) floordiv 300) mod 200,
-                (th_x * 4 + bl_x * 512 + unroll_factor) mod 300)
-              domain:
-              th_x in [0, 127]
-              th_y in [0, 0]
-              th_z in [0, 0]
-              bl_x in [0, 1007]
-              bl_y in [0, 0]
-              bl_z in [0, 0]
-              unroll_factor in [0, 3]
-             )"));
+  (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+   (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
+   (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) mod 200,
+   th_x * 4 + bl_x * 512 + chunk_id * 516096 + unroll_id -
+     (((th_x + bl_x * 128) floordiv 3 + chunk_id * 43008) floordiv 25) * 300
+  )
+  domain:
+  th_x in [0, 127]
+  th_y in [0, 0]
+  th_z in [0, 0]
+  bl_x in [0, 1007]
+  bl_y in [0, 0]
+  bl_z in [0, 0]
+  chunk_id in [0, 11]
+  unroll_id in [0, 3]
+  (th_x + bl_x * 128) * 4 + chunk_id * 516096 in [0, 5999996]
+)"));
 }
 
 TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
@@ -119,20 +125,98 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
   auto thread_id_to_output_indexing =
-      loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+      loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
+                                                   &mlir_context_);
   EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
               MatchIndexingString(R"(
-                (th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (th_x)
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
+              domain:
+              th_x in [0, 19]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 0]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              chunk_id in [0, 0]
+              unroll_id in [0, 0]
+            )"));
+  auto thread_id_to_input_indexing =
+      loop_fusion->ComputeThreadIdToInputIndexing(
+          /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_input_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
+              domain:
+              th_x in [0, 19]
+              th_y in [0, 0]
+              th_z in [0, 0]
+              bl_x in [0, 0]
+              bl_y in [0, 0]
+              bl_z in [0, 0]
+              chunk_id in [0, 0]
+              unroll_id in [0, 0]
+            )"));
+}
+
+TEST_F(LoopTest, Broadcast) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    bcast {
+      %input = f32[20] parameter(0)
+      ROOT bcast = f32[10, 20, 30] broadcast(%input), dimensions={1}
+    }
+
+    ENTRY entry {
+      %input = f32[20] parameter(0)
+      ROOT %fusion = f32[10, 20, 30] fusion(%input), kind=kLoop, calls=bcast
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetFusion(analysis));
+  auto thread_id_to_output_indexing =
+      loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
+                                                   &mlir_context_);
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+                ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
+                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20,
+                (th_x + bl_x * 128) mod 30)
                 domain:
-                th_x in [0, 19]
+                th_x in [0, 127]
                 th_y in [0, 0]
                 th_z in [0, 0]
-                bl_x in [0, 0]
+                bl_x in [0, 46]
                 bl_y in [0, 0]
                 bl_z in [0, 0]
-  )"));
+                chunk_id in [0, 0]
+                unroll_id in [0, 0]
+                th_x + bl_x * 128 in [0, 5999]
+            )"));
+  auto thread_id_to_input_indexing =
+      loop_fusion->ComputeThreadIdToInputIndexing(
+          /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
+  EXPECT_THAT(thread_id_to_input_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+              (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
+                ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20)
+                domain:
+                th_x in [0, 127]
+                th_y in [0, 0]
+                th_z in [0, 0]
+                bl_x in [0, 46]
+                bl_y in [0, 0]
+                bl_z in [0, 0]
+                chunk_id in [0, 0]
+                unroll_id in [0, 0]
+                th_x + bl_x * 128 in [0, 5999]
+            )"));
 }
 
 }  // namespace

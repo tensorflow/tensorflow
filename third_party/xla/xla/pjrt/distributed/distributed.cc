@@ -15,27 +15,32 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/distributed.h"
 
+#include <memory>
 #include <string>
 
-#include "grpcpp/grpcpp.h"
+#include "grpcpp/channel.h"
+#include "grpcpp/create_channel.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
+#include "xla/statusor.h"
+#include "tsl/platform/grpc_credentials.h"
 
 namespace xla {
+
+// In OSS, insecure credentials are used as default.
+constexpr bool kVerifySecureCredentials = false;
 
 StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
                              const CoordinationServiceImpl::Options& options) {
-  auto credentials = ::grpc::InsecureServerCredentials();
-  return DistributedRuntimeService::Get(address, credentials, options);
+  return DistributedRuntimeService::Get(
+      address, tsl::GetServerCredentials(kVerifySecureCredentials), options);
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     std::string address, const DistributedRuntimeClient::Options& options) {
-  std::shared_ptr<::grpc::ChannelCredentials> creds =
-      ::grpc::InsecureChannelCredentials();
-  std::shared_ptr<::grpc::Channel> channel =
-      ::grpc::CreateChannel(address, creds);
+  std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
+      address, tsl::GetClientCredentials(kVerifySecureCredentials));
   return GetDistributedRuntimeClient(channel, options);
 }
 

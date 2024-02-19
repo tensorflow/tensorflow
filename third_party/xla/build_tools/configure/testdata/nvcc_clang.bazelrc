@@ -5,7 +5,7 @@ build --config nvcc_clang
 build --action_env CLANG_CUDA_COMPILER_PATH=/usr/lib/llvm-17/bin/clang
 build --action_env CUDA_TOOLKIT_PATH=/usr/local/cuda-12.2
 build --action_env TF_CUBLAS_VERSION=12.3
-build --action_env TF_CUDA_COMPUTE_CAPABILITIES=7.5,7.5,7.5,7.5
+build --action_env TF_CUDA_COMPUTE_CAPABILITIES=7.5
 build --action_env TF_CUDNN_VERSION=8
 build --repo_env TF_NEED_TENSORRT=0
 build --config nonccl

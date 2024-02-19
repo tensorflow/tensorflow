@@ -529,5 +529,6 @@ void initialize_rocfft() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_rocfft,
-                            { stream_executor::initialize_rocfft(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_rocfft, {
+  stream_executor::initialize_rocfft();
+});

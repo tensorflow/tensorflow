@@ -17,34 +17,49 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_activation.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -55,18 +70,47 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
+#include "tsl/protobuf/dnn.pb.h"
 #include "tsl/util/env_var.h"
 
 // clang-format off
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
+
+#if CUDNN_VERSION >= 9000
+#include "third_party/gpus/cudnn/cudnn_adv.h"
+#include "third_party/gpus/cudnn/cudnn_cnn.h"
+#include "third_party/gpus/cudnn/cudnn_ops.h"
+#elif CUDNN_VERSION >= 8100
+#include "third_party/gpus/cudnn/cudnn_adv_infer.h"
+#include "third_party/gpus/cudnn/cudnn_adv_train.h"
+#include "third_party/gpus/cudnn/cudnn_cnn_infer.h"
+#include "third_party/gpus/cudnn/cudnn_cnn_train.h"
+#include "third_party/gpus/cudnn/cudnn_ops_infer.h"
+#include "third_party/gpus/cudnn/cudnn_ops_train.h"
+#endif
+
+#include "third_party/gpus/cudnn/cudnn_backend.h"
+
 #if CUDNN_VERSION >= 8100
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_EngineConfig.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_Errata.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_ExecutionPlan.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_Filters.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_Heuristics.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_MatMulDesc.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_Operation.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_OperationGraph.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_PointWiseDesc.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_Rng.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_Tensor.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend_VariantPack.h"
 #endif  // CUDNN_VERSION >= 8100
-#include "absl/strings/string_view.h"
 // clang-format on
 
 #ifdef __clang__
@@ -378,7 +422,7 @@ void PreloadCudnnSubLibs(PreloadCudnnType type) {
 #elif CUDNN_VERSION >= 8004
       cudnnOpsInferVersionCheck();
       cudnnCnnInferVersionCheck();
-#endif  // CUDNN >= 9000
+#endif  // CUDNN_VERSION >= 9000
       break;
     }
     case PreloadCudnnType::Rnn: {
@@ -2173,7 +2217,7 @@ static absl::Status PopulateProfileFromTimer(
       profile_result->set_scratch_size(*scratch_size);
     }
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 template <class T>
@@ -4312,7 +4356,7 @@ class OpGraph {
       }
       it->is_virtual = true;
     }
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<OpDescriptor> FindOpDescriptor(int uid) const {
@@ -4338,7 +4382,7 @@ class OpGraph {
       return tsl::errors::Internal("Unknown ID.");
     }
     it->sequence_index = index;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   bool Empty() const { return ops_.empty(); }
@@ -8402,7 +8446,7 @@ absl::Status CreateOpRunners(
 
   VLOG(4) << "\nReturned execution plans size: " << out_runners->size();
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -9124,14 +9168,18 @@ bool CudnnSupport::GetConvolveAlgorithms(
 
 absl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
 CudnnSupport::NormRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
-    const dnn::TensorDescriptor& input_descriptor,
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::NormKind kind, double epsilon,
+    const dnn::TensorDescriptor& x_descriptor,
     const dnn::TensorDescriptor& scale_descriptor,
-    const dnn::TensorDescriptor& bias_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
+    const dnn::TensorDescriptor& y_or_dx_descriptor,
+    std::optional<dnn::TensorDescriptor> bias_descriptor,
+    std::optional<dnn::TensorDescriptor> dy_descriptor,
     std::optional<dnn::TensorDescriptor> expectation_descriptor,
-    std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
-#if CUDNN_VERSION >= 8905
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
+    std::optional<dnn::TensorDescriptor> dscale_descriptor,
+    std::optional<dnn::TensorDescriptor> dbias_descriptor) {
+#if (CUDNN_VERSION >= 8905)
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   std::vector<int64_t> uids;
@@ -9142,45 +9190,48 @@ CudnnSupport::NormRunnerFromDesc(
     return uids.emplace_back(uids.back() + 1);
   };
 
-  TF_ASSIGN_OR_RETURN(
-      auto xTensor,
-      CreateCudnnTensor(input_descriptor.dimensions(),
-                        input_descriptor.GetPhysicalStridesMajorToMinor(),
-                        next_uid(), input_descriptor.type(), 1, -1));
-  TF_ASSIGN_OR_RETURN(
-      auto scaleTensor,
-      CreateCudnnTensor(scale_descriptor.dimensions(),
-                        scale_descriptor.GetPhysicalStridesMajorToMinor(),
-                        next_uid(), scale_descriptor.type(), 1, -1));
-  TF_ASSIGN_OR_RETURN(
-      auto biasTensor,
-      CreateCudnnTensor(bias_descriptor.dimensions(),
-                        bias_descriptor.GetPhysicalStridesMajorToMinor(),
-                        next_uid(), bias_descriptor.type(), 1, -1));
-  TF_ASSIGN_OR_RETURN(
-      auto yTensor,
-      CreateCudnnTensor(output_descriptor.dimensions(),
-                        output_descriptor.GetPhysicalStridesMajorToMinor(),
-                        next_uid(), output_descriptor.type(), 1, -1));
-  std::optional<cudnn_frontend::Tensor> expectation_tensor, norm_factor_tensor;
-  if (expectation_descriptor) {
-    TF_ASSIGN_OR_RETURN(
-        expectation_tensor,
-        CreateCudnnTensor(
-            expectation_descriptor->dimensions(),
-            expectation_descriptor->GetPhysicalStridesMajorToMinor(),
-            next_uid(), expectation_descriptor->type(), 1, -1));
-    TF_ASSIGN_OR_RETURN(
-        norm_factor_tensor,
-        CreateCudnnTensor(
-            norm_factor_descriptor->dimensions(),
-            norm_factor_descriptor->GetPhysicalStridesMajorToMinor(),
-            next_uid(), norm_factor_descriptor->type(), 1, -1));
+  auto create_cudnn_tensor = [next_uid](dnn::TensorDescriptor tensor_descriptor)
+      -> tsl::StatusOr<cudnn_frontend::Tensor> {
+    return CreateCudnnTensor(tensor_descriptor.dimensions(),
+                             tensor_descriptor.GetPhysicalStridesMajorToMinor(),
+                             next_uid(), tensor_descriptor.type(), 1, -1);
+  };
+
+  TF_ASSIGN_OR_RETURN(auto x_tensor, create_cudnn_tensor(x_descriptor));
+  TF_ASSIGN_OR_RETURN(auto scale_tensor, create_cudnn_tensor(scale_descriptor));
+  TF_ASSIGN_OR_RETURN(auto y_or_dx_tensor,
+                      create_cudnn_tensor(y_or_dx_descriptor));
+
+  std::optional<cudnn_frontend::Tensor> bias_tensor, expectation_tensor,
+      norm_factor_tensor, dy_tensor, dscale_tensor, dbias_tensor;
+  if (kind == dnn::NormKind::LAYER_FWD_INFER ||
+      kind == dnn::NormKind::LAYER_FWD_TRAIN) {
+    TF_ASSIGN_OR_RETURN(bias_tensor,
+                        create_cudnn_tensor(bias_descriptor.value()));
+  }
+
+  if (kind == dnn::LAYER_FWD_TRAIN) {
+    TF_ASSIGN_OR_RETURN(expectation_tensor,
+                        create_cudnn_tensor(expectation_descriptor.value()));
+    TF_ASSIGN_OR_RETURN(norm_factor_tensor,
+                        create_cudnn_tensor(norm_factor_descriptor.value()));
+  }
+
+  if (kind == dnn::LAYER_BWD) {
+    TF_ASSIGN_OR_RETURN(dy_tensor, create_cudnn_tensor(dy_descriptor.value()));
+    TF_ASSIGN_OR_RETURN(expectation_tensor,
+                        create_cudnn_tensor(expectation_descriptor.value()));
+    TF_ASSIGN_OR_RETURN(norm_factor_tensor,
+                        create_cudnn_tensor(norm_factor_descriptor.value()));
+    TF_ASSIGN_OR_RETURN(dscale_tensor,
+                        create_cudnn_tensor(dscale_descriptor.value()));
+    TF_ASSIGN_OR_RETURN(dbias_tensor,
+                        create_cudnn_tensor(dbias_descriptor.value()));
   }
 
   std::vector<int64_t> scale_dim(4, 1), scalar_uids;
   TF_ASSIGN_OR_RETURN(
-      auto epsilonTensor,
+      auto epsilon_tensor,
       CreateCudnnTensor(scale_dim, scale_dim,
                         scalar_uids.emplace_back(uids.back() + 1),
                         dnn::DataType::kDouble, 1, -1, /*is_virtual=*/false,
@@ -9190,30 +9241,47 @@ CudnnSupport::NormRunnerFromDesc(
   cudnnBackendNormMode_t normalizationMode = CUDNN_LAYER_NORM;
 
   std::optional<cudnn_frontend::Operation> norm_op;
-  if (!expectation_descriptor) {
-    cudnnBackendNormFwdPhase_t phase = CUDNN_NORM_FWD_INFERENCE;
-    norm_op = cudnn_frontend::OperationBuilder(
-                  CUDNN_BACKEND_OPERATION_NORM_FORWARD_DESCRIPTOR)
-                  .setNormalizationMode(normalizationMode)
-                  .setNormFwdPhase(phase)
-                  .setxDesc(xTensor)
-                  .setScaleAndBias(scaleTensor, biasTensor)
-                  .setEpsilonTensor(epsilonTensor)
-                  .setyDesc(yTensor)
-                  .build();
-  } else {
-    cudnnBackendNormFwdPhase_t phase = CUDNN_NORM_FWD_TRAINING;
-    norm_op = cudnn_frontend::OperationBuilder(
-                  CUDNN_BACKEND_OPERATION_NORM_FORWARD_DESCRIPTOR)
-                  .setNormalizationMode(normalizationMode)
-                  .setNormFwdPhase(phase)
-                  .setxDesc(xTensor)
-                  .setScaleAndBias(scaleTensor, biasTensor)
-                  .setEpsilonTensor(epsilonTensor)
-                  .setSavedMeanAndInvVar(expectation_tensor.value(),
-                                         norm_factor_tensor.value())
-                  .setyDesc(yTensor)
-                  .build();
+  switch (kind) {
+    case dnn::LAYER_FWD_INFER:
+      norm_op = cudnn_frontend::OperationBuilder(
+                    CUDNN_BACKEND_OPERATION_NORM_FORWARD_DESCRIPTOR)
+                    .setNormalizationMode(normalizationMode)
+                    .setNormFwdPhase(CUDNN_NORM_FWD_INFERENCE)
+                    .setxDesc(x_tensor)
+                    .setScaleAndBias(scale_tensor, bias_tensor.value())
+                    .setEpsilonTensor(epsilon_tensor)
+                    .setyDesc(y_or_dx_tensor)
+                    .build();
+      break;
+    case dnn::LAYER_FWD_TRAIN:
+      norm_op = cudnn_frontend::OperationBuilder(
+                    CUDNN_BACKEND_OPERATION_NORM_FORWARD_DESCRIPTOR)
+                    .setNormalizationMode(normalizationMode)
+                    .setNormFwdPhase(CUDNN_NORM_FWD_TRAINING)
+                    .setxDesc(x_tensor)
+                    .setScaleAndBias(scale_tensor, bias_tensor.value())
+                    .setEpsilonTensor(epsilon_tensor)
+                    .setSavedMeanAndInvVar(expectation_tensor.value(),
+                                           norm_factor_tensor.value())
+                    .setyDesc(y_or_dx_tensor)
+                    .build();
+      break;
+    case dnn::LAYER_BWD:
+      norm_op =
+          cudnn_frontend::OperationBuilder(
+              CUDNN_BACKEND_OPERATION_NORM_BACKWARD_DESCRIPTOR)
+              .setNormalizationMode(normalizationMode)
+              .setxDesc(x_tensor)
+              .setScale(scale_tensor)
+              .setSavedMeanAndInvVar(expectation_tensor.value(),
+                                     norm_factor_tensor.value())
+              .setDScaleAndDBias(dscale_tensor.value(), dbias_tensor.value())
+              .setdyDesc(dy_tensor.value())
+              .setdxDesc(y_or_dx_tensor)
+              .build();
+      break;
+    default:
+      break;
   }
 
   std::array<cudnn_frontend::Operation const*, 1> ops = {&norm_op.value()};
@@ -10104,7 +10172,7 @@ absl::Status CudnnSupport::CudnnReorderConvolutionFilterAndBias(
       /*reorderedBiasData=*/has_bias ? bias_output->opaque() : nullptr);
   RETURN_IF_CUDNN_ERROR(status);
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status CudnnSupport::DoPrepareForCtcLoss(
@@ -10582,5 +10650,6 @@ void initialize_cudnn() {
 #pragma clang diagnostic pop
 #endif
 
-REGISTER_MODULE_INITIALIZER(register_cudnn,
-                            { stream_executor::initialize_cudnn(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cudnn, {
+  stream_executor::initialize_cudnn();
+});

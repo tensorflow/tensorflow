@@ -384,7 +384,7 @@ cc_library(
     name = "gif",
     hdrs = ["gif.h"],
     deps = [
-        "@local_tsl//tsl/platform:gif",
+        "@gif",
     ],
 )
 
@@ -412,7 +412,7 @@ cc_library(
     name = "jpeg",
     hdrs = ["jpeg.h"],
     deps = [
-        "@local_tsl//tsl/platform:jpeg",
+        "@libjpeg_turbo//:jpeg",
     ],
 )
 
@@ -580,7 +580,7 @@ cc_library(
     hdrs = ["png.h"],
     deps = [
         ":platform",
-        "@local_tsl//tsl/platform:png",
+        "@png",
     ],
 )
 

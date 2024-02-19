@@ -3526,7 +3526,7 @@ xla::Status PrepareForExport(mlir::ModuleOp module) {
   }
   if (failed(pm.run(module)))
     return tsl::errors::Internal("Unable to prepare for XLA export");
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -3603,7 +3603,7 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
       converter.BuildStackFramesIndexProto();
   hlo_module.mutable_stack_frame_index()->Swap(&stack_frame_index);
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
@@ -3648,7 +3648,7 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     }
   }
 
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace mlir

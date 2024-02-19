@@ -100,7 +100,7 @@ Status CheckSignature(const DataTypeVector& types,
           " but function parameter has type ", DataTypeString(types[i]));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Uses the _Arg and _Retval nodes in the graph to determine an OpSharding for
@@ -445,7 +445,7 @@ Status BuildComputation(
 
   TF_ASSIGN_OR_RETURN(auto program_shape, computation->GetProgramShape());
   *output_shape = program_shape.result();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -519,7 +519,7 @@ string XlaCompiler::Argument::ShapeHumanString() const {
 
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
-      initialization_status_(OkStatus()),
+      initialization_status_(absl::OkStatus()),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
       device_mgr_(absl::WrapUnique(device_)) {
@@ -572,7 +572,7 @@ static Status GetFunctionBody(const NameAttrList& function,
 
   *fbody = flib_runtime->GetFunctionBody(handle);
   TF_RET_CHECK(*fbody);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
@@ -599,7 +599,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     }
     VLOG(4) << "Function " << function.name() << " in local_flib_runtime_";
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
@@ -816,7 +816,7 @@ Status XlaCompiler::CompileFunction(
   auto it = cache_.find({function_id, arg_vector});
   if (it != cache_.end()) {
     *result = it->second;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const FunctionBody* fbody;
@@ -928,7 +928,7 @@ Status XlaCompiler::CompileFunction(
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the XLA shape for argument 'arg'.
@@ -976,12 +976,12 @@ Status XlaCompiler::XLAShapeForArgument(
               arg.type, std::get<TensorShape>(arg.shape), xla_shape));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     case XlaCompiler::Argument::kTensorList: {
       TF_RET_CHECK(absl::holds_alternative<xla::Shape>(arg.shape));
       *xla_shape = std::get<xla::Shape>(arg.shape);
-      return OkStatus();
+      return absl::OkStatus();
     }
     case XlaCompiler::Argument::kConstantResource:
     case XlaCompiler::Argument::kResource: {
@@ -1001,7 +1001,7 @@ Status XlaCompiler::XLAShapeForArgument(
           TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
               arg_sharding, arg.fast_mem, options_.shape_determination_fns,
               xla_shape));
-          return OkStatus();
+          return absl::OkStatus();
         }
         case XlaResource::kTensorArray: {
           if (arg.max_array_size < 0) {
@@ -1019,7 +1019,7 @@ Status XlaCompiler::XLAShapeForArgument(
                 arg.tensor_array_gradients.size() + 1, *xla_shape);
             *xla_shape = xla::ShapeUtil::MakeTupleShape(tuple_shape);
           }
-          return OkStatus();
+          return absl::OkStatus();
         }
         case XlaResource::kStack: {
           if (arg.max_array_size < 0) {
@@ -1035,7 +1035,7 @@ Status XlaCompiler::XLAShapeForArgument(
               TensorShapeToXLAShape(arg.type, shape, &buffer_shape));
           *xla_shape = xla::ShapeUtil::MakeTupleShape(
               {buffer_shape, xla::ShapeUtil::MakeShape(xla::S32, {})});
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         case XlaResource::kInvalid:
@@ -1045,7 +1045,7 @@ Status XlaCompiler::XLAShapeForArgument(
     }
     case XlaCompiler::Argument::kToken: {
       *xla_shape = xla::ShapeUtil::MakeTokenShape();
-      return OkStatus();
+      return absl::OkStatus();
     }
     case XlaCompiler::Argument::kInvalid:
       return errors::Internal("Invalid argument type in XLAShapeForArgument()");
@@ -1144,7 +1144,7 @@ Status XlaCompiler::BuildArguments(
   }
 
   if (input_to_args->empty() && !use_tuple_arg) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // `arg_to_inputs[c] = d` means that the c'th original arg index corresponds
@@ -1305,7 +1305,7 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1321,7 +1321,7 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(op, &op_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // If node is PartitionedCall or StatefulPartitionedCall, returns the
@@ -1340,10 +1340,10 @@ Status GetPotentialFunctionName(const Node& node, const string** name) {
           " does not have 'func' field set");
     }
     *name = &attr_value->func().name();
-    return OkStatus();
+    return absl::OkStatus();
   }
   *name = &node.type_string();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
@@ -1379,7 +1379,7 @@ Status ValidateGraph(const Graph* graph,
 
       return errors::InvalidArgument(errmsg);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (const Node* node : graph->nodes()) {
@@ -1402,7 +1402,7 @@ Status ValidateGraph(const Graph* graph,
     s = FindKernelDef(device_type, node->def(), nullptr, nullptr);
     TF_RETURN_IF_ERROR(maybe_error(node, s));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
@@ -1636,7 +1636,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   VLOG(2) << "XLA output shape: "
           << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
   result->collective_info = context->GetCollectiveInfo();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetChannelHandle(const string& key,
@@ -1647,7 +1647,7 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
@@ -1659,7 +1659,7 @@ Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
@@ -1671,7 +1671,7 @@ Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
   }
   *channel = result.first->second;
   VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1698,7 +1698,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
     if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::InvalidArgument(
           "Duplicate calls to SetDeviceToHostMetadata with key ", key);
@@ -1706,7 +1706,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
   SetTransfer(key, types, shapes, &transfer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetDeviceToHostShapes(
@@ -1721,7 +1721,7 @@ Status XlaCompiler::GetDeviceToHostShapes(
     TensorShape shape(iter->second.metadata(i).shape());
     shapes->push_back(shape);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::SetHostToDeviceMetadata(
@@ -1732,7 +1732,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
     tf2xla::HostTransferMetadata new_transfer;
     SetTransfer(key, types, shapes, &new_transfer);
     if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::InvalidArgument(
           "Duplicate calls to SetHostToDeviceMetadata with key ", key);
@@ -1740,7 +1740,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
   SetTransfer(key, types, shapes, &transfer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::GetHostComputeControlDependency(
@@ -1753,7 +1753,7 @@ Status XlaCompiler::GetHostComputeControlDependency(
   } else {
     *handle = iter->second;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::SetHostComputeControlDependency(
@@ -1765,7 +1765,7 @@ Status XlaCompiler::SetHostComputeControlDependency(
         host_compute_name);
   }
   host_compute_control_output_[host_compute_name] = handle;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void XlaCompiler::PushNodeTokenMapping() {
@@ -1779,7 +1779,7 @@ Status XlaCompiler::PopNodeTokenMapping() {
         "empty.");
   }
   node_token_mapping_stack_.pop();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
@@ -1793,7 +1793,7 @@ Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
     return errors::FailedPrecondition("Token mapping already exists for node ",
                                       node_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {

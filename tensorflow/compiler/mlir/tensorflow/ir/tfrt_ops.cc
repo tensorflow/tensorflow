@@ -90,7 +90,7 @@ mlir::LogicalResult PwStreamResultsOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// IfrtProgramCall
+// IfrtCall
 //===----------------------------------------------------------------------===//
 
 mlir::LogicalResult IfrtCallOp::verify() {
@@ -113,6 +113,26 @@ mlir::LogicalResult IfrtCallOp::verify() {
       return emitOpError()
              << "does not support returning '!tf.resource' values as results";
     }
+  }
+
+  // Verify variable_arg_indices is sorted in ascending order.
+  int64_t prev_index = -1;
+  for (auto arg_index_attr : getVariableArgIndicesAttr()) {
+    if (!arg_index_attr.isa_and_nonnull<mlir::IntegerAttr>()) {
+      return emitOpError() << "variable_arg_indices must be an integer";
+    }
+
+    int64_t index =
+        arg_index_attr.dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    if (index < 0) {
+      return emitOpError() << "variable_arg_indices must be positive";
+    }
+
+    if (index <= prev_index) {
+      return emitOpError()
+             << "variable_arg_indices must be sorted in ascending order";
+    }
+    prev_index = index;
   }
 
   return mlir::success();

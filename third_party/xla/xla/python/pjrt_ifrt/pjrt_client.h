@@ -111,18 +111,8 @@ class PjRtClient final
     DCHECK(this);
     return pjrt_client_->platform_id();
   }
-  absl::flat_hash_map<std::string, ClientAttribute> attributes()
-      const override {
-    std::optional<PjRtPluginAttributes> attributes =
-        pjrt_client_->plugin_attributes();
-    if (!attributes.has_value()) {
-      return {};
-    }
-    return {{"pjrt_c_api_major_version",
-             ClientAttribute(attributes->pjrt_c_api_major_version)},
-            {"pjrt_c_api_minor_version",
-             ClientAttribute(attributes->pjrt_c_api_minor_version)}};
-  }
+
+  absl::flat_hash_map<std::string, ClientAttribute> attributes() const override;
 
   int device_count() const override {
     DCHECK(this);

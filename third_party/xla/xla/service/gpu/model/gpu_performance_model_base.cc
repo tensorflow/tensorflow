@@ -162,9 +162,27 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
 }
 
 /*static*/
+int64_t GpuPerformanceModelBase::GetOperandBytesAccessed(
+    const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
+    const HloInstruction* operand) {
+  // When called for a consumer-producer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  // case, so we need an explicit check.
+  if (!instr->IsUserOf(operand)) {
+    return 0;
+  }
+
+  return cost_analysis->operand_bytes_accessed(*instr,
+                                               instr->operand_index(operand));
+}
+
+/*static*/
 float GpuPerformanceModelBase::GetOperandUtilization(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
     const HloInstruction* operand) {
+  // When called for a consumer-producer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  // case, so we need an explicit check.
   if (!instr->IsUserOf(operand)) {
     return 0.f;
   }
@@ -203,17 +221,17 @@ float GpuPerformanceModelBase::GetCommonUtilization(
 }
 
 /*static*/
-float GpuPerformanceModelBase::GetSharedUtilization(
+int64_t GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* producer,
     const HloInstruction* consumer, const HloInstruction* operand) {
   float producer_utilization_by_consumer =
       GetOperandUtilization(cost_analysis, consumer, producer);
 
-  float operand_utilization_by_producer =
-      GetOperandUtilization(cost_analysis, producer, operand);
+  int64_t bytes_accessed_by_producer =
+      GetOperandBytesAccessed(cost_analysis, producer, operand);
 
-  float operand_utilization_by_consumer =
-      GetOperandUtilization(cost_analysis, consumer, operand);
+  int64_t bytes_accessed_by_consumer =
+      GetOperandBytesAccessed(cost_analysis, consumer, operand);
 
   float common_utilization =
       producer->IsUserOf(operand)
@@ -221,8 +239,13 @@ float GpuPerformanceModelBase::GetSharedUtilization(
                                  producer->operand_index(operand), consumer)
           : 0.f;
 
-  return producer_utilization_by_consumer * operand_utilization_by_producer +
-         operand_utilization_by_consumer - common_utilization;
+  int64_t operand_size = cost_analysis->GetShapeSize(operand->shape());
+  int64_t common_bytes_accessed =
+      std::llround(operand_size * common_utilization);
+
+  return std::llround(bytes_accessed_by_producer *
+                      producer_utilization_by_consumer) +
+         bytes_accessed_by_consumer - common_bytes_accessed;
 }
 
 /*static*/

@@ -1376,6 +1376,75 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertLen(quant_params['scales'], expected_num_params)
     self.assertLen(quant_params['zero_points'], expected_num_params)
 
+  def _getIntegerQuantizeDenseModel(self, num_filters=32):
+    np.random.seed(0)
+
+    root = autotrackable.AutoTrackable()
+
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[1, 16], dtype=tf.float32)]
+    )
+    def func(inp):
+      dense = tf.matmul(a=inp, b=tf.ones([16, num_filters]))
+      output = tf.nn.relu(dense, name='output')
+      return output
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [np.random.uniform(-1, 1, size=(1, 16)).astype(np.float32)]
+
+    root.f = func
+    to_save = root.f.get_concrete_function()
+    return (root, to_save, calibration_gen)
+
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True),
+      ('_PerChannelDynamicRange', False, True, True),
+      ('_PerTensorDynamicRange', True, True, True),
+  )
+  @test_util.run_v2_only
+  def testDisablePerChannelQuantizationForDenseLayers(
+      self,
+      disable_per_channel_for_dense=False,
+      enable_mlir_quantizer=False,
+      representative_dataset=False,
+  ):
+    k_dense_name = 'tfl.pseudo_qconst' if representative_dataset else 'MatMul'
+    # Dynamic range quant requires total num elements of filters > 1024.
+    k_num_filters = 64
+    root, func, calib_gen = self._getIntegerQuantizeDenseModel(k_num_filters)
+    quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
+        [func], root
+    )
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    if representative_dataset:
+      quantized_converter.representative_dataset = calib_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel_for_dense:
+      quantized_converter._experimental_disable_per_channel_quantization_for_dense_layers = (
+          disable_per_channel_for_dense
+      )
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    interp.allocate_tensors()
+    detail = next((
+        d
+        for d in interp.get_tensor_details()
+        if d['name'].startswith(k_dense_name)
+    ))
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel_for_dense else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
   @parameterized.named_parameters(
       ('MlirQuantize', True), ('TocoQuantize', False)
   )
@@ -3472,6 +3541,60 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     # There should be only 2 float tensors, input and output.
     self.assertEqual(num_float32_tensor, 2)
 
+  @parameterized.named_parameters(
+      ('_PerChannelQuant', False, False),
+      ('_PerChannelMlirQuant', False, True),
+      ('_PerTensorQuant', True, False),
+      ('_PerTensorMlirQuant', True, True),
+      ('_PerChannelDynamicRange', False, True, True),
+      ('_PerTensorDynamicRange', True, True, True),
+  )
+  @test_util.run_v2_only
+  def testDisablePerChannelQuantizationForDenseLayers(
+      self,
+      disable_per_channel_for_dense=False,
+      enable_mlir_quantizer=False,
+      representative_dataset=False,
+  ):
+    k_dense_name = 'tfl.pseudo_qconst' if representative_dataset else 'MatMul'
+    # Dynamic range quant requires total num elements of filters > 1024.
+    k_num_filters = 64
+    model = tf.keras.models.Sequential([
+        tf.keras.Input(shape=(16,)),
+        tf.keras.layers.Dense(k_num_filters, activation='relu'),
+    ])
+    model.build()
+
+    quantized_converter = lite.TFLiteConverterV2.from_keras_model(model)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    if representative_dataset:
+
+      def calibration_gen():
+        for _ in range(5):
+          yield [np.random.uniform(-1, 1, size=(1, 16)).astype(np.float32)]
+
+      quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS
+    ]
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
+    if disable_per_channel_for_dense:
+      quantized_converter._experimental_disable_per_channel_quantization_for_dense_layers = (
+          disable_per_channel_for_dense
+      )
+    quantized_tflite_model = quantized_converter.convert()
+    self.assertIsNotNone(quantized_tflite_model)
+
+    interp = interpreter.Interpreter(model_content=quantized_tflite_model)
+    interp.allocate_tensors()
+    detail = next(
+        (d for d in interp.get_tensor_details() if k_dense_name in d['name'])
+    )
+    quant_params = detail['quantization_parameters']
+    expected_num_params = 1 if disable_per_channel_for_dense else k_num_filters
+    self.assertLen(quant_params['scales'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
+
 
 class FromJaxModelTest(lite_v2_test_util.ModelTest):
 
@@ -5076,7 +5199,13 @@ class SparsityTest(lite_v2_test_util.ModelTest):
         metadata.options.modelOptimizationModes,
     )
 
-  def testQuantizedBlockSparsity(self):
+  @parameterized.named_parameters(
+      ('_PerChannelQuantForDense', False),
+      ('_PerTensorQuantForDense', True),
+  )
+  def testQuantizedBlockSparsity(
+      self, disable_per_channel_quantization_for_dense_layers
+  ):
     weight_values = np.array([
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 2, 0, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 1, 0],
@@ -5105,6 +5234,9 @@ class SparsityTest(lite_v2_test_util.ModelTest):
         lite.Optimize.DEFAULT,
     ]
     quantized_converter.representative_dataset = calibration_gen
+    quantized_converter._experimental_disable_per_channel_quantization_for_dense_layers = (
+        disable_per_channel_quantization_for_dense_layers
+    )
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 

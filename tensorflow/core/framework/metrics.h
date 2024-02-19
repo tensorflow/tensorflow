@@ -224,6 +224,9 @@ void RecordTFDataDebug(const string& event);
 // code.
 void RecordTFDataError(const string& error_type, const string& error_code);
 
+// Records the framework type used to build the tf.data.Dataset.
+void RecordTFDataFrameworkType(const std::string& framework_type);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
 

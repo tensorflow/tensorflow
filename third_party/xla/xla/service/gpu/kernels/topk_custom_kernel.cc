@@ -37,7 +37,6 @@ limitations under the License.
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
-#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla::gpu::kernel::topk {
@@ -98,9 +97,8 @@ template <typename T>
 absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
                                           size_t k, size_t batch_size) {
   constexpr size_t kMaxKVSize = sizeof(uint64_t);
-  constexpr size_t kWavefrontSize = WAVEFRONT_SIZE;
   // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(k) * kMaxKVSize * kWavefrontSize;
+  int shmem_size = absl::bit_ceil(k) * kMaxKVSize * GetTopKWaveFrontSize<T>();
   int num_threads = EstimateOptimalNumThreads(num_elements, k, batch_size);
   if (num_threads == 0) {
     return absl::FailedPreconditionError(

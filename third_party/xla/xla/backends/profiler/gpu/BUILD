@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load(
     "//xla:xla.bzl",
@@ -7,6 +6,7 @@ load(
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
+    "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
 )
@@ -25,7 +25,8 @@ load(
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla:internal"]),
 )
 
 tsl_gpu_library(
@@ -38,7 +39,6 @@ tsl_gpu_library(
         ":cupti_wrapper",
         ":rocm_tracer",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":cupti_utils",
         "@com_google_absl//absl/container:fixed_array",
@@ -75,7 +75,6 @@ tsl_gpu_library(
     cuda_deps = [
         ":cupti_interface",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "@local_tsl//tsl/platform:test",
     ],
@@ -144,29 +143,6 @@ cuda_library(
     ],
 )
 
-# A flag to link a CUPTI stub instead of a real wrapper to disable all
-# potential calls to CUPTI APIs that lead to crashes (b/320591084).
-bool_flag(
-    name = "use_cupti_stub_flag",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "use_cupti_stub",
-    flag_values = {":use_cupti_stub_flag": "True"},
-    visibility = ["//visibility:public"],
-)
-
-# We need an indirection because we can't compose multiple selects.
-alias(
-    name = "cupti_wrapper",
-    actual = select({
-        ":use_cupti_stub": ":_cupti_wrapper_stub",
-        "//conditions:default": ":_cupti_wrapper_impl",
-    }),
-    visibility = ["//visibility:public"],
-)
-
 # Rationale for linkstatic: The symbols in libcupti_static.a have hidden
 # visibility. The wrapper will fail to find them if it's ever built as a
 # shared library. This is the same issue as b/11094727. Always linking
@@ -174,8 +150,11 @@ alias(
 # to patch libcupti_static, but it's not worth the trouble considering
 # that the wrapper is about the only direct user.
 tsl_gpu_library(
-    name = "_cupti_wrapper_impl",
-    srcs = if_cuda(["cupti_wrapper.cc"]),
+    name = "cupti_wrapper",
+    srcs = if_cuda([
+        "cupti_wrapper.cc",
+        "cupti_wrapper_stub.cc",
+    ]),
     hdrs = if_cuda(["cupti_wrapper.h"]),
     copts = tf_profiler_copts() + tsl_copts(),
     linkstatic = 1,
@@ -183,17 +162,6 @@ tsl_gpu_library(
     deps = [
         ":cupti_interface",
     ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
-)
-
-# A CUPTI stub that implements CUPTI interface as no-op.
-tsl_gpu_library(
-    name = "_cupti_wrapper_stub",
-    srcs = if_cuda(["cupti_wrapper_stub.cc"]),
-    hdrs = if_cuda(["cupti_wrapper.h"]),
-    copts = tf_profiler_copts() + tsl_copts(),
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-    deps = [":cupti_interface"],
 )
 
 tsl_gpu_library(
@@ -280,7 +248,6 @@ tsl_gpu_library(
     srcs = if_cuda(["nvtx_utils.cc"]),
     hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",
@@ -324,7 +291,11 @@ tsl_gpu_library(
         ":cupti_error_manager",
         ":cupti_interface",
         ":cupti_wrapper",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:stringpiece",
+        "@local_tsl//tsl/util:env_var",
     ],
     visibility = ["//visibility:public"],
     alwayslink = 1,

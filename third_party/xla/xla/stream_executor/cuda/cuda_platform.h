@@ -17,16 +17,12 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_H_
 
 #include <memory>
-#include <vector>
+#include <string>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace cuda {

@@ -30,12 +30,12 @@ load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 # ** Please don't remove this file - it is supporting some 3rd party plugins **
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "plugin",
-    visibility = ["//visibility:public"],
     deps = [
         #"//xla/pjrt/plugin/example:example_lib",
     ],

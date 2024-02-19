@@ -1,7 +1,9 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
@@ -25,7 +27,6 @@ cc_library(
         "TypeCastingAVX512.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework:fixedpoint_types",
         "@eigen_archive//:eigen3",
@@ -47,7 +48,10 @@ filegroup(
         "TypeCastingAVX512.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow:__subpackages__",
+        "//tsl:internal",
+    ]),
 )
 
 # Files needed for core:mobile_srcs_no_runtime.
@@ -66,7 +70,6 @@ filegroup(
         "TypeCastingAVX512.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -84,5 +87,4 @@ filegroup(
         "TypeCastingAVX512.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
 )

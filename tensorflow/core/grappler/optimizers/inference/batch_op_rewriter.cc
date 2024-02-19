@@ -152,7 +152,7 @@ Status BatchOpRewriter::Init(
     // (e.g., enable_adaptive_shared_batching_thread_pool is false), proto
     // is considered as empty.
     VLOG(2) << "Empty batch-op rewrite config";
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (!absl::Base64Unescape(params.s(), &unencoded)) {
     return absl::InternalError(
@@ -163,7 +163,7 @@ Status BatchOpRewriter::Init(
         "Failed to parse batch_op_rewrite_config from params.");
   }
   VLOG(2) << "BatchOp Rewrite config is " << config_.DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -270,7 +270,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   if (asbs_overridden) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (config_.enable_adaptive_shared_batching_thread_pool()) {
@@ -280,7 +280,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
                                                   batch_op);
     });
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(BatchOpRewriter, "batch_op_rewrite");

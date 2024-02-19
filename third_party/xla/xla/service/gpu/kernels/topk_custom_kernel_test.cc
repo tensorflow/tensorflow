@@ -26,13 +26,13 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
-#include "Eigen/Core"  // from @eigen_archive
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -68,7 +68,7 @@ std::vector<T> RandomVecNegative(int num_elements) {
 
 PrimitiveType Get(float) { return PrimitiveType::F32; }
 
-PrimitiveType Get(Eigen::bfloat16) { return PrimitiveType::BF16; }
+PrimitiveType Get(bfloat16) { return PrimitiveType::BF16; }
 
 // Params:
 //  - n_kb: number of elements in kilobytes.

@@ -50,13 +50,13 @@ TEST_F(PrintingV2GraphTest, StringSuccess) {
 }
 
 TEST_F(PrintingV2GraphTest, InvalidOutputStream) {
-  ASSERT_NE(OkStatus(), (Init("invalid_output_stream")));
+  ASSERT_NE(absl::OkStatus(), (Init("invalid_output_stream")));
 }
 
 TEST_F(PrintingV2GraphTest, InvalidInputRank) {
   TF_ASSERT_OK(Init());
   AddInputFromArray<tstring>(TensorShape({2}), {"bar", "foo"});
-  ASSERT_NE(OkStatus(), RunOpKernel());
+  ASSERT_NE(absl::OkStatus(), RunOpKernel());
 }
 
 class PrintingGraphTest : public OpsTestBase {

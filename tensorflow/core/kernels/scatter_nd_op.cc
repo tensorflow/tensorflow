@@ -863,7 +863,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   const int64_t safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, typename Index>
@@ -904,7 +904,7 @@ Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
   }
 
   if (shape.num_elements() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (allocate) {
@@ -956,7 +956,7 @@ Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp Op>

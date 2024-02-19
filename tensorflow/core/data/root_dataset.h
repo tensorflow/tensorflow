@@ -67,6 +67,9 @@ class RootDataset : public DatasetBase {
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override;
+  Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -84,6 +87,7 @@ class RootDataset : public DatasetBase {
   core::RefCountPtr<DatasetBase> owned_input_;
   const Params params_;
   TraceMeMetadata traceme_metadata_;
+  Status random_indexing_compatible_;
 };
 
 // Finalizes the `input` dataset, which is expected to be called before the

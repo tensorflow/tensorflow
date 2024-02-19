@@ -99,7 +99,7 @@ class DataTransferClient {
   // properties described in `server_compatibility_info`.
   virtual Status CheckCompatibility(
       const std::string& server_compatibility_info) const {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:

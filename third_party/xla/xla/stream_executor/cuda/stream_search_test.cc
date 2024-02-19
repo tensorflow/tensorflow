@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
@@ -24,9 +26,7 @@ namespace {
 
 class StreamSearchTest : public ::testing::Test {
  public:
-  Platform* GetPlatform() {
-    return *MultiPlatformManager::PlatformWithName("CUDA");
-  }
+  Platform* GetPlatform() { return *PlatformManager::PlatformWithName("CUDA"); }
 };
 
 TEST_F(StreamSearchTest, NoMatchBadPtr) {

@@ -224,7 +224,7 @@ TEST_F(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
     }
   }
 
-  EXPECT_EQ(mlir_without_xla_count, 14);
+  EXPECT_EQ(mlir_without_xla_count, 13);
 }
 
 }  // namespace mhlo

@@ -120,7 +120,7 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     }
     starts_vec(x) = span_start;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
@@ -180,7 +180,7 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
       grad_starts_vec(input_index) = 0;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the spans for the passed kernel, for a input dimension of length
@@ -229,7 +229,7 @@ Status ComputeSpans(OpKernelContext* context,
       return errors::InvalidArgument(Printf("Unrecognized kernel type: %d",
                                             static_cast<int>(kernel_type)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Computes the grad spans for the passed kernel.

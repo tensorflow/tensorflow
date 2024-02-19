@@ -67,7 +67,7 @@ XlaInterpreterPlatform::GetUncachedExecutor(
       this, std::make_unique<XlaInterpreterExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return tsl::Status{
+    return absl::Status{
         absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
@@ -85,6 +85,6 @@ static void InitializeXlaInterpreterPlatform() {
 }  // namespace interpreter
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
     interpreter_platform,
     stream_executor::interpreter::InitializeXlaInterpreterPlatform());

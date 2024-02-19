@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/triton.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -35,7 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime3/kernel_thunk.h"
+#include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/statusor.h"
@@ -135,12 +136,13 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     if (fusion_kind == kTritonSoftmaxFusionKind) {
       launch_dimensions = *this->launch_dimensions();
 
-      auto& triton_config = *backend_config.mutable_triton_gemm_config();
-      triton_config.set_num_stages(1);
+      // This is a hack, we use TritonGemmConfig for Softmax too, but we ignore
+      // most parameters.
+      TritonGemmConfig config;
+      config.num_stages = 1;
       // Thread count per block is always a multiple of WarpSize.
-      triton_config.set_num_warps(launch_dimensions.num_threads_per_block() /
-                                  WarpSize());
-      TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
+      config.num_warps = launch_dimensions.num_threads_per_block() / WarpSize();
+      config.num_ctas = 1;
 
       TF_ASSIGN_OR_RETURN(auto analysis,
                           TritonFusionAnalysis::Execute(*hlo_computation));
@@ -170,8 +172,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_num_stages(1);
         triton_config.set_num_warps(2);
       }
-      TritonGemmConfig config =
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+      TF_ASSIGN_OR_RETURN(
+          TritonGemmConfig config,
+          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
 
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));
@@ -209,6 +212,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     impl_fn->eraseFromParent();
 
     return {{kernel->getName().str(), launch_dimensions,
+             triton_wrapper_result.cluster_dim,
              triton_wrapper_result.shmem_bytes}};
   };
 
@@ -228,7 +232,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       fusion_op_or_hlo, entry->kernel_name, kernel_arguments.args(),
-      entry->launch_dimensions, entry->shmem_bytes));
+      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
 
   return result;
 #else

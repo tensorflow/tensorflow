@@ -121,6 +121,19 @@ def NormAlgorithmConfigAttr : AttrDef<
  let summary = "GPU Norm Algorithm configuration";
 }
 
+def CudnnNormKindLayerFwdInfer : I32EnumAttrCase<"LayerFwdInfer", 0>;
+def CudnnNormKindLayerFwdTrain : I32EnumAttrCase<"LayerFwdTrain", 1>;
+def CudnnNormKindLayerBwd : I32EnumAttrCase<"LayerBwd", 2>;
+
+def CudnnNormKind: I32EnumAttr<"CudnnNormKind",
+    "Mode of cuDNN norm",
+    [CudnnNormKindLayerFwdInfer, CudnnNormKindLayerFwdTrain, CudnnNormKindLayerBwd]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::lmhlo_gpu";
+}
+
+def CudnnNormKindAttr : EnumAttr<LmhloGpuDialect, CudnnNormKind, "kind">;
+
 def FusedMHAAlgorithmConfigAttr : AttrDef<
   LmhloGpuDialect, "FusedMHAAlgorithmConfig"> {
   let mnemonic = "fHMA_algorithm_config";

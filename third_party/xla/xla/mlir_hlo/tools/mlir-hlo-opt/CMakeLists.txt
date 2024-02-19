@@ -28,9 +28,7 @@ set(LIBS
         LmhloGPUDialect
         LmhloPasses
         MLIRBufferTransforms
-        MLIRHLOAnalysis
         MLIRHLOGPUTransforms
-        MLIRHLOTestAnalysis
         MhloRegisterDialects
         MhloTestAnalysis
         )

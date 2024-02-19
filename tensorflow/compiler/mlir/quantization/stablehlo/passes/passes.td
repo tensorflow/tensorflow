@@ -34,6 +34,7 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
     that disperse values. (ex: convolution, dot_general)
   }];
   let dependentDialects = [
+      "mlir::func::FuncDialect",
       "mlir::stablehlo::StablehloDialect",
       "TF::TensorFlowDialect",
   ];
@@ -125,11 +126,6 @@ def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-modu
     "mlir::shape::ShapeDialect",
     "mlir::stablehlo::StablehloDialect",
   ];
-}
-
-def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
-  let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
-  let dependentDialects = ["TF::TensorFlowDialect"];
 }
 
 def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {

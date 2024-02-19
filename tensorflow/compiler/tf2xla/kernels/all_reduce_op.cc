@@ -105,6 +105,11 @@ REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
                     .CompileTimeConstantInput("group_assignment"),
                 MlirXlaOpKernel);
 
+REGISTER_XLA_OP(Name("XlaReduceScatter")
+                    .CompileTimeConstantInput("group_assignment")
+                    .CompileTimeConstantInput("scatter_dimension"),
+                MlirXlaOpKernel);
+
 REGISTER_XLA_OP(
     Name("XlaAllReduce").CompileTimeConstantInput("group_assignment"),
     MlirXlaOpKernel);

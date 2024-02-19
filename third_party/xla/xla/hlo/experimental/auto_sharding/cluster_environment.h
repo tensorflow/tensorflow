@@ -50,7 +50,7 @@ class ClusterEnvironment {
         mesh_beta_(mesh_beta.begin(), mesh_beta.end()),
         prof_result_(prof_result),
         total_devices_(device_mesh.num_elements()),
-        device_mesh_1d_(original_device_mesh),
+        device_mesh_1d_(device_mesh),
         auto_sharding_option_(auto_sharding_option) {
     // Build replica group for each dimension.
     non_zero_mesh_dims_ =
@@ -68,10 +68,8 @@ class ClusterEnvironment {
                                              original_device_mesh_shape.end());
     size_t largest_dim_idx =
         std::distance(original_device_mesh_shape.begin(), max_dim_iterator);
-
-    std::vector<int64_t> device_mesh_1d_shape(
-        original_device_mesh.num_dimensions(), 1);
-    device_mesh_1d_shape[largest_dim_idx] = original_device_mesh.num_elements();
+    std::vector<int64_t> device_mesh_1d_shape(device_mesh.num_dimensions(), 1);
+    device_mesh_1d_shape[largest_dim_idx] = device_mesh.num_elements();
     device_mesh_1d_.Reshape(device_mesh_1d_shape);
   }
 

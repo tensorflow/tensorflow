@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -666,6 +667,7 @@ class IteratorContext {
           interleave_depth(ctx->interleave_depth()),
           is_restoring(ctx->is_restoring()),
           model(ctx->model()),
+          options(ctx->options()),
           ram_budget_manager(ctx->ram_budget_manager()),
           resource_mgr(ctx->resource_mgr()),
           runner(*(ctx->runner())),
@@ -676,7 +678,8 @@ class IteratorContext {
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()),
           id_registry(ctx->id_registry()),
-          warm_start(ctx->warm_start()) {}
+          warm_start(ctx->warm_start()),
+          index_mapper(ctx->index_mapper()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -736,11 +739,11 @@ class IteratorContext {
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
 
-    // Manager for the ram budget when using autotune.
-    std::shared_ptr<model::RamBudgetManager> ram_budget_manager = nullptr;
-
     // The input pipeline options.
     const Options* options = nullptr;
+
+    // Manager for the ram budget when using autotune.
+    std::shared_ptr<model::RamBudgetManager> ram_budget_manager = nullptr;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
@@ -781,6 +784,11 @@ class IteratorContext {
 
     // Specifies the tf.data pipeline run mode.
     RunMode run_mode = RunMode::DEFAULT;
+
+    // Maps the index of dataset elements to a shuffled index. In other words,
+    // given an index i, returns the permuted index p(i) for the iterator. Used
+    // to support global shuffling of datasets that support random access.
+    std::function<int64_t(int64_t)> index_mapper = nullptr;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -835,6 +843,8 @@ class IteratorContext {
 
   const std::shared_ptr<model::Model>& model() const { return params_.model; }
 
+  const Options* options() const { return params_.options; }
+
   const std::shared_ptr<model::RamBudgetManager>& ram_budget_manager() {
     return params_.ram_budget_manager;
   }
@@ -866,6 +876,12 @@ class IteratorContext {
   bool warm_start() { return params_.warm_start; }
 
   RunMode run_mode() { return params_.run_mode; }
+
+  std::function<int64_t(int64_t)> index_mapper() const {
+    return params_.index_mapper;
+  }
+
+  void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
 
   std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
                                                        int num_threads) {
@@ -1309,6 +1325,12 @@ class DatasetBase : public core::RefCounted {
   // Return the element at a particular index for a randomly accessible dataset.
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
+
+  // Returns true if the dataset and its inputs support random access.
+  virtual absl::Status RandomIndexingCompatible() const {
+    return absl::FailedPreconditionError(
+        absl::StrCat(type_string(), " does not support random access."));
+  }
 
   // Return a finalized version of the dataset.  The returned DatasetBase is
   // unowned and lives for as long as this dataset.

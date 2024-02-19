@@ -68,6 +68,9 @@ int ExponentBias(PrimitiveType type);
 // Returns whether the type has a value for infinity.
 bool HasInfinity(PrimitiveType type);
 
+// Returns whether the type has a value for negative zero.
+bool HasNegativeZero(PrimitiveType type);
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>

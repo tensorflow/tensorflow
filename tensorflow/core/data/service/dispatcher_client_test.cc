@@ -85,7 +85,7 @@ class DispatcherClientTest : public ::testing::Test {
     TF_RETURN_IF_ERROR(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Creates a dataset and returns the dataset ID.

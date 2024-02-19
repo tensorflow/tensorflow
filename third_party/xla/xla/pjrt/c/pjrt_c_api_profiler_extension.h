@@ -26,7 +26,7 @@ extern "C" {
 #define PJRT_API_PROFILER_EXTENSION_VERSION 0
 
 typedef struct PJRT_Profiler_Extension {
-  PJRT_Structure_Type type;
+  PJRT_Extension_Type type;
   const void* next;
   PLUGIN_Profiler_Api* profiler_api;
 } PJRT_Profiler_Extension;

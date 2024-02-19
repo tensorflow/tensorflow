@@ -380,16 +380,11 @@ message OpMetadata {
   // Deprecated, use [ProfileInfo][profile_type] instead.
   repeated ProfileType profile_type = 5 [deprecated = true];
 
-  // HloPassMetadata.pass_id of the pass that created this HLO instruction
-  // object. Should never be copied between HLO instructions. Zero if unset and
-  // -1 if the instruction was created before HLO passes began.
-  int64 creation_pass_id = 6;
+  reserved 6;
+  reserved "creation_pass_id";
 
-  // HloPassMetadata.pass_id of the pass that created the logical functionality
-  // that this HLO instruction represents. Should be copied between HLO
-  // instructions that correspond across compilation passes. Zero if unset and
-  // -1 if the instruction was created before HLO passes began.
-  int64 logical_creation_pass_id = 7;
+  reserved 7;
+  reserved "logical_creation_pass_id";
 
   // The footprint of the generated code for the instruction.
   int64 size_of_generated_code_in_bytes = 8;

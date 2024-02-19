@@ -133,11 +133,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
       override;
 
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override {
-    return nullptr;
-  }
-
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
  private:

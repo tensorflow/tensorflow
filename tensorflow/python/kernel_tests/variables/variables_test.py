@@ -646,6 +646,29 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
              trainable=False)
     self.assertEqual(False, v4.trainable)
 
+  def testSaveSliceInfoFromSpecPasses(self):
+    save_slice_info = variables.Variable.SaveSliceInfo(
+        full_name="foo",
+        full_shape=[2, 3, 4],
+        var_offset=[0, 2, 0],
+        var_shape=[1, 1, 3])
+
+    save_slice_info_from_spec = variables.Variable.SaveSliceInfo.from_spec(
+        save_slice_info.spec)
+
+    self.assertEqual(save_slice_info.spec, save_slice_info_from_spec.spec)
+
+  @parameterized.parameters(
+      dict(spec="0", error_message="contain space-separated full_shape info"),
+      dict(spec="0:0", error_message="contain space-separated full_shape info"),
+      dict(spec="a b", error_message="full_shape must be a sequence of int"),
+      dict(spec="0 0:0", error_message="comma-separated pairs of offsets and"),
+      dict(spec="0 a,0:0:0", error_message="var_offset must be an integer"),
+      dict(spec="0 0,a:0:0", error_message="var_shape must be an integer"))
+  def testSaveSliceInfoFromSpecFails(self, spec, error_message):
+    with self.assertRaisesRegex(ValueError, error_message):
+      variables.Variable.SaveSliceInfo.from_spec(spec)
+
 
 class IsInitializedTest(test.TestCase):
 

@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,13 +28,21 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
@@ -44,13 +54,16 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime3/gemm_thunk.h"
-#include "xla/service/gpu/runtime3/kernel_thunk.h"
+#include "xla/service/gpu/runtime/custom_call_thunk.h"
+#include "xla/service/gpu/runtime/gemm_thunk.h"
+#include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -76,6 +89,58 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 
   return std::make_unique<CustomKernelThunk>(
       instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
+}
+
+// TODO(vuson): this is duplicated from ir_emitter_unnested.cc
+// Converts MLIR dictionary attribute attached to a custom call operation to a
+// custom call thunk attributes that are forwarded to the FFI handler.
+static absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
+    mlir::DictionaryAttr dict) {
+  CustomCallThunk::AttributesMap attributes;
+  for (auto& kv : dict) {
+    std::string_view name = kv.getName().strref();
+
+    auto integer = [&](mlir::IntegerAttr integer) {
+      switch (integer.getType().getIntOrFloatBitWidth()) {
+        case 32:
+          attributes[name] = static_cast<int32_t>(integer.getInt());
+          return absl::OkStatus();
+        case 64:
+          attributes[name] = static_cast<int64_t>(integer.getInt());
+          return absl::OkStatus();
+        default:
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Unsupported integer attribute bit width for attribute: ", name));
+      }
+    };
+
+    auto fp = [&](mlir::FloatAttr fp) {
+      switch (fp.getType().getIntOrFloatBitWidth()) {
+        case 32:
+          attributes[name] = static_cast<float>(fp.getValue().convertToFloat());
+          return absl::OkStatus();
+        default:
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Unsupported float attribute bit width for attribute: ", name));
+      }
+    };
+
+    auto str = [&](mlir::StringAttr str) {
+      attributes[name] = str.getValue().str();
+      return absl::OkStatus();
+    };
+
+    TF_RETURN_IF_ERROR(
+        llvm::TypeSwitch<mlir::Attribute, Status>(kv.getValue())
+            .Case<mlir::IntegerAttr>(integer)
+            .Case<mlir::FloatAttr>(fp)
+            .Case<mlir::StringAttr>(str)
+            .Default([&](mlir::Attribute) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Unsupported attribute type for attribute: ", name));
+            }));
+  }
+  return attributes;
 }
 
 absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
@@ -175,6 +240,163 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   return result;
 }
 
+absl::StatusOr<FusionEmissionResult> EmitCustomCall(
+    IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
+    const HloFusionInstruction& fusion,
+    const HloCustomCallInstruction& custom_call) {
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context.buffer_assignment();
+
+  const std::string call_target_name = custom_call.custom_call_target();
+
+  // Typed FFI custom calls is a replacement for legacy custom calls with
+  // a rich type safe API. It's under construction and not fully supported.
+  bool is_ffi_custom_call =
+      custom_call.api_version() == CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(ir_emitter_context.platform_name()));
+
+  absl::StatusOr<XLA_FFI_Handler*> handler =
+      ffi::FindHandler(call_target_name, ir_emitter_context.platform_name());
+
+  // At least one implementation should be available at run time.
+  bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
+  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+
+  TF_RET_CHECK(found_custom_call || found_ffi_handler)
+      << "AddressComputationFusion expects custom calls that are emittable as "
+         "thunks";
+
+  using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
+
+  Slices operands;
+  // TODO(vuson): add test with custom call with tuple-typed operands
+  for (auto* operand : custom_call.operands()) {
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsToken()) {
+            operands.push_back(std::nullopt);
+            return absl::OkStatus();
+          }
+          if (!subshape.IsArray()) {
+            return absl::OkStatus();
+          }
+          TF_ASSIGN_OR_RETURN(auto slice, GetSliceWithUpdatedOffsetAndSize(
+                                              buffer_assignment, adaptor,
+                                              fusion, *operand, index));
+          operands.push_back(CustomCallThunk::Slice{slice, subshape});
+          return absl::OkStatus();
+        }));
+  }
+
+  Slices results;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      fusion.shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsToken()) {
+          results.push_back(std::nullopt);
+          return absl::OkStatus();
+        }
+        if (!subshape.IsArray()) {
+          return absl::OkStatus();
+        }
+        TF_ASSIGN_OR_RETURN(
+            auto slice, GetAllocationSlice(buffer_assignment, &fusion, index));
+        results.push_back(CustomCallThunk::Slice{slice, subshape});
+        return absl::OkStatus();
+      }));
+
+  // For legacy custom calls we convert all API versions into the latest
+  // status-returning one and pass backend config as an opaque string.
+  CustomCallThunk::CustomCallTarget custom_call_target;
+  std::string opaque;
+
+  // For XLA FFI handlers we decode opaque backend config into attributes map
+  // at IR emission time, so that we do not need to parse MLIR at run time. For
+  // FFI handlers backend config must be a compatible MLIR dictionary.
+  CustomCallThunk::AttributesMap attributes;
+
+  // For information about this calling convention, see
+  // xla/g3doc/custom_call.md.
+  switch (custom_call.api_version()) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL:
+      using original_call_type =
+          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/);
+      custom_call_target = [call_target](CustomCallThunk::Stream stream,
+                                         void** buffers, const char* opaque,
+                                         size_t opaque_len,
+                                         XlaCustomCallStatus*) {
+        auto typed_call_target =
+            reinterpret_cast<original_call_type>(call_target);
+        typed_call_target(stream, buffers, opaque, opaque_len);
+      };
+      break;
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      using status_returning_call_type =
+          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/,
+                   XlaCustomCallStatus* /*status*/);
+      custom_call_target =
+          reinterpret_cast<status_returning_call_type>(call_target);
+      break;
+    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      // We already checked `handler` above.
+      break;
+    default:
+      return Internal("Unknown custom-call API version enum value: %d",
+                      custom_call.api_version());
+  }
+
+  auto& backend_config_str = custom_call.raw_backend_config_string();
+  switch (custom_call.api_version()) {
+    case CustomCallApiVersion::API_VERSION_ORIGINAL:
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+    case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      if (!backend_config_str.empty()) {
+        opaque = backend_config_str;
+      }
+      break;
+
+    case CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      if (!backend_config_str.empty()) {
+        mlir::Attribute attr = mlir::parseAttribute(
+            backend_config_str, ir_emitter_context.mlir_context());
+        if (auto dict = attr.dyn_cast_or_null<mlir::DictionaryAttr>()) {
+          TF_ASSIGN_OR_RETURN(attributes, BuildAttributesMap(dict));
+          break;
+        }
+        return absl::InternalError(
+            "Unsupported backend config. Expected a string parsable into "
+            "dictionary attribute");
+      }
+      break;
+
+    default:
+      return Internal("Unknown custom-call API version enum value: %d",
+                      custom_call.api_version());
+  }
+
+  auto ffi_thunk = [&] {
+    auto& called_computations = custom_call.called_computations();
+    return std::make_unique<CustomCallThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(&custom_call), *handler,
+        std::move(operands), std::move(results), std::move(attributes),
+        called_computations.empty() ? nullptr : called_computations[0]);
+  };
+
+  auto legacy_thunk = [&] {
+    return std::make_unique<CustomCallThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(&custom_call),
+        std::move(custom_call_target), std::move(operands), std::move(results),
+        std::move(opaque));
+  };
+  FusionEmissionResult result;
+  result.thunks.push_back(found_ffi_handler ? ffi_thunk() : legacy_thunk());
+  return result;
+}
+
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
@@ -239,13 +461,12 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
+  // TODO(vuson): these Emit* are mostly duplicated from ir_emitter_unnested
   if (IsLegacyCublasMatmul(custom_call)) {
     return EmitGemm(ir_emitter_context, adaptor, fusion, custom_call);
   }
 
-  return absl::UnimplementedError(
-      absl::StrCat("No emission for AddressComputationFusion of custom call ",
-                   custom_call.custom_call_target()));
+  return EmitCustomCall(ir_emitter_context, adaptor, fusion, custom_call);
 }
 
 }  // namespace gpu

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -157,7 +158,8 @@ class GraphExecutor {
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context,
                       std::optional<StreamCallbackId> stream_callback_id,
-                      bool is_restore, FunctionLibraryDefinition flib_def);
+                      bool is_restore, FunctionLibraryDefinition flib_def,
+                      tensorflow::monitoring::SamplerCell* latency_sampler);
 
     // Returns this instance's CostRecorder if it is time to update costs,
     // else returns nullptr. Only allows one non-null return value at a time
@@ -192,6 +194,9 @@ class GraphExecutor {
     const ProcessFunctionLibraryRuntime& process_function_library_runtime()
         const {
       return pflr_;
+    }
+    tensorflow::monitoring::SamplerCell* latency_sampler() {
+      return latency_sampler_;
     }
 
    private:
@@ -231,6 +236,7 @@ class GraphExecutor {
     bool is_restore_;
     FunctionLibraryDefinition flib_def_;
     ProcessFunctionLibraryRuntime pflr_;
+    tensorflow::monitoring::SamplerCell* latency_sampler_;
   };
 
   // A subgraph constructed by specifying input/output tensors.

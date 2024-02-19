@@ -1061,7 +1061,7 @@ def TFL_DepthwiseConv2DOp :
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     Pure, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
-    AffineOpCoefficient<-1, 1>,
+    AffineOpCoefficient<0, 1>,
     TFL_SparseOp,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
     QuantizableResult,
@@ -1097,7 +1097,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
-    int GetQuantizationDimIndex() { return -1; }
+    int GetQuantizationDimIndex() { return 0; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }

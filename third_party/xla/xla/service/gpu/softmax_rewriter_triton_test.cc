@@ -13,16 +13,18 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/statusor.h"
@@ -37,6 +39,8 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
+
+using ::testing::HasSubstr;
 
 // Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
 // and fuses as many diamond chains as possible without invoking any kind of
@@ -1734,6 +1738,47 @@ ENTRY main {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   EXPECT_FALSE(
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(SoftmaxRewriterTritonTest, FusionDecisionIsCapturedExplicitly) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  identity = f32[] parameter(1)
+  reduce = f32[127]{0} reduce(param_0, identity), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+}
+)";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version_);
+  int unmatched = 0, matched = 0;
+  for (HloInstruction* instruction :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    DiamondMatchingDecision decision =
+        softmax_rewriter_triton.MatchesTritonCompatibleClosedReductionDiamond(
+            instruction);
+    if (std::holds_alternative<FusionDecision>(decision)) {
+      std::string actual_decision =
+          std::get<FusionDecision>(decision).Explain();
+      EXPECT_THAT(actual_decision,
+                  AnyOf(HasSubstr("Root is not elementwise binary"),
+                        HasSubstr("Reduce has a non-constant second operand "
+                                  "and/or is variadic")));
+      unmatched++;
+    } else {
+      matched++;
+    }
+  }
+  EXPECT_EQ(unmatched, 5);
+  EXPECT_EQ(matched, 0);
 }
 
 INSTANTIATE_TEST_SUITE_P(SoftmaxRewriterTritonTestSuite,

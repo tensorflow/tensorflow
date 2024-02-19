@@ -104,7 +104,7 @@ class RandomDatasetParams : public DatasetParams {
     if (op_version_ == 2) {
       input_names->emplace_back("seed_generator");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   virtual Status GetAttributes(AttributeVector* attributes) const override {
@@ -115,7 +115,7 @@ class RandomDatasetParams : public DatasetParams {
       attributes->emplace_back("rerandomize_each_iteration",
                                rerandomize_each_iteration_);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   virtual string dataset_type() const override {

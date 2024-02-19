@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,6 +61,10 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
                             ", does not have a layout.");
     }
 
+    VLOG(3) << absl::StreamFormat(
+        "\"%s\" from S(%d) to S(%d)", dynamic_slice->name(),
+        dynamic_slice_operand->shape().layout().memory_space(),
+        dynamic_slice->shape().layout().memory_space());
     // Check that this is a dynamic-slice slicing from host memory to device
     // memory.
     if (dynamic_slice_operand->shape().layout().memory_space() !=

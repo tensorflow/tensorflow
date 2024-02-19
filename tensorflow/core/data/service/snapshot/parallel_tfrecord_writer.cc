@@ -47,12 +47,12 @@ ParallelTFRecordWriter::ParallelTFRecordWriter(const std::string& file_prefix,
                                                tsl::Env* env,
                                                ByteSize max_file_size,
                                                int64_t num_write_threads,
-                                               int64_t buffer_size_per_thread)
+                                               int64_t buffer_size)
     : env_(env),
       file_prefix_(file_prefix),
       compression_(compression),
       max_file_size_(max_file_size),
-      buffer_size_(num_write_threads * buffer_size_per_thread) {
+      buffer_size_(buffer_size) {
   thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       env_, tsl::ThreadOptions{}, "write_tfrecord_thread", num_write_threads);
   for (int64_t i = 0; i < num_write_threads; ++i) {
@@ -162,8 +162,11 @@ ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
   }
 
   std::vector<Tensor> record = std::move(buffer_.front());
+  ByteSize estimated_size = EstimatedSize(record);
+  LOG_EVERY_N_SEC(INFO, 1) << "Writing TFRecord of " << estimated_size
+                           << " to file " << file_prefix_ << "*.";
   ++file_stats_[filename].num_records;
-  file_stats_[filename].estimated_size += EstimatedSize(record);
+  file_stats_[filename].estimated_size += estimated_size;
   buffer_.pop_front();
   ready_to_push_.SignalAll();
   return record;

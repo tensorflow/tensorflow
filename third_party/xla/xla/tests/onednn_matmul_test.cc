@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/literal.h"
+#include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -76,9 +77,7 @@ TEST_F(MatmulTest, SimpleTestF32) {
 TEST_F(MatmulTest, SimpleTestBF16) {
   // TODO(penporn): Refactor IsBF16SupportedByOneDNNOnThisCPU() from
   // tensorflow/core/graph/mkl_graph_util.h and call the function instead.
-  using tsl::port::TestCPUFeature;
-  if (!TestCPUFeature(tsl::port::CPUFeature::AVX512_BF16) &&
-      !TestCPUFeature(tsl::port::CPUFeature::AMX_BF16)) {
+  if (!IsSupportedType(PrimitiveType::BF16)) {
     GTEST_SKIP() << "CPU does not support BF16.";
   }
 

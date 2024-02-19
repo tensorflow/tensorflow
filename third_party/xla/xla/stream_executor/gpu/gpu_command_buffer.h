@@ -108,11 +108,6 @@ class GpuCommandBuffer : public CommandBuffer {
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so
   // we have to be careful not to keep too many of them alive for too long, or
   // we have a higher risk of OOM errors.
-  //
-  // TODO(ezhulenev): We need to have a policy for how to evict unused
-  // executable graph instances from a device, currently lifetime of an
-  // executable graph is tied to a parent command buffer, and we can have
-  // thousands of command buffers alive at the same time.
   static int64_t AllocatedExecs();
   static int64_t AliveExecs();
 
@@ -209,8 +204,18 @@ class GpuCommandBuffer : public CommandBuffer {
 
   Dependencies GetBarrier();
 
-  // Returns loaded no-op kernel used as a barrier, or loads it on a given
-  // stream executor. Loaded kernel owned by a current command buffer.
+  // Returns loaded auxiliary kernels, or loads them on a given stream executor.
+  // Loaded kernels owned by a current command buffer.
+  absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel(
+      StreamExecutor* executor);
+  absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel(
+      StreamExecutor* executor);
   absl::StatusOr<NoOpKernel*> GetNoOpKernel(StreamExecutor* executor);
 
   // Recursively disable all nodes corresponding to barriers (including nested
@@ -292,8 +297,14 @@ class GpuCommandBuffer : public CommandBuffer {
 
   UpdateState update_state_;
 
-  // Loaded instance of a no-op kernel used as command buffer barrier.
-  std::unique_ptr<NoOpKernel> noop_kernel_;
+  // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
+  // barriers, updating conditional handles, etc.).
+  SetIfConditionKernel set_if_condition_kernel_;
+  SetIfElseConditionKernel set_if_else_condition_kernel_;
+  SetCaseConditionKernel set_case_condition_kernel_;
+  SetForConditionKernel set_for_condition_kernel_;
+  SetWhileConditionKernel set_while_condition_kernel_;
+  NoOpKernel noop_kernel_;
 };
 
 //===----------------------------------------------------------------------===//

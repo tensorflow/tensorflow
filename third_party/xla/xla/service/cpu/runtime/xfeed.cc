@@ -26,15 +26,20 @@
 #include <utility>
 #include <vector>
 
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

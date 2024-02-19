@@ -3153,6 +3153,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_should_use",
         "//tensorflow/python/util:traceback_utils",
         "//third_party/py/numpy",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 

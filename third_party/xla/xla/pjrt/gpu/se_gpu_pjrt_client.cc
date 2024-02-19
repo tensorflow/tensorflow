@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -615,6 +616,24 @@ StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
   return absl::InternalError("LoadSerialized only works with cuda or rocm.");
 }
 
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::DeserializeExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  if (serialized.size() > std::numeric_limits<int>::max()) {
+    return Internal(
+        "StreamExecutorGpuClient::DeserializeExecutable proto too large "
+        "(>2GB)");
+  }
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  StreamExecutorExecutableProto proto;
+  if (proto.ParseFromArray(serialized.data(), serialized.size())) {
+    TF_ASSIGN_OR_RETURN(auto se_executable, FromProto(proto));
+    return Load(std::move(se_executable));
+  }
+#endif
+  return PjRtStreamExecutorClient::DeserializeExecutable(serialized, options);
+}
+
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorGpuClient::Load(
     std::unique_ptr<PjRtExecutable> executable) {
   auto se_executable = absl::WrapUnique(
@@ -927,8 +946,9 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
   auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
       tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
   if (!allocator_adapter) {
-    return FailedPrecondition(
-        "GetAllocatorStats() only works with MultiDeviceAdapter allocator");
+    return Unimplemented(
+        "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
+        "allocator");
   }
 
   TF_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(

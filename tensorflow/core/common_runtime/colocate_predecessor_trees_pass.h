@@ -102,6 +102,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+// This pass can place each tree of unassigned nodes with its root, when the
+// root is already assigned to a device. Placement is instructed here with the
+// colocation class attribute _class. This is a good heuristic because it
+// reduces number of cut edges and tends to load balance.
 class ColocatePredecessorTreesPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;

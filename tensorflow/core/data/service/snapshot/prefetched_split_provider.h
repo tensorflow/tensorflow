@@ -148,7 +148,7 @@ class PrefetchedSplitProvider {
   // Buffer to hold the splits. The size should be bounded by `buffer_size_`.
   absl::btree_set<SplitAndIndex> buffer_ ABSL_GUARDED_BY(mu_);
 
-  std::unique_ptr<tsl::thread::ThreadPool> thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> thread_pool_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace data

@@ -15,10 +15,7 @@ cc_toolchain_suite(
     },
 )
 
-filegroup(
-    name = "empty",
-    visibility = ["//visibility:public"],
-)
+filegroup(name = "empty")
 
 # We define a wraper ("cc_wrapper.sh") around the compiler to replace all paths
 # in the binary (bazel-out/.../path/to/original/library.so) by the paths
@@ -27,7 +24,6 @@ filegroup(
 filegroup(
     name = "cc_wrapper_and_macos_sysroot",
     srcs = ["cc_wrapper.sh"] + glob(["MacOSX.sdk/**"]),
-    visibility = ["//visibility:public"],
 )
 
 cc_toolchain(

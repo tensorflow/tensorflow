@@ -41,13 +41,12 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -187,10 +186,8 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void* HostMemoryAllocate(uint64_t size);
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  void HostMemoryDeallocate(void* location);
+  absl::StatusOr<std::unique_ptr<HostMemoryAllocation>> HostMemoryAllocate(
+      uint64_t size);
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
@@ -287,14 +284,14 @@ class StreamExecutor {
   // time. The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
-  absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
 
   // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
   // an in-process symbol pointer.
   template <typename... Args>
-  absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
       absl::string_view kernel_name, void* symbol);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
@@ -373,6 +370,10 @@ class StreamExecutor {
   friend class Stream;
   template <typename... Params>
   friend class TypedKernel;
+  friend class HostMemoryAllocation;
+
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
+  void HostMemoryDeallocate(void* data, uint64_t size);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
@@ -547,12 +548,10 @@ class ScopedModuleHandle {
 // Inlines
 
 template <typename... Args>
-inline absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
-StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
-                                  absl::string_view ptx,
-                                  absl::Span<const uint8_t> cubin_data) {
-  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
-  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
+    absl::string_view kernel_name, absl::string_view ptx,
+    absl::Span<const uint8_t> cubin_data) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
@@ -560,19 +559,16 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
-  return std::move(kernel_base);
+  return TypedKernel<Args...>::Create(this, loader_spec);
 }
 
 template <typename... Args>
-inline absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
-StreamExecutor::CreateTypedKernel(absl::string_view kernel_name, void* symbol) {
-  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
-  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
+    absl::string_view kernel_name, void* symbol) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
   loader_spec.AddInProcessSymbol(symbol, kernel_name);
 
-  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
-  return std::move(kernel_base);
+  return TypedKernel<Args...>::Create(this, loader_spec);
 }
 
 template <typename T>

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_analysis.h"
 
-#include <optional>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -35,7 +33,6 @@ using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
-using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -119,7 +116,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   auto fusion_adaptor = ProducerConsumerFusion(transpose, root);
 
   auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
-      fusion_adaptor, /*output_id=*/0, &mlir_context_);
+      fusion_adaptor, fusion_adaptor.GetRoots()[0], &mlir_context_);
   EXPECT_THAT(grouped_indexing,
               UnorderedElementsAre(
                   Pair(root, ElementsAre(MatchIndexingMap(R"(
@@ -146,6 +143,60 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
                         d0 in [0, 999]
                         d1 in [0, 999]
                       )")))));
+}
+
+TEST_F(IndexingAnalysisTest,
+       ComputeGroupedOutputToInputIndexingStartNotAtRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    f {
+      p0 = f32[15, 20] parameter(0)
+      p0_init = f32[] parameter(1)
+      p0_bcast = f32[15, 32, 20, 64] broadcast(p0), dimensions={0, 2}
+
+      ROOT reduce_2 = f32[15, 64] reduce(p0_bcast, p0_init),
+        dimensions={1, 2}, to_apply=max
+    }
+    ENTRY e {
+      p0 = f32[15, 20] parameter(0)
+      p0_init = f32[] constant(-inf)
+      ROOT fusion = f32[15, 64] fusion(p0, p0_init), kind=kLoop, calls=f
+    }
+  )");
+  EXPECT_TRUE(module.ok());
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      (*module)->entry_computation()->root_instruction());
+  auto root = fusion_adaptor->GetRoots()[0];
+  auto bcast = root.GetOperand(0);
+  auto parameter_0 = bcast.GetOperand(0);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, bcast, &mlir_context_);
+  EXPECT_THAT(
+      grouped_indexing,
+      UnorderedElementsAre(
+          Pair(&bcast.instruction(), ElementsAre(MatchIndexingMap(R"(
+            (d0, d1, d2, d3) -> (d0, d1, d2, d3)
+            domain:
+            d0 in [0, 14]
+            d1 in [0, 31]
+            d2 in [0, 19]
+            d3 in [0, 63]
+          )"))),
+          Pair(&parameter_0.instruction(), ElementsAre(MatchIndexingMap(R"(
+            (d0, d1, d2, d3) -> (d0, d2)
+            domain:
+            d0 in [0, 14]
+            d1 in [0, 31]
+            d2 in [0, 19]
+            d3 in [0, 63]
+          )")))));
 }
 
 TEST_F(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {
@@ -964,6 +1015,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
       ROOT fusion = f32[10, 10, 10] fusion(p0), kind=kLoop, calls=f
     }
   )");
+  // TODO(jreiffers): Remove the redundant constraint.
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
                             (d0, d1, d2) -> (d0, d1, d2)
@@ -971,6 +1023,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
                             d0 in [0, 9]
                             d1 in [0, 9]
                             d2 in [0, 9]
+                            d1 * 10 + d2 - (d1 floordiv 2) * 20 in [0, 19]
                           )"))));
 }
 
@@ -1220,8 +1273,8 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTO3D) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                (d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8,
-                                (d1 * 4 + d2) mod 8)
+                (d0, d1, d2) -> (d0 * 2 + d1 floordiv 2,
+                                d1 * 4 + d2 - (d1 floordiv 2) * 8)
                 domain:
                 d0 in [0, 1]
                 d1 in [0, 3]
@@ -1239,9 +1292,10 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTO2D) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1) -> ((d0 * 8 + d1) floordiv 16,
-                                        ((d0 * 8 + d1) mod 16) floordiv 4,
-                                        d1 mod 4)
+                            (d0, d1) -> (d0 floordiv 2,
+                                         d0 * 2 - (d0 floordiv 2) * 4 +
+                                           d1 floordiv 4,
+                                         d1 mod 4)
                             domain:
                             d0 in [0, 3]
                             d1 in [0, 7]
@@ -1259,7 +1313,10 @@ TEST_F(IndexingAnalysisTest, PadOp) {
   )");
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                                        (d0, d1) -> (d0 floordiv 2 + 1, d1 + 4)
+                                        (d0, d1) -> (
+                                          (d0 - 1) floordiv 2,
+                                          d1 - 4
+                                        )
                                         domain:
                                         d0 in [1, 7]
                                         d1 in [4, 7]
@@ -1270,6 +1327,58 @@ TEST_F(IndexingAnalysisTest, PadOp) {
                                         domain:
                                         d0 in [0, 11]
                                         d1 in [0, 15]
+                                      )"))));
+}
+
+TEST_F(IndexingAnalysisTest, PadOpNoInterior) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2,8] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[10,8] pad(p0, p1), padding=1_7x0_0
+    }
+  )");
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                                        (d0, d1) -> (d0 - 1, d1)
+                                        domain:
+                                        d0 in [1, 2]
+                                        d1 in [0, 7]
+                                      )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                                        (d0, d1) -> ()
+                                        domain:
+                                        d0 in [0, 9]
+                                        d1 in [0, 7]
+                                      )"))));
+}
+
+TEST_F(IndexingAnalysisTest, PadOpNegativePadding) {
+  // The interior padding is applied first (even with negative padding), so we
+  // get a size of 5 (7 + 6 - 8).
+  // in:     0 1 2 3 4 5 6
+  // padded: 0 p 1 p 2 p 3 p 4 p 5 p 6
+  // sliced:       p 2 p 3 p
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[7] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[5] pad(p0, p1), padding=-3_-5_1
+    }
+  )");
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                                        (d0) -> ((d0 + 3) floordiv 2)
+                                        domain:
+                                        d0 in [0, 4]
+                                        (d0 + 3) mod 2 in [0, 0]
+                                      )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                                        (d0) -> ()
+                                        domain:
+                                        d0 in [0, 4]
                                       )"))));
 }
 
@@ -1504,7 +1613,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
   EXPECT_THAT(input_indexing.indexing_maps,
               ElementsAre(ElementsAre(MatchIndexingMap(R"(
-                            (d0, d1)[s0, s1] -> (d0 * 2 + s0 + 1, d1 + s1)
+                            (d0, d1)[s0, s1] -> (d0 * 2 + s0 - 1, d1 + s1)
                             domain:
                             d0 in [0, 6]
                             d1 in [0, 16]

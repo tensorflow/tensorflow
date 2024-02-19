@@ -61,6 +61,13 @@ class Comparison {
     kPartial,
   };
 
+  friend absl::string_view ComparisonOrderToString(Comparison::Order order);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Order& p) {
+    absl::Format(&sink, "%s", ComparisonOrderToString(p));
+  }
+
   // Represents different comparison operations.
   enum class Direction : uint8_t {
     kEq,
@@ -228,7 +235,6 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
-absl::string_view ComparisonOrderToString(Comparison::Order order);
 
 StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);

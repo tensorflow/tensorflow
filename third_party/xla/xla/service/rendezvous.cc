@@ -102,9 +102,6 @@ RendezvousSingleFlag::InFlightRendezvous RendezvousSingleFlag::TryJoin() {
   int32_t state = state_.load();
   while (state != kCompleted &&
          !state_.compare_exchange_weak(state, state + 1)) {
-    CHECK(state != kPending)  // NOLINT
-        << "rendezvous can't remain in pending state after state update "
-           "failure";
   }
 
   // Someone else completed the rendezvous and we don't need to join.

@@ -1,7 +1,7 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,7 +18,7 @@ cc_library(
     deps = if_oss([
         "//tensorflow/core:test_main",
     ]) + if_google([
-        "@local_tsl//tsl/platform/default/build_config:test_main",
+        "//tensorflow/core/platform/default/build_config:test_main",
     ]),
 )
 

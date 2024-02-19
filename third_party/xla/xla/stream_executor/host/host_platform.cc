@@ -79,5 +79,5 @@ static void InitializeHostPlatform() {
 }  // namespace host
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(host_platform,
-                            stream_executor::host::InitializeHostPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    host_platform, stream_executor::host::InitializeHostPlatform());

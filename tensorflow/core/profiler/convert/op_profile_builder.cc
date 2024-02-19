@@ -169,7 +169,7 @@ void PopulateOpMetricsNode(
   // and memory_bandwidth = raw_bytes_accessed / raw_time. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
-  metrics->set_raw_flops(op_metrics.flops());
+  metrics->set_raw_flops(op_metrics.model_flops());
   metrics->set_occurrences(op_metrics.occurrences());
   metrics->set_avg_time_ps(
       SafeDivide(op_metrics.time_ps(), op_metrics.occurrences()));

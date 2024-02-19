@@ -37,9 +37,6 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
-// The initial parallelism value before Autotune has a chance to optimize.
-constexpr int kAutotuneDefaultParallelism = 16;
-
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
@@ -53,7 +50,7 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
                                TypeIndex::Make<T>());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a ref-counting resource handle for the given resource, where the
@@ -65,7 +62,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
   TF_RETURN_IF_ERROR(
       mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/198162355): Merge this class with ResourceOpKernel.

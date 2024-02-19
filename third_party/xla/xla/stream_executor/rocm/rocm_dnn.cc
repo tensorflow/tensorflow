@@ -4099,11 +4099,15 @@ absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
   blas::Transpose tb =
       _trans_b ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
 
-  return stream->ThenBlasGemm<T, T>(
-      tb, ta, _n, _m, _k, static_cast<DeviceMemory<T>>(b_data), _ldb,
-      static_cast<DeviceMemory<T>>(a_data), _lda,
-      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{},
-      blas::CallContext::kNone);
+  auto* blas = stream->parent()->AsBlas();
+  if (blas == nullptr) {
+    return absl::InternalError("No Blas support for stream");
+  }
+  return blas->BlasGemm<T, T>(stream, tb, ta, _n, _m, _k,
+                              static_cast<DeviceMemory<T>>(b_data), _ldb,
+                              static_cast<DeviceMemory<T>>(a_data), _lda,
+                              static_cast<DeviceMemory<T>*>(&c_data), _ldc,
+                              NumericOptions{}, blas::CallContext::kNone);
 }
 
 template <typename T>
@@ -4703,5 +4707,6 @@ void initialize_miopen() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_miopen,
-                            { stream_executor::initialize_miopen(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_miopen, {
+  stream_executor::initialize_miopen();
+});

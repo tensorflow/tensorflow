@@ -93,7 +93,7 @@ class PartialCache {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
     *out_tensors = cache_.at(index);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the data which has been cached up to this point.
@@ -112,7 +112,7 @@ class PartialCache {
       }
       cache_.push_back(out_tensors);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   StatusOr<core::RefCountPtr<IteratorResource>> GetIteratorResourceFromDataset(
@@ -183,7 +183,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -329,7 +329,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         *end_of_sequence = false;
         TF_RETURN_IF_ERROR(EnsureLockFileExists(end_of_sequence));
         if (*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_RETURN_IF_ERROR(writer_->status());
         if (cur_index_ >= kMaxItems) {
@@ -348,7 +348,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         if (*end_of_sequence && out_tensors->empty()) {
           TF_RETURN_IF_ERROR(Finish());
           cur_index_++;
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (out_tensors->size() != dataset()->num_tensors_) {
           return errors::Internal(
@@ -366,7 +366,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(Finish());
         }
         cur_index_++;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -385,7 +385,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         if (iteration_completed_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(prefix(), kIterationCompleted, ""));
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // lockfile is created on the first call to GetNextInternal. The
@@ -409,7 +409,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         }
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kShardId, shard_id_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -428,7 +428,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
 
         if (reader->Contains(prefix(), kIterationCompleted)) {
           iteration_completed_ = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
@@ -445,7 +445,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         filename_ = strings::StrCat(dataset()->filename_, "_", shard_id_);
         lockfile_ = strings::StrCat(filename_, kLockFileSuffix);
         writer_ = std::make_unique<BundleWriter>(dataset()->env_, filename_);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -453,10 +453,10 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (iteration_completed_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (lockfile_created_) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Perform rudimentary locking to help catch concurrent writes to the
@@ -508,7 +508,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // BundleWriter in another Session.
         writer_ = std::make_unique<BundleWriter>(dataset()->env_, filename_);
         lockfile_created_ = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status Finish() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -537,7 +537,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(dataset()->env_->DeleteFile(
               strings::StrCat(dataset()->filename_, "_", i, kLockFileSuffix)));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       mutex mu_;
@@ -571,7 +571,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(reader_.status());
         if (!reader_.Valid()) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
         out_tensors->clear();
         out_tensors->resize(dataset()->num_tensors_);
@@ -588,7 +588,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           if (!reader_.Valid()) {
             out_tensors->clear();
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           StringPiece key = reader_.key();
           DCHECK_EQ(key, dataset()->FormatName(cur_index_, i));
@@ -596,7 +596,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(reader_.status());
         }
         cur_index_++;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -611,7 +611,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(prefix(), kCurIndex, cur_index_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(
@@ -634,7 +634,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         }
         reader_.Seek(dataset()->FormatName(cur_index_, 0));
         iterator_restored_ = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -696,7 +696,7 @@ class CacheDatasetOp::FileDataset : public CacheDatasetOp::FileDatasetBase {
     Node* filename = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(filename_, &filename));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph, filename}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -720,7 +720,7 @@ class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDatasetBase {
     TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_node, filename_node, resource_handle_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -788,7 +788,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -876,7 +876,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
             VLOG(2) << "Finalizing the cache because EOF has been reached.";
             cache_->Complete(std::move(temp_cache_));
           }
-          return OkStatus();
+          return absl::OkStatus();
         }
         RecordBufferEnqueue(ctx, *out_tensors);
         temp_cache_.emplace_back(*out_tensors);
@@ -885,7 +885,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                      "expected input cardinality.";
           cache_->Complete(std::move(temp_cache_));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      protected:
@@ -939,7 +939,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         for (size_t i = 0; i < cache_->size(); ++i) {
           RecordBufferEnqueue(ctx, cache_->at(i));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -952,10 +952,10 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                               cache_tensors.end());
           index_++;
           *end_of_sequence = false;
-          return OkStatus();
+          return absl::OkStatus();
         } else {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -970,7 +970,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kIndex, index_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -985,7 +985,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
           }
           index_ = static_cast<size_t>(temp);
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -1053,7 +1053,7 @@ class CacheDatasetOp::MemoryDataset : public CacheDatasetOp::MemoryDatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_node, filename_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1102,7 +1102,7 @@ class CacheDatasetOp::MemoryDatasetV2
     TF_RETURN_IF_ERROR(b->AddTensor(handle, &resource_handle_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_node, filename_node, resource_handle_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1139,7 +1139,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
             ctx->resource_manager()->LookupOrCreate<MemoryCacheManager>(
                 container, name, &manager, [](MemoryCacheManager** manager) {
                   *manager = new MemoryCacheManager();
-                  return OkStatus();
+                  return absl::OkStatus();
                 }));
         handle = MakeResourceHandle<MemoryCacheManager>(ctx, container, name);
       } else {
@@ -1154,7 +1154,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
           ctx, ctx->resource_manager()->LookupOrCreate<MemoryCacheManager>(
                    container, name, &manager, [](MemoryCacheManager** manager) {
                      *manager = new MemoryCacheManager();
-                     return OkStatus();
+                     return absl::OkStatus();
                    }));
       auto handle =
           MakeResourceHandle<MemoryCacheManager>(ctx, container, name);

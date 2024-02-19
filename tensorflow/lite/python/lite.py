@@ -663,6 +663,7 @@ class TFLiteConverterBase:
     self._experimental_use_buffer_offset = False
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
+    self._experimental_disable_per_channel_quantization_for_dense_layers = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -748,6 +749,7 @@ class TFLiteConverterBase:
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
+          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
     else:
       return calibrate_quantize.calibrate_and_quantize(
@@ -813,6 +815,9 @@ class TFLiteConverterBase:
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
+        "disable_per_channel_quantization_for_dense_layers": (
+            self._experimental_disable_per_channel_quantization_for_dense_layers
+        ),
     }
 
     if self.saved_model_dir:
@@ -856,7 +861,8 @@ class TFLiteConverterBase:
                     qc.RepresentativeDatasetConfig(
                         tf_record=qc.TfRecordFile(path=tfrecord_file_path)
                     )
-                ]
+                ],
+                enable_per_channel_quantized_weight=True,
             )
         )
 

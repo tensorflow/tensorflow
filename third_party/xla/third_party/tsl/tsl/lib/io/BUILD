@@ -1,13 +1,24 @@
-load("//tsl/platform:build_config.bzl", "tsl_cc_test")
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
+load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tensorflow/c/experimental/filesystem:__pkg__",
+        "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
+        "//tsl/lib/io/snappy:__pkg__",
+        "@local_xla//xla:__subpackages__",
+        # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core/util:__subpackages__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/io:__subpackages__",
+        "//tsl/profiler:__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -25,7 +36,6 @@ cc_library(
         "format.h",
         "table_builder.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":iterator",
         ":table_options",
@@ -47,7 +57,6 @@ cc_library(
     name = "buffered_inputstream",
     srcs = ["buffered_inputstream.cc"],
     hdrs = ["buffered_inputstream.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":inputstream_interface",
         ":random_inputstream",
@@ -61,7 +70,6 @@ cc_library(
     name = "compression",
     srcs = ["compression.cc"],
     hdrs = ["compression.h"],
-    visibility = ["//visibility:public"],
     alwayslink = True,
 )
 
@@ -69,7 +77,6 @@ cc_library(
     name = "inputbuffer",
     srcs = ["inputbuffer.cc"],
     hdrs = ["inputbuffer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:coding",
         "//tsl/platform:env",
@@ -86,7 +93,6 @@ cc_library(
     name = "inputstream_interface",
     srcs = ["inputstream_interface.cc"],
     hdrs = ["inputstream_interface.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:cord",
         "//tsl/platform:errors",
@@ -100,7 +106,6 @@ cc_library(
     name = "iterator",
     srcs = ["iterator.cc"],
     hdrs = ["iterator.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:status",
         "//tsl/platform:stringpiece",
@@ -111,7 +116,6 @@ cc_library(
 cc_library(
     name = "proto_encode_helper",
     hdrs = ["proto_encode_helper.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:coding",
         "//tsl/platform:logging",
@@ -124,7 +128,6 @@ cc_library(
     name = "random_inputstream",
     srcs = ["random_inputstream.cc"],
     hdrs = ["random_inputstream.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":inputstream_interface",
         "//tsl/platform:cord",
@@ -137,7 +140,6 @@ cc_library(
     name = "record_reader",
     srcs = ["record_reader.cc"],
     hdrs = ["record_reader.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":buffered_inputstream",
         ":compression",
@@ -162,7 +164,6 @@ cc_library(
     name = "record_writer",
     srcs = ["record_writer.cc"],
     hdrs = ["record_writer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":compression",
         ":snappy_compression_options",
@@ -184,25 +185,21 @@ cc_library(
 alias(
     name = "snappy_inputbuffer",
     actual = "//tsl/lib/io/snappy:snappy_inputbuffer",
-    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "snappy_inputstream",
     actual = "//tsl/lib/io/snappy:snappy_inputstream",
-    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "snappy_outputbuffer",
     actual = "//tsl/lib/io/snappy:snappy_outputbuffer",
-    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "snappy_compression_options",
     actual = "//tsl/lib/io/snappy:snappy_compression_options",
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -213,7 +210,6 @@ cc_library(
     hdrs = [
         "cache.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:mutex",
         "//tsl/platform:raw_coding",
@@ -231,7 +227,6 @@ cc_library(
         "table.h",
         "two_level_iterator.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":block",
         ":cache",
@@ -247,7 +242,6 @@ cc_library(
 cc_library(
     name = "table_options",
     hdrs = ["table_options.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -266,7 +260,6 @@ tsl_cc_test(
     name = "buffered_file_test",
     size = "small",
     srcs = ["buffered_file_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":buffered_file",
         "//tsl/lib/core:status_test_util",
@@ -282,7 +275,6 @@ cc_library(
     name = "zlib_compression_options",
     srcs = ["zlib_compression_options.cc"],
     hdrs = ["zlib_compression_options.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:types",
         "@zlib",
@@ -294,7 +286,6 @@ cc_library(
     name = "zlib_inputstream",
     srcs = ["zlib_inputstream.cc"],
     hdrs = ["zlib_inputstream.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":inputstream_interface",
         ":zlib_compression_options",
@@ -313,7 +304,6 @@ cc_library(
     name = "zlib_outputbuffer",
     srcs = ["zlib_outputbuffer.cc"],
     hdrs = ["zlib_outputbuffer.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":zlib_compression_options",
         "//tsl/platform:env",
@@ -369,7 +359,6 @@ filegroup(
         "//tsl/lib/io/snappy:snappy_inputstream.cc",
         "//tsl/lib/io/snappy:snappy_inputstream.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -399,7 +388,7 @@ filegroup(
         "//tsl/lib/io/snappy:snappy_inputstream.h",
         "//tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -417,7 +406,7 @@ filegroup(
         "table_builder.h",
         "table_options.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -433,7 +422,7 @@ filegroup(
         "//tsl/lib/io/snappy:snappy_inputstream.h",
         "//tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -443,14 +432,13 @@ filegroup(
         "block_builder.h",
         "format.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 tsl_cc_test(
     name = "buffered_inputstream_test",
     size = "small",
     srcs = ["buffered_inputstream_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":buffered_inputstream",
         ":random_inputstream",
@@ -467,7 +455,6 @@ tsl_cc_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":cache",
         "//tsl/platform:coding",
@@ -481,7 +468,6 @@ tsl_cc_test(
     name = "inputbuffer_test",
     size = "small",
     srcs = ["inputbuffer_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":inputbuffer",
         "//tsl/lib/core:status_test_util",
@@ -502,7 +488,6 @@ tsl_cc_test(
     name = "inputstream_interface_test",
     size = "small",
     srcs = ["inputstream_interface_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":inputstream_interface",
         "//tsl/lib/core:status_test_util",
@@ -516,7 +501,6 @@ tsl_cc_test(
     name = "random_inputstream_test",
     size = "small",
     srcs = ["random_inputstream_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":random_inputstream",
         "//tsl/lib/core:status_test_util",
@@ -531,7 +515,6 @@ tsl_cc_test(
     name = "record_reader_writer_test",
     size = "small",
     srcs = ["record_reader_writer_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":record_reader",
         ":record_writer",
@@ -552,7 +535,6 @@ tsl_cc_test(
     name = "recordio_test",
     size = "small",
     srcs = ["recordio_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":record_reader",
         ":record_writer",
@@ -573,7 +555,6 @@ tsl_cc_test(
     name = "table_test",
     size = "small",
     srcs = ["table_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":block",
         ":iterator",
@@ -593,7 +574,6 @@ tsl_cc_test(
     name = "zlib_buffers_test",
     size = "small",
     srcs = ["zlib_buffers_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":random_inputstream",
         ":zlib_compression_options",

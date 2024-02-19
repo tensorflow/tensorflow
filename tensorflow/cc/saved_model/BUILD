@@ -109,7 +109,7 @@ cc_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:all_kernels",
     ] + if_google(
-        ["@local_tsl//tsl/platform/default/build_config:tensorflow_platform_specific"],
+        ["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"],
         [],
     )) + if_not_mobile([
         "//tensorflow/core:core_cpu",

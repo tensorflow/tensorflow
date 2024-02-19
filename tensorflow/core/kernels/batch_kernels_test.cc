@@ -125,7 +125,7 @@ class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
                                tsl::core::RefCountPtr<Rendezvous> *r) {
           *r = tsl::core::RefCountPtr<Rendezvous>(
               new IntraProcessRendezvous(device_mgr));
-          return OkStatus();
+          return absl::OkStatus();
         }});
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
@@ -214,7 +214,6 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, HandlesLargeBatchSplitting) {
         test.AddInputFromList<int64_t>(
             TensorShape({16}),
             {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
-        auto status = test.RunOpKernel();
         TF_CHECK_OK(test.RunOpKernel());
 
         test::ExpectTensorEqual<int64_t>(

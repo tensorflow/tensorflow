@@ -60,7 +60,7 @@ std::pair<Status, bool> BarrierProxy::Wait() {
       // We should have a mechanism to remove it after it has been passed.
       status_ = agent_->WaitAtBarrier(key_, timeout_, tasks_);
     } else {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     }
     status_set_ = true;
     cv_.notify_all();
@@ -98,7 +98,7 @@ Status BarrierProxyManager::Wait(tsl::CoordinationServiceAgent* agent,
                                  int num_local_threads, absl::string_view key,
                                  absl::Duration timeout) {
   // Only one device, no need to wait.
-  if (tasks.size() == 1 && num_local_threads <= 1) return OkStatus();
+  if (tasks.size() == 1 && num_local_threads <= 1) return absl::OkStatus();
 
   profiler::TraceMe traceme([&] {
     return profiler::TraceMeEncode("BarrierProxyManager::Wait",

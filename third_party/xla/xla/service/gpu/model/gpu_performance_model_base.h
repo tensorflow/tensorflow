@@ -138,6 +138,12 @@ class GpuPerformanceModelBase {
       int64_t estimated_num_threads, const HloFusionAnalysis& fusion_analysis,
       const se::DeviceDescription& device_info);
 
+  // Returns bytes accessed of operand output by instruction. Returns 0, if the
+  // operand is not used by the instruction.
+  static int64_t GetOperandBytesAccessed(
+      const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
+      const HloInstruction* operand);
+
   // Returns utilization of operand by instruction. Returns 0, if the operand is
   // not used by the instruction.
   static float GetOperandUtilization(const GpuHloCostAnalysis* cost_analysis,
@@ -158,15 +164,12 @@ class GpuPerformanceModelBase {
                                     int64_t producer_idx_of_operand,
                                     const HloInstruction* consumer);
 
-  // Returns utilization of operand after producer and consumer are fused
+  // Returns bytes accessed of operand after producer and consumer are fused
   // together. `GetCommonUtilization` works only for a limited set of
   // elementwise cases.
-  // TODO(shyshkov): Combine logic from GpuHloCostAnalysis with boundary
-  // function to properly calculate utilization.
-  static float GetSharedUtilization(const GpuHloCostAnalysis* cost_analysis,
-                                    const HloInstruction* producer,
-                                    const HloInstruction* consumer,
-                                    const HloInstruction* operand);
+  static int64_t GetSharedOperandBytesAccessed(
+      const GpuHloCostAnalysis* cost_analysis, const HloInstruction* producer,
+      const HloInstruction* consumer, const HloInstruction* operand);
 
   // Estimate read time of n_bytes_total bytes from global memory on a
   // given GPU. Account for L1 / L2 cache speedup if the input's nominal size

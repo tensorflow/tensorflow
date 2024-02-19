@@ -70,7 +70,6 @@ add_mlir_library(MhloPasses
   prepare_for_export/prepare_for_export.cc
   optimize_mhlo/optimize_mhlo.cc
   optimize_mhlo/optimize_mhlo_pass.cc
-  rank_specialization/rank_specialization.cc
   restrict_max_rank/restrict_max_rank.cc
   shape_legalize_to_hlo/shape_legalize_to_hlo.cc
   shape_reification/shape_reification_pass.cc

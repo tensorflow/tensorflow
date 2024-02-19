@@ -73,6 +73,10 @@ class GpuPriorityFusion : public InstructionFusion {
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 
+  // Consumes a unit of compiler fuel and returns true if we should
+  // continue with the transformation.
+  bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
+
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;
 

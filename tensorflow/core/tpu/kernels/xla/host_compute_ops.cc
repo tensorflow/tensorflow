@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/xla_builder.h"
-#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
@@ -57,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -539,6 +537,7 @@ class RecvFromHostOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaHostCompute"), HostComputeOp);
 REGISTER_XLA_OP(Name("XlaSendToHost"), SendToHostOp);
 REGISTER_XLA_OP(Name("XlaRecvFromHost"), RecvFromHostOp);
+REGISTER_XLA_OP(Name("_XlaHostComputeMlir"), MlirXlaOpKernel);
 
 }  // anonymous namespace
 }  // namespace tensorflow

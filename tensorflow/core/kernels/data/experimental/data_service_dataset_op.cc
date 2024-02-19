@@ -196,7 +196,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -353,7 +353,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                           data_service_client_.GetNext(ctx_factory));
       *out_tensors = std::move(result.tensors);
       *end_of_sequence = result.end_of_sequence;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -668,7 +668,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                        container, name, &iteration_counter,
                        [](IterationCounter** counter) {
                          *counter = new IterationCounter();
-                         return OkStatus();
+                         return absl::OkStatus();
                        }));
     iteration_counter_handle =
         MakeResourceHandle<IterationCounter>(ctx, container, name);

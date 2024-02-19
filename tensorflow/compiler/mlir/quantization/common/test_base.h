@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -61,13 +60,6 @@ class QuantizationTestBase : public Test {
     auto module_op_ref = parseSourceString<ModuleOp>(module_op_str, ctx_.get());
     EXPECT_TRUE(module_op_ref);
     return module_op_ref;
-  }
-
-  // Gets the function with the given name from the module.
-  func::FuncOp GetFunctionFromModule(ModuleOp module,
-                                     absl::string_view function_name) {
-    SymbolTable symbol_table(module);
-    return symbol_table.lookup<func::FuncOp>(function_name);
   }
 
   // Returns the first operation with the given type in the function.

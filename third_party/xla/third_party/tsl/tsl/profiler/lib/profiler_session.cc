@@ -70,6 +70,7 @@ Status ProfilerSession::CollectDataInternal(XSpace* space) {
   LOG(INFO) << "Profiler session collecting data.";
   if (profilers_ != nullptr) {
     profilers_->Stop().IgnoreError();
+    stop_time_ns_ = profiler::GetCurrentTimeNanos();
     profilers_->CollectData(space).IgnoreError();
     profilers_.reset();  // data has been collected.
   }
@@ -83,7 +84,7 @@ Status ProfilerSession::CollectData(XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
   space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
-  profiler::PostProcessSingleHostXSpace(space, start_time_ns_);
+  profiler::PostProcessSingleHostXSpace(space, start_time_ns_, stop_time_ns_);
 #endif
   return OkStatus();
 }

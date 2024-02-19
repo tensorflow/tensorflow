@@ -15,7 +15,7 @@ package_group(
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/cpp_tests/tpu_model/...",
-        # copybara:uncomment "//learning/brain/tfrt/tfrt_session/...",
+        # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/runtime/...",
         "//tensorflow_serving/...",
@@ -48,7 +48,6 @@ cc_library(
     hdrs = ["run_handler.h"],
     deps = [
         ":run_handler_util",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

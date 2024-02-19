@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
@@ -31,10 +33,24 @@ limitations under the License.
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/service/lockable.h"
 #include "xla/stream_executor/stream.h"
+#include "tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace gpu {
+
+TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
+
+struct NcclCommName {
+  static std::string ToString(NcclApi::NcclCommHandle comm) {
+    return absl::StrFormat("lockable comm %p", comm);
+  }
+};
+
+struct NcclComm : public Lockable<NcclApi::NcclCommHandle, NcclCommName> {
+  explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
+};
 
 // Create the mock nccl communicator assuming all hosts have the same hardwares.
 absl::StatusOr<NcclComm::Lock> LockMockNcclComm(

@@ -380,7 +380,7 @@ class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
 };
 
 runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
-    const HloModule& module) {
+    const HloModule& module, mlir::DialectRegistry* custom_registry) {
   runtime::CpuPipelineOptions copts;
   runtime::JitExecutable::Options opts;
   copts.xla_cpu_sparse_cuda_threads =
@@ -389,10 +389,13 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       options::ExperimentalOverriddenPipeline(module.config());
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
-      [](xla::runtime::DialectRegistry& dialects) {
+      [custom_registry](xla::runtime::DialectRegistry& dialects) {
         dialects->insert<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect>();
         runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
         RegisterHloXlaRuntimePipelineDialects(*dialects);
+        if (custom_registry) {
+          custom_registry->appendTo(*dialects);
+        }
       };
   opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
       [](runtime::DirectCustomCallRegistry& registry) {
@@ -449,12 +452,21 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 
 CpuAotCompilationResult::CpuAotCompilationResult(
     ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
-    int64_t result_buffer_index,
+    int64_t result_buffer_index, std::unique_ptr<HloModule> module,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
     : object_file_data_(std::move(object_file_data)),
       buffer_infos_(std::move(buffer_infos)),
       result_buffer_index_(result_buffer_index),
+      module_(std::move(module)),
       hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
+
+const HloModule* CpuAotCompilationResult::optimized_module() const {
+  return module_.get();
+}
+
+std::unique_ptr<HloModule> CpuAotCompilationResult::consume_optimized_module() {
+  return std::move(module_);
+}
 
 CpuCompiler::CpuCompiler(bool allow_sparse_shapes)
     : allow_sparse_shapes_(allow_sparse_shapes) {
@@ -632,9 +644,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   {
-    // Int4Packer must be run before the rest of the pipeline since it modifies
-    // the layout of the entry computation inputs/outputs, which is passed to
-    // LayoutAssignment.
+    // Int4Packer must be run before the rest of the pipeline since it
+    // modifies the layout of the entry computation inputs/outputs, which is
+    // passed to LayoutAssignment.
     HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
     int4_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
@@ -897,14 +909,12 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (!is_aot_compile) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
     pipeline.AddPass<OneDnnMatMulRewriter>(max_parallelism,
                                            compile_options.thread_pool);
     // Run SimplifyFPConversions pass again to remove redundant Convert ops
     // that may exist as a result of running OneDnnMatMulRewriter pass.
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -1493,9 +1503,10 @@ namespace {
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     const HloModule& hlo_module, mlir::ModuleOp mlir_module,
     absl::string_view entry_point,
-    const XlaFrameworkMapping& xla_framework_mapping) {
+    const XlaFrameworkMapping& xla_framework_mapping,
+    mlir::DialectRegistry* registry) {
   runtime::JitExecutable::Options opts =
-      GetXlaRuntimeJitExecutableOptions(hlo_module);
+      GetXlaRuntimeJitExecutableOptions(hlo_module, registry);
   std::string serialized_mlir = llvm_ir::DumpToString(mlir_module);
 
   absl::StatusOr<runtime::JitExecutable> jit_executable =
@@ -1513,7 +1524,7 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
 
 StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileXlaRuntimeCpuExecutable(
-    std::unique_ptr<HloModule> hlo_module) {
+    std::unique_ptr<HloModule> hlo_module, mlir::DialectRegistry* registry) {
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
   // and reduced memory usage (as compared to using DependencyHloOrdering).
@@ -1549,6 +1560,9 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   }
 
   mlir::MLIRContext mlir_context;
+  if (registry) {
+    mlir_context.appendDialectRegistry(*registry);
+  }
   XlaFrameworkMapping xla_framework_mapping;
   TF_ASSIGN_OR_RETURN(
       auto mlir_module,
@@ -1558,7 +1572,7 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   TF_ASSIGN_OR_RETURN(
       auto xla_runtime_executable,
       GetXlaRuntimeCpuExecutable(*hlo_module, *mlir_module, "main",
-                                 xla_framework_mapping));
+                                 xla_framework_mapping, registry));
 
   if (DumpingEnabledForHloModule(*hlo_module)) {
     TF_ASSIGN_OR_RETURN(std::string_view obj_file,
@@ -1576,7 +1590,7 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
     [[maybe_unused]] se::StreamExecutor* stream_exec,
-    [[maybe_unused]] const CompileOptions& options) {
+    const CompileOptions& options) {
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
@@ -1589,8 +1603,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   std::unique_ptr<CpuExecutable> cpu_executable;
   if (module->config().debug_options().xla_cpu_use_xla_runtime()) {
-    TF_ASSIGN_OR_RETURN(cpu_executable,
-                        CompileXlaRuntimeCpuExecutable(std::move(module)));
+    TF_ASSIGN_OR_RETURN(
+        cpu_executable,
+        CompileXlaRuntimeCpuExecutable(std::move(module), options.registry));
   } else {
     TF_ASSIGN_OR_RETURN(cpu_executable,
                         CompileLegacyCpuExecutable(std::move(module)));
@@ -1867,7 +1882,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     results.emplace_back(std::make_unique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_infos),
-        result_slice.index(), std::move(hlo_profile_printer_data)));
+        result_slice.index(), std::move(modules[i]),
+        std::move(hlo_profile_printer_data)));
   }
 
   VLOG(1) << "Compilation finished";
@@ -1902,10 +1918,13 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
                                     const BufferAssignment* buffer_assignment,
                                     std::string_view function_name,
                                     std::string_view obj_file) {
-    *proto_.mutable_hlo_module() = hlo_module->ToProto();
+    *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
     *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto_.set_entry_function_name(std::string(function_name));
     proto_.set_obj_file(std::string(obj_file));
+    *proto_.mutable_hlo_module()->mutable_config() =
+        *hlo_module->config().ToProto();
+    module_ = hlo_module->Clone();
   }
 
   StatusOr<std::string> SerializeAsString() const override {
@@ -1919,18 +1938,31 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
       return Internal(
           "Failed to parse serialized CpuExecutableAotCompilationResult.");
     }
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
+
     return std::unique_ptr<CpuExecutableAotCompilationResult>(
-        new CpuExecutableAotCompilationResult(proto));
+        new CpuExecutableAotCompilationResult(proto, std::move(module)));
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
 
+  const HloModule* optimized_module() const override { return module_.get(); }
+
+  std::unique_ptr<HloModule> consume_optimized_module() override {
+    return std::move(module_);
+  }
+
  private:
-  explicit CpuExecutableAotCompilationResult(CompilationResultProto proto)
-      : proto_(std::move(proto)) {}
+  explicit CpuExecutableAotCompilationResult(CompilationResultProto proto,
+                                             std::unique_ptr<HloModule> module)
+      : proto_(std::move(proto)), module_(std::move(module)) {}
 
   CompilationResultProto proto_;
+  std::unique_ptr<HloModule> module_;
 };
 
 }  // namespace
@@ -1939,12 +1971,9 @@ StatusOr<std::unique_ptr<Executable>>
 CpuExecutableAotCompilationResult::LoadExecutable(
     Compiler* compiler, const se::StreamExecutor* stream_exec) const {
   // Recreate HloModule from proto.
-  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          proto_.hlo_module(), GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      HloModule::CreateFromProto(proto_.hlo_module(), hlo_module_config));
+      HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
 
   // Recreate BufferAssignment from proto.
   TF_ASSIGN_OR_RETURN(

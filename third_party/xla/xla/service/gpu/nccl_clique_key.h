@@ -81,6 +81,10 @@ class NcclCliqueKey {
   // Returns the rank of the global device in the clique.
   std::optional<int64_t> rank(GlobalDeviceId id) const;
 
+  // Returns true if this clique is a subset of `other`: both cliques have the
+  // same `stream_id` and all clique devices are part of `other` clique.
+  bool IsSubsetOf(const NcclCliqueKey& other) const;
+
   std::string ToString() const;
 
   template <typename H>
@@ -88,6 +92,7 @@ class NcclCliqueKey {
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
   friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
   const std::vector<GlobalDeviceId> devices_;

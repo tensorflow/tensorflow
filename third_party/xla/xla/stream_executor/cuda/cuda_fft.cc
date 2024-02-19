@@ -19,23 +19,29 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <type_traits>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
-#include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_helpers.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -482,5 +488,6 @@ void initialize_cufft() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(register_cufft,
-                            { stream_executor::initialize_cufft(); });
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(register_cufft, {
+  stream_executor::initialize_cufft();
+});

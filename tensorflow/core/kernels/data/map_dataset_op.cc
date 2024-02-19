@@ -83,7 +83,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -142,7 +142,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
          std::make_pair(kPreserveCardinality,
                         preserve_cardinality_attr)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -169,7 +169,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> args;
       TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &args, end_of_sequence));
       if (*end_of_sequence) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status s = instantiated_captured_func_->Run(ctx, std::move(args),
@@ -185,7 +185,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
       } else {
         return s;
@@ -203,13 +203,13 @@ class MapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

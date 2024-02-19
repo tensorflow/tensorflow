@@ -1493,6 +1493,30 @@ class DnnSupport {
         "DnnSupport::DoFusedConvolve not implemented on this platform.");
   }
 
+  template <typename InputT, typename ScaleT, typename SideInputT,
+            typename BiasT, typename OutputT>
+  absl::Status FusedConvolveWithAlgorithm(
+      Stream* stream, const BatchDescriptor& conv_input_descriptor,
+      const DeviceMemory<InputT>& conv_input_data, ScaleT conv_input_scale,
+      const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<InputT>& filter_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<SideInputT>& side_input_data, ScaleT side_input_scale,
+      const BatchDescriptor& bias_descriptor, const DeviceMemory<BiasT>& biases,
+      ActivationMode activation_mode, const BatchDescriptor& output_descriptor,
+      DeviceMemory<OutputT>* output, ScratchAllocator* scratch_allocator,
+      const AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return DoFusedConvolve(
+        stream, ToDataType<InputT>::value, ToDataType<SideInputT>::value,
+        ToDataType<BiasT>::value, ToDataType<OutputT>::value,
+        conv_input_descriptor, conv_input_data, conv_input_scale,
+        filter_descriptor, filter_data, convolution_descriptor, side_input_data,
+        side_input_scale, bias_descriptor, biases, activation_mode,
+        output_descriptor, *output, scratch_allocator, algorithm_config,
+        output_profile_result);
+  }
+
   template <typename ElementType, typename OutputType>
   absl::Status PrepareForConvolution(
       ConvolutionKind kind, Stream* stream,
@@ -1668,14 +1692,19 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       ActivationMode activation_mode);
 
-  virtual absl::StatusOr<std::unique_ptr<const NormRunner>> NormRunnerFromDesc(
-      Stream* stream, const AlgorithmDesc& algorithm_desc, double epsilon,
-      const TensorDescriptor& input_descriptor,
-      const TensorDescriptor& scale_descriptor,
-      const TensorDescriptor& bias_descriptor,
-      const TensorDescriptor& output_descriptor,
-      std::optional<TensorDescriptor> expectation_descriptor,
-      std::optional<TensorDescriptor> norm_factor_descriptor);
+  virtual absl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+  NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::NormKind kind, double epsilon,
+      const dnn::TensorDescriptor& x_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& y_or_dx_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor,
+      std::optional<dnn::TensorDescriptor> dy_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor,
+      std::optional<dnn::TensorDescriptor> dscale_descriptor,
+      std::optional<dnn::TensorDescriptor> dbias_descriptor);
 
   virtual absl::StatusOr<std::unique_ptr<const FusedMHARunner>>
   FusedMHARunnerFromDesc(

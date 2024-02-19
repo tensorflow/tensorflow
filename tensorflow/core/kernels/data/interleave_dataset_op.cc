@@ -106,7 +106,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -137,7 +137,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         this, {{0, input_node}, {2, cycle_length_node}, {3, block_length_node}},
         {{1, other_arguments}},
         {{kFunc, f}, {kTarguments, other_arguments_types_attr}}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -202,7 +202,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             // Produce the subelement as output.
             AdvancePosition();
             *end_of_sequence = false;
-            return OkStatus();
+            return absl::OkStatus();
           } else {
             // We have reached the end of the current element, so move
             // on to the next element in the cycle.
@@ -228,7 +228,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       ctx->MergeCheckpoint(input_ckpt_.get());
 
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status SkipInternal(IteratorContext* ctx, int num_to_skip,
@@ -267,7 +267,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           if (num_to_skip == *num_skipped) {
             *end_of_sequence = false;
-            return OkStatus();
+            return absl::OkStatus();
           }
         } else {
           TF_RETURN_IF_ERROR(MoveToNextElement(ctx));
@@ -277,7 +277,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       ctx->MergeCheckpoint(input_ckpt_.get());
 
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -309,7 +309,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                               last_checkpointed_input_element_index_));
 
       TF_RETURN_IF_ERROR(SaveCurrentElements(ctx, writer));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -357,7 +357,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           RestoreCurrentElements(ctx, reader, input_element_indices,
                                  std::move(checkpoints), std::move(args)));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -415,7 +415,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
               current_elements_[idx]->input_element_index));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     absl::StatusOr<std::vector<InputOffsetWithCycleIdx>> RestoreInputOffsets(
@@ -569,7 +569,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       }
 
       input_ckpt_->Merge(input_ctx->checkpoint());
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreCurrentElements(
@@ -630,7 +630,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         }
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status MoveToNextElement(IteratorContext* ctx)
@@ -669,7 +669,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       } else {
         AdvanceToNextInCycle();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Check if the given `input_element_index` is the earliest(oldest) current

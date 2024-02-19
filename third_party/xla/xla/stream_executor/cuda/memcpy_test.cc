@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #if GOOGLE_CUDA
-#include "absl/memory/memory.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
@@ -30,8 +31,10 @@ TEST(MemcpyTest, PinnedHostMemory) {
   stream.Init();
   ASSERT_TRUE(stream.ok());
 
-  void* d_ptr = executor->HostMemoryAllocate(sizeof(int));
-  DeviceMemoryBase d_mem(d_ptr, sizeof(int));
+  TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
+                          executor->HostMemoryAllocate(sizeof(int)));
+  DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
+
   int h_ptr;
   stream.ThenMemcpy(&h_ptr, d_mem, d_mem.size());
   EXPECT_TRUE(stream.BlockHostUntilDone().ok());

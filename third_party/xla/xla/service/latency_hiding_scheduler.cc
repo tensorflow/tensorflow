@@ -380,6 +380,8 @@ absl::string_view AsyncTracker::GetResourceName(int64_t resource_type) const {
       return "kSendHost";
     case ResourceTypeToIndex(ResourceType::kRecvHost):
       return "kRecvHost";
+    case ResourceTypeToIndex(ResourceType::kReduceScatter):
+      return "kReduceScatter";
     default:
       return "Not a valid default resource";
   }

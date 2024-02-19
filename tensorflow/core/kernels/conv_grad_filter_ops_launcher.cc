@@ -226,6 +226,8 @@ void LaunchConv2DBackpropFilterOpImpl(
         "without cudnn"));
     return;
   }
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(ctx, blas != nullptr, absl::InternalError("No BLAS for stream."));
 
   // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the
   // input depth, it's a depthwise convolution. More generally, if the filter
@@ -261,11 +263,11 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                             se::blas::Transpose::kTranspose, n,
-                                             m, k, a_ptr, n, b_ptr, m, &c_ptr,
-                                             n, GetNumericOptions(),
-                                             se::blas::CallContext::kNone));
+    OP_REQUIRES_OK(
+        ctx, blas->BlasGemm(stream, se::blas::Transpose::kNoTranspose,
+                            se::blas::Transpose::kTranspose, n, m, k, a_ptr, n,
+                            b_ptr, m, &c_ptr, n, GetNumericOptions(),
+                            se::blas::CallContext::kNone));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -287,11 +289,11 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                             se::blas::Transpose::kTranspose, n,
-                                             m, k, b_ptr, n, a_ptr, m, &c_ptr,
-                                             n, GetNumericOptions(),
-                                             se::blas::CallContext::kNone));
+    OP_REQUIRES_OK(
+        ctx, blas->BlasGemm(stream, se::blas::Transpose::kNoTranspose,
+                            se::blas::Transpose::kTranspose, n, m, k, b_ptr, n,
+                            a_ptr, m, &c_ptr, n, GetNumericOptions(),
+                            se::blas::CallContext::kNone));
     return;
   }
 

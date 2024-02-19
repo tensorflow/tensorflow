@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -79,15 +80,24 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
 
-// Computes indexing for every instruction within a fusion cluster.
+// Computes output-to-input indexing for every instruction within a fusion
+// cluster starting with `target_instr` and going from def to use.
 GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
-    const HloFusionAdaptor& fusion_adaptor, int output_id,
+    const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
     mlir::MLIRContext* ctx);
 
 // Groups indexing maps by instructions.
 absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
 GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
                              const HloInstruction* instr);
+
+// Computes producer indexing maps and fuse/compose them with the consumer
+// indexing maps.
+bool FuseProducerConsumerOutputToInputIndexing(
+    const HloInstruction* producer_instr,
+    absl::flat_hash_map<const HloInstruction*, IndexingMapSet>*
+        consumer_indexing,
+    mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map for bitcasting from `input_shape` to `output_shape`.
 // Equivalent to linearizing the input_shape index and then delinearizing it
@@ -125,6 +135,10 @@ IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
+
+llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
+    mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
+    absl::Span<const int64_t> strides);
 
 }  // namespace gpu
 }  // namespace xla

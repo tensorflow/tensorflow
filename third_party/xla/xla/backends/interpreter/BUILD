@@ -5,6 +5,7 @@ load(
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -13,7 +14,6 @@ cc_library(
     name = "interpreter_transfer_manager",
     srcs = ["interpreter_transfer_manager.cc"],
     hdrs = ["interpreter_transfer_manager.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":platform_id",
         "//xla/service:generic_transfer_manager",
@@ -26,7 +26,6 @@ cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":executable",
         ":platform_id",
@@ -69,7 +68,6 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    visibility = ["//visibility:public"],
     deps = ["//xla/stream_executor"] + if_static(
         ["@com_google_protobuf//:protobuf"],
         ["@com_google_protobuf//:protobuf_headers"],
@@ -80,7 +78,6 @@ cc_library(
     name = "executable_base",
     srcs = ["executable_base.cc"],
     hdrs = ["executable_base.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_tree",
@@ -103,7 +100,6 @@ cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":executable_base",
         ":executor",
@@ -133,7 +129,6 @@ cc_library(
     name = "platform",
     srcs = ["platform.cc"],
     hdrs = ["platform.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":executor",
         ":platform_id",
@@ -150,7 +145,6 @@ cc_library(
     name = "executor",
     srcs = ["executor.cc"],
     hdrs = ["executor.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",

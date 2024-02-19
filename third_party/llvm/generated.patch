@@ -1,1 +1,70 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExprScalar.cpp b/clang/lib/CodeGen/CGExprScalar.cpp
+--- a/clang/lib/CodeGen/CGExprScalar.cpp
++++ b/clang/lib/CodeGen/CGExprScalar.cpp
+@@ -2425,8 +2425,6 @@
+   case CK_IntegralToFloating: {
+     if (E->getType()->isVectorType() && DestTy->isVectorType()) {
+       // TODO: Support constrained FP intrinsics.
+-      assert(!Builder.getIsFPConstrained() &&
+-             "FP Constrained vector casts not supported yet.");
+       QualType SrcElTy = E->getType()->castAs<VectorType>()->getElementType();
+       if (SrcElTy->isSignedIntegerOrEnumerationType())
+         return Builder.CreateSIToFP(Visit(E), ConvertType(DestTy), "conv");
+@@ -2439,8 +2437,6 @@
+   case CK_FloatingToIntegral: {
+     if (E->getType()->isVectorType() && DestTy->isVectorType()) {
+       // TODO: Support constrained FP intrinsics.
+-      assert(!Builder.getIsFPConstrained() &&
+-             "FP Constrained vector casts not supported yet.");
+       QualType DstElTy = DestTy->castAs<VectorType>()->getElementType();
+       if (DstElTy->isSignedIntegerOrEnumerationType())
+         return Builder.CreateFPToSI(Visit(E), ConvertType(DestTy), "conv");
+@@ -2453,8 +2449,6 @@
+   case CK_FloatingCast: {
+     if (E->getType()->isVectorType() && DestTy->isVectorType()) {
+       // TODO: Support constrained FP intrinsics.
+-      assert(!Builder.getIsFPConstrained() &&
+-             "FP Constrained vector casts not supported yet.");
+       QualType SrcElTy = E->getType()->castAs<VectorType>()->getElementType();
+       QualType DstElTy = DestTy->castAs<VectorType>()->getElementType();
+       if (DstElTy->castAs<BuiltinType>()->getKind() <
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -611,6 +611,16 @@
+ )
+ 
+ libc_support_library(
++    name = "__support_fixed_point",
++    hdrs = ["src/__support/fixed_point/fx_rep.h"],
++    deps = [
++        ":__support_cpp_type_traits",
++        ":__support_macros_attributes",
++        ":llvm_libc_macros_stdfix_macros",
++    ],
++)
++
++libc_support_library(
+     name = "__support_fputil_generic_fmod",
+     hdrs = ["src/__support/FPUtil/generic/FMod.h"],
+     deps = [
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/test/UnitTest/BUILD.bazel
+@@ -46,6 +46,7 @@
+         "//libc:__support_cpp_string",
+         "//libc:__support_cpp_string_view",
+         "//libc:__support_cpp_type_traits",
++        "//libc:__support_fixed_point",
+         "//libc:__support_fputil_fp_bits",
+         "//libc:__support_fputil_fpbits_str",
+         "//libc:__support_fputil_rounding_mode",
+@@ -53,6 +54,7 @@
+         "//libc:__support_stringutil",
+         "//libc:__support_uint128",
+         "//libc:errno",
++        "//libc:llvm_libc_macros_stdfix_macros",
+         "//llvm:Support",
+     ],
+ )

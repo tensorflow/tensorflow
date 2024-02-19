@@ -158,7 +158,6 @@ set(MLIR_HLO_TOOLS_DIR ${MLIR_HLO_BINARY_DIR}/bin)
 set(MLIR_HLO_LIB_DIR ${MLIR_HLO_BINARY_DIR}/lib)
 add_custom_target(check-mlir-hlo)
 
-add_subdirectory(analysis)
 add_subdirectory(bindings)
 add_subdirectory(deallocation)
 add_subdirectory(lhlo)

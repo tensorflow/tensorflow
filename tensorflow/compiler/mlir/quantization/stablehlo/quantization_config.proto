@@ -63,10 +63,68 @@ message PipelineConfig {
   optional bool unpack_quantized_types = 1;
 }
 
+// A quantization method representing "do not quantize". Mostly used for
+// denylisting quantizable units from quantization.
+message NoQuantization {}
+
+// Represents a matching method that matches quantizable units by lifted
+// functions' names.
+message FunctionNameMatcherSpec {
+  // Regular expression to match lifted functions' names. Underlying regex
+  // engine uses re2, which accepts a subset of PCRE. See
+  // https://github.com/google/re2/wiki/Syntax for details.
+  string regex = 1;
+}
+
+// Matcher specification for identifying quantizable units.
+message MatcherSpec {
+  // Matches lifted functions by their names.
+  FunctionNameMatcherSpec function_name = 1;
+}
+
+// Specifies how to quantize matched quantizable units.
+message Method {
+  NoQuantization no_quantization = 1;
+}
+
+// A QuantizationSpec is essentially a (matcher spec, quantization method) pair,
+// where the matcher spec is used to identify quantizable units and the
+// quantization method specifies what type of quantization to apply on the
+// matched quantizable units.
+// Next ID: 3
+message QuantizationSpec {
+  // Configures matchers for identifying quantizable units. Matched quantizable
+  // units will be quantized according to `method`.
+  MatcherSpec matcher = 1;
+
+  // Specifies how to quantize the matched quantizable units.
+  Method method = 2;
+}
+
+// Quantization specifications. A simple wrapper around a sequence of
+// `QuantizationSpec`s so that specs can be easily passed around or represented
+// as a textproto.
+// Next ID: 2
+message QuantizationSpecs {
+  // List of `QuantizationSpec`s. Later spec in the sequence takes precedence.
+  //
+  // NOTE: Tie-breaking mechanism is not yet supported. Providing multiple
+  // `QuantizationSpec` with conflicting quantizable units may result in
+  // undefined behavior.
+  // TODO: b/307620778 - Support tie-breaking for conflicting specs.
+  repeated QuantizationSpec specs = 1;
+}
+
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 4
+// Next ID: 5
 message QuantizationConfig {
+  // Config presets provide predefined popular or common quantization specs.
+  // Lightweight users may choose one of the presets for quick experiments. Each
+  // preset is completely represented by `QuantizationSpecs`. When extra entries
+  // in `QuantizationSpecs` are provided along with a preset, then the preset
+  // will be overridden for the quantizable units matched by those additional
+  // `QuantizationSpec`s.
   oneof preset {
     // Performs best-effort static-range post-training quantization (PTQ).
     StaticRangePtqPreset static_range_ptq_preset = 1;
@@ -77,4 +135,6 @@ message QuantizationConfig {
 
   // Configures the graph transformation pipeline for quantization.
   PipelineConfig pipeline_config = 3;
+
+  QuantizationSpecs specs = 4;
 }

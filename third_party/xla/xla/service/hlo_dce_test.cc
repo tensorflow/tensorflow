@@ -111,6 +111,30 @@ TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
   EXPECT_FALSE(result);
 }
 
+TEST_F(HloDceTest, AsyncCustomCallInstructionsWithSideEffect) {
+  // Verify that custom call instruction with side-effect is not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto instr = Cast<HloCustomCallInstruction>(builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo")));
+  instr->set_custom_call_has_side_effect(true);
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN([[maybe_unused]] HloInstruction * async_done,
+                          module->entry_computation()->CreateAsyncInstructions(
+                              instr, {{ShapeUtil::MakeScalarShape(U32)}},
+                              HloInstruction::kMainExecutionThread,
+                              /*replace=*/true, /*override_names=*/true));
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_FALSE(result);
+}
+
 TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
   // Verify that custom call instruction without side-effect is removed.
   auto builder = HloComputation::Builder(TestName());
@@ -122,6 +146,30 @@ TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
+
+  HloDCE dce;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
+}
+
+TEST_F(HloDceTest, AsyncCustomCallInstructionsWithoutSideEffect) {
+  // Verify that custom call instruction without side-effect is removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto instr = Cast<HloCustomCallInstruction>(builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo")));
+  instr->set_custom_call_has_side_effect(false);
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN([[maybe_unused]] HloInstruction * async_done,
+                          module->entry_computation()->CreateAsyncInstructions(
+                              instr, {{ShapeUtil::MakeScalarShape(U32)}},
+                              HloInstruction::kMainExecutionThread,
+                              /*replace=*/true, /*override_names=*/true));
 
   HloDCE dce;
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));

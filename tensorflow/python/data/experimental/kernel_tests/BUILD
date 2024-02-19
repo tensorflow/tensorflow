@@ -192,6 +192,20 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "global_shuffle_test",
+    srcs = ["global_shuffle_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "group_by_reducer_test",
     size = "small",
     srcs = ["group_by_reducer_test.py"],

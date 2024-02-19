@@ -73,11 +73,11 @@ Status ParseActivationMode(OpKernelConstruction* context,
 
   if (activation_mode_str == "Identity") {
     *activation_mode = FusedBatchNormActivationMode::kIdentity;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (activation_mode_str == "Relu") {
     *activation_mode = FusedBatchNormActivationMode::kRelu;
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Unsupported activation mode: ",
                                  activation_mode_str);

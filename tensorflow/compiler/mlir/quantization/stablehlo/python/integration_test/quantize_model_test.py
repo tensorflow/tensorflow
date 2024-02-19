@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 import itertools
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
 from absl.testing import parameterized
 import numpy as np
@@ -22,12 +22,19 @@ from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_
 from tensorflow.compiler.mlir.quantization.stablehlo.python import quantization
 from tensorflow.compiler.mlir.quantization.stablehlo.python.integration_test import quantize_model_test_base
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.module import module
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.types import core
 
 
 def parameter_combinations(test_parameters):
@@ -319,7 +326,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
       parameter_combinations([{
-          'equation': ('abc,cde->abde', 'abc,dce->abde',),
+          'equation': (
+              'abc,cde->abde',
+              'abc,dce->abde',
+          ),
           'rng_seed': (82, 82732, 4444, 14),
       }])
   )
@@ -405,6 +415,239 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           self._output_saved_model_path,
           config,
       )
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_denylist_basic(self):
+    """Tests that the op is not quantized when no quantization is enabled."""
+    input_shape = (1, 2)
+    model = self._create_matmul_model(
+        input_shape,
+        weight_shape=(2, 3),
+        saved_model_path=self._input_saved_model_path,
+    )
+
+    rng = np.random.default_rng(1230)
+    random_tensor_gen_fn = lambda: rng.uniform(
+        low=0.0, high=1.0, size=input_shape
+    ).astype(np.float32)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(50):
+        yield {'input_tensor': random_tensor_gen_fn()}
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        # Disable quantization for the quantizable unit (lifted function) whose
+        # function name starts with "composite_dot_general".
+        specs=qc.QuantizationSpecs(
+            specs=[
+                qc.QuantizationSpec(
+                    matcher=qc.MatcherSpec(
+                        function_name=qc.FunctionNameMatcherSpec(
+                            regex='composite_dot_general.*'
+                        )
+                    ),
+                    method=qc.Method(no_quantization={}),
+                )
+            ]
+        ),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    input_data = ops.convert_to_tensor(random_tensor_gen_fn())
+    expected_outputs = model.matmul(input_data)
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data)
+    )
+
+    # Indirectly tests that the model is not quantized by asserting that there
+    # are negligible numeric difference.
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.000001)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_selective_denylist(self):
+    """Tests that the op is not quantized when no quantization is enabled."""
+
+    rng = np.random.default_rng(1230)
+    random_tensor_gen_fn = lambda shape: rng.uniform(
+        low=-1.0, high=1.0, size=shape
+    ).astype(np.float32)
+
+    class TwoMatmulModel(module.Module):
+      """A model with two matmul ops."""
+
+      @def_function.function
+      def matmul(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a matrix multiplication.
+
+        Args:
+          input_tensor: Input tensor to matmul with the filter.
+
+        Returns:
+          A 'output' -> output tensor mapping
+        """
+        out = math_ops.matmul(input_tensor, random_tensor_gen_fn((2, 3)))
+        out = math_ops.matmul(out, random_tensor_gen_fn((3, 4)))
+        return {'output': out}
+
+    model = TwoMatmulModel()
+    input_shape = (1, 2)
+
+    save.save(
+        model,
+        self._input_saved_model_path,
+        signatures=model.matmul.get_concrete_function(
+            tensor_spec.TensorSpec(
+                shape=input_shape, dtype=dtypes.float32, name='input_tensor'
+            )
+        ),
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(50):
+        yield {'input_tensor': random_tensor_gen_fn(input_shape)}
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                ),
+            ],
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        # Disable quantization for the quantizable unit (lifted function) whose
+        # function name matches "composite_dot_general_fn_1".
+        # "composite_dot_general_fn_2" will be quantized.
+        specs=qc.QuantizationSpecs(
+            specs=[
+                qc.QuantizationSpec(
+                    matcher=qc.MatcherSpec(
+                        function_name=qc.FunctionNameMatcherSpec(
+                            regex='composite_dot_general_fn_1'
+                        )
+                    ),
+                    method=qc.Method(no_quantization={}),
+                )
+            ]
+        ),
+    )
+
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    input_data = ops.convert_to_tensor(random_tensor_gen_fn(input_shape))
+    expected_outputs = model.matmul(input_data)
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data)
+    )
+
+    # Indirectly tests that the model is only partially quantized.
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.011)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_quantization_method_not_applied_when_matcher_mismatch(self):
+    """Tests that quantization method is not applied to unmatched units."""
+    input_shape = (1, 2)
+    model = self._create_matmul_model(
+        input_shape,
+        weight_shape=(2, 3),
+        saved_model_path=self._input_saved_model_path,
+    )
+
+    rng = np.random.default_rng(1230)
+    random_tensor_gen_fn = lambda: rng.uniform(
+        low=0.0, high=1.0, size=input_shape
+    ).astype(np.float32)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(50):
+        yield {'input_tensor': random_tensor_gen_fn()}
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+        specs=qc.QuantizationSpecs(
+            specs=[
+                qc.QuantizationSpec(
+                    # Provide a regex that wouldn't match any quantizable units.
+                    matcher=qc.MatcherSpec(
+                        function_name=qc.FunctionNameMatcherSpec(
+                            regex='.*invalid_function_name.*'
+                        ),
+                    ),
+                    method=qc.Method(no_quantization={}),
+                ),
+            ],
+        ),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    input_data = ops.convert_to_tensor(random_tensor_gen_fn())
+    expected_outputs = model.matmul(input_data)
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data)
+    )
+
+    # Tests that the quantized graph outputs similar values. They also shouldn't
+    # be exactly the same. Indirectly proves that the `FunctionNameMatcherSpec`
+    # with regex '.*invalid_function_name.*' did not match the quantizable unit.
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
+    self.assertNotAllClose(new_outputs, expected_outputs, rtol=0.00001)
 
 
 if __name__ == '__main__':

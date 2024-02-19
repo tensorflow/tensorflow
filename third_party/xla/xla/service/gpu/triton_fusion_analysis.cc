@@ -256,6 +256,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
           .insert(
               {output, context.dim_orders().at(output).ToTensorIterationSpec()})
           .second);
+  parameters_[Scope::OUTPUT] = {};
   if (output != &dot) {
     // Propagate back to parameters of the output fusion.
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(

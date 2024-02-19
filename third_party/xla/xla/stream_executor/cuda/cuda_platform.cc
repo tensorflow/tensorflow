@@ -15,20 +15,28 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_platform.h"
 
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/base/call_once.h"
-#include "absl/base/const_init.h"
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -186,5 +194,5 @@ static void InitializeCudaPlatform() {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(cuda_platform,
-                            stream_executor::InitializeCudaPlatform());
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    cuda_platform, stream_executor::InitializeCudaPlatform());

@@ -44,55 +44,6 @@ namespace {
 // will be VLOG'ed. We need overloads, instead of
 // e.g. BatchDescriptorToVlogString(), as the code that calls these
 // functions does not know what the type of the parameter is.
-std::string ToVlogString(const dnn::BatchDescriptor &descriptor) {
-  return descriptor.ToShortString();
-}
-
-std::string ToVlogString(const dnn::FilterDescriptor &descriptor) {
-  return descriptor.ToShortString();
-}
-
-std::string ToVlogString(const dnn::ConvolutionDescriptor &descriptor) {
-  return descriptor.ToShortString();
-}
-
-std::string ToVlogString(const dnn::PoolingDescriptor &descriptor) {
-  return descriptor.ToShortString();
-}
-
-std::string ToVlogString(const dnn::NormalizeDescriptor &descriptor) {
-  return descriptor.ToShortString();
-}
-
-std::string ToVlogString(dnn::ActivationMode mode) {
-  return dnn::ActivationModeString(mode);
-}
-
-std::string ToVlogString(const dnn::AlgorithmConfig &algo_config) {
-  return algo_config.ToString();
-}
-
-std::string ToVlogString(dnn::ElementwiseOperation op) {
-  return dnn::ElementwiseOperationString(op);
-}
-
-std::string ToVlogString(dnn::QuantizedActivationMode mode) {
-  return dnn::QuantizedActivationModeString(mode);
-}
-
-std::string ToVlogString(blas::Transpose t) { return blas::TransposeString(t); }
-
-std::string ToVlogString(blas::UpperLower ul) {
-  return blas::UpperLowerString(ul);
-}
-
-std::string ToVlogString(blas::Diagonal d) { return blas::DiagonalString(d); }
-
-std::string ToVlogString(blas::Side s) { return blas::SideString(s); }
-
-std::string ToVlogString(blas::ComputationType ty) {
-  return blas::ComputationTypeString(ty);
-}
 
 std::string ToVlogString(const void *ptr) {
   if (ptr == nullptr) {
@@ -102,14 +53,6 @@ std::string ToVlogString(const void *ptr) {
   // StrCat does not convert pointers to text.
   std::ostringstream out;
   out << ptr;
-  return out.str();
-}
-
-template <class T>
-std::string ToVlogString(const std::complex<T> &c) {
-  // StrCat does not convert std::complex to text.
-  std::ostringstream out;
-  out << c;
   return out.str();
 }
 
@@ -131,75 +74,11 @@ std::string ToVlogString(const DeviceMemoryBase *memory) {
   return memory == nullptr ? "null" : ToVlogString(*memory);
 }
 
-std::string ToVlogString(const Eigen::half &h) {
-  return absl::StrCat(static_cast<float>(h));
-}
-
-std::string ToVlogString(const Eigen::bfloat16 &bf) {  // NOLINT
-  return absl::StrCat(static_cast<float>(bf));
-}
-
-std::string ToVlogString(int i) { return absl::StrCat(i); }
-
 std::string ToVlogString(uint32_t i) { return absl::StrCat(i); }
 
 std::string ToVlogString(uint64_t i) { return absl::StrCat(i); }
 
-std::string ToVlogString(int64_t i) { return absl::StrCat(i); }
-
 std::string ToVlogString(float f) { return absl::StrCat(f); }
-
-std::string ToVlogString(double d) { return absl::StrCat(d); }
-
-template <class T>
-std::string ToVlogString(absl::Span<const T> elements) {
-  std::string str = absl::StrCat(
-      ToVlogString(reinterpret_cast<const void *>(elements.data())), "[",
-      elements.size(), "]{");
-  const char *separator = "";
-  size_t max_to_show = std::numeric_limits<size_t>::max();
-  if (!VLOG_IS_ON(2)) {
-    max_to_show = 5;
-  } else if (!VLOG_IS_ON(3)) {
-    max_to_show = 20;
-  } else if (!VLOG_IS_ON(11)) {
-    max_to_show = 1000;
-  }
-  for (size_t i = 0; i < elements.size(); ++i) {
-    if (i == max_to_show) {
-      str += ", ...";
-      break;
-    }
-    absl::StrAppend(&str, separator, ToVlogString(elements[i]));
-    separator = ", ";
-  }
-  str += "}";
-  return str;
-}
-
-template <class T>
-std::string ToVlogString(absl::Span<T> elements) {
-  return ToVlogString(absl::Span<const T>(elements));
-}
-
-std::string ToVlogString(dnn::DataType data_type) {
-  switch (data_type) {
-    case dnn::DataType::kFloat:
-      return "dnn::DataType::kFloat";
-    case dnn::DataType::kDouble:
-      return "dnn::DataType::kDouble";
-    case dnn::DataType::kHalf:
-      return "dnn::DataType::kHalf";
-    case dnn::DataType::kInt8:
-      return "dnn::DataType::kInt8";
-    case dnn::DataType::kInt32:
-      return "dnn::DataType::kInt32";
-    case dnn::DataType::kBF16:
-      return "dnn::DataType::kBF16";
-    default:
-      return "unknown DataType";
-  }
-}
 
 // Used together with PARAM to VLOG calls made to the stream. Intended
 // to be used like this:
@@ -304,20 +183,35 @@ absl::Status Stream::RefreshStatus() {
   return status;
 }
 
-Stream &Stream::Init() {
+absl::Status Stream::Initialize() {
   VLOG_CALL();
 
   absl::MutexLock lock(&mu_);
-  CHECK_EQ(false, allocated_)
-      << "stream appears to already have been initialized";
-  CHECK(!status_.ok()) << "stream should be in !ok() state pre-initialization";
+  if (allocated_) {
+    return absl::InternalError(
+        "stream appears to already have been initialized");
+  }
+  if (status_.ok()) {
+    return absl::InternalError(
+        "stream should be in !ok() state pre-initialization");
+  }
 
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;
     status_ = absl::OkStatus();
-  } else {
-    LOG(ERROR) << "failed to allocate stream during initialization";
+    return absl::OkStatus();
+  }
+
+  return absl::InternalError("failed to allocate stream during initialization");
+}
+
+Stream &Stream::Init() {
+  VLOG_CALL();
+
+  absl::Status status = Initialize();
+  if (!status.ok()) {
+    LOG(ERROR) << status;
   }
 
   return *this;
@@ -494,25 +388,6 @@ Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
   CheckStatus(parent_->Memset32(this, location, pattern, size));
-  return *this;
-}
-
-Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
-                                    dnn::DataType input_type,
-                                    const DeviceMemoryBase &input_data,
-                                    const dnn::BatchDescriptor &output_desc,
-                                    dnn::DataType output_type, float scale,
-                                    DeviceMemoryBase *output_data) {
-  VLOG_CALL(PARAM(input_desc), PARAM(input_type), PARAM(input_data),
-            PARAM(output_desc), PARAM(output_type), PARAM(scale),
-            PARAM(output_data));
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoTransformTensor(this, input_desc, input_type, input_data,
-                                      output_desc, output_type, scale,
-                                      output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
   return *this;
 }
 

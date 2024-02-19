@@ -23,4 +23,6 @@ template void* GetTopKKernelForK<float, 4>(int n);
 template void* GetTopKKernelForK<float, 8>(int n);
 template void* GetTopKKernelForK<float, 16>(int n);
 
+template int32_t GetTopKWaveFrontSize<float>();
+
 }  // namespace xla::gpu

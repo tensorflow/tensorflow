@@ -158,7 +158,6 @@ def _gen_kernel_bin_impl(ctx):
         executable = ctx.executable._tool,
         arguments = cmd_args + [
             "--tile_sizes=%s" % ctx.attr.tile_size,
-            "--max-supported-rank=%s" % ctx.attr.max_supported_rank,
             "--host-triple=%s" % ctx.attr.host_triple,
             "--arch=%s" % ",".join(ctx.attr.gpu_archs),
             "--input=%s" % ctx.file.mlir_op.path,
@@ -194,7 +193,6 @@ _gen_kernel_bin_rule = rule(
         "data_type": attr.string(mandatory = True),
         "tile_size": attr.string(mandatory = True),
         "unroll_factors": attr.string(),
-        "max_supported_rank": attr.int(),
         "host_triple": attr.string(mandatory = True),
         "gpu_archs": attr.string_list(),
         "jit": attr.bool(),
@@ -253,7 +251,6 @@ def _gen_kernel_library(
         platform,
         tile_size,
         tile_size_override = {},
-        max_supported_rank = 5,
         output_types = [],
         jit_types = [],
         output_jit_types = [],
@@ -275,7 +272,6 @@ def _gen_kernel_library(
       types: The types ("f16", "f32", "f64") for which a kernel should be generated.
       tile_size: The tiling specification, e.g. "16x16" or "16Bx16".
       tile_size_override: dict of type-specific tile_size.
-      max_supported_rank: Maximum supported rank for rank specialization.
       jit_types: The types ("f16", "f32", "f64") for which a kernel should be
                  generated. These kernels are different in that they are only
                  partially compiled and will be JIT compiled at execution time.
@@ -372,7 +368,6 @@ def _gen_kernel_library(
                 host_triple = host_triple,
                 gpu_archs = gpu_archs,
                 jit = jit,
-                max_supported_rank = max_supported_rank,
                 mlir_op = "{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
                     op = op,
                     name = name,

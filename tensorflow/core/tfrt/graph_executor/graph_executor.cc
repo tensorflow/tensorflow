@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -46,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
@@ -57,7 +61,9 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -65,17 +71,22 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
+#include "tensorflow/core/tfrt/common/metrics.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/executable_context.h"
 #include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/step_id.h"
@@ -83,11 +94,14 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
+#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -599,7 +613,11 @@ tensorflow::Status GraphExecutor::Run(
   }
 
   // Possibly record costs, depending on the particular setting of
-  // `CostAnalysisOptions`.
+  // `CostAnalysisOptions`. As of this comment, for correctness of that feature,
+  // the time needs to be created after the client graph is created
+  //
+  // To reduce system calls, this value is also used for timing the duration of
+  // `::Run`.
   auto now = absl::Now() + simulated_duration_;
   bool do_recompilation;
   CostRecorder* cost_recorder =
@@ -634,7 +652,10 @@ tensorflow::Status GraphExecutor::Run(
     (*outputs)[original_index] = std::move(*flat_output_iter);
     ++flat_output_iter;
   }
-
+  absl::Time end = absl::Now() + simulated_duration_;
+  absl::Duration elapsed_duration = end - now;
+  loaded_client_graph.latency_sampler()->Add(
+      absl::ToDoubleMicroseconds(elapsed_duration));
   return OkStatus();
 }
 
@@ -749,12 +770,15 @@ GraphExecutor::ImportAndCompileClientGraph(
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(compile_duration)
             << " ms. Client graph name: " << client_graph.name;
-
+  auto* latency_sampler =
+      tensorflow::tfrt_metrics::GetTfrtGraphExecutorLatencySampler(
+          options_.model_metadata.name(), options_.model_metadata.version(),
+          client_graph.name);
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
       std::move(executable_context), stream_callback_id,
-      !checkpoint_path.empty(), std::move(flib_def));
+      !checkpoint_path.empty(), std::move(flib_def), latency_sampler);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
@@ -1073,7 +1097,8 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
     mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
     std::shared_ptr<ExecutableContext> executable_context,
     std::optional<StreamCallbackId> stream_callback_id, bool is_restore,
-    FunctionLibraryDefinition flib_def)
+    FunctionLibraryDefinition flib_def,
+    tensorflow::monitoring::SamplerCell* latency_sampler)
     : name_(std::move(name)),
       symbol_uids_(std::move(symbol_uids)),
       graph_executor_(graph_executor),
@@ -1097,7 +1122,8 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
               *r = tsl::core::RefCountPtr<Rendezvous>(
                   new IntraProcessRendezvous(device_mgr));
               return OkStatus();
-            }}) {
+            }}),
+      latency_sampler_(latency_sampler) {
   const auto& options = graph_executor_->options().cost_analysis_options;
   if (options.version != Options::CostAnalysisOptions::kDisabled) {
     // Initialize in a way that ensures recompilation on the first run.
