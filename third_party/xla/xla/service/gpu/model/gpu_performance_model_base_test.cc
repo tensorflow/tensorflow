@@ -113,6 +113,84 @@ ENTRY entry_computation {
   EXPECT_EQ(get_shared_operand_bytes_accessed(log_producer->operand(0)), 448);
 }
 
+// This test documents current behaviour. See comments below how the correct
+// result should look like.
+TEST_F(GpuPerformanceModelBaseTest,
+       ReduceBroadcastedDim_IncorrectBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+f1 {
+  p0 = f32[128] parameter(0)
+  c0 = f32[] constant(0)
+  broadcast = f32[128,256] broadcast(p0), dimensions={0}
+  ROOT reduce = f32[128] reduce(broadcast, c0), dimensions={1}, to_apply=add
+}
+
+ENTRY entry_computation {
+  param_0 = f32[128] parameter(0)
+  param_1 = f32[4,4] parameter(1)
+  ROOT fusion = f32[128] fusion(param_0), kind=kLoop, calls=f1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto computation = module->entry_computation();
+  ASSERT_IS_OK(computation->Accept(&analysis_));
+
+  auto root = computation->root_instruction();
+
+  // Cost Model estimates that input element we be re-read in reduce. Each
+  // element of reduce output needs only one input element. Bytes accessed
+  // should be 4*128=512.
+  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(&analysis_, root,
+                                                             root->operand(0)),
+            /*4*128*256=*/131072);
+}
+
+// This test documents current behaviour. See comments below how the correct
+// result should look like.
+TEST_F(GpuPerformanceModelBaseTest, ElementwiseBitcast_IncorrectBytesAccessed) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f1 {
+  p0 = f32[128] parameter(0)
+  bitcast.1 = f32[8,16] bitcast(p0)
+  log = f32[128] log(p0)
+  bitcast.2 = f32[8,16] bitcast(log)
+  ROOT add = f32[8,16] add(bitcast.1, bitcast.2)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[128] parameter(0)
+  ROOT fusion = f32[8,16] fusion(param_0), kind=kLoop, calls=f1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto computation = module->entry_computation();
+  ASSERT_IS_OK(computation->Accept(&analysis_));
+
+  auto root = computation->root_instruction();
+
+  // Bitcast breaks the chain of elementwise utilization even if the bitcast
+  // doesn't change physical layout. Each element of `param_0` should be read
+  // only once, but Cost Model estimates that it will be accessed twice. Bytes
+  // accessed should be 4*128=512.
+  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(&analysis_, root,
+                                                             root->operand(0)),
+            /*2*4*128=*/1024);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
