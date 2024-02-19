@@ -440,13 +440,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         };
 
         std::vector<absl::string_view> values = absl::StrSplit(input, ',');
-        if (absl::c_all_of(values, is_command_type)) {
+        if (values.empty()) {
+          debug_options->clear_xla_gpu_enable_command_buffer();
+          return true;
+
+        } else if (absl::c_all_of(values, is_command_type)) {
           debug_options->clear_xla_gpu_enable_command_buffer();
           for (const absl::string_view value : values) {
             debug_options->add_xla_gpu_enable_command_buffer(
                 parse_command_type(value));
           }
           return true;
+
         } else if (absl::c_all_of(values, is_add_or_remove_command_type)) {
           for (const absl::string_view value : values) {
             DebugOptions::CommandBufferCmdType cmd_type =
@@ -458,9 +463,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                   debug_options->mutable_xla_gpu_enable_command_buffer();
               erase_command_type(enabled, cmd_type);
             }
+            return true;
           }
-          return true;
         }
+
         return false;
       };
 
