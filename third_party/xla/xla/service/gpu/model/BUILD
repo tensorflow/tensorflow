@@ -208,6 +208,26 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "gpu_performance_model_base_test",
+    srcs = ["gpu_performance_model_base_test.cc"],
+    deps = [
+        ":gpu_hlo_cost_analysis",
+        ":gpu_performance_model_base",
+        "//xla:shape_util",
+        "//xla:test_helpers",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "gpu_performance_model",
     srcs = ["gpu_performance_model.cc"],

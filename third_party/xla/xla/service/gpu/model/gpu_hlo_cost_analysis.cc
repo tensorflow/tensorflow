@@ -94,7 +94,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
   if (!options_.count_multiple_input_accesses) {
     utilization = fmin(utilization, 1.0);
   }
-  return GetShapeSize(hlo->shape()) * utilization;
+  return std::llround(GetShapeSize(hlo->shape()) * utilization);
 }
 
 absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
