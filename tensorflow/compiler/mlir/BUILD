@@ -74,7 +74,6 @@ cc_library(
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
         "@local_xla//xla/service/cpu:hlo_xla_runtime_pipeline",
-        "@local_xla//xla/translate/mhlo_to_lhlo_with_xla",
     ],
 )
 
@@ -204,7 +203,6 @@ cc_library(
         "@local_xla//xla/mlir/framework/ir:xla_framework",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/service/cpu:hlo_xla_runtime_pipeline",
-        "@local_xla//xla/translate/mhlo_to_lhlo_with_xla",
         "@stablehlo//:register",
     ],
 )
@@ -239,7 +237,6 @@ tf_cc_binary(
         "@llvm-project//mlir:TranslateLib",
         "@local_xla//xla/translate/hlo_to_mhlo:translate_registration",
         "@local_xla//xla/translate/mhlo_to_hlo:translate_registration",
-        "@local_xla//xla/translate/mhlo_to_lhlo_with_xla:translate_registration",
     ],
 )
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/mlir/framework/ir/xla_framework.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
-#include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 
 namespace mlir {
 
