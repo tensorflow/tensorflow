@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/algorithm/algorithm.h"
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -448,7 +447,7 @@ absl::StatusOr<bool> PrepareModuleForUnrolling(
   return changed;
 }
 
-absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
+std::vector<std::pair<HloInstruction*, WhileLoopConfig>> GetUnrollableLoops(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Processing the while loops in the reverse topological order. If the body
@@ -459,11 +458,11 @@ absl::flat_hash_map<HloInstruction*, WhileLoopConfig> GetUnrollableLoops(
                     HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
-  absl::flat_hash_map<HloInstruction*, WhileLoopConfig> while_loop_configs;
+  std::vector<std::pair<HloInstruction*, WhileLoopConfig>> while_loop_configs;
   for (HloInstruction* instr : all_while_ops) {
     std::optional<WhileLoopConfig> config = IsLoopUnrollable(instr);
     if (config.has_value()) {
-      while_loop_configs[instr] = *config;
+      while_loop_configs.emplace_back(instr, config.value());
     }
   }
   return while_loop_configs;
@@ -529,8 +528,8 @@ StatusOr<bool> WhileLoopUnroller::Run(
   // Gather a preliminary vector of all the while ops that we think we can
   // unroll. We do this ahead of time so we don't have to worry about mutating
   // the lists of computations or instructions while we iterate.
-  absl::flat_hash_map<HloInstruction*, WhileLoopConfig> unrollable_while_ops =
-      GetUnrollableLoops(module, execution_threads);
+  std::vector<std::pair<HloInstruction*, WhileLoopConfig>>
+      unrollable_while_ops = GetUnrollableLoops(module, execution_threads);
 
   VLOG(3) << "Number of while instructions in the module to unroll: "
           << unrollable_while_ops.size();
