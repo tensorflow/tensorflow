@@ -44,7 +44,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 // Base struct for quantization.
-template <typename ConcreteT, typename RootOpT = quant::DequantizeCastOp>
+template <typename ConcreteT, typename RootOpT = quantfork::DequantizeCastOp>
 struct StableHloQuantizationBase
     : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                           quantfork::DequantizeCastOp,
