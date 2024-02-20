@@ -1575,8 +1575,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 }
 
 def TFL_DivOp : TFL_Op<"div", [
-    // TODO(fengliuai): NoQuantizableResult is only correct for int8
-    // quantization. update to handle Uint8 quantization.
+    QuantizableResult,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     ResultsBroadcastableShape,
@@ -1589,11 +1588,11 @@ def TFL_DivOp : TFL_Op<"div", [
   }];
 
   let arguments = (
-      ins TFL_TensorOf<[F32, I32, QUI8]>:$lhs,
-      TFL_TensorOf<[F32, I32, QUI8]>:$rhs,
+      ins TFL_TensorOf<[F32, I32, QI8, QUI8]>:$lhs,
+      TFL_TensorOf<[F32, I32, QI8, QUI8]>:$rhs,
       TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QUI8]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8]>:$output);
 
   let builders = [TFL_FusedBroadcastableBinaryBuilder];
 
