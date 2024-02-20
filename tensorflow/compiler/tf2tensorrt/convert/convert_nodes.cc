@@ -236,7 +236,7 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
 // return the corresponding trt_dtype, the trt_dims and the batch_size (latter
 // is only needed in implicit batch mode).
 //
-// The return status indicates wether the tensor is compatible.
+// The return status indicates whether the tensor is compatible.
 //
 // For implicit batch mode, when validation_only == false, we also check that
 // all input dimensions (besides the batch dimension) are known dimensions.
@@ -2009,7 +2009,7 @@ Status ConvertConv2DHelper(const OpConverterParams* params, int group,
     weights_rsck = std::move(tmp).value();
   }
 
-  // In explcit precision mode, trace the input back to the constant while also
+  // In explicit precision mode, trace the input back to the constant while also
   // verifying that QDQ scale layers are present.
   if (!inputs.at(1).is_weights()) {
     TRT_ENSURE(params->use_explicit_precision);
@@ -2714,7 +2714,7 @@ Status ConvertSlice(const OpConverterParams* params) {
 
   VLOG(2) << "ConvertSlice: "
           << "\n input_shape: " << input_shape
-          << "\n procesing_shape: " << processing_shape
+          << "\n processing_shape: " << processing_shape
           << "\n final_shape: " << final_shape
           << "\n  begin: " << DebugString(begin)
           << "\n  stride: " << DebugString(strides)
@@ -2805,7 +2805,7 @@ Status ConvertStridedSlice(const OpConverterParams* params) {
   if (!params->validation_only) {
     VLOG(2) << "After ValidateStridedSliceOp:"
             << "\n input_shape: " << input_shape
-            << "\n procesing_shape: " << processing_shape
+            << "\n processing_shape: " << processing_shape
             << "\n final_shape: " << final_shape
             << "\n  begin: " << DebugString(begin)
             << "\n  stride: " << DebugString(strides)
@@ -3653,7 +3653,7 @@ Status ConvertIdentity(const OpConverterParams* params) {
 }
 
 // This converter is a debug-only feature designed to allow graph segmentation
-// experiments. Its use is being controled by
+// experiments. Its use is being controlled by
 // `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
 // See `op_converter_registry.cc` for further details.
 //
@@ -5569,7 +5569,7 @@ Status ConvertResize(const OpConverterParams* params) {
   ITensorProxyPtr inputs_tensor = inputs.at(0).tensor();
   TFTRT_RETURN_ERROR_IF_NULLPTR(inputs_tensor, params->node_def.name());
 
-  // Check output size. It must constain two values i.e. [H_out, W_out]
+  // Check output size. It must contain two values i.e. [H_out, W_out]
   const bool const_output_size = inputs.at(1).is_weights();
   if (const_output_size) {
     // Output size is given as a constant.

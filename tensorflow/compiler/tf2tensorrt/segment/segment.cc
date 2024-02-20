@@ -463,7 +463,7 @@ std::optional<const TensorShapeProto*> FindLeadingShape(
 
 // Returns the inputs that are relevant to determinate the batch size of the
 // operation. This routine handles the following cases:
-//   . Operations that support implicit boradcasting, such as operation mul.
+//   . Operations that support implicit broadcasting, such as operation mul.
 //     In this case, we need to inspect all the inputs in order to determine the
 //     batch size of the operation.
 //   . Special cases. Such as "Conv2DBackpropInput", "Conv3DBackpropInputV2".

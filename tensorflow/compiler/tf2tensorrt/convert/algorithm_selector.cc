@@ -135,7 +135,7 @@ bool AlgorithmSelectorImpl::AllowShuffleAlgorithm(
 
 bool AlgorithmSelectorImpl::IsAlgorithmSelectorRequired() const {
   // If we are in turing for TensorRT 7.2, we need the  selector for shuffle and
-  // avoiding specfic Turing tactics.
+  // avoiding specific Turing tactics.
   if (IsTrtVersionGE({7, 2, 0, 0}) && !IsTrtVersionGE({8, 0, 0, 0})) {
     return true;
   }

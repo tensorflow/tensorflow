@@ -1905,7 +1905,7 @@ class ParameterizedOpConverterTestBase
     }
   }
 
-  // Runs validation and conversion. If conversion is successfull then builds
+  // Runs validation and conversion. If conversion is successful then builds
   // the TRT network, executes it and checks the output. Handles multiple output
   // tensors.
   void TestOpConverterMultiOut(
@@ -1924,7 +1924,7 @@ class ParameterizedOpConverterTestBase
     }
   }
 
-  // Runs validation and conversion. If conversion is successfull then builds
+  // Runs validation and conversion. If conversion is successful then builds
   // the TRT network, executes it and checks the output.
   void TestOpConverter(const NodeDef& node_def,
                        const std::vector<int>& expected_output_dims,
@@ -4119,7 +4119,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
   const NodeDef& ndef = range.operation.node()->def();
   const std::vector<DataType> param_types{DT_FLOAT, DT_HALF, DT_INT32};
 
-  // ConverterRange is not implemented for Implicite batch mode.
+  // ConverterRange is not implemented for Implicit batch mode.
   std::vector<int> config(3, 0);
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
     const auto& err = convert_not_supported_implicit(ndef.op(), ndef.name());
@@ -5907,7 +5907,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{2, 3, 4}, OkStatus()},
       // In dynamic shape mode we do not know the input shape during
-      // conversion, therfore we cannot check out of bound access.
+      // conversion, therefore we cannot check out of bound access.
       TestParams{
           {1, 1, 2, 3},
           /*partial_input_dims=*/{-1, -1, -1, -1},
@@ -9773,7 +9773,7 @@ void OpConverter_Select::RunTest(const string& opName) {
       // Tests for `cond` passed as a vector with N elements, where N is a batch
       // size. The subtest should not pass a ConvertSelect::Validate() when one
       // of following is true:
-      //    (a) N is NOT equal to the first dimention of dims('then');
+      //    (a) N is NOT equal to the first dimension of dims('then');
       //    (b dims('cond').nbDims > 1.
       //
       // For all these subtest dims('then') == dims('else').
