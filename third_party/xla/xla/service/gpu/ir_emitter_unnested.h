@@ -162,7 +162,6 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
 
-  absl::Status EmitSort(mlir::Operation* op, const HloSortInstruction* sort);
   absl::Status EmitSort(const HloSortInstruction* sort);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
@@ -334,7 +333,6 @@ class IrEmitterUnnested : public IrEmitter {
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-
   absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
                            std::vector<llvm_ir::IrArray> /*outputs*/>>
   BuildKernelThunkForNonFusionOp(
@@ -342,11 +340,8 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
 
-  absl::Status BuildInitializerThunk(mlir::Operation* op,
-                                     const HloInstruction* instr,
-                                     const HloInstruction* init_value,
-                                     mlir::Value init_value_mlir,
-                                     mlir::Value dest);
+  absl::Status BuildInitializerThunk(const HloInstruction* instr,
+                                     const HloInstruction* init_value);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.

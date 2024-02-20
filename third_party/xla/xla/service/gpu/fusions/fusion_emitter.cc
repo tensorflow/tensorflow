@@ -302,22 +302,19 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 }
 
 absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   std::string suggested_kernel_name = std::string(fusion.name());
 
-  TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(), fusion_op));
+  TF_ASSIGN_OR_RETURN(
+      KernelArguments kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   auto* fused_computation = fusion.fused_instructions_computation();
 
   TF_ASSIGN_OR_RETURN(auto result,
-                      EmitInitializers(ir_emitter_context, fusion_op, fusion));
+                      EmitInitializers(ir_emitter_context, fusion));
   auto launch_dims = launch_dimensions();
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [status_or_entry, cached] =
@@ -352,15 +349,9 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
             << entry->kernel_name;
   }
 
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->cluster_dim, entry->shmem_bytes));
-  } else {
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->cluster_dim, entry->shmem_bytes));
-  }
+  result.thunks.emplace_back(std::make_unique<KernelThunk>(
+      &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
+      entry->cluster_dim, entry->shmem_bytes));
 
   return result;
 }

@@ -467,7 +467,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
   IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
                                       platform_name, gpu_device_info,
                                       mlir_context.get(), llvm_module.get(),
-                                      /*emit_ir_from_hlo=*/true,
                                       /*emit_kernels=*/false);
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(

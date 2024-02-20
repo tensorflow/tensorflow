@@ -28,8 +28,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernel_arguments.h"
@@ -71,8 +69,7 @@ class KernelThunk : public Thunk {
   // output of the computation. Also, the values must correspond to each arg
   // directly, not to their base allocation (e.g. they can be the result of an
   // `mlir::memref::ViewOp`).
-  KernelThunk(std::variant<mlir::Operation*, const HloInstruction*> op,
-              std::string kernel_name,
+  KernelThunk(const HloInstruction* instr, std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes);
@@ -85,12 +82,7 @@ class KernelThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override {
-    Thunk::ClearCompileTimeInfo();
-    for (auto& value : values_) {
-      value = nullptr;
-    }
-  }
+  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
 
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
@@ -103,7 +95,6 @@ class KernelThunk : public Thunk {
   }
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
-  absl::Span<const mlir::Value> values() const { return values_; }
 
  private:
   // Buffer slices passed to the kernel as arguments.
@@ -123,9 +114,6 @@ class KernelThunk : public Thunk {
 
   int64_t shmem_bytes_;
 
-  // mlir::Value(s) corresponding to the buffer slice arguments.
-  std::vector<mlir::Value> values_;
-
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
@@ -141,8 +129,7 @@ class KernelThunk : public Thunk {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(std::variant<mlir::Operation*, const HloInstruction*> inst,
-                    CustomKernel custom_kernel,
+  CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
                     absl::Span<const KernelArgument> kernel_arguments);
 
   std::string ToStringExtra(int indent) const override;
@@ -155,13 +142,10 @@ class CustomKernelThunk : public Thunk {
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }
-  // TODO(ezhulenev): All of the APIs below needed only for LMHLO lowering and
-  // should be removed after we migrate to Thunks runtime.
 
   std::string_view custom_kernel_name() const { return custom_kernel_.name(); }
 
   const std::vector<bool>& written() const { return written_; }
-  absl::Span<const mlir::Value> values() const { return values_; }
 
   LaunchDimensions launch_dimensions() const {
     return LaunchDimensions(custom_kernel_.block_dims(),
@@ -176,9 +160,6 @@ class CustomKernelThunk : public Thunk {
 
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
-
-  // mlir::Value(s) corresponding to the buffer slice arguments.
-  std::vector<mlir::Value> values_;
 
   CustomKernel custom_kernel_;
 

@@ -1376,9 +1376,7 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
         Thunk::ThunkInfo::WithProfileAnnotation(instr),
         /*source_buffer=*/operand_buffer,
         /*destination_buffer=*/a_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
-        /*source_value=*/nullptr,
-        /*destination_value=*/nullptr));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
 
   thunks.push_back(std::make_unique<CholeskyThunk>(
@@ -1448,7 +1446,6 @@ static absl::StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
   }
   return attributes;
 }
-
 
 absl::Status IrEmitterUnnested::EmitCustomCallThunk(
     const HloCustomCallInstruction* instr) {
@@ -1681,9 +1678,7 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
         Thunk::ThunkInfo::WithProfileAnnotation(instr),
         /*source_buffer=*/b_slice,
         /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape),
-        /*source_value=*/nullptr,
-        /*destination_value=*/nullptr));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
   }
 
   int64_t m = b_shape.dimensions(b_shape.rank() - 2);
@@ -1915,8 +1910,7 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
       std::unique_ptr<FusionInterface> emitter,
       GetFusionEmitter(HloFusionInfo(
           fusion_analysis, instr, &ir_emitter_context_->buffer_assignment())));
-  return AddThunksToThunkSequence(
-      emitter->Emit(*ir_emitter_context_, nullptr, *instr));
+  return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, *instr));
 }
 
 absl::Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
@@ -1953,8 +1947,7 @@ absl::Status IrEmitterUnnested::EmitSelectAndScatter(
   // consisting of two thunks, an initializer KernelThunk that initializes
   // the output and another KernelThunk that accumulates the scattered
   // elements.
-  TF_RETURN_IF_ERROR(
-      BuildInitializerThunk(nullptr, instr, init_value, nullptr, nullptr));
+  TF_RETURN_IF_ERROR(BuildInitializerThunk(instr, init_value));
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       source_shape, ir_emitter_context_->gpu_device_info());
@@ -2189,13 +2182,7 @@ absl::Status IrEmitterUnnested::EmitRngGetAndUpdateState(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
-                                         const HloSortInstruction* sort) {
-  auto sort_op = mlir::dyn_cast_or_null<mlir::lmhlo::SortOp>(op);
-  if (!ir_emitter_context_->emit_ir_from_hlo() && !sort_op) {
-    return absl::InternalError("MLIR operations must be not null");
-  }
-
+absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
   std::string op_name(sort->name());
   const Shape& keys_shape = sort->operand(0)->shape();
   int64_t dimension_to_sort = sort->sort_dimension();
@@ -2224,12 +2211,10 @@ absl::Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
       // key/value sort.
       VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
       AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo(op),
+          Thunk::ThunkInfo::WithProfileAnnotation(sort),
           /*source_buffer=*/source_address,
           /*destination_buffer=*/destination_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(i)->shape()),
-          /*source_value=*/sort_op ? sort_op.getOperands()[i] : nullptr,
-          /*destination_value=*/sort_op ? sort_op.getOutput()[i] : nullptr));
+          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(i)->shape())));
     }
   }
 
@@ -2373,11 +2358,6 @@ absl::Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
-  CHECK(ir_emitter_context_->emit_ir_from_hlo());  // NOLINT
-  return EmitSort(nullptr, sort);
-}
-
 template <typename ThunkType>
 absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
     const HloInstruction* instr) {
@@ -2414,9 +2394,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(
         Thunk::ThunkInfo::WithProfileAnnotation(instr),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
-        /*source_value=*/nullptr,
-        /*destination_value=*/nullptr));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
     // Signal that start thunk not created with nullptr.
     collectives_async_events_.try_emplace(instr, nullptr);
 
@@ -2531,9 +2509,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
         Thunk::ThunkInfo::WithProfileAnnotation(inst),
         /*source_buffer=*/buffers[i].source_buffer,
         /*destination_buffer=*/buffers[i].destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
-        /*source_value=*/buffers[i].source_value,
-        /*destination_value=*/buffers[i].destination_value));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
@@ -2674,9 +2650,7 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 }
 
 absl::Status IrEmitterUnnested::BuildInitializerThunk(
-    mlir::Operation* op, const HloInstruction* instr,
-    const HloInstruction* init_value, mlir::Value init_value_mlir,
-    mlir::Value dest) {
+    const HloInstruction* instr, const HloInstruction* init_value) {
   // initial value must be a scalar memref.
   TF_RET_CHECK(init_value->shape().rank() == 0);
 
@@ -2685,10 +2659,9 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
 
   BufferAllocation::Slice dest_slice = *maybe_dest_slice;
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
-      BuildConstantInitializerThunk(*ir_emitter_context_, op, instr, init_value,
-                                    dest, dest_slice));
+  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
+                      BuildConstantInitializerThunk(*ir_emitter_context_, instr,
+                                                    init_value, dest_slice));
   if (constant_init_thunk) {
     AddThunkToThunkSequence(*std::move(constant_init_thunk));
     return absl::OkStatus();
@@ -2696,8 +2669,7 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
 
   // Otherwise fall back to our slow initializer code. The thunk in this case
   // will just need the IR arrays for the initial value and the destination.
-  const Shape dest_shape =
-      ir_emitter_context_->emit_ir_from_hlo() ? instr->shape() : GetShape(dest);
+  const Shape& dest_shape = instr->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       dest_shape, ir_emitter_context_->gpu_device_info());
@@ -2707,9 +2679,7 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
   auto& [inputs, outputs] = ir_arrays;
   auto init_array = inputs[0];
 
-  std::string name = ir_emitter_context_->emit_ir_from_hlo()
-                         ? llvm_ir::IrName(instr, "init")
-                         : GetIrNameFromLoc(op->getLoc());
+  std::string name = llvm_ir::IrName(instr, "init");
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const llvm_ir::IrArray::Index& index) {
                            return init_array.EmitReadArrayElement(index, &b_);

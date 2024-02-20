@@ -20,10 +20,8 @@ limitations under the License.
 #include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -34,16 +32,14 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 absl::StatusOr<std::optional<std::unique_ptr<Thunk>>>
 BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
-                              mlir::Operation* op, const HloInstruction* instr,
+                              const HloInstruction* instr,
                               const HloInstruction* init_value,
-                              mlir::Value dest,
                               BufferAllocation::Slice dest_slice) {
   if (const HloConstantInstruction* constant =
           DynCast<HloConstantInstruction>(init_value)) {
@@ -56,11 +52,9 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
     const Shape dest_shape = instr->shape();
 
     Thunk::ThunkInfo thunk_info =
-        ir_emitter_context.emit_ir_from_hlo()
-            ? Thunk::ThunkInfo::WithProfileAnnotation(instr)
-            : Thunk::ThunkInfo::WithProfileAnnotation(op);
+        Thunk::ThunkInfo::WithProfileAnnotation(instr);
     if (absl::c_all_of(literal_bytes, [](uint8_t byte) { return byte == 0; })) {
-      return {{std::make_unique<MemzeroThunk>(thunk_info, dest_slice, dest)}};
+      return {{std::make_unique<MemzeroThunk>(thunk_info, dest_slice)}};
     }
 
     // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
@@ -77,7 +71,7 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
       }
       uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
       return {{std::make_unique<Memset32BitValueThunk>(thunk_info, pattern32,
-                                                       dest_slice, dest)}};
+                                                       dest_slice)}};
     }
 
     // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
@@ -88,7 +82,7 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
       uint32_t word;
       memcpy(&word, literal_bytes.data(), sizeof(word));
       return {{std::make_unique<Memset32BitValueThunk>(thunk_info, word,
-                                                       dest_slice, dest)}};
+                                                       dest_slice)}};
     }
   }
   return std::nullopt;

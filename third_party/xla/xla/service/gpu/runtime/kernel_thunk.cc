@@ -63,16 +63,12 @@ mlir::Value RemoveTransformingOperations(mlir::Value value) {
 
 }  // namespace
 
-KernelThunk::KernelThunk(
-    std::variant<mlir::Operation*, const HloInstruction*> op,
-    std::string kernel_name, absl::Span<const KernelArgument> kernel_arguments,
-    LaunchDimensions launch_dimensions,
-    std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes)
-    : Thunk(Kind::kKernel, std::holds_alternative<mlir::Operation*>(op)
-                               ? Thunk::ThunkInfo::WithProfileAnnotation(
-                                     std::get<mlir::Operation*>(op))
-                               : Thunk::ThunkInfo::WithProfileAnnotation(
-                                     std::get<const HloInstruction*>(op))),
+KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
+                         absl::Span<const KernelArgument> kernel_arguments,
+                         LaunchDimensions launch_dimensions,
+                         std::optional<se::ClusterDim> cluster_dim,
+                         int64_t shmem_bytes)
+    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       cluster_dim_(std::move(cluster_dim)),
@@ -83,18 +79,6 @@ KernelThunk::KernelThunk(
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
-    }
-  }
-
-  if (std::holds_alternative<const HloInstruction*>(op)) {
-    // Skip populating MLIR values_ if emitting from HLO.
-    return;
-  }
-
-  values_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      values_.push_back(RemoveTransformingOperations(kernel_argument.value()));
     }
   }
 }
@@ -188,15 +172,10 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 //===----------------------------------------------------------------------===//
 
 CustomKernelThunk::CustomKernelThunk(
-    std::variant<mlir::Operation*, const HloInstruction*> instr,
-    CustomKernel custom_kernel,
+    const HloInstruction* instr, CustomKernel custom_kernel,
     absl::Span<const KernelArgument> kernel_arguments)
     : Thunk(Kind::kCustomKernel,
-            std::holds_alternative<mlir::Operation*>(instr)
-                ? Thunk::ThunkInfo::WithProfileAnnotation(
-                      std::get<mlir::Operation*>(instr))
-                : Thunk::ThunkInfo::WithProfileAnnotation(
-                      std::get<const HloInstruction*>(instr))),
+            Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       custom_kernel_(std::move(custom_kernel)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
@@ -204,18 +183,6 @@ CustomKernelThunk::CustomKernelThunk(
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
-    }
-  }
-
-  if (std::holds_alternative<const HloInstruction*>(instr)) {
-    // Skip populating MLIR values_ if emitting from HLO.
-    return;
-  }
-
-  values_.reserve(kernel_arguments.size());
-  for (const auto& kernel_argument : kernel_arguments) {
-    if (!kernel_argument.first_with_same_slice().has_value()) {
-      values_.push_back(RemoveTransformingOperations(kernel_argument.value()));
     }
   }
 }

@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -72,23 +71,13 @@ namespace {
 
 absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
-    mlir::lmhlo::FusionOp fusion_op, CustomKernel custom_kernel) {
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(), fusion_op));
-
-  std::variant<mlir::Operation*, const HloInstruction*> instr;
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    instr = &fusion;
-  } else {
-    instr = fusion_op;
-  }
+    CustomKernel custom_kernel) {
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   return std::make_unique<CustomKernelThunk>(
-      instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
+      &fusion, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
 // TODO(vuson): this is duplicated from ir_emitter_unnested.cc
@@ -400,7 +389,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion.backend_config<GpuBackendConfig>());
@@ -440,9 +429,9 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
     return absl::InternalError("Expected exactly one custom kernel");
   }
 
-  TF_ASSIGN_OR_RETURN(auto thunk, BuildCustomKernelThunkForFusion(
-                                      ir_emitter_context, fusion, fusion_op,
-                                      std::move(kernels[0])));
+  TF_ASSIGN_OR_RETURN(
+      auto thunk, BuildCustomKernelThunkForFusion(ir_emitter_context, fusion,
+                                                  std::move(kernels[0])));
 
   FusionEmissionResult result;
   result.thunks.push_back(std::move(thunk));
@@ -450,7 +439,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
 }
 
 absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   auto maybe_custom_call_adaptor = HloFindIf(
