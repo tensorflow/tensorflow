@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -43,7 +43,7 @@ TEST(StreamExecutor, SuccessfulRegistration) {
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
   tsl::StatusOr<Platform*> maybe_platform =
-      MultiPlatformManager::PlatformWithName("MY_DEVICE");
+      PlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
   Platform* platform = std::move(maybe_platform).value();
   ASSERT_EQ(platform->Name(), test_util::kDeviceName);

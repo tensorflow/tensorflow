@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
@@ -730,8 +730,8 @@ tsl::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
           std::move(platform), params.destroy_platform, std::move(platform_fns),
           params.destroy_platform_fns, std::move(device_fns), std::move(se),
           std::move(timer_fns)));
-  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
-      std::move(cplatform)));
+  TF_CHECK_OK(
+      stream_executor::PlatformManager::RegisterPlatform(std::move(cplatform)));
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.
   return ::tensorflow::OkStatus();
