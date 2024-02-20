@@ -221,7 +221,7 @@ Stream &Stream::Init() {
 Stream &Stream::ThenRecordEvent(Event *event) {
   VLOG_CALL(PARAM(event));
 
-  absl::Status status = parent_->RecordEvent(this, event);
+  absl::Status status = RecordEvent(event);
   if (!status.ok()) {
     LOG(ERROR) << "Error recording event in stream: " << status.message()
                << "; not marking stream as bad, as the Event object may be "
@@ -229,6 +229,10 @@ Stream &Stream::ThenRecordEvent(Event *event) {
   }
 
   return *this;
+}
+
+absl::Status Stream::RecordEvent(Event *event) {
+  return parent_->RecordEvent(this, event);
 }
 
 absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
@@ -324,7 +328,7 @@ Stream &Stream::ThenWaitFor(Stream *other) {
 
   CHECK(this != other) << "stream cannot wait for itself";
   if (ok() && other->ok()) {
-    CheckError(parent_->CreateStreamDependency(this, other));
+    CheckStatus(WaitFor(other));
   } else {
     SetError();
     LOG(INFO) << DebugStreamPointers() << " did not wait for "
@@ -337,7 +341,7 @@ Stream &Stream::ThenWaitFor(Event *event) {
   VLOG_CALL(PARAM(event));
 
   if (ok()) {
-    absl::Status status = parent_->WaitForEvent(this, event);
+    absl::Status status = WaitFor(event);
     if (!status.ok()) {
       LOG(ERROR) << "Error waiting for event in stream: " << status.message()
                  << "; not marking stream as bad, as the Event object may be "
@@ -349,47 +353,101 @@ Stream &Stream::ThenWaitFor(Event *event) {
   return *this;
 }
 
+absl::Status Stream::WaitFor(Stream *other) {
+  if (this == other) {
+    return absl::InternalError("stream cannot wait for itself");
+  }
+  if (parent_->CreateStreamDependency(this, other)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("stream cannot wait for other");
+}
+
+absl::Status Stream::WaitFor(Event *event) {
+  return parent_->WaitForEvent(this, event);
+}
+
 Stream &Stream::ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                            uint64_t size) {
   VLOG_CALL(PARAM(host_dst), PARAM(gpu_src), PARAM(size));
 
-  CheckError(parent_->Memcpy(this, host_dst, gpu_src, size));
+  CheckStatus(Memcpy(host_dst, gpu_src, size));
   return *this;
+}
+
+absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+                            uint64_t size) {
+  if (parent_->Memcpy(this, host_dst, gpu_src, size)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("failed to memcpy");
 }
 
 Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                            uint64_t size) {
   VLOG_CALL(PARAM(gpu_dst), PARAM(host_src), PARAM(size));
 
-  CheckError(parent_->Memcpy(this, gpu_dst, host_src, size));
+  CheckStatus(Memcpy(gpu_dst, host_src, size));
   return *this;
+}
+
+absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+                            uint64_t size) {
+  if (parent_->Memcpy(this, gpu_dst, host_src, size)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("failed to memcpy");
 }
 
 Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst,
                            const DeviceMemoryBase &gpu_src, uint64_t size) {
   VLOG_CALL(PARAM(gpu_dst), PARAM(gpu_src), PARAM(size));
 
-  CheckError(parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size));
+  CheckStatus(Memcpy(gpu_dst, gpu_src, size));
   return *this;
+}
+
+absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,
+                            const DeviceMemoryBase &gpu_src, uint64_t size) {
+  if (parent_->MemcpyDeviceToDevice(this, gpu_dst, gpu_src, size)) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("failed to memcpy");
 }
 
 Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64_t size) {
   VLOG_CALL(PARAM(location), PARAM(size));
 
-  CheckStatus(parent_->MemZero(this, location, size));
+  CheckStatus(MemZero(location, size));
   return *this;
+}
+
+absl::Status Stream::MemZero(DeviceMemoryBase *location, uint64_t size) {
+  return parent_->MemZero(this, location, size);
 }
 
 Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
                              uint64_t size) {
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
-  CheckStatus(parent_->Memset32(this, location, pattern, size));
+  CheckStatus(Memset32(location, pattern, size));
   return *this;
+}
+
+absl::Status Stream::Memset32(DeviceMemoryBase *location, uint32_t pattern,
+                              uint64_t size) {
+  return parent_->Memset32(this, location, pattern, size);
 }
 
 Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
   return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
+    std::move(cb)();
+    return absl::OkStatus();
+  });
+}
+
+absl::Status Stream::DoHostCallback(absl::AnyInvocable<void() &&> callback) {
+  return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
     std::move(cb)();
     return absl::OkStatus();
   });
@@ -403,8 +461,16 @@ Stream &Stream::ThenDoHostCallbackWithStatus(
     LOG(INFO) << DebugStreamPointers()
               << " was in error state before adding host callback";
   }
-  CheckError(parent_->HostCallback(this, std::move(callback)));
+  CheckStatus(DoHostCallbackWithStatus(std::move(callback)));
   return *this;
+}
+
+absl::Status Stream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  if (parent_->HostCallback(this, std::move(callback))) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("failed to host callback");
 }
 
 void Stream::CheckError(bool operation_retcode) {
