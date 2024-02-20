@@ -574,19 +574,19 @@ func.func @conv_same_padding_srq(%arg0: tensor<1x32x32x3x!quant.uniform<i8:f32, 
 // * conv_with_bias_and_relu6_fn
 
 func.func @conv_with_bias_and_relu_srq(%arg0: tensor<1x5x5x2x!quant.uniform<i8:f32, 2.000000e+00:0>>) -> (tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>) {
-  %0 = stablehlo.constant() {value = dense<5> : tensor<1x1x1x4xi32>} : () -> tensor<1x1x1x4x!quant.uniform<i32:f32:3, {2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00}>>
-  %1 = stablehlo.constant() {value = dense<3> : tensor<2x2x2x4xi8>} : () -> tensor<2x2x2x4x!quant.uniform<i8:f32:3, {3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00}>>
-  %2 = stablehlo.broadcast_in_dim %0, dims = [0, 1, 2, 3] : (tensor<1x1x1x4x!quant.uniform<i32:f32:3, {2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>
-  %3 = stablehlo.convolution(%arg0, %1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x5x5x2x!quant.uniform<i8:f32, 2.000000e+00:0>>, tensor<2x2x2x4x!quant.uniform<i8:f32:3, {3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>
-  %4 = stablehlo.add %3, %2 : tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>
-  %5 = stablehlo.uniform_quantize %4 : (tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>
-  return %5 : tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>
-}
+    %0 = stablehlo.constant() {value = dense<5> : tensor<1x1x1x4xi32>} : () -> tensor<1x1x1x4x!quant.uniform<i32:f32:3, {2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00}>>
+    %1 = stablehlo.constant() {value = dense<3> : tensor<2x2x2x4xi8>} : () -> tensor<2x2x2x4x!quant.uniform<i8:f32:3, {3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00}>>
+    %2 = stablehlo.broadcast_in_dim %0, dims = [0, 1, 2, 3] : (tensor<1x1x1x4x!quant.uniform<i32:f32:3, {2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>
+    %3 = stablehlo.convolution(%arg0, %1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x5x5x2x!quant.uniform<i8:f32, 2.000000e+00:0>>, tensor<2x2x2x4x!quant.uniform<i8:f32:3, {3.000000e+00, 3.000000e+00, 3.000000e+00, 3.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>
+    %4 = stablehlo.add %3, %2 : tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>
+    %5 = stablehlo.uniform_quantize %4 : (tensor<1x6x6x4x!quant.uniform<i32:f32:3, {6.000000e+00, 6.000000e+00, 6.000000e+00, 6.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>
+    return %5 : tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>
+  }
 // CHECK-LABEL: func.func @conv_with_bias_and_relu_srq
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x5x5x2x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>
 // CHECK-DAG: %[[CONST_0:.+]] = "tfl.pseudo_const"() {value = dense<{{\[\[0, 0\], \[1, 1\], \[1, 1\], \[0, 0\]\]}}> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
 // CHECK-DAG: %[[QCONST_1:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<4x2x2x2x!quant.uniform<i8<-127:127>:f32:0, {3.000000e+00,3.000000e+00,3.000000e+00,3.000000e+00}>>, value = dense<3> : tensor<4x2x2x2xi8>} : () -> tensor<4x2x2x2x!quant.uniform<i8<-127:127>:f32:0, {3.000000e+00,3.000000e+00,3.000000e+00,3.000000e+00}>>
-// CHECK-DAG: %[[QCONST_2:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<4x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00,6.000000e+00,6.000000e+00}>>, value = dense<0> : tensor<4xi32>} : () -> tensor<4x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00,6.000000e+00,6.000000e+00}>>
+// CHECK-DAG: %[[QCONST_2:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<4x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00,6.000000e+00,6.000000e+00}>>, value = dense<5> : tensor<1x1x1x4xi32>} : () -> tensor<4x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00,6.000000e+00,6.000000e+00}>>
 // CHECK: %[[PAD:.+]] = "tfl.pad"(%[[ARG_0]], %[[CONST_0]]) : (tensor<1x5x5x2x!quant.uniform<i8:f32, 2.000000e+00>>, tensor<4x2xi32>) -> tensor<1x7x7x2x!quant.uniform<i8:f32, 2.000000e+00>>
 // CHECK: %[[CONV_2D:.+]] = "tfl.conv_2d"(%[[PAD]], %[[QCONST_1]], %[[QCONST_2]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x7x7x2x!quant.uniform<i8:f32, 2.000000e+00>>, tensor<4x2x2x2x!quant.uniform<i8<-127:127>:f32:0, {3.000000e+00,3.000000e+00,3.000000e+00,3.000000e+00}>>, tensor<4x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00,6.000000e+00,6.000000e+00}>>) -> tensor<1x6x6x4x!quant.uniform<i8:f32, 8.000000e+00:-128>>
 // CHECK: return %[[CONV_2D]]
@@ -603,7 +603,7 @@ func.func @conv_with_bias_same_padding_srq(%arg0: tensor<1x32x32x3x!quant.unifor
 // CHECK-LABEL: func.func @conv_with_bias_same_padding_srq
 // CHECK-SAME: (%[[ARG_0:.+]]: tensor<1x32x32x3x!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<1x32x32x2x!quant.uniform<i8:f32, 8.000000e+00:-128>>
 // CHECK-DAG: %[[QCONST_0:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<2x3x3x3x!quant.uniform<i8<-127:127>:f32:0, {3.000000e+00,3.000000e+00}>>, value = dense<3> : tensor<2x3x3x3xi8>} : () -> tensor<2x3x3x3x!quant.uniform<i8<-127:127>:f32:0, {3.000000e+00,3.000000e+00}>>
-// CHECK-DAG: %[[QCONST_1:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<2x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00}>>, value = dense<0> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00}>>
+// CHECK-DAG: %[[QCONST_1:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<2x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00}>>, value = dense<5> : tensor<1x1x1x2xi32>} : () -> tensor<2x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00}>>
 // CHECK: %[[CONV_2D:.+]] = "tfl.conv_2d"(%[[ARG_0]], %[[QCONST_0]], %[[QCONST_1]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x32x32x3x!quant.uniform<i8:f32, 2.000000e+00>>, tensor<2x3x3x3x!quant.uniform<i8<-127:127>:f32:0, {3.000000e+00,3.000000e+00}>>, tensor<2x!quant.uniform<i32:f32:0, {6.000000e+00,6.000000e+00}>>) -> tensor<1x32x32x2x!quant.uniform<i8:f32, 8.000000e+00:-128>>
 // CHECK: return %[[CONV_2D]]
 

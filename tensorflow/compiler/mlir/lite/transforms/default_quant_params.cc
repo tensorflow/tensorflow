@@ -214,7 +214,8 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   // The non-bias hasn't been quantized, let's skip this bias.
   if (non_bias_types.size() != non_biases.size()) return {};
 
-  return func(non_bias_types, false);
+  return func(/*op_types=*/non_bias_types, /*adjusted_quant_dim=*/-1,
+              /*legacy_float_scale=*/false);
 }
 
 quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(

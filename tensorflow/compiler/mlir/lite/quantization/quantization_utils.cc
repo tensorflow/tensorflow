@@ -477,7 +477,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
 
 quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types,
-    bool legacy_float_scale) {
+    const int adjusted_quant_dim, const bool legacy_float_scale) {
   if (op_types.empty()) return {};
 
   size_t axis_size = 1;
@@ -539,13 +539,14 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         /*zeroPoint=*/0, storage_type_min, storage_type_max);
   } else {
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
-    // Assume the bias is a 1-D tensor, and set the quantization dim to the last
-    // dimension, which is 0. If the bias rank is larger than 1, this returned
-    // quantized type couldn't be used to quantize the bias.
+    // If the bias is a 1-D tensor, set the `quantizedDimension` to 0.
+    // If the bias rank is larger than 1 because it was already broadcasted
+    // to match the output shape, use the last index.
     return quant::UniformQuantizedPerAxisType::getChecked(
         builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,
-        /*quantizedDimension=*/0, storage_type_min, storage_type_max);
+        /*quantizedDimension=*/std::max(adjusted_quant_dim, 0),
+        storage_type_min, storage_type_max);
   }
 }
 

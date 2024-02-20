@@ -66,29 +66,29 @@ namespace quant {
 // A unit attribute can be attached to the quantize/dequantize ops which are
 // added by the quantization passes. These ops can be removed erased without
 // losing accuracy.
-constexpr char kVolatileOpAttrName[] = "volatile";
+inline constexpr char kVolatileOpAttrName[] = "volatile";
 
 // Following attributes are used to mark ops that are not quantizable during
 // debug model generation process for whole-model verify mode. If these
 // attributes are attached, the upstream float/quantized ops know which ops to
 // connect to, and it also prevents these ops from being copied again.
-constexpr char kDebugModeOpFloatAttrName[] = "debug_float";
-constexpr char kDebugModeOpQuantAttrName[] = "debug_quant";
+inline constexpr char kDebugModeOpFloatAttrName[] = "debug_float";
+inline constexpr char kDebugModeOpQuantAttrName[] = "debug_quant";
 
 // Used to annotate custom ops if they are quantizable.
-constexpr char kQuantTraitAttrName[] = "_tfl_quant_trait";
+inline constexpr char kQuantTraitAttrName[] = "_tfl_quant_trait";
 enum QuantizationTrait { FullyQuantizable = 0, NotQuantizable = 1 };
-constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
-                                                  "not_quantizable"};
+inline constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                                         "not_quantizable"};
 
-constexpr double kNearZeroTolerance = 1.0e-6;
+inline constexpr double kNearZeroTolerance = 1.0e-6;
 
 using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
+    std::function<QuantParams(const std::vector<QuantParams>&, int, bool)>;
 using BiasParamsMap =
     std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
 // UniformQuantizedType GetFixedOutputRange(bool sign, int bit_width)
@@ -890,7 +890,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(
 // other operands which are multiply-accumulated (the bias is added to the
 // accumulated value).
 quant::QuantizedType GetUniformQuantizedTypeForBias(
-    const std::vector<quant::QuantizedType>& op_types,
+    const std::vector<quant::QuantizedType>& op_types, int adjusted_quant_dim,
     bool legacy_float_scale = false);
 
 // Propagates quantization parameters across ops in this function and satisfy

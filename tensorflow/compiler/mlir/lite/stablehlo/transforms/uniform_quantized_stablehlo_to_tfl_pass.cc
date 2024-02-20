@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -85,6 +86,7 @@ class UniformQuantizedStableHloToTflPass
   void runOnOperation() override;
 };
 
+// TODO: b/323645515 - Refactor reference functions.
 // Bias scales for matmul-like ops should be input scale * filter scale. Here it
 // is assumed that the input is per-tensor quantized and filter is per-channel
 // quantized.
@@ -788,6 +790,10 @@ class RewriteQuantizedConvolutionOp
  public:
   using OpRewritePattern<stablehlo::ConvolutionOp>::OpRewritePattern;
   LogicalResult match(stablehlo::ConvolutionOp op) const override {
+    const bool has_i32_output = IsI32F32UniformQuantizedPerAxisType(
+        op.getResult().getType().cast<TensorType>().getElementType());
+    const bool fuse_bias_constant =
+        FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
         op.getDimensionNumbers();
 
@@ -823,6 +829,27 @@ class RewriteQuantizedConvolutionOp
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to match output for quantized convolution_op.\n");
       return failure();
+    }
+
+    // TODO: b/309896242 - Lift the assumptions on adjacent ops below
+    // as we cover more dynamic fused pattern legalization.
+    if (fuse_bias_constant) {
+      Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
+      if (add_op == nullptr) {
+        LLVM_DEBUG(llvm::dbgs() << "Failed to find AddOp for bias fusion.\n");
+        return failure();
+      }
+      Operation* broadcast_in_dim_op = add_op->getOperand(1).getDefiningOp();
+      if (!isa<stablehlo::BroadcastInDimOp>(broadcast_in_dim_op)) {
+        LLVM_DEBUG(llvm::dbgs() << "Failed to find broadcasted bias.\n");
+        return failure();
+      }
+      Operation* bias_const_op =
+          broadcast_in_dim_op->getOperand(0).getDefiningOp();
+      if (!isa<stablehlo::ConstantOp>(bias_const_op)) {
+        LLVM_DEBUG(llvm::dbgs() << "Failed to find bias constant.\n");
+        return failure();
+      }
     }
 
     return success();
@@ -874,51 +901,24 @@ class RewriteQuantizedConvolutionOp
         filter_op->getLoc(), /*output=*/TypeAttr::get(new_filter_result_type),
         new_filter_value_attr);
 
-    const SmallVector<double> bias_scales = GetBiasScales(
-        /*input_scale=*/op.getOperand(0)
-            .getType()
-            .cast<TensorType>()
-            .getElementType()
-            .cast<UniformQuantizedType>()
-            .getScale(),
-        /*filter_scales=*/new_filter_quantized_type.getScales());
-
     Operation* uniform_quantize_op;
-
     const bool fuse_bias_constant =
         FindUserOfType<stablehlo::AddOp>(op) && has_i32_output;
     if (has_i32_output) {
       if (fuse_bias_constant) {
-        Operation* add_op;
-        add_op = FindUserOfType<stablehlo::AddOp>(op);
+        Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
         uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(add_op);
       } else {
         uniform_quantize_op = FindUserOfType<TFL::QuantizeOp>(op);
       }
     }
+
     const int64_t num_output_features = new_filter_result_type.getShape()[0];
     const SmallVector<int64_t, 1> bias_shape = {num_output_features};
-    auto bias_quantized_type = CreateI32F32UniformQuantizedPerAxisType(
-        op.getLoc(), *op.getContext(), std::move(bias_scales),
-        new_filter_quantized_type.getZeroPoints(),
-        /*quantization_dimension=*/0);
-    auto bias_type = RankedTensorType::getChecked(op.getLoc(), bias_shape,
-                                                  bias_quantized_type);
 
-    // TODO: b/309896242 - Add proper bias constant addition instead of
-    // dummy value. Currently, adding the bias constant as described in the
-    // bug results in a numeric error where all output is constant regardless
-    // of input. This requires further numerics diff investigation.
-    // Create a bias constant. It should have values of 0.
-    auto bias_value_type = RankedTensorType::getChecked(op.getLoc(), bias_shape,
-                                                        rewriter.getI32Type());
-    // Create a bias filled with zeros. Mimics the behavior of no bias add.
-    DenseIntElementsAttr bias_value = DenseIntElementsAttr::get(
-        bias_value_type, APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
-    TFL::QConstOp bias =
-        rewriter.create<TFL::QConstOp>(op.getLoc(),
-                                       /*output=*/TypeAttr::get(bias_type),
-                                       /*value=*/bias_value);
+    TFL::QConstOp bias = GetBiasOp(op, rewriter, new_filter_result_type,
+                                   new_filter_quantized_type, bias_shape,
+                                   has_i32_output, fuse_bias_constant);
 
     // Determine the attributes for the TFL::Conv2DOp.
 
@@ -1215,6 +1215,55 @@ class RewriteQuantizedConvolutionOp
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};
+  }
+
+  TFL::QConstOp GetBiasOp(
+      stablehlo::ConvolutionOp op, PatternRewriter& rewriter,
+      const RankedTensorType new_filter_result_type,
+      const UniformQuantizedPerAxisType new_filter_quantized_type,
+      const SmallVector<int64_t, 1> bias_shape, const bool has_i32_output,
+      const bool fuse_bias_constant) const {
+    const SmallVector<double> bias_scales = GetBiasScales(
+        /*input_scale=*/op.getOperand(0)
+            .getType()
+            .cast<TensorType>()
+            .getElementType()
+            .cast<UniformQuantizedType>()
+            .getScale(),
+        /*filter_scales=*/new_filter_quantized_type.getScales());
+
+    const auto bias_quantized_type = CreateI32F32UniformQuantizedPerAxisType(
+        op.getLoc(), *op.getContext(), std::move(bias_scales),
+        new_filter_quantized_type.getZeroPoints(),
+        /*quantization_dimension=*/0);
+    const auto bias_type = RankedTensorType::getChecked(op.getLoc(), bias_shape,
+                                                        bias_quantized_type);
+    TFL::QConstOp bias;
+    if (fuse_bias_constant && has_i32_output) {
+      Operation* add_op = FindUserOfType<stablehlo::AddOp>(op);
+      // TODO: b/309896242 - Lift the assumptions on adjacent ops below
+      // as we cover more dynamic fused pattern legalization.
+      Operation* broadcast_in_dim_op = add_op->getOperand(1).getDefiningOp();
+      Operation* bias_const_op =
+          broadcast_in_dim_op->getOperand(0).getDefiningOp();
+      const ElementsAttr bias_constant_value =
+          cast<stablehlo::ConstantOp>(bias_const_op).getValue();
+      bias = rewriter.create<TFL::QConstOp>(op.getLoc(),
+                                            /*output=*/TypeAttr::get(bias_type),
+                                            /*value=*/bias_constant_value);
+    } else {
+      // Create a bias constant. It should have values of 0.
+      const auto bias_value_type = RankedTensorType::getChecked(
+          op.getLoc(), bias_shape, rewriter.getI32Type());
+      // Create a bias filled with zeros. Mimics the behavior of no bias add.
+      const auto bias_value = DenseIntElementsAttr::get(
+          bias_value_type,
+          APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
+      bias = rewriter.create<TFL::QConstOp>(op.getLoc(),
+                                            /*output=*/TypeAttr::get(bias_type),
+                                            /*value=*/bias_value);
+    }
+    return bias;
   }
 };
 

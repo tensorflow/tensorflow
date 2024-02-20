@@ -17,6 +17,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -200,7 +202,7 @@ class QuantizationDriver {
   // Returns the quantization params for the bias input from the non-bias
   // operands which have their indexes in the `non_biases` vector. The returned
   // parameters are calculated by `func`.
-  QuantParams GetBiasParams(Operation *op, int bias,
+  QuantParams GetBiasParams(Operation *op, int bias_index,
                             const std::vector<int> &non_biases,
                             AccumulatorScaleFunc func);
 
@@ -524,20 +526,35 @@ bool QuantizationDriver::SetResultParams(Operation *op, int res_index,
 }
 
 QuantParams QuantizationDriver::GetBiasParams(
-    Operation *op, int bias, const std::vector<int> &non_biases,
+    Operation *op, const int bias_index, const std::vector<int> &non_biases,
     AccumulatorScaleFunc func) {
-  auto &bias_state = GetOperandQuantState(op, bias);
+  QuantState &bias_state = GetOperandQuantState(op, bias_index);
   if (!bias_state.IsEmpty()) {
     return bias_state.params;
   }
   std::vector<QuantParams> op_types;
   op_types.reserve(non_biases.size());
+  int adjusted_quant_dim = -1;
+  if (op->getNumOperands() > bias_index) {
+    // Some kernels allow 1D bias, broadcasting it inside the kernel. In this
+    // case, the `quantizedDimension=0` when quantizing per-channel.
+    // However, for some kernels which require bias to be already broadcasted
+    // to match the accumulation shape, the very last index should be used.
+    Operation *bias_op = op->getOperand(bias_index).getDefiningOp();
+    if (bias_op != nullptr) {
+      Type bias_type = bias_op->getResult(0).getType();
+      if (bias_type != builder_.getNoneType()) {
+        int bias_rank = bias_type.dyn_cast<ShapedType>().getRank();
+        adjusted_quant_dim = bias_rank > 1 ? bias_rank - 1 : 0;
+      }
+    }
+  }
+
   for (auto non_bias : non_biases) {
     auto &non_bias_type = GetOperandQuantState(op, non_bias);
     op_types.push_back(non_bias_type.params);
   }
-  if (op_types.empty()) return {};
-  return func(op_types, legacy_float_scale_);
+  return func(op_types, adjusted_quant_dim, legacy_float_scale_);
 }
 
 bool QuantizationDriver::SetOperandParams(Operation *op, int index,
