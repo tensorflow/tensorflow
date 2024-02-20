@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
 #define TENSORFLOW_LITE_CORE_C_REGISTRATION_EXTERNAL_H_
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "tensorflow/lite/builtin_ops.h"
