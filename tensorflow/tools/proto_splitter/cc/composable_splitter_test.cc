@@ -48,10 +48,10 @@ namespace tensorflow {
 namespace tools::proto_splitter {
 namespace {
 
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::ChunkMetadata;
-using ::proto_splitter_testdata::RepeatedRepeatedString;
-using ::proto_splitter_testdata::RepeatedString;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter_testdata::RepeatedRepeatedString;
+using ::tensorflow::proto_splitter_testdata::RepeatedString;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using tsl::testing::StatusIs;

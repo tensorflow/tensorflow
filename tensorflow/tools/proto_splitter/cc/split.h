@@ -31,8 +31,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tools::proto_splitter {
 
-using ::proto_splitter::ChunkedMessage;
-using ::proto_splitter::VersionDef;
+using ::tensorflow::proto_splitter::ChunkedMessage;
+using ::tensorflow::proto_splitter::VersionDef;
 using MessageBytes = std::variant<std::shared_ptr<tsl::protobuf::Message>,
                                   tsl::protobuf::Message*, std::string>;
 

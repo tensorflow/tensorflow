@@ -56,8 +56,8 @@ class ComposableSplitterBase : public Splitter {
   //   ChunkedMessage: Metadata about the chunked fields.)
   // If the message is not split, `chunks` should only contain the original
   // message.
-  absl::StatusOr<
-      std::pair<std::vector<MessageBytes>*, ::proto_splitter::ChunkedMessage*>>
+  absl::StatusOr<std::pair<std::vector<MessageBytes>*,
+                           ::tensorflow::proto_splitter::ChunkedMessage*>>
   Split() override;
 
   // Serializes a proto to disk.
@@ -109,7 +109,7 @@ class ComposableSplitterBase : public Splitter {
   bool built_;
   tsl::protobuf::Message* message_;
   std::vector<MessageBytes> chunks_;
-  ::proto_splitter::ChunkedMessage chunked_message_;
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message_;
   ComposableSplitterBase* parent_splitter_;
   std::vector<FieldType>* fields_in_parent_;
   size_t size_ = 0;

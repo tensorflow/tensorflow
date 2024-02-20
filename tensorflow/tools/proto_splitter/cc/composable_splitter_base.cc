@@ -53,7 +53,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tools::proto_splitter {
 
-using ::proto_splitter::ChunkMetadata;
+using ::tensorflow::proto_splitter::ChunkMetadata;
 
 VersionDef ComposableSplitterBase::Version() {
   VersionDef version;
@@ -106,7 +106,7 @@ template <typename T>
 static absl::Status WriteToRecordWriter(
     riegeli::RecordWriter<T>& writer, const std::vector<MessageBytes>& chunks,
     ChunkedMessage& chunked_message,
-    const ::proto_splitter::VersionDef& version) {
+    const ::tensorflow::proto_splitter::VersionDef& version) {
   // Export Riegeli / chunked file.
   ChunkMetadata metadata;
   *metadata.mutable_message() = chunked_message;
@@ -122,17 +122,19 @@ static absl::Status WriteToRecordWriter(
       LOG(INFO) << "Writing chunk of size " << msg_chunk->ByteSizeLong();
       writer.WriteRecord(*msg_chunk);
       chunk_metadata->set_size(msg_chunk->ByteSizeLong());
-      chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);
+      chunk_metadata->set_type(
+          ::tensorflow::proto_splitter::ChunkInfo::MESSAGE);
     } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {
       auto* msg_chunk = std::get<tsl::protobuf::Message*>(chunk);
       writer.WriteRecord(*msg_chunk);
       chunk_metadata->set_size(msg_chunk->ByteSizeLong());
-      chunk_metadata->set_type(::proto_splitter::ChunkInfo::MESSAGE);
+      chunk_metadata->set_type(
+          ::tensorflow::proto_splitter::ChunkInfo::MESSAGE);
     } else {
       const auto& str_chunk = std::get<std::string>(chunk);
       writer.WriteRecord(str_chunk);
       chunk_metadata->set_size(str_chunk.size());
-      chunk_metadata->set_type(::proto_splitter::ChunkInfo::BYTES);
+      chunk_metadata->set_type(::tensorflow::proto_splitter::ChunkInfo::BYTES);
     }
     chunk_metadata->set_offset(writer.LastPos().get().numeric());
   }
