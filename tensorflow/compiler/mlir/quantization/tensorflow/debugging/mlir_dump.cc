@@ -78,7 +78,7 @@ absl::StatusOr<std::string> GetMlirDumpDir() {
 // A simple wrapper of tsl::WritableFile so that mlir Pass infra can use it.
 class WritableFileWrapper : public llvm::raw_ostream {
  public:
-  ~WritableFileWrapper() override = default;
+  ~WritableFileWrapper() override { flush(); }
   static absl::StatusOr<std::unique_ptr<WritableFileWrapper>> Create(
       const std::string& filepath) {
     std::unique_ptr<tsl::WritableFile> file;
@@ -89,7 +89,7 @@ class WritableFileWrapper : public llvm::raw_ostream {
  private:
   explicit WritableFileWrapper(std::unique_ptr<tsl::WritableFile> file)
       : file_(std::move(file)) {
-    SetUnbuffered();
+    SetBuffered();
   }
 
   uint64_t current_pos() const override {
