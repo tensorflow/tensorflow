@@ -486,7 +486,6 @@ IndexingMap IndexingMap::FromTensorSizes(
   indexing_map.affine_map_ = affine_map;
   indexing_map.dim_ranges_.reserve(dim_upper_bounds.size());
   for (int64_t ub : dim_upper_bounds) {
-    CHECK_GT(ub, 0);
     indexing_map.dim_ranges_.push_back(Range{0, ub - 1});
   }
   indexing_map.symbol_ranges_.reserve(symbol_upper_bounds.size());
