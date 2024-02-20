@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
@@ -458,42 +457,6 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                          config.beta(), algorithm, precision, grad_x, grad_y);
 }
 
-/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
-    mlir::lmhlo_gpu::GEMMOp op) {
-  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
-
-  std::optional<int64_t> algorithm;
-  if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
-
-  bool grad_x = false;
-  bool grad_y = false;
-  auto attr_grad_x = op.getGradX();
-  if (attr_grad_x) grad_x = attr_grad_x.value();
-  auto attr_grad_y = op.getGradY();
-  if (attr_grad_y) grad_y = attr_grad_y.value();
-
-  int64_t compute_precision = 0;  // Default
-  if (op.getPrecisionConfig().has_value()) {
-    auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.value()) {
-      int64_t value = static_cast<int64_t>(
-          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-      if (value > compute_precision) {
-        compute_precision = value;
-      }
-    }
-  }
-
-  return GemmConfig::For(
-      GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-      dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
-      dot_dims.getRhsBatchingDimensions(),
-      dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
-      op.getAlphaReal().convertToDouble(), op.getAlphaImag().convertToDouble(),
-      op.getBeta().convertToDouble(), algorithm, compute_precision, grad_x,
-      grad_y);
-}
-
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
     se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
     se::DeviceMemoryBase out_buf) const {
@@ -762,30 +725,6 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
     default:
       return Internal("Unknown Epilogue.");
   }
-}
-
-absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
-    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
-  using mlir::lmhlo_gpu::CublasLtMatmulEpilogue;
-  switch (epilogue) {
-    case CublasLtMatmulEpilogue::Default:
-      return se::gpu::BlasLt::Epilogue::kDefault;
-    case CublasLtMatmulEpilogue::Relu:
-      return se::gpu::BlasLt::Epilogue::kReLU;
-    case CublasLtMatmulEpilogue::Gelu:
-      return se::gpu::BlasLt::Epilogue::kGELU;
-    case CublasLtMatmulEpilogue::GeluAux:
-      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
-    case CublasLtMatmulEpilogue::Bias:
-      return se::gpu::BlasLt::Epilogue::kBias;
-    case CublasLtMatmulEpilogue::BiasRelu:
-      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
-    case CublasLtMatmulEpilogue::BiasGelu:
-      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
-    case CublasLtMatmulEpilogue::BiasGeluAux:
-      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
-  }
-  return Internal("unexpected epilogue value");
 }
 
 absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(

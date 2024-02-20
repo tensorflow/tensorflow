@@ -1958,7 +1958,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:lhlo_gpu",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@com_google_absl//absl/algorithm:container",
