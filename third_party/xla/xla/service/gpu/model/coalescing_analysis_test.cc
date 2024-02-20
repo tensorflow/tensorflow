@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/model/coalescing_analysis.h"
 
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -41,7 +46,10 @@ class CoalescingTest : public HloTestBase {
   std::vector<bool> IsReadCoalescedPerOperand(absl::string_view hlo_string) {
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
     HloInstruction* root = module->entry_computation()->root_instruction();
+    return IsReadCoalescedPerOperand(root);
+  }
 
+  std::vector<bool> IsReadCoalescedPerOperand(const HloInstruction* root) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto analysis = AnalyzeFusion(*root, device_info_);
     auto emitter = GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
@@ -268,6 +276,35 @@ TEST_F(CoalescingTest, ColumnReduction) {
   // thread_x to linearized input mapping for thread_x in [0, 31]:
   // Operand 1: (thread_x)[s0] -> (thread_x + s0 * 1024) for s0 in [0, 1]
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, UnusedParameter) {
+  Shape shape = ShapeUtil::MakeShape(F32, {100000});
+
+  auto module = std::make_unique<HloModule>("m", HloModuleConfig{});
+  HloComputation::Builder b("b");
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  auto p1 = b.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+
+  HloComputation::Builder sub_builder("subcomp");
+  HloInstruction* p0f = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0f"));
+  // p1f is not used.
+  HloInstruction* p1f = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "p1f"));
+  ASSERT_NE(p1f, nullptr);
+  sub_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0f));
+
+  HloComputation* subcomp = module->AddEmbeddedComputation(sub_builder.Build());
+  auto fusion = HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kLoop, {p0, p1}, subcomp);
+  b.AddInstruction(std::move(fusion));
+  module->AddEntryComputation(b.Build());
+
+  EXPECT_THAT(IsReadCoalescedPerOperand(
+                  module->entry_computation()->root_instruction()),
+              ElementsAre(true, true));
 }
 
 }  // namespace

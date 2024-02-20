@@ -371,9 +371,16 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
       coalescing_per_operand_.insert({operand, true});
       continue;
     }
-    const IndexingMapSet& operand_indexing_maps =
-        thread_id_to_input_memory_layouts->at(operand);
-    for (const IndexingMap& operand_indexing_map : operand_indexing_maps) {
+    auto operand_indexing_maps =
+        thread_id_to_input_memory_layouts->find(operand);
+    // If there is no indexing map for the operand, it means that it is not used
+    // in the fusion cluster.
+    if (operand_indexing_maps == thread_id_to_input_memory_layouts->end()) {
+      coalescing_per_operand_.insert({operand, true});
+      continue;
+    }
+    for (const IndexingMap& operand_indexing_map :
+         operand_indexing_maps->second) {
       bool is_coalesced =
           IsCoalesced(operand_indexing_map, operand->shape().element_type());
       auto [it, inserted] =
