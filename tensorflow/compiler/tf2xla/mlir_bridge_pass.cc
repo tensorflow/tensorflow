@@ -143,9 +143,8 @@ MlirOptimizationPassState GetPassStateImpl(
     bool is_supported_by_replicated_brige, const ConfigProto& config_proto,
     const Graph& graph, const FunctionLibraryDefinition& function_library) {
   // Skip MLIR TF/XLA Bridge if no XLA-compilable ops are found.
-  // TODO(b/324474356): also check the called function in the library.
   if (!is_supported_by_replicated_brige &&
-      !IsSupportedByNonReplicatedBridge(graph, /*function_library*/ nullptr)) {
+      !IsSupportedByNonReplicatedBridge(graph, &function_library)) {
     VLOG(3) << "Skipping MLIR Bridge, graph is not qualified to run the bridge";
     return MlirOptimizationPassState::Disabled;
   }
