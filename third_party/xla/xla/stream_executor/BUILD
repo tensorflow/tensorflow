@@ -559,7 +559,10 @@ cc_library(
 
 transitive_hdrs(
     name = "stream_executor_install_hdrs",
-    tags = ["avoid_dep"],
+    tags = [
+        "alt_dep=:stream_executor_headers",
+        "avoid_dep",
+    ],
     deps = [":stream_executor_headers"],
 )
 

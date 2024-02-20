@@ -477,7 +477,7 @@ _transitive_hdrs = rule(
 
 def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
-    native.filegroup(name = name, srcs = [":" + name + "_gather"])
+    native.filegroup(name = name, srcs = [":" + name + "_gather"], **kwargs)
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
