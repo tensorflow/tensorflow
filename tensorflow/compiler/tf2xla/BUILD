@@ -944,8 +944,8 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:platform_util",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 

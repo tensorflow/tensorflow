@@ -199,7 +199,7 @@ cc_library(
         "//xla/stream_executor",  # buildcleaner: keep
         "//xla/stream_executor/platform",
     ]),
-    alwayslink = True,  # Registers itself with the MultiPlatformManager.
+    alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
 cc_library(

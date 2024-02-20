@@ -43,13 +43,13 @@ cc_library(
         ":host_gpu_executor",
         ":host_platform_id",
         "//xla/stream_executor",
-        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
     ],
-    alwayslink = True,  # Registers itself with the MultiPlatformManager.
+    alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
 cc_library(
@@ -101,8 +101,8 @@ xla_cc_test(
     deps = [
         ":host_platform",
         "//xla/stream_executor",
-        "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/lib/core:status_test_util",

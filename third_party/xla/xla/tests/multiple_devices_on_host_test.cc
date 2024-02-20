@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/xla_builder.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
@@ -57,7 +58,7 @@ void TestWithDeviceCount(const int device_count) {
   // Run `device_count` copies of the XLA program built by BuildComputation.
   TF_ASSERT_OK_AND_ASSIGN(
       se::Platform* const platform,
-      stream_executor::MultiPlatformManager::PlatformWithName("Host"));
+      stream_executor::PlatformManager::PlatformWithName("Host"));
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
   TF_ASSERT_OK_AND_ASSIGN(

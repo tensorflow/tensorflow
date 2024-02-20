@@ -53,8 +53,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -569,8 +569,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   // Look up the platform only once, for a small performance gain.
   static Status* platform_status = nullptr;
   static se::Platform* platform = [&]() -> se::Platform* {
-    StatusOr<se::Platform*> p =
-        se::MultiPlatformManager::PlatformWithName("CUDA");
+    StatusOr<se::Platform*> p = se::PlatformManager::PlatformWithName("CUDA");
     if (!p.ok()) {
       platform_status = new Status(p.status());
       return nullptr;

@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/host/host_gpu_executor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/errors.h"
 
 namespace stream_executor {
@@ -73,7 +74,7 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
 
 static void InitializeHostPlatform() {
   std::unique_ptr<Platform> platform(new host::HostPlatform);
-  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace host

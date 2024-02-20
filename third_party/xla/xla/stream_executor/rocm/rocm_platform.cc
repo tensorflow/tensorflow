@@ -147,12 +147,12 @@ ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
 }  // namespace gpu
 
 static void InitializeROCmPlatform() {
-  // Disabling leak checking, MultiPlatformManager does not destroy its
+  // Disabling leak checking, PlatformManager does not destroy its
   // registered platforms.
-  auto status = MultiPlatformManager::PlatformWithName("ROCM");
+  auto status = PlatformManager::PlatformWithName("ROCM");
   if (!status.ok()) {
     std::unique_ptr<gpu::ROCmPlatform> platform(new gpu::ROCmPlatform);
-    TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+    TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
   }
 }
 

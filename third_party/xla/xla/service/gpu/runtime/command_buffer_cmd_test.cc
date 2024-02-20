@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/lib/core/status_test_util.h"
@@ -51,7 +51,7 @@ using MemoryAccess = CommandBufferCmd::MemoryAccess;
 static se::StreamExecutor* GpuExecutor() {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  auto* platform = se::MultiPlatformManager::PlatformWithName(name).value();
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
   return platform->ExecutorForDevice(0).value();
 }
 
