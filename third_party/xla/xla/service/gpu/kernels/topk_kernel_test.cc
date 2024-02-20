@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -74,7 +74,7 @@ PrimitiveType Get(bfloat16) { return PrimitiveType::BF16; }
 
 se::StreamExecutor* GetGpuExecutor() {
   auto* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   return platform->ExecutorForDevice(0).value();
 }
 

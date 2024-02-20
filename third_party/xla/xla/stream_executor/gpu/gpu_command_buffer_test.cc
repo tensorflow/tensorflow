@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -44,7 +44,7 @@ namespace stream_executor::gpu {
 static Platform* GpuPlatform() {
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  return MultiPlatformManager::PlatformWithName(name).value();
+  return PlatformManager::PlatformWithName(name).value();
 }
 
 static MultiKernelLoaderSpec GetAddI32KernelSpec() {

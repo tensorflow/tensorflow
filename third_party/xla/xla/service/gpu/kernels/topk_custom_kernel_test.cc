@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
@@ -85,8 +85,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
 
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(name).value();
+  se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);
@@ -140,8 +139,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
 
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(name).value();
+  se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);

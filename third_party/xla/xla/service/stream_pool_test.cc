@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
 
@@ -27,7 +28,7 @@ class StreamPoolTest : public ::testing::Test {
  protected:
   std::unique_ptr<se::StreamExecutor> NewStreamExecutor() {
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithName("Host").value();
+        se::PlatformManager::PlatformWithName("Host").value();
     se::StreamExecutorConfig config(/*ordinal=*/0);
     return platform->GetUncachedExecutor(config).value();
   }

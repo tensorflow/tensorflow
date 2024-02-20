@@ -20,8 +20,8 @@ limitations under the License.
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -40,7 +40,7 @@ static uint32_t BitPattern(float value) {
 
 static void BM_RowMajorGemm(benchmark::State& state) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("CUDA").value();
+      se::PlatformManager::PlatformWithName("CUDA").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   const se::DeviceDescription& device = executor->GetDeviceDescription();
 

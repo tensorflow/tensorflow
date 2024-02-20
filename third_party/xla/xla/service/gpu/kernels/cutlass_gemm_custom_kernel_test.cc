@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -35,7 +35,7 @@ namespace xla::gpu::kernel::gemm_universal {
 
 TEST(CutlassGemmKernelTest, SimpleGemm) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("CUDA").value();
+      se::PlatformManager::PlatformWithName("CUDA").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);
@@ -87,7 +87,7 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
                         "cutlass_gemm_kernel_f32xf32_to_f32.so");
 
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("CUDA").value();
+      se::PlatformManager::PlatformWithName("CUDA").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);

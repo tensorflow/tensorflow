@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -41,9 +41,9 @@ class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
 #if GOOGLE_CUDA
-      : platform_(se::MultiPlatformManager::PlatformWithName("CUDA").value()),
+      : platform_(se::PlatformManager::PlatformWithName("CUDA").value()),
 #elif TENSORFLOW_USE_ROCM
-      : platform_(se::MultiPlatformManager::PlatformWithName("ROCM").value()),
+      : platform_(se::PlatformManager::PlatformWithName("ROCM").value()),
 #endif
         stream_exec_(platform_->ExecutorForDevice(0).value()) {
   }

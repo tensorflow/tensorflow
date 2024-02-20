@@ -15,8 +15,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
@@ -25,7 +25,7 @@ limitations under the License.
 namespace stream_executor {
 
 TEST(MemcpyTest, PinnedHostMemory) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   Stream stream(executor);
   stream.Init();

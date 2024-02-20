@@ -88,7 +88,7 @@ cuda_only_cc_library(
             ":cuda_platform_id",
             ":cuda_runtime",
             "//xla/stream_executor",
-            "//xla/stream_executor:multi_platform_manager",
+            "//xla/stream_executor:platform_manager",
             "//xla/stream_executor:stream_executor_internal",
             "//xla/stream_executor/gpu:gpu_driver_header",
             "//xla/stream_executor/gpu:gpu_executor_header",
@@ -107,7 +107,7 @@ cuda_only_cc_library(
             "@local_tsl//tsl/platform:status",
             "@local_tsl//tsl/platform:statusor",
         ] + tf_additional_cuda_platform_deps(),
-    alwayslink = True,  # Registers itself with the MultiPlatformManager.
+    alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
 cuda_only_cc_library(
@@ -251,7 +251,7 @@ xla_cc_test(
         ":cuda_platform",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/memory",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",

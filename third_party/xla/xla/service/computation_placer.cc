@@ -165,7 +165,7 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
   auto* computation_placers = GetPlatformComputationPlacers();
   if (computation_placers->find(platform_id) != computation_placers->end()) {
     // TODO(b/282059652): Consider logging the platform name using
-    // MultiPlatformManager::PlatformWithId(). No doing that for now to avoid
+    // PlatformManager::PlatformWithId(). No doing that for now to avoid
     // introducing unwanted dependency.
     LOG(WARNING) << "computation placer already registered. Please check "
                     "linkage and avoid linking the same target more than once.";
