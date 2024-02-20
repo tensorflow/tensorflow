@@ -1260,7 +1260,8 @@ absl::Status ReductionFusion::ReductionEmitter::EmitKernel(
   llvm::Value* block_id_y = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdy, {}, {}, builder_);
   llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
-                            llvm::cast<llvm::Instruction>(block_id_y));
+                            llvm::cast<llvm::Instruction>(block_id_y),
+                            builder_);
   block_id_y = builder_->CreateZExtOrTrunc(block_id_y, builder_->getInt32Ty());
   block_id_y->setName("block.id.y");
   for (int i = 0; i < instr_index_groups.size(); ++i) {
