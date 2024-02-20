@@ -45,6 +45,7 @@ struct CustomOpInfo {
 using ::tflite::optimize::ReducedPrecisionSupport;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
+enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -84,6 +85,11 @@ struct QuantizationSpecs {
   // scanning the constant content (post-training quantization or QAT without
   // weight FakeQuant).
   bool disable_per_channel = false;
+
+  // Disables per channel weights quantization for Dense layers and enables
+  // legacy per tensor quantization. The legacy quantization for Dense layers is
+  // inconsistent with Conv 1x1 which always performs per channel quantization.
+  bool disable_per_channel_for_dense_layers = false;
 
   // When set to true, the fixed output ranges of the activation ops (tanh,
   // sigmoid, etc.) and the weight constants are not inferred. Then, to quantize
@@ -209,9 +215,11 @@ struct QuantizationSpecs {
   // For dynamic range quantization, among the custom ops in the graph those
   // specified in this map are subject to quantization.
   CustomOpMap custom_map;
-};
 
-enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
+  // If other than kQDQNone, the model is a floating point graph with QDQ ops
+  // to be eliminated and fused into quantized kernels.
+  QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;
+};
 
 // Parses the command line flag strings to the CustomOpMap specification.
 void ParseCustomOpSpecs(absl::string_view node_names,

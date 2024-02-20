@@ -44,7 +44,6 @@ using BufferizePatternsCallback = std::function<void(
 // Passes
 //===----------------------------------------------------------------------===//
 
-#define GEN_PASS_DECL_BUFFERPACKING
 #define GEN_PASS_DECL_FINALBUFFERIZEPASS
 #define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
@@ -52,20 +51,9 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
 
-/// Creates a pass that merges smaller buffer into bigger buffer to optimize
-/// memory consumption.
-std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
-    unsigned windowSize = 5);
-
-/// Creates a pass that tests the useranges of the UserangeAnalysis.
-std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
-
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createTestShapeComponentAnalysisPass();
-
-/// Creates a pass that computes the allocated memory.
-std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 
 // Pass to lower index cast on tensors to tensor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass();

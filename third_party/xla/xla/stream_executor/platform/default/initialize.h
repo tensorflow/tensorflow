@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// IWYU pragma: private, include "third_party/tensorflow/compiler/xla/stream_executor/platform/initialize.h"
+
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_
-
-#undef REGISTER_MODULE_INITIALIZER
-#undef DECLARE_MODULE_INITIALIZER
-#undef REGISTER_MODULE_INITIALIZER_SEQUENCE
 
 namespace stream_executor {
 namespace port {
@@ -44,19 +42,20 @@ class Initializer {
 }  // namespace port
 }  // namespace stream_executor
 
-#define REGISTER_INITIALIZER(type, name, body)                             \
+#define STREAM_EXECUTOR_REGISTER_INITIALIZER(type, name, body)             \
   static void google_init_##type##_##name() { body; }                      \
   ::stream_executor::port::Initializer google_initializer_##type##_##name( \
       google_init_##type##_##name)
 
-#define REGISTER_MODULE_INITIALIZER(name, body) \
-  REGISTER_INITIALIZER(module, name, body)
+#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(name, body) \
+  STREAM_EXECUTOR_REGISTER_INITIALIZER(module, name, body)
 
-#define DECLARE_INITIALIZER(type, name) \
+#define STREAM_EXECUTOR_DECLARE_INITIALIZER(type, name) \
   extern ::stream_executor::port::Initializer google_initializer_##type##_##name
 
-#define DECLARE_MODULE_INITIALIZER(name) DECLARE_INITIALIZER(module, name)
+#define STREAM_EXECUTOR_DECLARE_MODULE_INITIALIZER(name) \
+  STREAM_EXECUTOR_DECLARE_INITIALIZER(module, name)
 
-#define REGISTER_MODULE_INITIALIZER_SEQUENCE(name1, name2)
+#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER_SEQUENCE(name1, name2)
 
 #endif  // XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_

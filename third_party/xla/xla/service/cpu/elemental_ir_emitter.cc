@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/math_ops.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -103,6 +104,33 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
     result = FPCast(result, b()->getHalfTy());
   }
   return result;
+}
+
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  if (prim_type == F64) {
+    std::string function_name = "erf";
+    // Create a function declaration.
+    llvm::Function* function = llvm::dyn_cast<llvm::Function>(
+        module()
+            ->getOrInsertFunction(function_name, value->getType(),
+                                  value->getType())
+            .getCallee());
+    function->setCallingConv(llvm::CallingConv::C);
+    function->setDoesNotThrow();
+    function->setDoesNotAccessMemory();
+    // Create an instruction to call the function.
+    llvm::Value* result = Call(function, value);
+    return result;
+  }
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
+  if (type == b()->getFloatTy()) {
+    llvm::Value* x = FPCast(value, type);
+    auto* result = llvm_ir::EmitErfF32(b(), x);
+    return FPCast(result, value->getType());
+  }
+  return Unimplemented("erf");
 }
 
 }  // namespace cpu

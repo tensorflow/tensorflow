@@ -16,19 +16,24 @@ limitations under the License.
 #ifndef XLA_SERVICE_TRANSFER_MANAGER_H_
 #define XLA_SERVICE_TRANSFER_MANAGER_H_
 
-#include <map>
-#include <set>
-#include <vector>
+#include <cstdint>
+#include <functional>
+#include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

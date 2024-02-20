@@ -76,11 +76,11 @@ Status ParseActivationMode(OpKernelConstruction* context,
 
   if (activation_mode_str == "Identity") {
     *activation_mode = FusedBatchNormActivationMode::kIdentity;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (activation_mode_str == "Relu") {
     *activation_mode = FusedBatchNormActivationMode::kRelu;
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Unsupported activation mode: ",
                                  activation_mode_str);
@@ -1001,18 +1001,19 @@ struct FusedBatchNormImplGPU {
           errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
                            "from device"));
     }
-    bool cudnn_launch_status =
-        stream
-            ->ThenBatchNormalizationForward(
-                x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
-                estimated_variance_ptr, side_input_ptr, x_desc,
-                scale_offset_desc, static_cast<double>(epsilon),
-                static_cast<double>(exponential_avg_factor),
-                AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
-                &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr,
-                is_training, reserve_space_allocator.get(),
-                workspace_allocator.get())
-            .ok();
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      context->SetStatus(absl::InternalError("No DNN support for stream"));
+      return;
+    }
+    bool cudnn_launch_status = dnn->DoBatchNormalizationForward(
+        stream, x_ptr, scale_ptr, offset_ptr, estimated_mean_ptr,
+        estimated_variance_ptr, side_input_ptr, x_desc, scale_offset_desc,
+        static_cast<double>(epsilon),
+        static_cast<double>(exponential_avg_factor),
+        AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
+        &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr, is_training,
+        reserve_space_allocator.get(), workspace_allocator.get());
 
     if (!cudnn_launch_status) {
       context->SetStatus(
@@ -1272,6 +1273,7 @@ struct FusedBatchNormGradImplGPU {
         reserve_space_data_ptr = &reserve_space_data;
       }
     }
+<<<<<<< HEAD
 #endif  // CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50100
     bool cudnn_launch_status =
         stream
@@ -1284,6 +1286,22 @@ struct FusedBatchNormGradImplGPU {
                 &side_input_backprop_ptr, reserve_space_data_ptr,
                 workspace_allocator.get())
             .ok();
+=======
+#endif  // CUDNN_VERSION >= 7402
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      context->SetStatus(absl::InternalError("No DNN support for stream"));
+      return;
+    }
+
+    bool cudnn_launch_status = dnn->DoBatchNormalizationBackward(
+        stream, y_backprop_ptr, x_ptr, scale_ptr, offset_ptr, mean_ptr,
+        inv_variance_ptr, y_ptr, x_desc, scale_offset_desc,
+        static_cast<double>(epsilon), AsDnnActivationMode(activation_mode),
+        &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr,
+        &side_input_backprop_ptr, reserve_space_data_ptr,
+        workspace_allocator.get());
+>>>>>>> upstream/master
 
     if (!cudnn_launch_status) {
       context->SetStatus(

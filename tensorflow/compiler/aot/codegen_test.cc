@@ -153,7 +153,7 @@ static void CompareWithGoldenFile(
 
   // To update the golden file, flip update_golden to true and run the
   // following:
-  // bazel test --test_strategy=local \
+  // blaz test --test_strategy=local \
   //   "third_party/tensorflow/compiler/aot:codegen_test"
   const bool update_golden = false;
   string golden_file_name =
@@ -230,7 +230,7 @@ TEST(CodegenTest, Golden) {
                                        /*result_param_number=*/1),
        BufferInfo::MakeResultParameter(/*size=*/5 * 4,
                                        /*result_param_number=*/2)},
-      0, {}));
+      0, nullptr, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {

@@ -85,6 +85,9 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                         llvm::Value* value) override;
 
+  absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
+                                       llvm::Value* value) override;
+
   absl::StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
                                               llvm::Value* value) override;
 
@@ -94,8 +97,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view, bool /*is_reducer*/) override;
-
-  llvm::Value* EmitThreadId() override;
 
   absl::StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value) override;
 
@@ -108,13 +109,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitPowerOp(const HloInstruction* op,
                                            llvm::Value* lhs_value,
                                            llvm::Value* rhs_value);
-
-  // Emits IR to call an LLVM intrinsic of type [T] -> T.  Adjusts
-  // callee_name according to T.  Returns the IR value that represents the
-  // return value of the function.
-  absl::StatusOr<llvm::Value*> EmitLlvmIntrinsicMathCall(
-      const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-      absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a device function of type [T] -> T.  Adjusts
   // callee_name according to T.  Returns the IR value that represents the

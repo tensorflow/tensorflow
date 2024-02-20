@@ -66,9 +66,6 @@ class CalibrationComponent : public Component {
       absl::flat_hash_map<std::string, tensorflow::SignatureDef>
           signature_def_map,
       std::vector<std::string> signature_keys,
-      absl::flat_hash_map<std::string,
-                          tensorflow::quantization::RepresentativeDatasetFile>
-          representative_dataset_file_map,
       const tensorflow::quantization::CalibrationOptions& calibration_options);
 
   // Runs calibration on `module_op` and returns a calibrated ModuleOp with
@@ -112,13 +109,6 @@ class CalibrationComponent : public Component {
 
   // Signature keys to identify the functions to load & quantize.
   const std::vector<std::string> signature_keys_;
-
-  // Map from signature key to the representative dataset file. The keys should
-  // match `signature_keys_`. The representative datasets will be fed to the
-  // pre-calibrated graph to collect statistics.
-  const absl::flat_hash_map<std::string,
-                            tensorflow::quantization::RepresentativeDatasetFile>
-      representative_dataset_file_map_;
 
   // Configures the calibration behavior.
   const tensorflow::quantization::CalibrationOptions calibration_options_;

@@ -539,6 +539,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMulReorder);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee),

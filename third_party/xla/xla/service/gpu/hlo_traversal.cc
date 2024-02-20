@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -76,6 +77,8 @@ class SingleInstructionFusion : public HloFusionAdaptor {
       const override {
     return {instruction_};
   }
+
+  std::string ToString() const override { return instruction_.ToString(); }
 
  private:
   HloInstructionAdaptor instruction_;
@@ -154,6 +157,8 @@ class HloComputationFusion : public HloFusionAdaptor {
     }
     return result;
   }
+
+  std::string ToString() const override { return computation_->ToString(); }
 
  private:
   const HloComputation* computation_;

@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/status.h"
@@ -130,7 +131,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   // memory with it, read it back inverting both axes,
   // copy the result back to the host and verify it.
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("cuda").value();
+      se::PlatformManager::PlatformWithName("cuda").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();

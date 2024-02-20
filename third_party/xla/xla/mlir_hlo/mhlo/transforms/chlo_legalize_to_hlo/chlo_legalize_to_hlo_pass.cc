@@ -25,12 +25,15 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LogicalResult.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
 namespace mhlo {
 
 #define GEN_PASS_DEF_CHLOLEGALIZETOHLOPASS
+#define GEN_PASS_DEF_CHLOLEGALIZETOHLOBASISOPSPASS
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
@@ -43,10 +46,6 @@ struct ChloLegalizeToHloPass
             ChloLegalizeToHloPass>::ChloLegalizeToHloPassBase() {
     this->legalize_broadcasts_ = legalizeBroadcasts;
     this->expand_compositions_ = expandCompositions;
-  }
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
@@ -81,12 +80,48 @@ struct ChloLegalizeToHloPass
   }
 };
 
+struct ChloLegalizeToHloBasisOpsPass
+    : public impl::ChloLegalizeToHloBasisOpsPassBase<
+          ChloLegalizeToHloBasisOpsPass> {
+  using ChloLegalizeToHloBasisOpsPassBase::ChloLegalizeToHloBasisOpsPassBase;
+
+  void runOnOperation() override {
+    ConversionTarget conversionTarget(getContext());
+    RewritePatternSet conversionPatterns(&getContext());
+
+    // Patterns will only be applied to these ops
+    conversionTarget.addIllegalOp<chlo::ErfOp, chlo::TopKOp>();
+
+    // Programs with MHLO equivalents to the StableHLO ops are likely bugs
+    // for users of this expander pass, so best to disallow.
+    conversionTarget.addIllegalOp<mhlo::TopKOp>();  // TODO: Add ErfOp
+
+    // Given that the resulting patterns should be convertible to StableHLO
+    // Only MHLO should be legal.
+    conversionTarget
+        .addLegalDialect<MhloDialect, chlo::ChloDialect, func::FuncDialect>();
+
+    chlo::populateChloLegalizeToHloBasisOpsPatterns(&getContext(),
+                                                    &conversionPatterns);
+
+    if (failed(applyPartialConversion(getOperation(), conversionTarget,
+                                      std::move(conversionPatterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalizeBroadcasts, bool expandCompositions) {
   return std::make_unique<ChloLegalizeToHloPass>(legalizeBroadcasts,
                                                  expandCompositions);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>>
+createChloLegalizeToHloBasisOpsPass() {
+  return std::make_unique<ChloLegalizeToHloBasisOpsPass>();
 }
 
 }  // namespace mhlo

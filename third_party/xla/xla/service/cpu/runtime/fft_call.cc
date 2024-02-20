@@ -27,6 +27,8 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/custom_call_registry.h"
@@ -35,6 +37,7 @@
 #include "xla/service/cpu/runtime_fft.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {

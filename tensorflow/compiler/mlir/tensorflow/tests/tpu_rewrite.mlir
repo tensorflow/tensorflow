@@ -1334,6 +1334,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     }) : () -> ()
     func.return
   }
+  func.func @empty_func() {
+    func.return
+  }
 }
 
 // -----
@@ -2447,6 +2450,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     "tf_device.cluster_func"() {_replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
     func.return
   }
+  func.func @empty_func() {
+    func.return
+  }
 }
 
 // -----
@@ -2455,6 +2461,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @empty_replication_attribute() {
     // expected-error@+1 {{'tf_device.cluster_func' op has an empty '_replication_info' attribute}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
+    func.return
+  }
+  func.func @empty_func() {
     func.return
   }
 }
@@ -2467,6 +2476,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     "tf_device.cluster_func"() {_xla_compile_device_type = "XPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
     func.return
   }
+  func.func @empty_func() {
+    func.return
+  }
 }
 
 // -----
@@ -2475,6 +2487,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func.func @invalid_compilation_attribute() {
     // expected-error@+1 {{'tf_device.cluster_func' op has invalid '_xla_compile_device_type' value 'XPU'}}
     "tf_device.cluster_func"() {_xla_compile_device_type = "XPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
+    func.return
+  }
+  func.func @empty_func() {
     func.return
   }
 }

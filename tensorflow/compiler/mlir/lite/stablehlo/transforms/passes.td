@@ -58,10 +58,10 @@ def ComposeUniformQuantizedTypePass : Pass<"compose-uniform-quantized-type", "Mo
   ];
 }
 
-def UniformQuantizedStablehloToTflPass
+def UniformQuantizedStableHloToTflPass
     : Pass<"uniform-quantized-stablehlo-to-tfl", "mlir::func::FuncOp"> {
   let summary = "Converts StableHLO ops using uniform quantized types to equivalent TFL ops.";
-  let constructor = "mlir::odml::CreateUniformQuantizedStablehloToTflPass()";
+  let constructor = "mlir::odml::CreateUniformQuantizedStableHloToTflPass()";
   let description = [{
     Converts StableHLO ops that accept or return uniform quantized types to
     equivalent ops in the TFLite dialect.

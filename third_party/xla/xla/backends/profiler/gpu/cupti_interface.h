@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_INTERFACE_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_INTERFACE_H_
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -60,7 +60,7 @@ class CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) = 0;
 
-  virtual CUptiResult GetDeviceId(CUcontext context, tsl::uint32* deviceId) = 0;
+  virtual CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) = 0;
 
   virtual CUptiResult GetTimestamp(uint64_t* timestamp) = 0;
 
@@ -81,95 +81,6 @@ class CuptiInterface {
                                 void* userdata) = 0;
 
   virtual CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber) = 0;
-
-  // CUPTI event API
-  virtual CUptiResult DeviceEnumEventDomains(
-      CUdevice device, size_t* array_size_bytes,
-      CUpti_EventDomainID* domain_array) = 0;
-
-  virtual CUptiResult DeviceGetEventDomainAttribute(
-      CUdevice device, CUpti_EventDomainID event_domain,
-      CUpti_EventDomainAttribute attrib, size_t* value_size, void* value) = 0;
-
-  virtual CUptiResult DisableKernelReplayMode(CUcontext context) = 0;
-
-  virtual CUptiResult EnableKernelReplayMode(CUcontext context) = 0;
-
-  virtual CUptiResult DeviceGetNumEventDomains(CUdevice device,
-                                               uint32_t* num_domains) = 0;
-
-  virtual CUptiResult EventDomainEnumEvents(CUpti_EventDomainID event_domain,
-                                            size_t* array_size_bytes,
-                                            CUpti_EventID* event_array) = 0;
-
-  virtual CUptiResult EventDomainGetNumEvents(CUpti_EventDomainID event_domain,
-                                              uint32_t* num_events) = 0;
-
-  virtual CUptiResult EventGetAttribute(CUpti_EventID event,
-                                        CUpti_EventAttribute attrib,
-                                        size_t* value_size, void* value) = 0;
-
-  virtual CUptiResult EventGetIdFromName(CUdevice device,
-                                         const char* event_name,
-                                         CUpti_EventID* event) = 0;
-
-  virtual CUptiResult EventGroupDisable(CUpti_EventGroup event_group) = 0;
-
-  virtual CUptiResult EventGroupEnable(CUpti_EventGroup event_group) = 0;
-
-  virtual CUptiResult EventGroupGetAttribute(CUpti_EventGroup event_group,
-                                             CUpti_EventGroupAttribute attrib,
-                                             size_t* value_size,
-                                             void* value) = 0;
-
-  virtual CUptiResult EventGroupReadEvent(CUpti_EventGroup event_group,
-                                          CUpti_ReadEventFlags flags,
-                                          CUpti_EventID event,
-                                          size_t* event_value_buffer_size_bytes,
-                                          uint64_t* eventValueBuffer) = 0;
-
-  virtual CUptiResult EventGroupSetAttribute(CUpti_EventGroup event_group,
-                                             CUpti_EventGroupAttribute attrib,
-                                             size_t value_size,
-                                             void* value) = 0;
-
-  virtual CUptiResult EventGroupSetsCreate(
-      CUcontext context, size_t event_id_array_size_bytes,
-      CUpti_EventID* event_id_array,
-      CUpti_EventGroupSets** event_group_passes) = 0;
-
-  virtual CUptiResult EventGroupSetsDestroy(
-      CUpti_EventGroupSets* event_group_sets) = 0;
-
-  // CUPTI metric API
-  virtual CUptiResult DeviceEnumMetrics(CUdevice device, size_t* arraySizeBytes,
-                                        CUpti_MetricID* metricArray) = 0;
-
-  virtual CUptiResult DeviceGetNumMetrics(CUdevice device,
-                                          uint32_t* num_metrics) = 0;
-
-  virtual CUptiResult MetricGetIdFromName(CUdevice device,
-                                          const char* metric_name,
-                                          CUpti_MetricID* metric) = 0;
-
-  virtual CUptiResult MetricGetNumEvents(CUpti_MetricID metric,
-                                         uint32_t* num_events) = 0;
-
-  virtual CUptiResult MetricEnumEvents(CUpti_MetricID metric,
-                                       size_t* event_id_array_size_bytes,
-                                       CUpti_EventID* event_id_array) = 0;
-
-  virtual CUptiResult MetricGetAttribute(CUpti_MetricID metric,
-                                         CUpti_MetricAttribute attrib,
-                                         size_t* value_size, void* value) = 0;
-
-  virtual CUptiResult MetricGetValue(CUdevice device, CUpti_MetricID metric,
-                                     size_t event_id_array_size_bytes,
-                                     CUpti_EventID* event_id_array,
-                                     size_t event_value_array_size_bytes,
-                                     uint64_t* event_value_array,
-                                     uint64_t time_duration,
-                                     CUpti_MetricValue* metric_value) = 0;
 
   virtual CUptiResult GetResultString(CUptiResult result, const char** str) = 0;
 

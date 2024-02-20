@@ -1,16 +1,5 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-    "tf_cuda_library",
-)
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -33,7 +22,6 @@ tf_cuda_cc_test(
         "no_rocm", # flaky on CI
     ],
     deps = [
-        ":cupti_collector",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
@@ -57,12 +45,15 @@ tf_cuda_cc_test(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
+        "@local_xla//xla/backends/profiler/gpu:cuda_test",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
         "@local_xla//xla/backends/profiler/gpu:device_tracer",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
     ]),
 )
+<<<<<<< HEAD
 
 tf_cuda_library(
     name = "cupti_interface",
@@ -248,3 +239,5 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     alwayslink = 1,
 )
+=======
+>>>>>>> upstream/master

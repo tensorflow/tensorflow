@@ -246,6 +246,7 @@ typedef struct XLA_Layout {
   int64_t element_size_in_bits;
   int64_t memory_space;
   int64_t dynamic_shape_metadata_prefix_bytes;
+  int64_t tail_padding_alignment_in_elements;
 } XLA_Layout;
 
 // Represents an XLA shape tree.

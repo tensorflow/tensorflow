@@ -21,10 +21,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
@@ -52,6 +55,25 @@ char PjRtClient::ID = 0;
 std::unique_ptr<PjRtClient> PjRtClient::Create(
     std::shared_ptr<xla::PjRtClient> pjrt_client) {
   return absl::WrapUnique(new PjRtClient(std::move(pjrt_client)));
+}
+
+absl::flat_hash_map<std::string, Client::ClientAttribute>
+PjRtClient::attributes() const {
+  absl::flat_hash_map<std::string, ClientAttribute> attributes;
+  attributes.insert({"supports_executable_serialization", true});
+
+  if (std::optional<PjRtPluginAttributes> plugin_attributes =
+          pjrt_client_->plugin_attributes();
+      plugin_attributes.has_value()) {
+    attributes.insert(
+        {"pjrt_c_api_major_version",
+         ClientAttribute(plugin_attributes->pjrt_c_api_major_version)});
+    attributes.insert(
+        {"pjrt_c_api_minor_version",
+         ClientAttribute(plugin_attributes->pjrt_c_api_minor_version)});
+  }
+
+  return attributes;
 }
 
 StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(

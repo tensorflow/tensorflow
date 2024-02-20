@@ -42,7 +42,8 @@ struct ResourceConstructingOps {
   static ResourceConstructingOps getPessimisticValueState(MLIRContext *context);
   static ResourceConstructingOps getPessimisticValueState(Value value);
   bool operator==(const ResourceConstructingOps &rhs) const {
-    return ops == rhs.ops;
+    return ops == rhs.ops &&
+           is_on_composite_device == rhs.is_on_composite_device;
   }
 
   static ResourceConstructingOps join(const ResourceConstructingOps &lhs,
@@ -52,6 +53,8 @@ struct ResourceConstructingOps {
   // The operation(s) which created the resource value.
   // IR constructs (i.e., GlobalTensorOp) are not const-correct.
   mutable DenseSet<Operation *> ops;
+
+  bool is_on_composite_device = false;
 };
 
 class ResourceDataflowAnalysis

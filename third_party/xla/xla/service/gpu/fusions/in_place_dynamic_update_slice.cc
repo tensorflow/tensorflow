@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,12 +35,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-LaunchDimensions InPlaceDynamicUpdateSliceEmitter::launch_dimensions() const {
+LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
-absl::Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
+absl::Status InPlaceDynamicUpdateSliceFusion::EmitKernel(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
     std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {

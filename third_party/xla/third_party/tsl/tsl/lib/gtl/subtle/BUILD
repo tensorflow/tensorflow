@@ -1,10 +1,10 @@
 # Description:
 # gtl subtle packages.
 
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -14,5 +14,8 @@ filegroup(
     srcs = [
         "map_traits.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core/lib/gtl/subtle:__pkg__",
+        "//tsl/lib/gtl:__pkg__",
+    ]),
 )

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
@@ -28,13 +29,14 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant {
 namespace {
 
-using ::mlir::quant::QuantizationTestBase;
+using ::testing::NotNull;
 
 class LiftAsFunctionCallTest : public QuantizationTestBase {};
 
@@ -49,8 +51,10 @@ constexpr absl::string_view kModuleLifted = R"mlir(
 
 TEST_F(LiftAsFunctionCallTest, LiftedFunctionSucceeds) {
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleLifted);
-  func::FuncOp composite_dot_general_fn =
-      GetFunctionFromModule(*module_op_ref, "composite_dot_general_fn_1");
+  auto composite_dot_general_fn =
+      module_op_ref->lookupSymbol<func::FuncOp>("composite_dot_general_fn_1");
+  ASSERT_THAT(composite_dot_general_fn, NotNull());
+
   Operation* dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(
           composite_dot_general_fn);
@@ -59,7 +63,7 @@ TEST_F(LiftAsFunctionCallTest, LiftedFunctionSucceeds) {
 
 constexpr absl::string_view kModuleStableHlo = R"mlir(
   module {
-    func.func private @main(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
+    func.func @main(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x3xf32>) -> tensor<1x3xf32> attributes {_from_xla_call_module} {
       %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [] : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
       return %0 : tensor<1x3xf32>
     }
@@ -68,15 +72,18 @@ constexpr absl::string_view kModuleStableHlo = R"mlir(
 
 TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStableHlo);
-  func::FuncOp main_fn = GetFunctionFromModule(*module_op_ref, "main");
+  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_THAT(main_fn, NotNull());
+
   Operation* dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
 
   const SmallVector<NamedAttribute>& attributes = {
-      builder_.getNamedAttr("precision_config",
-                            builder_.getArrayAttr(SmallVector<Attribute>(
-                                1, stablehlo::PrecisionAttr::get(
-                                       &ctx_, stablehlo::Precision::DEFAULT)))),
+      builder_.getNamedAttr(
+          "precision_config",
+          builder_.getArrayAttr(SmallVector<Attribute>(
+              1, mlir::stablehlo::PrecisionAttr::get(
+                     ctx_.get(), mlir::stablehlo::Precision::DEFAULT)))),
   };
   Operation* lifted_op =
       LiftAsFunctionCall(builder_, dot_general_op->getLoc(),
@@ -99,13 +106,15 @@ TEST_F(LiftAsFunctionCallTest, FunctionLiftedAsXlaCallModuleOp) {
   EXPECT_EQ(
       lifted_dot_general_op->getAttr("precision_config").cast<ArrayAttr>(),
       builder_.getArrayAttr(SmallVector<Attribute>(
-          1, stablehlo::PrecisionAttr::get(&ctx_,
-                                           stablehlo::Precision::DEFAULT))));
+          1, mlir::stablehlo::PrecisionAttr::get(
+                 ctx_.get(), mlir::stablehlo::Precision::DEFAULT))));
 }
 
 TEST_F(LiftAsFunctionCallTest, FunctionNoAttrLiftedAsXlaCallModuleOp) {
   OwningOpRef<ModuleOp> module_op_ref = ParseModuleOpString(kModuleStableHlo);
-  func::FuncOp main_fn = GetFunctionFromModule(*module_op_ref, "main");
+  func::FuncOp main_fn = FindMainFuncOp(*module_op_ref);
+  ASSERT_THAT(main_fn, NotNull());
+
   Operation* dot_general_op =
       FindOperationOfType<mlir::stablehlo::DotGeneralOp>(main_fn);
   Operation* lifted_op =

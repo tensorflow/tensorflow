@@ -32,7 +32,6 @@ pytype_strict_library(
     deps = [
         ":pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:save_model",
@@ -57,6 +56,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/types:core",
         "//third_party/py/numpy",
@@ -67,16 +67,25 @@ pytype_strict_library(
 tf_py_strict_test(
     name = "quantize_model_test",
     srcs = ["integration_test/quantize_model_test.py"],
+    shard_count = 50,  # Parallelize the test to avoid timeouts.
     deps = [
         ":quantization",
         ":quantize_model_test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/types:core",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -86,6 +95,7 @@ tf_python_pybind_extension(
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
         "@pybind11",

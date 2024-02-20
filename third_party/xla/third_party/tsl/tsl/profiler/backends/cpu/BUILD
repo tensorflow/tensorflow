@@ -1,4 +1,4 @@
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -10,7 +10,10 @@ cc_library(
     name = "traceme_recorder",
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+        "//tsl/profiler:xla_profiler_backends",
+    ]),
     deps = [
         "//tsl/platform:macros",
         "//tsl/platform:mutex",
@@ -29,7 +32,13 @@ cc_library(
     ],
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/python:__pkg__",
+        "//tsl/platform/cloud:__pkg__",
+        "//tsl/profiler:__pkg__",
+        "//tsl/profiler:internal",
+        "//tsl/profiler:xla_internal",
+    ]),
     deps = [
         "//tsl/platform:env",
         "//tsl/platform:logging",
@@ -45,7 +54,6 @@ cc_library(
 tsl_cc_test(
     name = "traceme_recorder_test",
     srcs = ["traceme_recorder_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":traceme_recorder",
         ":traceme_recorder_impl",
@@ -68,7 +76,9 @@ cc_library(
     name = "annotation_stack",
     hdrs = ["annotation_stack.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+    ]),
     deps = [
         "//tsl/platform:macros",
         "//tsl/platform:types",
@@ -85,7 +95,10 @@ cc_library(
         "annotation_stack.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "@local_xla//xla:__subpackages__",
+        "//tsl/profiler:internal",
+    ]),
     deps = [
         "//tsl/platform:macros",
         "//tsl/platform:types",
@@ -99,7 +112,10 @@ cc_library(
     srcs = ["host_tracer_utils.cc"],
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tsl/profiler:internal",
+        "//tsl/profiler:xla_internal",
+    ]),
     deps = [
         ":traceme_recorder",
         "//tsl/platform:types",

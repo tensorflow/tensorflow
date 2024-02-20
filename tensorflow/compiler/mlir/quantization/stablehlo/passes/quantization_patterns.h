@@ -124,10 +124,19 @@ class StableHloQuantizationPattern : public RewritePattern {
         // Const-> QuantizeOp pattern will be handled separately.
         return failure();
       }
-      if (Operation* quantizing_op = quantize_operand.getDefiningOp()) {
+      if (Operation* quantizing_op = quantize_operand.getDefiningOp();
+          quantizing_op != nullptr) {
         quantizing_ops.push_back(quantizing_op);
+      } else {
+        // When `QuantizeOpT`'s operand does not have a defining op, it means it
+        // is a `BlockArgument`. The pattern does not match if there is no op to
+        // quantize.
+        return failure();
       }
     }
+
+    // Safeguard check to ensure that there is at least one quantizable op.
+    if (quantizing_ops.empty()) return failure();
 
     absl::flat_hash_set<std::string> ops_blocklist =
         quant_params_.quant_spec.ops_blocklist;
@@ -276,14 +285,18 @@ class StableHloQuantizationPattern : public RewritePattern {
 };
 
 // Gemm Style Op: glossary/gemm.
-// Populates conversion patterns to unfuse batch normalization operations.
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns);
+                                    RewritePatternSet& patterns,
+                                    bool enable_per_channel_quantized_weight);
 
 // Populates pattern for quantization of ops with regions such as
 // stablehlo.reduce_window op.
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
                                          RewritePatternSet& patterns);
+
+// Populates conversion patterns for unary data movement ops.
+void PopulateQuantizeSingularOpPatterns(MLIRContext& ctx,
+                                        RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 

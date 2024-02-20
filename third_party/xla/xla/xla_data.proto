@@ -216,6 +216,15 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
+  // The shape is padded at the end to multiple of, in terms of number of
+  // elements. This is useful when tiling does not bring the shape to certain
+  // desired granules. Tiling effectively pads/reshapes/transposes the shape
+  // to another shape. This field pads the total number of elements of that
+  // new shape to a multiple of certain number of elements. This is useful such
+  // as we want a layout which does not tile the data but still requires it to
+  // be padded to certain number of elements.
+  int64 tail_padding_alignment_in_elements = 16;
+
   // (Optional) Bit size of each element. When unspecified or being 0, default
   // to ShapeUtil::ByteSizeOfPrimitiveType.
   int64 element_size_in_bits = 7;
@@ -371,16 +380,11 @@ message OpMetadata {
   // Deprecated, use [ProfileInfo][profile_type] instead.
   repeated ProfileType profile_type = 5 [deprecated = true];
 
-  // HloPassMetadata.pass_id of the pass that created this HLO instruction
-  // object. Should never be copied between HLO instructions. Zero if unset and
-  // -1 if the instruction was created before HLO passes began.
-  int64 creation_pass_id = 6;
+  reserved 6;
+  reserved "creation_pass_id";
 
-  // HloPassMetadata.pass_id of the pass that created the logical functionality
-  // that this HLO instruction represents. Should be copied between HLO
-  // instructions that correspond across compilation passes. Zero if unset and
-  // -1 if the instruction was created before HLO passes began.
-  int64 logical_creation_pass_id = 7;
+  reserved 7;
+  reserved "logical_creation_pass_id";
 
   // The footprint of the generated code for the instruction.
   int64 size_of_generated_code_in_bytes = 8;
@@ -708,6 +712,36 @@ message DotDimensionNumbers {
   repeated int64 lhs_batch_dimensions = 3;
   // The dimension numbers that represent the 'rhs' batch dimensions.
   repeated int64 rhs_batch_dimensions = 4;
+}
+
+enum SparsityType {
+  SPARSITY_INVALID = 0;
+
+  // Structured N:M sparsity.
+  SPARSITY_STRUCTURED_N_M = 1;
+
+  // Next: 2
+}
+
+// Contains sparsity metadata for a sparse dot operation.
+// The only supported type atm is structured 2:4 sparsity, which is natively
+// supported on NVidia GPUs.
+// Restrictions:
+// - only one operand of the dot operation may be sparse;
+// - only the contracting dimension may be sparse.
+message SparsityDescriptor {
+  SparsityType type = 1;
+
+  // Sparse operand index (0 or 1).
+  int32 index = 2;
+  // Sparse dimension number.
+  int32 dimension = 3;
+
+  // Structured N:M sparsity (N < M).
+  int32 n = 4;
+  int32 m = 5;
+
+  // Next: 6
 }
 
 enum RandomDistribution {

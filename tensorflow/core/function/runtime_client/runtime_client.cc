@@ -170,7 +170,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
           CreateFunction(reinterpret_cast<OpaqueTfgGraphFuncOp*>(&fn)),
           absl::StrCat("updating function ", fn.getName().str()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (dialect == Dialect::TF) {
@@ -196,7 +196,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
           CreateFunction(reinterpret_cast<OpaqueTfFuncOp*>(&fn)),
           absl::StrCat("updating function ", fn.getName().str()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return Status(

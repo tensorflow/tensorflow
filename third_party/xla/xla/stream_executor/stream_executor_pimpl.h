@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -40,14 +41,12 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/dnn.pb.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -56,11 +55,6 @@ class Stream;
 namespace internal {
 class StreamExecutorInterface;
 }  // namespace internal
-
-// Forward declaration of private friend class.
-template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
-          typename... BeginArgsT>
-class ScopedTracer;
 
 // A StreamExecutor manages a single device, in terms of executing work (kernel
 // launches) and memory management (allocation/deallocation, memory copies to
@@ -192,10 +186,8 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void* HostMemoryAllocate(uint64_t size);
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  void HostMemoryDeallocate(void* location);
+  absl::StatusOr<std::unique_ptr<HostMemoryAllocation>> HostMemoryAllocate(
+      uint64_t size);
 
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
@@ -279,103 +271,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  // Returns the supported algorithms / execution plans for a convolution.
-  absl::Status GetConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, ScratchAllocator* scratch_allocator,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
-
-  absl::Status GetGraphConvolveRunners(
-      dnn::ConvolutionKind kind, dnn::DataType input_type,
-      dnn::DataType output_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
-      std::string serialized_graph);
-
-  absl::Status GetFusedConvolveRunners(
-      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-      dnn::DataType input_type, dnn::DataType bias_type,
-      dnn::DataType output_type, double conv_input_scale,
-      double side_input_scale, double leakyrelu_alpha, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      bool use_fallback, dnn::ActivationMode activation_mode,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
-
-  absl::Status GetFusedMatmulRunners(
-      bool use_cudnn_frontend, dnn::DataType input_type,
-      dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
-      bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
-      int64_t lda, int64_t ldb, int64_t ldc,
-      dnn::ActivationMode activation_mode, bool use_fallback,
-      const NumericOptions& numeric_options,
-      std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
-          out_exec_plans);
-
-  // Returns the list of supported algorithms for the forward convolution
-  // operation.
-  bool GetMIOpenConvolveAlgorithms(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms);
-
-  // Returns the list of supported algorithms for rnn operation.
-  bool GetRnnAlgorithms(std::vector<dnn::AlgorithmDesc>* out_algorithms);
-
-  // Get the list of supported algorithms for BLAS gemm.
-  bool GetBlasGemmAlgorithms(Stream* stream,
-                             std::vector<blas::AlgorithmType>* out_algorithms);
-
-  // Create an RNN descriptor based on model shapes and configurations.
-  // The caller retains the ownership of the descriptor.
-  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
-      int num_layers, int hidden_size, int input_size, int cell_size,
-      int batch_size, dnn::RnnInputMode input_mode,
-      dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
-      dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      const NumericOptions& numeric_options, float dropout, uint64_t seed,
-      ScratchAllocator* state_allocator, bool use_padded_io);
-
-  // Create a RNN sequence descriptor that specifies either the input or output
-  // sequence. The caller retains the ownership of the returned descriptor.
-  absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
-                                    int data_size, dnn::DataType data_type);
-
-  absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
-                                    int data_size,
-                                    const absl::Span<const int>& seq_lengths,
-                                    bool time_major, dnn::DataType data_type);
-
-  // Create an RNN state descriptor that specifies the input or hidden state.
-  // The caller retains the ownership of the returned descriptor.
-  absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
-  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
-                                 dnn::DataType data_type);
-
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }
@@ -389,14 +284,14 @@ class StreamExecutor {
   // time. The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
   template <typename... Args>
-  absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
       absl::string_view kernel_name, absl::string_view ptx,
       absl::Span<const uint8_t> cubin_data);
 
   // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
   // an in-process symbol pointer.
   template <typename... Args>
-  absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
       absl::string_view kernel_name, void* symbol);
 
   // Warning: use Stream::ThenLaunch instead, this method is not for general
@@ -471,15 +366,14 @@ class StreamExecutor {
   Stream* FindAllocatedStream(void* gpu_stream);
 
  private:
-  template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
-            typename... BeginArgsT>
-  friend class ScopedTracer;
   friend class Event;
   friend class Stream;
   template <typename... Params>
   friend class TypedKernel;
-  template <typename... Args>
-  friend struct ThenBlasImpl;
+  friend class HostMemoryAllocation;
+
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
+  void HostMemoryDeallocate(void* data, uint64_t size);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,
@@ -557,13 +451,6 @@ class StreamExecutor {
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
 
-  // Adds a task to the tsl::thread::ThreadPool work queue. These tasks must be
-  // fire-and-forget and have no external data or timing dependencies; their
-  // execution order and completion time have no guarantees.
-  // For an example of an appropriate task, see HostBlas::DoBlasGemmInternal;
-  // there, temporary internal buffers are freed using this method.
-  void EnqueueOnBackgroundThread(std::function<void()> task);
-
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
   // Mutable so that caching functions (like DeviceDescription, AsBlas, etc.)
@@ -599,16 +486,6 @@ class StreamExecutor {
   //
   // Immutable post-initialization.
   int device_ordinal_;
-
-  // Executor for handling host callback work that cannot be performed
-  // by a host callback thread - for example, cleanup after a host BLAS routine
-  // (which may make device API calls). This work cannot block the host
-  // callback thread, will be completed asynchronously, and should be treated
-  // as fire-and-forget. Assume no ordering guarantees WRT the tasks enqueued
-  // here.
-  //
-  // Immutable post-initialization. Object is thread-safe.
-  std::unique_ptr<tsl::thread::ThreadPool> background_threads_;
 
   // Counter for the current number of live streams. This is used to check
   // for accidentally-outstanding streams at StreamExecutor teardown time, as
@@ -671,12 +548,10 @@ class ScopedModuleHandle {
 // Inlines
 
 template <typename... Args>
-inline absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
-StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
-                                  absl::string_view ptx,
-                                  absl::Span<const uint8_t> cubin_data) {
-  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
-  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
+    absl::string_view kernel_name, absl::string_view ptx,
+    absl::Span<const uint8_t> cubin_data) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
   if (!cubin_data.empty()) {
@@ -684,19 +559,16 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
-  return std::move(kernel_base);
+  return TypedKernel<Args...>::Create(this, loader_spec);
 }
 
 template <typename... Args>
-inline absl::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
-StreamExecutor::CreateTypedKernel(absl::string_view kernel_name, void* symbol) {
-  auto kernel_base = std::make_unique<TypedKernel<Args...>>(this);
-  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
+    absl::string_view kernel_name, void* symbol) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
   loader_spec.AddInProcessSymbol(symbol, kernel_name);
 
-  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
-  return std::move(kernel_base);
+  return TypedKernel<Args...>::Create(this, loader_spec);
 }
 
 template <typename T>

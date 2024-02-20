@@ -1,31 +1,26 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//learning/brain/mlir:mhlo_friends"]),
     licenses = ["notice"],
 )
 
-exports_files(
-    [
-        "mhlo/IR/hlo_ops.td",
-        "lhlo/IR/lhlo_ops.td",
-    ],
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    "mhlo/IR/hlo_ops.td",
+    "lhlo/IR/lhlo_ops.td",
+])
 
 # Python extension sources.
-exports_files(
-    ["bindings/python/MlirHloModule.cc"],
-    visibility = ["//visibility:public"],
-)
+exports_files(["bindings/python/MlirHloModule.cc"])
 
 filegroup(
     name = "hlo_ops_td_filegroup",
     srcs = glob(["mhlo/IR/*.td"]),
-    visibility = ["//visibility:public"],
 )
 
 td_library(
@@ -321,7 +316,6 @@ cc_library(
     srcs = ["mhlo/IR/hlo_ops_common.cc"],
     hdrs = ["mhlo/IR/hlo_ops_common.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -384,7 +378,6 @@ cc_library(
         "deallocation/transforms/passes.h",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":deallocation_passes_inc_gen",
         ":deallocation_utils",
@@ -428,7 +421,6 @@ cc_library(
     srcs = ["deallocation/utils/util.cc"],
     hdrs = ["deallocation/utils/util.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -484,7 +476,6 @@ cc_library(
         "lhlo/IR/lhlo_structured_interface.h.inc",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":lhlo_structured_interface_inc_gen",
         "@llvm-project//mlir:IR",
@@ -497,7 +488,6 @@ cc_library(
     srcs = ["utils/convert_op_folder.cc"],
     hdrs = ["utils/convert_op_folder.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -525,7 +515,6 @@ cc_library(
         "utils/hlo_utils.h",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":canonicalize_inc_gen",
         ":convert_op_folder",
@@ -573,7 +562,6 @@ cc_library(
         "lhlo/utils/lhlo_utils.h",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_ops_common",
         ":lhlo_ops_inc_gen",
@@ -598,7 +586,6 @@ cc_library(
     srcs = ["lhlo_gpu/IR/lhlo_gpu_ops.cc"],
     hdrs = ["lhlo_gpu/IR/lhlo_gpu_ops.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_ops_common",
         ":lhlo",
@@ -619,7 +606,6 @@ cc_library(
     srcs = ["lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"],
     hdrs = ["lhlo_gpu/IR/lhlo_gpu_ops.h.inc"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -643,7 +629,6 @@ cc_library(
     srcs = ["mhlo/IR/init.cc"],
     hdrs = ["mhlo/IR/register.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:IR",
@@ -700,7 +685,6 @@ cc_library(
         "mhlo/transforms/optimize_mhlo/optimize_mhlo.cc",
         "mhlo/transforms/optimize_mhlo/optimize_mhlo_pass.cc",
         "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
-        "mhlo/transforms/rank_specialization/rank_specialization.cc",
         "mhlo/transforms/restrict_max_rank/restrict_max_rank.cc",
         "mhlo/transforms/shape_legalize_to_hlo/shape_legalize_to_hlo.cc",
         "mhlo/transforms/shape_reification/shape_reification_pass.cc",
@@ -720,7 +704,6 @@ cc_library(
         "mhlo/utils/mhlo_rng_utils.h",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":chlo_legalize_to_hlo",
         ":hlo_legalize_to_stablehlo",
@@ -778,7 +761,6 @@ cc_library(
     srcs = ["mhlo/utils/type_conversion.cc"],
     hdrs = ["mhlo/utils/type_conversion.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:FuncDialect",
@@ -794,7 +776,6 @@ cc_library(
     name = "map_lmhlo_to_scalar_op",
     hdrs = ["lhlo/transforms/map_lmhlo_to_scalar_op.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":map_lhlo_to_hlo_op",
         ":map_mhlo_to_scalar_op",
@@ -805,7 +786,6 @@ cc_library(
     name = "map_mhlo_to_scalar_op",
     hdrs = ["mhlo/transforms/map_mhlo_to_scalar_op.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -821,7 +801,6 @@ cc_library(
     name = "map_chlo_to_hlo_op",
     hdrs = ["mhlo/transforms/map_chlo_to_hlo_op.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:IR",
@@ -833,7 +812,6 @@ cc_library(
     name = "map_hlo_to_lhlo_op",
     hdrs = ["lhlo/transforms/map_hlo_to_lhlo_op.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":lhlo",
         ":mlir_hlo",
@@ -844,7 +822,6 @@ cc_library(
     name = "map_lhlo_to_hlo_op",
     hdrs = ["lhlo/transforms/map_lhlo_to_hlo_op.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":lhlo",
         ":mlir_hlo",
@@ -855,7 +832,6 @@ cc_library(
     name = "map_stablehlo_to_hlo_op",
     hdrs = ["mhlo/transforms/map_stablehlo_to_hlo_op.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@stablehlo//:stablehlo_ops",
@@ -873,7 +849,6 @@ cc_library(
     ],
     hdrs = ["lhlo/transforms/passes.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":lhlo",
         ":lmhlo_pass_inc_gen",
@@ -905,7 +880,6 @@ cc_library(
     srcs = ["utils/codegen_utils.cc"],
     hdrs = ["utils/codegen_utils.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -921,30 +895,7 @@ cc_library(
     name = "placement_utils",
     hdrs = ["utils/placement_utils.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = ["@llvm-project//llvm:Support"],
-)
-
-cc_library(
-    name = "lhlo_elemental_utils",
-    srcs = ["lhlo/transforms/lhlo_elemental_utils.cc"],
-    hdrs = ["lhlo/transforms/lhlo_elemental_utils.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":codegen_utils",
-        ":lhlo",
-        ":map_lmhlo_to_scalar_op",
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Transforms",
-    ],
 )
 
 cc_library(
@@ -952,7 +903,6 @@ cc_library(
     srcs = ["mhlo/utils/legalize_to_linalg_utils.cc"],
     hdrs = ["mhlo/utils/legalize_to_linalg_utils.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":map_mhlo_to_scalar_op",
         ":mlir_hlo",
@@ -980,7 +930,6 @@ cc_library(
     srcs = ["mhlo/utils/mhlo_rng_utils.cc"],
     hdrs = ["mhlo/utils/mhlo_rng_utils.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -1000,7 +949,6 @@ cc_library(
     srcs = ["mhlo/utils/mhlo_scatter_gather_utils.cc"],
     hdrs = ["mhlo/utils/mhlo_scatter_gather_utils.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//mlir:DialectUtils",
@@ -1051,7 +999,6 @@ cc_library(
     srcs = ["mhlo/transforms/unfuse_batch_norm/unfuse_batch_norm.cc"],
     hdrs = ["mhlo/transforms/rewriters.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -1069,7 +1016,6 @@ cc_library(
     srcs = ["mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc"],
     hdrs = ["mhlo/transforms/rewriters.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":chlo_legalize_to_hlo_inc_gen",
         ":map_chlo_to_hlo_op",
@@ -1107,7 +1053,6 @@ cc_library(
     srcs = ["mhlo/transforms/hlo_legalize_to_stablehlo/hlo_legalize_to_stablehlo.cc"],
     hdrs = ["mhlo/transforms/rewriters.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
@@ -1126,7 +1071,6 @@ cc_library(
     srcs = ["mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo.cc"],
     hdrs = ["mhlo/transforms/rewriters.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
@@ -1157,7 +1101,6 @@ cc_library(
         "transforms/passes.h",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":chlo_legalize_to_hlo",
         ":deallocation_passes",
@@ -1170,7 +1113,6 @@ cc_library(
         ":stablehlo_legalize_to_hlo",
         ":transforms_passes",
         ":transforms_passes_inc_gen",
-        ":userange_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1183,10 +1125,8 @@ cc_library(
 cc_library(
     name = "transforms_passes",
     srcs = [
-        "analysis/test_userange_analysis.cc",
         "mhlo/analysis/test_shape_component_analysis.cc",
         "transforms/alloc_to_arg_pass.cc",
-        "transforms/buffer_packing.cc",
         "transforms/bufferize.cc",
         "transforms/bufferize_pass.cc",
         "transforms/collapse_parallel_loops_to_1d_pass.cc",
@@ -1207,7 +1147,6 @@ cc_library(
         "transforms/rewriters.h",
     ],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":deallocation_passes",
         ":lhlo",
@@ -1216,7 +1155,6 @@ cc_library(
         ":shape_component_analysis",
         ":transforms_passes_inc_gen",
         ":type_conversion",
-        ":userange_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
@@ -1289,7 +1227,6 @@ cc_library(
     ],
     hdrs = ["transforms/gpu_passes.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":gpu_transforms_passes_inc_gen",
         ":lhlo",
@@ -1372,26 +1309,10 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "userange_analysis",
-    srcs = ["analysis/userange_analysis.cc"],
-    hdrs = ["analysis/userange_analysis.h"],
-    strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LoopLikeInterface",
-    ],
-)
-
-cc_library(
     name = "shape_component_analysis",
     srcs = ["mhlo/analysis/shape_component_analysis.cc"],
     hdrs = ["mhlo/analysis/shape_component_analysis.h"],
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -1423,7 +1344,6 @@ cc_library(
     srcs = CAPI_SOURCES,
     hdrs = CAPI_HEADERS,
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":all_passes",
         ":mlir_hlo",
@@ -1436,7 +1356,6 @@ cc_library(
     name = "CAPIHeaders",
     hdrs = CAPI_HEADERS,
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = ["@llvm-project//mlir:CAPIIRHeaders"],
 )
 
@@ -1446,7 +1365,6 @@ cc_library(
     srcs = CAPI_SOURCES,
     hdrs = CAPI_HEADERS,
     strip_include_prefix = ".",
-    visibility = ["//visibility:public"],
     deps = [
         ":all_passes",
         ":mlir_hlo",
@@ -1509,7 +1427,6 @@ filegroup(
         "bindings/python/mlir/dialects/mhlo.py",
         ":MhloOpsPyGen",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # A light-weight runtime support library, used by MLIR code that results

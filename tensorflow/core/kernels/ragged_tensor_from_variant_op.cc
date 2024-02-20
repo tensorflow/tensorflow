@@ -77,7 +77,7 @@ Status RaggedComponentsFromVariant(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* Takes a set of RaggedTensorVariants for non-ragged tensors, stacks
@@ -96,7 +96,7 @@ Status StackNonRaggedTensors(
     RaggedTensorVariant* output_ragged) {
   if (ragged_components.empty()) {
     output_ragged->set_values(Tensor(DataTypeToEnum<VALUE_TYPE>::value, {0}));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TensorShape component_values_shape = ragged_components[0].values().shape();
@@ -120,7 +120,7 @@ Status StackNonRaggedTensors(
       output_values_flat(values_index++) = component_values_flat(j);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
@@ -261,7 +261,7 @@ Status NestedStackRaggedTensors(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

@@ -20,16 +20,23 @@ limitations under the License.
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
@@ -40,6 +47,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/util/command_line_flags.h"
 
 namespace {
@@ -75,6 +83,9 @@ namespace xla {
 
 namespace {
 
+// Convention separator as set by mlir-opt tool.
+const char* kOptSeparator = "// -----";
+
 std::string GetHloPath(const HloOptConfig& opts, int argc, char** argv) {
   if (!opts.input_file.empty()) {
     return opts.input_file;
@@ -98,16 +109,43 @@ StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
   return data;
 }
 
-StatusOr<std::unique_ptr<HloModule>> GetModule(const HloOptConfig& opts,
-                                               int argc, char** argv) {
+StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
+    const HloOptConfig& opts, int argc, char** argv) {
   TF_ASSIGN_OR_RETURN(std::string module_data,
                       GetHloContents(opts, argc, argv));
+
+  std::vector<std::string> hlos;
+  if (opts.split_input_file) {
+    hlos = absl::StrSplit(module_data, kOptSeparator);
+  } else {
+    hlos.push_back(module_data);
+  }
 
   std::string format = opts.input_format;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(GetHloPath(opts, argc, argv)));
   }
-  return LoadModuleFromData(module_data, format);
+
+  std::vector<std::unique_ptr<HloModule>> out;
+  out.reserve(hlos.size());
+
+  for (const std::string& hlo : hlos) {
+    if (absl::StrContains(hlo, "// ---")) {
+      if (opts.split_input_file) {
+        return absl::InternalError(
+            "Unexpected separator found, expected exactly '// -----', found "
+            "'// ---'");
+      } else {
+        return absl::InternalError(
+            "'// ---' separator found in input, but -split-input-file not "
+            "specified");
+      }
+    }
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                        LoadModuleFromData(hlo, format));
+    out.push_back(std::move(module));
+  }
+  return out;
 }
 
 StatusOr<std::string> TranslateToStage(int argc, char** argv,
@@ -118,17 +156,21 @@ StatusOr<std::string> TranslateToStage(int argc, char** argv,
   if (opts.list_stages) {
     return absl::StrJoin(provider->SupportedStages(), "\n");
   }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      GetModule(opts, argc, argv));
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,
+                      GetModules(opts, argc, argv));
 
-  TF_ASSIGN_OR_RETURN(std::optional<std::string> out,
-                      provider->GenerateStage(std::move(module), opts.stage));
+  std::string out_combined;
 
-  if (!out.has_value()) {
-    return absl::UnimplementedError("Stage not supported");
+  for (std::unique_ptr<HloModule>& m : modules) {
+    TF_ASSIGN_OR_RETURN(std::optional<std::string> out,
+                        provider->GenerateStage(std::move(m), opts.stage));
+    if (!out.has_value()) {
+      return absl::UnimplementedError("Stage not supported");
+    }
+    absl::StrAppend(&out_combined, *out, "\n");
   }
 
-  return *out;
+  return out_combined;
 }
 
 Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
@@ -169,7 +211,10 @@ int main(int argc, char** argv) {
                 "\t\t\t * buffer-assignment: Buffer Assignment\n"
                 "\t\t\t * hlo-backend: HLO after backend passes\n"),
       tsl::Flag("list-stages", &opts.list_stages,
-                "Print all supported stages for a given platform and exit")};
+                "Print all supported stages for a given platform and exit"),
+      tsl::Flag("split-input-file", &opts.split_input_file,
+                "Splits the input file in pieces based on '// -----' "
+                "substring, and processes each chunk independently")};
   // Modifies global DebugOptions, populates flags with every flag available
   // from xla.proto.
   xla::AppendDebugOptionsFlags(&flag_list);

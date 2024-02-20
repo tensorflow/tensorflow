@@ -6,7 +6,6 @@ load("//xla:xla.bzl", "xla_cc_test")
 cc_library(
     name = "sm_bw_utils",
     hdrs = ["sm_bw_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@local_tsl//tsl/platform:logging",
     ] + if_cuda([
@@ -18,7 +17,6 @@ cuda_library(
     name = "sm_bw_kernels",
     srcs = ["sm_bw_kernels.cu.cc"],
     hdrs = ["sm_bw_kernels.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":sm_bw_utils",
     ],

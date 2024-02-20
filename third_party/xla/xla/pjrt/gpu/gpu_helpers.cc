@@ -120,13 +120,24 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
-    se::StreamExecutor* executor, size_t allocator_memory, bool preallocate) {
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
   auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
       executor, tsl::PlatformDeviceId(device_ordinal),
       /*memory_type=*/stream_executor::MemoryType::kCollective,
       /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
       /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
+
+  int64_t free_memory;
+  int64_t total_memory;
+  if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+    return Unavailable("Failed to query available memory from device %i",
+                       device_ordinal);
+  }
+  bool preallocate = collective_memory_size != 0;
+  size_t allocator_memory =
+      preallocate ? collective_memory_size : total_memory * memory_fraction;
 
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory

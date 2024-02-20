@@ -57,12 +57,23 @@ TEST(LockableTest, LockProperties) {
   EXPECT_FALSE(lock1);
   EXPECT_TRUE(lock2);
 
+  // TryAcquire will return empty lock for locked object.
+  LockableString::Lock lock3 = str.TryAcquire();
+  EXPECT_FALSE(lock3);
+
   // Locks have human readable names.
   EXPECT_EQ(lock1.ToString(), "<empty lock>");
   EXPECT_EQ(lock2.ToString(), "lockable string foo");
 
   // Lockable has human readable name.
   EXPECT_EQ(str.ToString(), "lockable string foo");
+
+  // After lock is destructed we can acquire lockable with TryLock.
+  auto sink = [](LockableString::Lock) {};
+  sink(std::move(lock2));
+
+  LockableString::Lock lock4 = str.TryAcquire();
+  EXPECT_TRUE(lock4);
 }
 
 TEST(LockableTest, ExclusiveAccess) {
@@ -73,8 +84,10 @@ TEST(LockableTest, ExclusiveAccess) {
 
   for (size_t i = 0; i < 100; ++i) {
     thread_pool.Schedule([&] {
-      auto exclusive_str = str.Acquire();
-      ASSERT_EQ(*exclusive_str, "foo");
+      {  // Decrement counter only after lock is released.
+        auto exclusive_str = str.Acquire();
+        ASSERT_EQ(*exclusive_str, "foo");
+      }
       counter.DecrementCount();
     });
   }

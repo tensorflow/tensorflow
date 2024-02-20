@@ -229,7 +229,7 @@ class DataServiceClient {
 
   // A status to be returned from the next call to `GetNext`. This is set by
   // asynchronous threads when they encounter errors.
-  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
+  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
   // A queue of results for `GetElement` requests to read from. When doing
   // strict round robin reads, the queue will contain placeholder results with
   // their `Result::ready` field false until their data has been retrieved

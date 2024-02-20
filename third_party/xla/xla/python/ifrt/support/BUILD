@@ -1,7 +1,6 @@
 load("//xla:xla.bzl", "xla_cc_test")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -10,7 +9,7 @@ cc_library(
     name = "sharding_conversions",
     srcs = ["sharding_conversions.cc"],
     hdrs = ["sharding_conversions.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla:statusor",
         "//xla:xla_data_proto_cc",

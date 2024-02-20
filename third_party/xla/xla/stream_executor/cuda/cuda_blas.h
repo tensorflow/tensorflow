@@ -20,14 +20,17 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
+#include <cstdint>
+
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
 
 namespace stream_executor {
 

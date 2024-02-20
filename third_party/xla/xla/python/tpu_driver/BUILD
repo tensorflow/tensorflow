@@ -10,6 +10,7 @@ load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 licenses(["notice"])
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
 )
 
@@ -18,7 +19,6 @@ tf_proto_library(
     srcs = ["tpu_driver.proto"],
     cc_api_version = 2,
     protodeps = [],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -34,7 +34,6 @@ tf_proto_library(
         "//xla/service:hlo_proto",
     ],
     use_grpc_namespace = True,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -47,7 +46,6 @@ cc_library(
         "platform/external/compat.h",
         "tpu_driver.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":tpu_driver_proto_cc",
         "//xla:status",
@@ -66,7 +64,6 @@ cc_library(
         "grpc_tpu_driver.cc",
     ],
     hdrs = ["grpc_tpu_driver.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":tpu_driver",
         ":tpu_driver_proto_cc",
@@ -86,7 +83,6 @@ cc_library(
     srcs = [
         "recording_tpu_driver.cc",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":tpu_driver",
         ":tpu_driver_proto_cc",
@@ -107,7 +103,6 @@ cc_library(
 cc_library(
     name = "pod_tpu_driver",
     srcs = ["pod_tpu_driver.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":grpc_tpu_driver",
         ":tpu_driver",

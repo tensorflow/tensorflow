@@ -1,67 +1,1764 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
---- a/clang/lib/Sema/SemaDecl.cpp
-+++ b/clang/lib/Sema/SemaDecl.cpp
-@@ -6377,6 +6377,12 @@
-   } else if (DiagnoseUnexpandedParameterPack(NameInfo, UPPC_DeclarationType))
-     return nullptr;
+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/ValueTracking.cpp b/llvm/lib/Analysis/ValueTracking.cpp
+--- a/llvm/lib/Analysis/ValueTracking.cpp
++++ b/llvm/lib/Analysis/ValueTracking.cpp
+@@ -5173,8 +5173,13 @@
+         Op->getOperand(0)->getType()->getScalarType()->getFltSemantics();
  
-+  // The scope passed in may not be a decl scope.  Zip up the scope tree until
-+  // we find one that is.
-+  while ((S->getFlags() & Scope::DeclScope) == 0 ||
-+         (S->getFlags() & Scope::TemplateParamScope) != 0)
-+    S = S->getParent();
+     // All subnormal inputs should be in the normal range in the result type.
+-    if (APFloat::isRepresentableAsNormalIn(SrcTy, DstTy))
++    if (APFloat::isRepresentableAsNormalIn(SrcTy, DstTy)) {
++      if (Known.KnownFPClasses & fcPosSubnormal)
++        Known.KnownFPClasses |= fcPosNormal;
++      if (Known.KnownFPClasses & fcNegSubnormal)
++        Known.KnownFPClasses |= fcNegNormal;
+       Known.knownNot(fcSubnormal);
++    }
+ 
+     // Sign bit of a nan isn't guaranteed.
+     if (!Known.isKnownNeverNaN())
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AsmParser/AArch64AsmParser.cpp b/llvm/lib/Target/AArch64/AsmParser/AArch64AsmParser.cpp
+--- a/llvm/lib/Target/AArch64/AsmParser/AArch64AsmParser.cpp
++++ b/llvm/lib/Target/AArch64/AsmParser/AArch64AsmParser.cpp
+@@ -4764,6 +4764,15 @@
+ 
+   // Nothing custom, so do general case parsing.
+   SMLoc S, E;
++  auto parseOptionalShiftExtend = [&](AsmToken SavedTok) {
++    if (parseOptionalToken(AsmToken::Comma)) {
++      ParseStatus Res = tryParseOptionalShiftExtend(Operands);
++      if (!Res.isNoMatch())
++        return Res.isFailure();
++      getLexer().UnLex(SavedTok);
++    }
++    return false;
++  };
+   switch (getLexer().getKind()) {
+   default: {
+     SMLoc S = getLoc();
+@@ -4773,7 +4782,7 @@
+ 
+     SMLoc E = SMLoc::getFromPointer(getLoc().getPointer() - 1);
+     Operands.push_back(AArch64Operand::CreateImm(Expr, S, E, getContext()));
+-    return false;
++    return parseOptionalShiftExtend(getTok());
+   }
+   case AsmToken::LBrac: {
+     Operands.push_back(
+@@ -4895,14 +4904,7 @@
+     Operands.push_back(AArch64Operand::CreateImm(ImmVal, S, E, getContext()));
+ 
+     // Parse an optional shift/extend modifier.
+-    AsmToken SavedTok = Tok;
+-    if (parseOptionalToken(AsmToken::Comma)) {
+-      ParseStatus Res = tryParseOptionalShiftExtend(Operands);
+-      if (!Res.isNoMatch())
+-        return Res.isFailure();
+-      getLexer().UnLex(SavedTok);
+-    }
+-    return false;
++    return parseOptionalShiftExtend(Tok);
+   }
+   case AsmToken::Equal: {
+     SMLoc Loc = getLoc();
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/CMakeLists.txt b/llvm/lib/Target/Hexagon/CMakeLists.txt
+--- a/llvm/lib/Target/Hexagon/CMakeLists.txt
++++ b/llvm/lib/Target/Hexagon/CMakeLists.txt
+@@ -50,7 +50,6 @@
+   HexagonOptAddrMode.cpp
+   HexagonOptimizeSZextends.cpp
+   HexagonPeephole.cpp
+-  HexagonPostIncOpt.cpp
+   HexagonRDFOpt.cpp
+   HexagonRegisterInfo.cpp
+   HexagonSelectionDAGInfo.cpp
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/HexagonInstrInfo.cpp b/llvm/lib/Target/Hexagon/HexagonInstrInfo.cpp
+--- a/llvm/lib/Target/Hexagon/HexagonInstrInfo.cpp
++++ b/llvm/lib/Target/Hexagon/HexagonInstrInfo.cpp
+@@ -1655,13 +1655,6 @@
+   return getAddrMode(MI) == HexagonII::PostInc;
+ }
+ 
+-bool HexagonInstrInfo::isPostIncWithImmOffset(const MachineInstr &MI) const {
+-  unsigned BasePos, OffsetPos;
+-  if (!getBaseAndOffsetPosition(MI, BasePos, OffsetPos))
+-    return false;
+-  return isPostIncrement(MI) && MI.getOperand(OffsetPos).isImm();
+-}
+-
+ // Returns true if an instruction is predicated irrespective of the predicate
+ // sense. For example, all of the following will return true.
+ // if (p0) R1 = add(R2, R3)
+@@ -2443,55 +2436,6 @@
+          Opcode == Hexagon::J2_loop1rext;
+ }
+ 
+-bool HexagonInstrInfo::isCircBufferInstr(const MachineInstr &MI) const {
+-  switch (MI.getOpcode()) {
+-  default:
+-    return false;
+-  case Hexagon::L2_loadalignb_pci:
+-  case Hexagon::L2_loadalignb_pcr:
+-  case Hexagon::L2_loadalignh_pci:
+-  case Hexagon::L2_loadalignh_pcr:
+-  case Hexagon::L2_loadbsw2_pci:
+-  case Hexagon::L2_loadbsw2_pcr:
+-  case Hexagon::L2_loadbsw4_pci:
+-  case Hexagon::L2_loadbsw4_pcr:
+-  case Hexagon::L2_loadbzw2_pci:
+-  case Hexagon::L2_loadbzw2_pcr:
+-  case Hexagon::L2_loadbzw4_pci:
+-  case Hexagon::L2_loadbzw4_pcr:
+-  case Hexagon::L2_loadrb_pci:
+-  case Hexagon::L2_loadrb_pcr:
+-  case Hexagon::L2_loadrd_pci:
+-  case Hexagon::L2_loadrd_pcr:
+-  case Hexagon::L2_loadrh_pci:
+-  case Hexagon::L2_loadrh_pcr:
+-  case Hexagon::L2_loadri_pci:
+-  case Hexagon::L2_loadri_pcr:
+-  case Hexagon::L2_loadrub_pci:
+-  case Hexagon::L2_loadrub_pcr:
+-  case Hexagon::L2_loadruh_pci:
+-  case Hexagon::L2_loadruh_pcr:
+-  case Hexagon::S2_storerbnew_pci:
+-  case Hexagon::S2_storerbnew_pcr:
+-  case Hexagon::S2_storerb_pci:
+-  case Hexagon::S2_storerb_pcr:
+-  case Hexagon::S2_storerd_pci:
+-  case Hexagon::S2_storerd_pcr:
+-  case Hexagon::S2_storerf_pci:
+-  case Hexagon::S2_storerf_pcr:
+-  case Hexagon::S2_storerhnew_pci:
+-  case Hexagon::S2_storerhnew_pcr:
+-  case Hexagon::S2_storerh_pci:
+-  case Hexagon::S2_storerh_pcr:
+-  case Hexagon::S2_storerinew_pci:
+-  case Hexagon::S2_storerinew_pcr:
+-  case Hexagon::S2_storeri_pci:
+-  case Hexagon::S2_storeri_pcr:
+-    return true;
+-  }
+-  return false;
+-}
+-
+ bool HexagonInstrInfo::isMemOp(const MachineInstr &MI) const {
+   switch (MI.getOpcode()) {
+     default: return false;
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/HexagonInstrInfo.h b/llvm/lib/Target/Hexagon/HexagonInstrInfo.h
+--- a/llvm/lib/Target/Hexagon/HexagonInstrInfo.h
++++ b/llvm/lib/Target/Hexagon/HexagonInstrInfo.h
+@@ -434,8 +434,6 @@
+   bool predCanBeUsedAsDotNew(const MachineInstr &MI, Register PredReg) const;
+   bool PredOpcodeHasJMP_c(unsigned Opcode) const;
+   bool predOpcodeHasNot(ArrayRef<MachineOperand> Cond) const;
+-  bool isPostIncWithImmOffset(const MachineInstr &MI) const;
+-  bool isCircBufferInstr(const MachineInstr &MI) const;
+ 
+   unsigned getAddrMode(const MachineInstr &MI) const;
+   MachineOperand *getBaseAndOffset(const MachineInstr &MI, int64_t &Offset,
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/HexagonPostIncOpt.cpp b/llvm/lib/Target/Hexagon/HexagonPostIncOpt.cpp
+--- a/llvm/lib/Target/Hexagon/HexagonPostIncOpt.cpp
++++ b/llvm/lib/Target/Hexagon/HexagonPostIncOpt.cpp
+@@ -1,689 +0,0 @@
+-//===-- HexagonPostIncOpt.cpp - Hexagon Post Increment Optimization Pass --===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-// Convert post-inc addressing mode into base-offset addressing mode.
+-// Ex:
+-// original loop:
+-// v1 = phi(v0, v3)
+-// v2,v3 = post_load v1, 4
+-
+-// Often, unroller creates below form of post-increments:
+-// v1 = phi(v0, v3')
+-// v2,v3  = post_load v1, 4
+-// v2',v3'= post_load v3, 4
+-
+-// This can be optimized in two ways
+-
+-// 1.
+-// v1 = phi(v0, v3')
+-// v2,v3' = post_load v1, 8
+-// v2' = load v3', -4
+-//
+-// 2.
+-// v1 = phi(v0, v3')
+-// v2,v3' = post_load v1, 8
+-// v2' = load v1, 4
+-//
+-// Option 2 is favored as we can packetize two memory operations in a single
+-// packet. However, this is not always favorable due to memory dependences
+-// and in cases where we form a bigger chain of post-increment ops that will
+-// create more spills as we can not execute post-increment ops with out
+-// executing base-offset instructions.
+-//===----------------------------------------------------------------------===//
+-#include "HexagonInstrInfo.h"
+-#include "HexagonSubtarget.h"
+-#include "llvm/Analysis/AliasAnalysis.h"
+-#include "llvm/CodeGen/MachineBasicBlock.h"
+-#include "llvm/CodeGen/MachineFunction.h"
+-#include "llvm/CodeGen/MachineFunctionPass.h"
+-#include "llvm/CodeGen/MachineInstr.h"
+-#include "llvm/CodeGen/MachineInstrBuilder.h"
+-#include "llvm/CodeGen/MachineLoopInfo.h"
+-#include "llvm/CodeGen/Passes.h"
+-#include "llvm/CodeGen/ScheduleDAGInstrs.h"
+-#include "llvm/CodeGen/TargetRegisterInfo.h"
+-#include "llvm/InitializePasses.h"
+-#include "llvm/Pass.h"
+-#include "llvm/Support/CodeGen.h"
+-#include "llvm/Support/CommandLine.h"
+-#include "llvm/Support/Debug.h"
+-#include "llvm/Support/raw_ostream.h"
+-
+-using namespace llvm;
+-
+-#define DEBUG_TYPE "hexagon-postincopt"
+-
+-static cl::opt<unsigned> PostIncChainThreshold(
+-    "post-inc-chain-threshold", cl::Hidden, cl::init(4),
+-    cl::desc("Limit the number of post-inc instructions in a chain."));
+-
+-static cl::opt<bool> PreferPostIncStore(
+-    "prefer-post-inc-store", cl::Hidden, cl::init(true),
+-    cl::desc("Prefer post-inc store in a list of loads and stores."));
+-
+-namespace llvm {
+-void initializeHexagonPostIncOptPass(PassRegistry &);
+-FunctionPass *createHexagonPostIncOpt();
+-} // namespace llvm
+-
+-namespace {
+-
+-class HexagonPostIncOpt : public MachineFunctionPass {
+-  MachineLoopInfo *MLI = nullptr;
+-  const HexagonInstrInfo *HII = nullptr;
+-  const TargetRegisterInfo *TRI = nullptr;
+-  const MachineRegisterInfo *MRI = nullptr;
+-  const HexagonSubtarget *HST = nullptr;
+-
+-public:
+-  static char ID;
+-
+-  HexagonPostIncOpt() : MachineFunctionPass(ID) {
+-    initializeHexagonPostIncOptPass(*PassRegistry::getPassRegistry());
+-  }
+-
+-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+-    AU.addRequired<AAResultsWrapperPass>();
+-    AU.addPreserved<AAResultsWrapperPass>();
+-    AU.addRequired<MachineLoopInfo>();
+-    MachineFunctionPass::getAnalysisUsage(AU);
+-  }
+-
+-  StringRef getPassName() const override { return "Hexagon Post-Inc-Opt Pass"; }
+-
+-  bool runOnMachineFunction(MachineFunction &Fn) override;
+-
+-private:
+-  bool translatePostIncsInLoop(MachineBasicBlock &MBB);
+-  void replacePostIncWithBaseOffset(MachineBasicBlock &MBB) const;
+-  void replacePostIncWithBaseOffset(MachineInstr &MI) const;
+-  bool isPostIncInsn(MachineInstr &MI) const;
+-  void foldAdds(MachineBasicBlock &MBB) const;
+-  void updateBaseAndOffset(MachineInstr &MI, MachineInstr &AddMI) const;
+-  void removeDeadInstructions(MachineBasicBlock &MBB) const;
+-
+-  void generatePostInc(MachineBasicBlock &MBB);
+-  bool canReplaceWithPostInc(MachineInstr *MI, MachineInstr *AddMI) const;
+-  void replaceWithPostInc(MachineInstr *MI, MachineInstr *AddMI) const;
+-
+-  bool isValidOffset(const MachineInstr &MI, int64_t Offset) const;
+-  bool isValidPostIncValue(const MachineInstr &MI, int IncVal) const;
+-};
+-
+-class HexagonPostIncOptSchedDAG : public ScheduleDAGInstrs {
+-  HexagonPostIncOpt &Pass;
+-
+-public:
+-  HexagonPostIncOptSchedDAG(HexagonPostIncOpt &P, MachineFunction &MF,
+-                            MachineLoopInfo *MLI)
+-      : ScheduleDAGInstrs(MF, MLI, false), Pass(P){};
+-  void schedule() override;
+-  ScheduleDAGTopologicalSort &getTopo() { return Topo; };
+-};
+-
+-} // End anonymous namespace.
+-
+-char HexagonPostIncOpt::ID = 0;
+-
+-INITIALIZE_PASS_BEGIN(HexagonPostIncOpt, DEBUG_TYPE,
+-                      "Hexagon Post-Inc-Opt Pass", false, false)
+-INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
+-INITIALIZE_PASS_DEPENDENCY(MachineLoopInfo)
+-INITIALIZE_PASS_END(HexagonPostIncOpt, DEBUG_TYPE, "Hexagon Post-Inc-Opt Pass",
+-                    false, false)
+-
+-/// Return true if MIA dominates MIB.
+-static bool dominates(MachineInstr *MIA, MachineInstr *MIB) {
+-  if (MIA->getParent() != MIB->getParent())
+-    return false; // Don't know since machine dominator tree is out of date.
+-
+-  MachineBasicBlock *MBB = MIA->getParent();
+-  MachineBasicBlock::iterator I = MBB->instr_begin();
+-  // Iterate over the basic block until MIA or MIB is found.
+-  for (; &*I != MIA && &*I != MIB; ++I)
+-    ;
+-
+-  // MIA dominates MIB if MIA is found first.
+-  return &*I == MIA;
+-}
+-
+-// Return the Phi register value that comes from the loop block.
+-static unsigned getLoopPhiReg(MachineInstr *Phi, MachineBasicBlock *LoopBB) {
+-  for (unsigned i = 1, e = Phi->getNumOperands(); i != e; i += 2)
+-    if (Phi->getOperand(i + 1).getMBB() == LoopBB)
+-      return Phi->getOperand(i).getReg();
+-  return UINT_MAX;
+-}
+-
+-static bool isAddWithImmValue(const MachineInstr &MI) {
+-  // FIXME: For now, only deal with adds that have strict immediate values.
+-  // Some A2_addi instructions can be of the form.
+-  // %338:intregs = A2_addi %7:intregs, @_ZL7phs_tbl + 16
+-  return MI.getOpcode() == Hexagon::A2_addi && MI.getOperand(2).isImm();
+-}
+-
+-// Compute the number of 'real' instructions in the basic block by
+-// ignoring terminators.
+-static unsigned getBasicBlockSize(MachineBasicBlock &MBB) {
+-  unsigned size = 0;
+-  for (auto &I : make_range(MBB.begin(), MBB.getFirstTerminator()))
+-    if (!I.isDebugInstr())
+-      size++;
+-  return size;
+-}
+-
+-// Setup Post increment Schedule DAG.
+-static void initPISchedDAG(HexagonPostIncOptSchedDAG &PIDAG,
+-                           MachineBasicBlock &MBB) {
+-  PIDAG.startBlock(&MBB);
+-  PIDAG.enterRegion(&MBB, MBB.begin(), MBB.getFirstTerminator(),
+-                    getBasicBlockSize(MBB));
+-  // Build the graph.
+-  PIDAG.schedule();
+-  // exitRegion() is an empty function in base class. So, safe to call it here.
+-  PIDAG.exitRegion();
+-}
+-
+-// Check if post-increment candidate has any memory dependence on any
+-// instruction in the chain.
+-static bool hasMemoryDependency(SUnit *PostIncSU,
+-                                SmallVector<MachineInstr *, 4> &UseList) {
+-
+-  // FIXME: Fine tune the order dependence. Probably can only consider memory
+-  // related OrderKind.
+-  for (auto &Dep : PostIncSU->Succs)
+-    if (Dep.getKind() == SDep::Order)
+-      if (std::find(UseList.begin(), UseList.end(),
+-                    Dep.getSUnit()->getInstr()) != UseList.end())
+-        return true;
+-
+-  return false;
+-}
+-
+-// Fold an add with immediate into either an add or a load or a store.
+-void HexagonPostIncOpt::foldAdds(MachineBasicBlock &MBB) const {
+-  LLVM_DEBUG(dbgs() << "#Fold add instructions in this block.\n");
+-  for (auto &MI : make_range(MBB.getFirstNonPHI(), MBB.getFirstTerminator())) {
+-    if (!isAddWithImmValue(MI))
+-      continue;
+-    unsigned DefReg = MI.getOperand(0).getReg();
+-    unsigned AddReg = MI.getOperand(1).getReg();
+-    int64_t AddImm = MI.getOperand(2).getImm();
+-
+-    SmallVector<MachineInstr *, 4> UseList;
+-    // Gather the uses of add instruction's def reg.
+-    for (auto &MO : make_range(MRI->use_begin(DefReg), MRI->use_end())) {
+-      MachineInstr *UseMI = MO.getParent();
+-      // Deal with only the instuctions that belong to this block.
+-      // If we cross this block, the generation of post-increment logic
+-      // will not be able to transform to post-inc due to dominance.
+-      if (UseMI->getParent() == &MBB)
+-        UseList.push_back(UseMI);
+-    }
+-
+-    if (UseList.empty())
+-      continue;
+-
+-    LLVM_DEBUG({
+-      dbgs() << "Current instruction considered for folding \n";
+-      MI.dump();
+-    });
+-
+-    for (auto UseMI : UseList) {
+-      if (isAddWithImmValue(*UseMI)) {
+-        int64_t NewImm = AddImm + UseMI->getOperand(2).getImm();
+-        // Fold if the new immediate is with in the range.
+-        if (HII->isValidOffset(UseMI->getOpcode(), NewImm, TRI, false)) {
+-          LLVM_DEBUG({
+-            UseMI->dump();
+-            dbgs() << "\t is folded in to \n";
+-          });
+-          UseMI->getOperand(1).setReg(AddReg);
+-          UseMI->getOperand(2).setImm(NewImm);
+-          LLVM_DEBUG(UseMI->dump());
+-        }
+-      } else if (HII->isBaseImmOffset(*UseMI)) {
+-        LLVM_DEBUG({
+-          UseMI->dump();
+-          dbgs() << "\t is folded in to \n";
+-        });
+-        updateBaseAndOffset(*UseMI, MI);
+-        LLVM_DEBUG(UseMI->dump());
+-      }
+-      LLVM_DEBUG(dbgs() << "\n");
+-    }
+-  }
+-  removeDeadInstructions(MBB);
+-  LLVM_DEBUG(dbgs() << "#End of the fold instructions logic.\n");
+-}
+-
+-void HexagonPostIncOpt::updateBaseAndOffset(MachineInstr &MI,
+-                                            MachineInstr &AddMI) const {
+-  assert(HII->isBaseImmOffset(MI));
+-  unsigned BasePos, OffsetPos;
+-  if (!HII->getBaseAndOffsetPosition(MI, BasePos, OffsetPos))
+-    return;
+-
+-  MachineOperand &OffsetOp = MI.getOperand(OffsetPos);
+-  MachineOperand &BaseOp = MI.getOperand(BasePos);
+-
+-  if (BaseOp.getReg() != AddMI.getOperand(0).getReg())
+-    return;
+-
+-  unsigned IncBase = AddMI.getOperand(1).getReg();
+-  int64_t IncValue = AddMI.getOperand(2).getImm();
+-
+-  int64_t NewOffset = OffsetOp.getImm() + IncValue;
+-  if (!isValidOffset(MI, NewOffset))
+-    return;
+-
+-  OffsetOp.setImm(NewOffset);
+-  BaseOp.setReg(IncBase);
+-}
+-
+-void HexagonPostIncOpt::removeDeadInstructions(MachineBasicBlock &MBB) const {
+-  // For MBB, check that the value defined by each instruction is used.
+-  // If not, delete it.
+-  for (MachineBasicBlock::reverse_instr_iterator MI = MBB.instr_rbegin(),
+-                                                 ME = MBB.instr_rend();
+-       MI != ME;) {
+-    // From DeadMachineInstructionElem. Don't delete inline assembly.
+-    if (MI->isInlineAsm()) {
+-      ++MI;
+-      continue;
+-    }
+-    bool SawStore = false;
+-    // Check if it's safe to remove the instruction due to side effects.
+-    if (!MI->isSafeToMove(nullptr, SawStore)) {
+-      ++MI;
+-      continue;
+-    }
+-    unsigned Uses = 0;
+-    for (MachineInstr::mop_iterator MOI = MI->operands_begin(),
+-                                    MOE = MI->operands_end();
+-         MOI != MOE; ++MOI) {
+-      if (!MOI->isReg() || !MOI->isDef())
+-        continue;
+-      unsigned reg = MOI->getReg();
+-      // Assume physical registers are used.
+-      if (Register::isPhysicalRegister(reg)) {
+-        Uses++;
+-        continue;
+-      }
+-      if (MRI->use_begin(reg) != MRI->use_end())
+-        Uses++;
+-    }
+-    if (!Uses) {
+-      MI++->eraseFromParent();
+-      continue;
+-    }
+-    ++MI;
+-  }
+-}
+-
+-bool HexagonPostIncOpt::isPostIncInsn(MachineInstr &MI) const {
+-  // Predicated post-increments are not yet handled. (ISel is not generating
+-  // them yet). Circular buffer instructions should not be handled.
+-  return (HII->isPostIncWithImmOffset(MI) && !HII->isPredicated(MI) &&
+-          !HII->isCircBufferInstr(MI));
+-}
+-
+-/// For instructions with a base and offset, return true if the new Offset
+-/// is a valid value with the correct alignment.
+-bool HexagonPostIncOpt::isValidOffset(const MachineInstr &MI,
+-                                      int64_t Offset) const {
+-  if (!HII->isValidOffset(MI.getOpcode(), Offset, TRI, false))
+-    return false;
+-  unsigned AlignMask = HII->getMemAccessSize(MI) - 1;
+-  return (Offset & AlignMask) == 0;
+-}
+-
+-bool HexagonPostIncOpt::isValidPostIncValue(const MachineInstr &MI,
+-                                            int IncVal) const {
+-  unsigned AlignMask = HII->getMemAccessSize(MI) - 1;
+-  if ((IncVal & AlignMask) != 0)
+-    return false;
+-
+-  // Number of total bits in the instruction used to encode Inc value.
+-  unsigned IncBits = 4;
+-  // For HVX instructions, the offset is 3.
+-  if (HexagonII::isCVI(MI.getDesc()))
+-    IncBits = 3;
+-
+-  IncBits += Log2_32(HII->getMemAccessSize(MI));
+-  if (HII->getMemAccessSize(MI) > 8)
+-    IncBits = 16;
+-
+-  int MinValidVal = -1U << (IncBits - 1);
+-  int MaxValidVal = ~(-1U << (IncBits - 1));
+-  return (IncVal >= MinValidVal && IncVal <= MaxValidVal);
+-}
+-
+-void HexagonPostIncOptSchedDAG::schedule() {
+-  AliasAnalysis *AA = &Pass.getAnalysis<AAResultsWrapperPass>().getAAResults();
+-  buildSchedGraph(AA);
+-}
+-
+-// Replace post-increment operations with base+offset counterpart.
+-void HexagonPostIncOpt::replacePostIncWithBaseOffset(
+-    MachineBasicBlock &MBB) const {
+-  LLVM_DEBUG(dbgs() << "#Replacing post-increment instructions with "
+-                       "base+offset counterparts.\n");
+-
+-  SmallVector<MachineInstr *, 4> MIList;
+-  for (auto &MI : make_range(MBB.getFirstNonPHI(), MBB.getFirstTerminator())) {
+-    // Check for eligible post-inc candidates.
+-    if (!isPostIncInsn(MI))
+-      continue;
+-    MIList.push_back(&MI);
+-  }
+-
+-  for (auto MI : MIList)
+-    replacePostIncWithBaseOffset(*MI);
+-
+-  LLVM_DEBUG(dbgs() << "#Done with replacing post-increment instructions.\n");
+-}
+-
+-void HexagonPostIncOpt::replacePostIncWithBaseOffset(MachineInstr &MI) const {
+-  short NewOpcode = HII->changeAddrMode_pi_io(MI.getOpcode());
+-  if (NewOpcode < 0)
+-    return;
+-
+-  unsigned BasePos = 0, OffsetPos = 0;
+-  if (!HII->getBaseAndOffsetPosition(MI, BasePos, OffsetPos))
+-    return;
+-  const MachineOperand &PostIncOffset = MI.getOperand(OffsetPos);
+-  const MachineOperand &PostIncBase = MI.getOperand(BasePos);
+-
+-  MachineBasicBlock &MBB = *MI.getParent();
+-  DebugLoc DL = MI.getDebugLoc();
+-  MachineOperand *PostIncDest;
+-  MachineInstrBuilder MIB;
+-  if (MI.mayLoad()) {
+-    PostIncDest = &MI.getOperand(1);
+-    const MachineOperand &LDValue = MI.getOperand(0);
+-    MIB = BuildMI(MBB, MI, DL, HII->get(NewOpcode));
+-    MIB.add(LDValue).add(PostIncBase).addImm(0);
+-  } else {
+-    PostIncDest = &MI.getOperand(0);
+-    const MachineOperand &STValue = MI.getOperand(3);
+-    MIB = BuildMI(MBB, MI, DL, HII->get(NewOpcode));
+-    MIB.add(PostIncBase).addImm(0).add(STValue);
+-  }
+-
+-  // Transfer memoperands.
+-  MIB->cloneMemRefs(*MBB.getParent(), MI);
+-
+-  // Create an add instruction for the post-inc addition of offset.
+-  MachineInstrBuilder MIBA = BuildMI(MBB, MI, DL, HII->get(Hexagon::A2_addi));
+-  MIBA.add(*PostIncDest).add(PostIncBase).add(PostIncOffset);
+-
+-  LLVM_DEBUG({
+-    dbgs() << "\n";
+-    MI.dump();
+-    dbgs() << "\tis tranformed to \n";
+-    MIB->dump();
+-    MIBA->dump();
+-    dbgs() << "\n\n";
+-  });
+-
+-  MI.eraseFromParent();
+-}
+-
+-void HexagonPostIncOpt::generatePostInc(MachineBasicBlock &MBB) {
+-  LLVM_DEBUG(dbgs() << "# Generate Post-inc and update uses if needed.\n");
+-  MachineBasicBlock::iterator MII = MBB.getFirstNonPHI();
+-  MachineBasicBlock::iterator MIE = MBB.instr_begin();
+-  bool isOK = true;
+-  while (MII != MIE) {
+-    MachineInstr *Phi = &*std::prev(MII);
+-    MII = std::prev(MII);
+-    unsigned LoopVal = getLoopPhiReg(Phi, &MBB);
+-    if (LoopVal == UINT_MAX)
+-      continue;
+-    MachineInstr *LoopInst = MRI->getVRegDef(LoopVal);
+-    if (!isAddWithImmValue(*LoopInst))
+-      continue;
+-
+-    if (LoopInst->getOpcode() != Hexagon::A2_addi)
+-      continue;
+-
+-    unsigned AddReg = LoopInst->getOperand(1).getReg();
+-    int64_t AddImm = LoopInst->getOperand(2).getImm();
+-    SmallVector<MachineInstr *, 4> UseList;
+-    MachineInstr *PostIncCandidate = nullptr;
+-
+-    // Find the probable candidates for Post-increment instruction.
+-    SmallVector<MachineInstr *, 4> CandList;
+-    for (auto &MO : make_range(MRI->use_begin(AddReg), MRI->use_end())) {
+-      MachineInstr *UseMI = MO.getParent();
+-
+-      if (UseMI == LoopInst)
+-        continue;
+-
+-      if (!dominates(UseMI, LoopInst)) {
+-        isOK = false;
+-        break;
+-      }
+-      const MachineOperand *BaseOp = nullptr;
+-      int64_t Offset;
+-      bool OffsetIsScalable;
+-      if (!HII->isBaseImmOffset(*UseMI) ||
+-          !HII->getMemOperandWithOffset(*UseMI, BaseOp, Offset,
+-                                        OffsetIsScalable, TRI)) {
+-        isOK = false;
+-        break;
+-      }
+-      int64_t NewOffset = Offset - AddImm;
+-      if (!isValidOffset(*UseMI, NewOffset) || !BaseOp->isReg() ||
+-          BaseOp->getReg() != AddReg) {
+-        isOK = false;
+-        break;
+-      }
+-      if (OffsetIsScalable) {
+-        isOK = false;
+-        break;
+-      }
+-      if (Offset == 0) {
+-        // If you have stores in the chain, make sure they are in the beginning
+-        // of the list. Eg: LD, LD, ST, ST will end up as LD, LD, PostInc_ST,
+-        // ST.
+-        if (UseMI->mayStore() && PreferPostIncStore)
+-          CandList.insert(CandList.begin(), UseMI);
+-        else
+-          CandList.push_back(UseMI);
+-        continue;
+-      }
+-      UseList.push_back(UseMI);
+-    }
+-
+-    if (!isOK)
+-      continue;
+-
+-    for (auto MI : CandList) {
+-      if (!PostIncCandidate)
+-        PostIncCandidate = MI;
+-      // Push the rest of the list for updation.
+-      else
+-        UseList.push_back(MI);
+-    }
+-
+-    // If a candidate is found, replace it with the post-inc instruction.
+-    // Also, adjust offset for other uses as needed.
+-    if (!PostIncCandidate || !canReplaceWithPostInc(PostIncCandidate, LoopInst))
+-      continue;
+-
+-    // Logic to determine what the base register to be.
+-    // There are two choices:
+-    //   1. New address register after we updated the post-increment candidate.
+-    //      v2,v3 = post_load v1, 4
+-    //      v3 is the choice here.
+-    //   2. The base register we used in post-increment candidate.
+-    //      v2,v3 = post_load v1, 4
+-    //      v1 is the choice here.
+-    // Use v3  if there is a memory dependence between post-inc instruction and
+-    // any other instruction in the chain.
+-    // FIXME: We can do some complex DAG analysis based off height and depth and
+-    // selectively update other instructions in the chain. Use v3 if there are
+-    // more instructions in the chain, otherwise we will end up increasing the
+-    // height of the DAG resulting in more spills. By default we have a
+-    // threshold controlled by the option "post-inc-chain-threshold" which is
+-    // set to 4. v1 is preferred as we can packetize two memory operations in a
+-    // single packet in scalar core. But it heavily depends on the structure of
+-    // DAG.
+-    bool UpdateBaseToNew = false;
+-
+-    // Do not bother to build a DAG and analyze if the Use list is empty.
+-    if (!UseList.empty()) {
+-      MachineFunction *MF = MBB.getParent();
+-      // Setup the Post-inc schedule DAG.
+-      HexagonPostIncOptSchedDAG PIDAG(*this, *MF, MLI);
+-      initPISchedDAG(PIDAG, MBB);
+-      SUnit *SU = PIDAG.getSUnit(PostIncCandidate);
+-      if (hasMemoryDependency(SU, UseList) ||
+-          UseList.size() >= PostIncChainThreshold)
+-        UpdateBaseToNew = true;
+-    }
+-
+-    if (UpdateBaseToNew) {
+-      LLVM_DEBUG(dbgs() << "The heuristic determines to update the uses of the "
+-                           "base register of post-increment\n");
+-      for (auto UseMI : UseList) {
+-        if (!dominates(PostIncCandidate, UseMI))
+-          continue;
+-        unsigned BasePos, OffsetPos;
+-        if (HII->getBaseAndOffsetPosition(*UseMI, BasePos, OffsetPos)) {
+-          // New offset has already been validated; no need to do it again.
+-          LLVM_DEBUG({
+-            UseMI->dump();
+-            dbgs() << "\t is transformed to \n";
+-          });
+-          int64_t NewOffset = UseMI->getOperand(OffsetPos).getImm() - AddImm;
+-          UseMI->getOperand(OffsetPos).setImm(NewOffset);
+-          UseMI->getOperand(BasePos).setReg(LoopVal);
+-          LLVM_DEBUG(UseMI->dump());
+-        }
+-      }
+-    }
+-    replaceWithPostInc(PostIncCandidate, LoopInst);
+-  }
+-  LLVM_DEBUG(dbgs() << "# End of generation of Post-inc.\n");
+-}
+-
+-bool HexagonPostIncOpt::canReplaceWithPostInc(MachineInstr *MI,
+-                                              MachineInstr *AddMI) const {
+-  if (HII->changeAddrMode_io_pi(MI->getOpcode()) < 0)
+-    return false;
+-  assert(AddMI->getOpcode() == Hexagon::A2_addi);
+-  return isValidPostIncValue(*MI, AddMI->getOperand(2).getImm());
+-}
+-
+-void HexagonPostIncOpt::replaceWithPostInc(MachineInstr *MI,
+-                                           MachineInstr *AddMI) const {
+-  short NewOpcode = HII->changeAddrMode_io_pi(MI->getOpcode());
+-  assert(NewOpcode >= 0 &&
+-         "Couldn't change base offset to post-increment form");
+-
+-  MachineBasicBlock &MBB = *MI->getParent();
+-  DebugLoc DL = MI->getDebugLoc();
+-  const MachineOperand &IncDest = AddMI->getOperand(0);
+-  const MachineOperand &IncBase = AddMI->getOperand(1);
+-  const MachineOperand &IncValue = AddMI->getOperand(2);
+-  MachineInstrBuilder MIB;
+-  LLVM_DEBUG({
+-    dbgs() << "\n\n";
+-    MI->dump();
+-    dbgs() << "\t is tranformed to post-inc form of \n";
+-  });
+-
+-  if (MI->mayLoad()) {
+-    const MachineOperand &LDValue = MI->getOperand(0);
+-    MIB = BuildMI(MBB, *MI, DL, HII->get(NewOpcode));
+-    MIB.add(LDValue).add(IncDest).add(IncBase).add(IncValue);
+-  } else {
+-    const MachineOperand &STValue = MI->getOperand(2);
+-    MIB = BuildMI(MBB, *MI, DL, HII->get(NewOpcode));
+-    MIB.add(IncDest).add(IncBase).add(IncValue).add(STValue);
+-  }
+-
+-  // Transfer memoperands.
+-  MIB->cloneMemRefs(*MBB.getParent(), *MI);
+-
+-  LLVM_DEBUG({
+-    MIB->dump();
+-    dbgs() << "As a result this add instruction is erased.\n";
+-    AddMI->dump();
+-  });
+-
+-  MI->eraseFromParent();
+-  AddMI->eraseFromParent();
+-}
+-
+-bool HexagonPostIncOpt::translatePostIncsInLoop(MachineBasicBlock &MBB) {
+-  // Algorithm:
+-  // 1. Replace all the post-inc instructions with Base+Offset instruction and
+-  // an add instruction in this block.
+-  // 2. Fold all the adds in to respective uses.
+-  // 3. Generate post-increment instructions and update the uses of the base
+-  // register if needed based on constraints.
+-
+-  replacePostIncWithBaseOffset(MBB);
+-  foldAdds(MBB);
+-  generatePostInc(MBB);
+-  return true;
+-}
+-
+-bool HexagonPostIncOpt::runOnMachineFunction(MachineFunction &MF) {
+-
+-  // Skip pass if requested.
+-  if (skipFunction(MF.getFunction()))
+-    return false;
+-
+-  // Get Target Information.
+-  MLI = &getAnalysis<MachineLoopInfo>();
+-  HST = &MF.getSubtarget<HexagonSubtarget>();
+-  TRI = HST->getRegisterInfo();
+-  MRI = &MF.getRegInfo();
+-  HII = HST->getInstrInfo();
+-
+-  // Skip this pass for TinyCore.
+-  // Tiny core allwos partial post increment operations - This constraint can
+-  // be imposed inside the pass. In a chain of post-increments, the first can
+-  // be post-increment, rest can be adjusted to base+offset (these are
+-  // inexpensive in most of the cases);
+-  if (HST->isTinyCore())
+-    return false;
+-
+-  LLVM_DEBUG({
+-    dbgs() << "Begin: Hexagon Post-Inc-Opt Pass.\n";
+-    dbgs() << "Function: " << MF.getName() << "\n";
+-  });
+-  bool Change = false;
+-  std::vector<MachineBasicBlock *> MLBB;
+-  for (auto &BB : MF) {
+-    // Check if this Basic Block belongs to any loop.
+-    auto *LI = MLI->getLoopFor(&BB);
+-    // We only deal with inner-most loops that has one block.
+-    if (LI && LI->getBlocks().size() == 1) {
+-      MachineBasicBlock *MBB = LI->getHeader();
+-      // Do not traverse blocks that are already visited.
+-      if (std::find(MLBB.begin(), MLBB.end(), MBB) != MLBB.end())
+-        continue;
+-
+-      MLBB.push_back(MBB);
+-
+-      LLVM_DEBUG(dbgs() << "\n\t Basic Block: " << MBB->getName() << "\n");
+-      Change |= translatePostIncsInLoop(*MBB);
+-    }
+-  }
+-  LLVM_DEBUG(dbgs() << "End: Hexagon Post-Inc-Opt Pass\n");
+-  return Change;
+-}
+-
+-FunctionPass *llvm::createHexagonPostIncOpt() {
+-  return new HexagonPostIncOpt();
+-}
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/HexagonTargetMachine.cpp b/llvm/lib/Target/Hexagon/HexagonTargetMachine.cpp
+--- a/llvm/lib/Target/Hexagon/HexagonTargetMachine.cpp
++++ b/llvm/lib/Target/Hexagon/HexagonTargetMachine.cpp
+@@ -121,10 +121,6 @@
+                                         cl::init(true),
+                                         cl::desc("Enable instsimplify"));
+ 
+-static cl::opt<bool> DisableHexagonPostIncOpt(
+-    "hexagon-postinc-opt", cl::Hidden,
+-    cl::desc("Disable Hexagon post-increment optimization"));
+-
+ /// HexagonTargetMachineModule - Note that this is used on hosts that
+ /// cannot link in a library unless there are references into the
+ /// library.  In particular, it seems that it is not possible to get
+@@ -161,7 +157,6 @@
+   void initializeHexagonNewValueJumpPass(PassRegistry&);
+   void initializeHexagonOptAddrModePass(PassRegistry&);
+   void initializeHexagonPacketizerPass(PassRegistry&);
+-  void initializeHexagonPostIncOptPass(PassRegistry &);
+   void initializeHexagonRDFOptPass(PassRegistry&);
+   void initializeHexagonSplitDoubleRegsPass(PassRegistry&);
+   void initializeHexagonVExtractPass(PassRegistry &);
+@@ -193,7 +188,6 @@
+   FunctionPass *createHexagonOptimizeSZextends();
+   FunctionPass *createHexagonPacketizer(bool Minimal);
+   FunctionPass *createHexagonPeephole();
+-  FunctionPass *createHexagonPostIncOpt();
+   FunctionPass *createHexagonRDFOpt();
+   FunctionPass *createHexagonSplitConst32AndConst64();
+   FunctionPass *createHexagonSplitDoubleRegs();
+@@ -223,7 +217,6 @@
+   initializeHexagonNewValueJumpPass(PR);
+   initializeHexagonOptAddrModePass(PR);
+   initializeHexagonPacketizerPass(PR);
+-  initializeHexagonPostIncOptPass(PR);
+   initializeHexagonRDFOptPass(PR);
+   initializeHexagonSplitDoubleRegsPass(PR);
+   initializeHexagonVectorCombineLegacyPass(PR);
+@@ -251,7 +244,6 @@
+           (HexagonNoOpt ? CodeGenOptLevel::None : OL)),
+       TLOF(std::make_unique<HexagonTargetObjectFile>()) {
+   initializeHexagonExpandCondsetsPass(*PassRegistry::getPassRegistry());
+-  initializeHexagonPostIncOptPass(*PassRegistry::getPassRegistry());
+   initAsmInfo();
+ }
+ 
+@@ -424,11 +416,6 @@
+     if (!DisableHardwareLoops)
+       addPass(createHexagonHardwareLoops());
+   }
+-
+-  if (TM->getOptLevel() >= CodeGenOptLevel::Aggressive)
+-    if (!DisableHexagonPostIncOpt)
+-      addPass(createHexagonPostIncOpt());
+-
+   if (TM->getOptLevel() >= CodeGenOptLevel::Default)
+     addPass(&MachinePipelinerID);
+ }
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/Hexagon/MCTargetDesc/HexagonBaseInfo.h b/llvm/lib/Target/Hexagon/MCTargetDesc/HexagonBaseInfo.h
+--- a/llvm/lib/Target/Hexagon/MCTargetDesc/HexagonBaseInfo.h
++++ b/llvm/lib/Target/Hexagon/MCTargetDesc/HexagonBaseInfo.h
+@@ -18,7 +18,6 @@
+ 
+ #include "HexagonDepITypes.h"
+ #include "MCTargetDesc/HexagonMCTargetDesc.h"
+-#include "llvm/MC/MCInstrDesc.h"
+ 
+ namespace llvm {
+ 
+@@ -49,7 +48,7 @@
+ 
+   // MCInstrDesc TSFlags
+   // *** Must match HexagonInstrFormat*.td ***
+-  enum HexagonTSFlagsVal {
++  enum {
+     // This 7-bit field describes the insn type.
+     TypePos = 0,
+     TypeMask = 0x7f,
+@@ -174,11 +173,6 @@
+     hasUnaryRestrictionMask = 0x1,
+   };
+ 
+-  inline unsigned getTSFlags(const MCInstrDesc &MID, HexagonTSFlagsVal Pos,
+-                             unsigned Mask) {
+-    return (MID.TSFlags >> Pos) & Mask;
+-  }
+-
+   // *** The code above must match HexagonInstrFormat*.td *** //
+ 
+   // Hexagon specific MO operand flag mask.
+@@ -281,10 +275,6 @@
+     INST_ICLASS_ALU32_3   = 0xf0000000
+   };
+ 
+-  inline bool isCVI(const MCInstrDesc &MID) {
+-    return getTSFlags(MID, isCVIPos, isCVIMask) != 0;
+-  }
+-
+   LLVM_ATTRIBUTE_UNUSED
+   static unsigned getMemAccessSizeInBytes(MemAccessSize S) {
+     switch (S) {
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/post-inc-vec.mir b/llvm/test/CodeGen/Hexagon/post-inc-vec.mir
+--- a/llvm/test/CodeGen/Hexagon/post-inc-vec.mir
++++ b/llvm/test/CodeGen/Hexagon/post-inc-vec.mir
+@@ -1,413 +0,0 @@
+-#RUN: llc -march=hexagon -run-pass hexagon-postincopt %s -o - | FileCheck  %s
+-
+-# Test that we do not generate two post-increment vector load/store
+-# in the loop.
+-# CHECK: J2_loop0r
+-# CHECK: V6_vS32b_pi
+-# CHECK-NOT: = V6_vL32b_pi
+-# CHECK: V6_vL32b_ai
+-# CHECK: V6_vL32b_ai
+-# CHECK: V6_vS32b_ai
+-# CHECK: ENDLOOP0
+-
+---- |
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <1024 x i1> @llvm.hexagon.V6.pred.scalar2v2.128B(i32) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(write)
+-  declare void @llvm.hexagon.V6.vS32b.qpred.ai.128B(<1024 x i1>, ptr, <32 x i32>) #1
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <64 x i32> @llvm.hexagon.V6.vcombine.128B(<32 x i32>, <32 x i32>) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.hi.128B(<64 x i32>) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.lo.128B(<64 x i32>) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.lvsplath.128B(i32) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.vasrhbsat.128B(<32 x i32>, <32 x i32>, i32) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.vaddhsat.128B(<32 x i32>, <32 x i32>) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.vasrh.128B(<32 x i32>, i32) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <32 x i32> @llvm.hexagon.V6.vavgh.128B(<32 x i32>, <32 x i32>) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare <64 x i32> @llvm.hexagon.V6.vmpabusv.128B(<64 x i32>, <64 x i32>) #0
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write)
+-  declare void @llvm.assume(i1 noundef) #2
+-
+-  ; Function Attrs: noinline nounwind
+-  define void @blah(i32 %0, i32 %1, ptr noalias %2, ptr noalias nocapture readonly %3, ptr noalias nocapture readonly %4, ptr nocapture readnone %5, ptr nocapture readnone %6, i32 %7, i32 %8, ptr nocapture readonly %9, ptr nocapture readonly %10) local_unnamed_addr #3 {
+-  entry:
+-    %11 = call i32 @llvm.hexagon.S2.extractu(i32 %0, i32 23, i32 9)
+-    %12 = shl i32 %11, 7
+-    %mul16.i = mul nsw i32 %12, %1
+-    %add.i = add nsw i32 %1, 1
+-    %mul17.i = mul nsw i32 %add.i, %12
+-    %cmp184.i = icmp slt i32 %mul16.i, %mul17.i
+-    br i1 %cmp184.i, label %for.body.lr.ph.i, label %for.end.i
+-
+-  for.body.lr.ph.i:                                 ; preds = %entry
+-    %13 = tail call <64 x i32> @llvm.hexagon.V6.vcombine.128B(<32 x i32> <i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576, i32 1077952576>, <32 x i32> <i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144, i32 269488144>) #5
+-    %14 = tail call <64 x i32> @llvm.hexagon.V6.vcombine.128B(<32 x i32> zeroinitializer, <32 x i32> zeroinitializer) #5
+-    %15 = tail call <32 x i32> @llvm.hexagon.V6.lvsplath.128B(i32 32) #5
+-    %cgep = getelementptr i8, ptr %2, i32 %mul16.i
+-    %cgep8 = getelementptr i8, ptr %4, i32 %mul16.i
+-    %cgep9 = getelementptr i8, ptr %3, i32 %mul16.i
+-    br label %for.body.i
+-
+-  for.body.i:                                       ; preds = %for.body.i, %for.body.lr.ph.i
+-    %lsr.iv6 = phi ptr [ %cgep12, %for.body.i ], [ %cgep9, %for.body.lr.ph.i ]
+-    %lsr.iv3 = phi ptr [ %cgep11, %for.body.i ], [ %cgep8, %for.body.lr.ph.i ]
+-    %lsr.iv = phi ptr [ %cgep10, %for.body.i ], [ %cgep, %for.body.lr.ph.i ]
+-    %elemIdx.05.i = phi i32 [ %mul16.i, %for.body.lr.ph.i ], [ %add19.i, %for.body.i ]
+-    %16 = load <32 x i32>, ptr %lsr.iv6, align 128
+-    %17 = load <32 x i32>, ptr %lsr.iv3, align 128
+-    %18 = tail call <64 x i32> @llvm.hexagon.V6.vcombine.128B(<32 x i32> %17, <32 x i32> %16) #5
+-    %19 = tail call <64 x i32> @llvm.hexagon.V6.vmpabusv.128B(<64 x i32> %13, <64 x i32> %18) #5
+-    %20 = tail call <64 x i32> @llvm.hexagon.V6.vmpabusv.128B(<64 x i32> %14, <64 x i32> %18) #5
+-    %21 = tail call <32 x i32> @llvm.hexagon.V6.hi.128B(<64 x i32> %19) #5
+-    %22 = tail call <32 x i32> @llvm.hexagon.V6.hi.128B(<64 x i32> %20) #5
+-    %23 = tail call <32 x i32> @llvm.hexagon.V6.vasrh.128B(<32 x i32> %22, i32 7) #5
+-    %24 = tail call <32 x i32> @llvm.hexagon.V6.vavgh.128B(<32 x i32> %21, <32 x i32> %23) #5
+-    %25 = tail call <32 x i32> @llvm.hexagon.V6.lo.128B(<64 x i32> %19) #5
+-    %26 = tail call <32 x i32> @llvm.hexagon.V6.lo.128B(<64 x i32> %20) #5
+-    %27 = tail call <32 x i32> @llvm.hexagon.V6.vasrh.128B(<32 x i32> %26, i32 7) #5
+-    %28 = tail call <32 x i32> @llvm.hexagon.V6.vavgh.128B(<32 x i32> %25, <32 x i32> %27) #5
+-    %29 = tail call <32 x i32> @llvm.hexagon.V6.vaddhsat.128B(<32 x i32> %24, <32 x i32> %15) #5
+-    %30 = tail call <32 x i32> @llvm.hexagon.V6.vaddhsat.128B(<32 x i32> %28, <32 x i32> %15) #5
+-    %31 = tail call <32 x i32> @llvm.hexagon.V6.vasrhbsat.128B(<32 x i32> %29, <32 x i32> %30, i32 4) #5
+-    store <32 x i32> %31, ptr %lsr.iv, align 128
+-    %add19.i = add nsw i32 %elemIdx.05.i, 128
+-    %cmp18.i = icmp slt i32 %add19.i, %mul17.i
+-    %cgep10 = getelementptr i8, ptr %lsr.iv, i32 128
+-    %cgep11 = getelementptr i8, ptr %lsr.iv3, i32 128
+-    %cgep12 = getelementptr i8, ptr %lsr.iv6, i32 128
+-    br i1 %cmp18.i, label %for.body.i, label %for.end.i
+-
+-  for.end.i:                                        ; preds = %for.body.i, %entry
+-    ret void
+-  }
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(argmem: readwrite)
+-  declare void @llvm.lifetime.start.p0(i64 immarg, ptr nocapture) #4
+-
+-  ; Function Attrs: nocallback nofree nosync nounwind willreturn memory(none)
+-  declare i32 @llvm.hexagon.S2.extractu(i32, i32 immarg, i32 immarg) #0
+-
+-  attributes #0 = { nocallback nofree nosync nounwind willreturn memory(none) }
+-  attributes #1 = { nocallback nofree nosync nounwind willreturn memory(write) }
+-  attributes #2 = { nocallback nofree nosync nounwind willreturn memory(inaccessiblemem: write) }
+-  attributes #3 = { noinline nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="true" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="hexagonv68" "target-features"="+hvx-length128b,+hvxv68,+v68,-long-calls,-small-data" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-  attributes #4 = { nocallback nofree nosync nounwind willreturn memory(argmem: readwrite) }
+-  attributes #5 = { nounwind }
+-
+-...
+----
+-name:            blah
+-alignment:       16
+-exposesReturnsTwice: false
+-legalized:       false
+-regBankSelected: false
+-selected:        false
+-failedISel:      false
+-tracksRegLiveness: true
+-hasWinCFI:       false
+-callsEHReturn:   false
+-callsUnwindInit: false
+-hasEHCatchret:   false
+-hasEHScopes:     false
+-hasEHFunclets:   false
+-isOutlined:      false
+-debugInstrRef:   false
+-failsVerification: false
+-tracksDebugUserValues: false
+-registers:
+-  - { id: 0, class: intregs, preferred-register: '' }
+-  - { id: 1, class: intregs, preferred-register: '' }
+-  - { id: 2, class: hvxwr, preferred-register: '' }
+-  - { id: 3, class: hvxwr, preferred-register: '' }
+-  - { id: 4, class: hvxvr, preferred-register: '' }
+-  - { id: 5, class: intregs, preferred-register: '' }
+-  - { id: 6, class: intregs, preferred-register: '' }
+-  - { id: 7, class: intregs, preferred-register: '' }
+-  - { id: 8, class: intregs, preferred-register: '' }
+-  - { id: 9, class: intregs, preferred-register: '' }
+-  - { id: 10, class: intregs, preferred-register: '' }
+-  - { id: 11, class: intregs, preferred-register: '' }
+-  - { id: 12, class: intregs, preferred-register: '' }
+-  - { id: 13, class: intregs, preferred-register: '' }
+-  - { id: 14, class: intregs, preferred-register: '' }
+-  - { id: 15, class: intregs, preferred-register: '' }
+-  - { id: 16, class: intregs, preferred-register: '' }
+-  - { id: 17, class: intregs, preferred-register: '' }
+-  - { id: 18, class: intregs, preferred-register: '' }
+-  - { id: 19, class: intregs, preferred-register: '' }
+-  - { id: 20, class: intregs, preferred-register: '' }
+-  - { id: 21, class: intregs, preferred-register: '' }
+-  - { id: 22, class: intregs, preferred-register: '' }
+-  - { id: 23, class: intregs, preferred-register: '' }
+-  - { id: 24, class: intregs, preferred-register: '' }
+-  - { id: 25, class: predregs, preferred-register: '' }
+-  - { id: 26, class: predregs, preferred-register: '' }
+-  - { id: 27, class: hvxvr, preferred-register: '' }
+-  - { id: 28, class: intregs, preferred-register: '' }
+-  - { id: 29, class: hvxvr, preferred-register: '' }
+-  - { id: 30, class: intregs, preferred-register: '' }
+-  - { id: 31, class: hvxvr, preferred-register: '' }
+-  - { id: 32, class: intregs, preferred-register: '' }
+-  - { id: 33, class: hvxvr, preferred-register: '' }
+-  - { id: 34, class: hvxvr, preferred-register: '' }
+-  - { id: 35, class: hvxwr, preferred-register: '' }
+-  - { id: 36, class: hvxwr, preferred-register: '' }
+-  - { id: 37, class: hvxwr, preferred-register: '' }
+-  - { id: 38, class: hvxvr, preferred-register: '' }
+-  - { id: 39, class: hvxvr, preferred-register: '' }
+-  - { id: 40, class: intregs, preferred-register: '' }
+-  - { id: 41, class: hvxvr, preferred-register: '' }
+-  - { id: 42, class: hvxvr, preferred-register: '' }
+-  - { id: 43, class: hvxvr, preferred-register: '' }
+-  - { id: 44, class: hvxvr, preferred-register: '' }
+-  - { id: 45, class: hvxvr, preferred-register: '' }
+-  - { id: 46, class: hvxvr, preferred-register: '' }
+-  - { id: 47, class: hvxvr, preferred-register: '' }
+-  - { id: 48, class: hvxvr, preferred-register: '' }
+-  - { id: 49, class: intregslow8, preferred-register: '' }
+-  - { id: 50, class: hvxvr, preferred-register: '' }
+-  - { id: 51, class: predregs, preferred-register: '' }
+-  - { id: 52, class: intregs, preferred-register: '' }
+-  - { id: 53, class: intregs, preferred-register: '' }
+-  - { id: 54, class: intregs, preferred-register: '' }
+-  - { id: 55, class: intregs, preferred-register: '' }
+-  - { id: 56, class: intregs, preferred-register: '' }
+-  - { id: 57, class: intregs, preferred-register: '' }
+-  - { id: 58, class: intregs, preferred-register: '' }
+-  - { id: 59, class: intregs, preferred-register: '' }
+-  - { id: 60, class: intregs, preferred-register: '' }
+-  - { id: 61, class: hvxvr, preferred-register: '' }
+-  - { id: 62, class: intregs, preferred-register: '' }
+-  - { id: 63, class: hvxvr, preferred-register: '' }
+-  - { id: 64, class: intregs, preferred-register: '' }
+-  - { id: 65, class: hvxwr, preferred-register: '' }
+-  - { id: 66, class: hvxwr, preferred-register: '' }
+-  - { id: 67, class: hvxwr, preferred-register: '' }
+-  - { id: 68, class: hvxvr, preferred-register: '' }
+-  - { id: 69, class: hvxvr, preferred-register: '' }
+-  - { id: 70, class: hvxvr, preferred-register: '' }
+-  - { id: 71, class: hvxvr, preferred-register: '' }
+-  - { id: 72, class: hvxvr, preferred-register: '' }
+-  - { id: 73, class: hvxvr, preferred-register: '' }
+-  - { id: 74, class: hvxvr, preferred-register: '' }
+-  - { id: 75, class: intregs, preferred-register: '' }
+-  - { id: 76, class: intregs, preferred-register: '' }
+-  - { id: 77, class: intregs, preferred-register: '' }
+-  - { id: 78, class: intregs, preferred-register: '' }
+-  - { id: 79, class: hvxvr, preferred-register: '' }
+-  - { id: 80, class: intregs, preferred-register: '' }
+-  - { id: 81, class: hvxvr, preferred-register: '' }
+-  - { id: 82, class: intregs, preferred-register: '' }
+-  - { id: 83, class: hvxwr, preferred-register: '' }
+-  - { id: 84, class: hvxwr, preferred-register: '' }
+-  - { id: 85, class: hvxwr, preferred-register: '' }
+-  - { id: 86, class: hvxvr, preferred-register: '' }
+-  - { id: 87, class: hvxvr, preferred-register: '' }
+-  - { id: 88, class: hvxvr, preferred-register: '' }
+-  - { id: 89, class: hvxvr, preferred-register: '' }
+-  - { id: 90, class: hvxvr, preferred-register: '' }
+-  - { id: 91, class: hvxvr, preferred-register: '' }
+-  - { id: 92, class: hvxvr, preferred-register: '' }
+-  - { id: 93, class: intregs, preferred-register: '' }
+-  - { id: 94, class: intregs, preferred-register: '' }
+-  - { id: 95, class: intregs, preferred-register: '' }
+-  - { id: 96, class: intregs, preferred-register: '' }
+-  - { id: 97, class: predregs, preferred-register: '' }
+-  - { id: 98, class: predregs, preferred-register: '' }
+-liveins:
+-  - { reg: '$r0', virtual-reg: '%16' }
+-  - { reg: '$r1', virtual-reg: '%17' }
+-  - { reg: '$r2', virtual-reg: '%18' }
+-  - { reg: '$r3', virtual-reg: '%19' }
+-  - { reg: '$r4', virtual-reg: '%20' }
+-frameInfo:
+-  isFrameAddressTaken: false
+-  isReturnAddressTaken: false
+-  hasStackMap:     false
+-  hasPatchPoint:   false
+-  stackSize:       0
+-  offsetAdjustment: 0
+-  maxAlignment:    4
+-  adjustsStack:    false
+-  hasCalls:        false
+-  stackProtector:  ''
+-  functionContext: ''
+-  maxCallFrameSize: 4294967295
+-  cvBytesOfCalleeSavedRegisters: 0
+-  hasOpaqueSPAdjustment: false
+-  hasVAStart:      false
+-  hasMustTailInVarArgFunc: false
+-  hasTailCall:     false
+-  localFrameSize:  0
+-  savePoint:       ''
+-  restorePoint:    ''
+-fixedStack:
+-  - { id: 0, type: default, offset: 24, size: 4, alignment: 8, stack-id: default,
+-      isImmutable: true, isAliased: false, callee-saved-register: '', callee-saved-restored: true,
+-      debug-info-variable: '', debug-info-expression: '', debug-info-location: '' }
+-  - { id: 1, type: default, offset: 20, size: 4, alignment: 4, stack-id: default,
+-      isImmutable: true, isAliased: false, callee-saved-register: '', callee-saved-restored: true,
+-      debug-info-variable: '', debug-info-expression: '', debug-info-location: '' }
+-  - { id: 2, type: default, offset: 16, size: 4, alignment: 8, stack-id: default,
+-      isImmutable: true, isAliased: false, callee-saved-register: '', callee-saved-restored: true,
+-      debug-info-variable: '', debug-info-expression: '', debug-info-location: '' }
+-  - { id: 3, type: default, offset: 12, size: 4, alignment: 4, stack-id: default,
+-      isImmutable: true, isAliased: false, callee-saved-register: '', callee-saved-restored: true,
+-      debug-info-variable: '', debug-info-expression: '', debug-info-location: '' }
+-  - { id: 4, type: default, offset: 8, size: 4, alignment: 8, stack-id: default,
+-      isImmutable: true, isAliased: false, callee-saved-register: '', callee-saved-restored: true,
+-      debug-info-variable: '', debug-info-expression: '', debug-info-location: '' }
+-stack:           []
+-entry_values:    []
+-callSites:       []
+-debugValueSubstitutions: []
+-constants:       []
+-machineFunctionInfo: {}
+-body:             |
+-  bb.0.entry:
+-    successors: %bb.1(0x40000000), %bb.3(0x40000000)
+-    liveins: $r0, $r1, $r2, $r3, $r4
+-
+-    %20:intregs = COPY $r4
+-    %19:intregs = COPY $r3
+-    %18:intregs = COPY $r2
+-    %17:intregs = COPY $r1
+-    %16:intregs = COPY $r0
+-    %22:intregs = S2_extractu %16, 23, 9
+-    %23:intregs = S2_asl_i_r %22, 7
+-    %0:intregs = nsw M2_mpyi %23, %17
+-    %24:intregs = nsw A2_addi %17, 1
+-    %1:intregs = nsw M2_mpyi %24, %23
+-    %25:predregs = C2_cmpgt %1, %0
+-    J2_jumpf %25, %bb.3, implicit-def dead $pc
+-    J2_jump %bb.1, implicit-def dead $pc
+-
+-  bb.1.for.body.lr.ph.i:
+-    successors: %bb.4(0x40000000), %bb.6(0x40000000)
+-
+-    %28:intregs = A2_tfrsi 269488144
+-    %27:hvxvr = V6_lvsplatw %28
+-    %30:intregs = A2_tfrsi 1077952576
+-    %29:hvxvr = V6_lvsplatw %30
+-    %2:hvxwr = REG_SEQUENCE %29, %subreg.vsub_hi, %27, %subreg.vsub_lo
+-    %31:hvxvr = V6_vd0
+-    %3:hvxwr = REG_SEQUENCE %31, %subreg.vsub_hi, %31, %subreg.vsub_lo
+-    %32:intregs = A2_tfrsi 32
+-    %4:hvxvr = V6_lvsplath %32
+-    %5:intregs = A2_add %18, %0
+-    %6:intregs = A2_add %20, %0
+-    %7:intregs = A2_add %19, %0
+-    %40:intregs = A2_tfrsi 7
+-    %49:intregslow8 = A2_tfrsi 4
+-    %52:intregs = A2_sub %1, %0
+-    %53:intregs = A2_addi %52, 127
+-    %54:intregs = S2_lsr_i_r %53, 7
+-    %55:intregs = COPY %54
+-    %56:intregs = S2_lsr_i_r %55, 1
+-    %57:intregs = A2_andir %55, 1
+-    %97:predregs = C2_cmpgtui %56, 0
+-    J2_jumpf %97, %bb.6, implicit-def $pc
+-    J2_jump %bb.4, implicit-def $pc
+-
+-  bb.4:
+-    successors: %bb.5(0x80000000)
+-
+-    J2_loop0r %bb.5, %56, implicit-def $lc0, implicit-def $sa0, implicit-def $usr
+-    J2_jump %bb.5, implicit-def $pc
+-
+-  bb.5:
+-    successors: %bb.5(0x40000000), %bb.6(0x40000000)
+-
+-    %58:intregs = PHI %7, %bb.4, %80, %bb.5
+-    %59:intregs = PHI %6, %bb.4, %82, %bb.5
+-    %60:intregs = PHI %5, %bb.4, %93, %bb.5
+-    %61:hvxvr, %62:intregs = V6_vL32b_pi %58, 128 :: (load (s1024) from %ir.lsr.iv6)
+-    %63:hvxvr, %64:intregs = V6_vL32b_pi %59, 128 :: (load (s1024) from %ir.lsr.iv3)
+-    %65:hvxwr = REG_SEQUENCE %63, %subreg.vsub_hi, %61, %subreg.vsub_lo
+-    %66:hvxwr = V6_vmpabusv %2, %65
+-    %67:hvxwr = V6_vmpabusv %3, %65
+-    %68:hvxvr = V6_vasrh %67.vsub_hi, %40
+-    %69:hvxvr = V6_vavgh %66.vsub_hi, %68
+-    %70:hvxvr = V6_vasrh %67.vsub_lo, %40
+-    %71:hvxvr = V6_vavgh %66.vsub_lo, %70
+-    %72:hvxvr = V6_vaddhsat %69, %4
+-    %73:hvxvr = V6_vaddhsat %71, %4
+-    %74:hvxvr = V6_vasrhbsat %72, %73, %49
+-    %75:intregs = V6_vS32b_pi %60, 128, %74 :: (store (s1024) into %ir.lsr.iv)
+-    %79:hvxvr, %80:intregs = V6_vL32b_pi %62, 128 :: (load (s1024) from %ir.lsr.iv6 + 128)
+-    %81:hvxvr, %82:intregs = V6_vL32b_pi %64, 128 :: (load (s1024) from %ir.lsr.iv3 + 128)
+-    %83:hvxwr = REG_SEQUENCE %81, %subreg.vsub_hi, %79, %subreg.vsub_lo
+-    %84:hvxwr = V6_vmpabusv %2, %83
+-    %85:hvxwr = V6_vmpabusv %3, %83
+-    %86:hvxvr = V6_vasrh %85.vsub_hi, %40
+-    %87:hvxvr = V6_vavgh %84.vsub_hi, %86
+-    %88:hvxvr = V6_vasrh %85.vsub_lo, %40
+-    %89:hvxvr = V6_vavgh %84.vsub_lo, %88
+-    %90:hvxvr = V6_vaddhsat %87, %4
+-    %91:hvxvr = V6_vaddhsat %89, %4
+-    %92:hvxvr = V6_vasrhbsat %90, %91, %49
+-    %93:intregs = V6_vS32b_pi %75, 128, %92 :: (store (s1024) into %ir.lsr.iv + 128)
+-    ENDLOOP0 %bb.5, implicit-def $pc, implicit-def $lc0, implicit $sa0, implicit $lc0
+-    J2_jump %bb.6, implicit-def $pc
+-
+-  bb.6:
+-    successors: %bb.7(0x40000000), %bb.8(0x40000000)
+-
+-    %94:intregs = PHI %7, %bb.1, %80, %bb.5
+-    %95:intregs = PHI %6, %bb.1, %82, %bb.5
+-    %96:intregs = PHI %5, %bb.1, %93, %bb.5
+-    %98:predregs = C2_cmpgtui %57, 0
+-    J2_jumpf %98, %bb.8, implicit-def $pc
+-    J2_jump %bb.7, implicit-def $pc
+-
+-  bb.7:
+-    successors: %bb.2(0x80000000)
+-
+-    J2_jump %bb.2, implicit-def $pc
+-
+-  bb.2.for.body.i (machine-block-address-taken):
+-    successors: %bb.8(0x04000000)
+-
+-    %33:hvxvr, %15:intregs = V6_vL32b_pi %94, 128 :: (load (s1024) from %ir.lsr.iv6)
+-    %34:hvxvr, %14:intregs = V6_vL32b_pi %95, 128 :: (load (s1024) from %ir.lsr.iv3)
+-    %35:hvxwr = REG_SEQUENCE %34, %subreg.vsub_hi, %33, %subreg.vsub_lo
+-    %36:hvxwr = V6_vmpabusv %2, %35
+-    %37:hvxwr = V6_vmpabusv %3, %35
+-    %41:hvxvr = V6_vasrh %37.vsub_hi, %40
+-    %42:hvxvr = V6_vavgh %36.vsub_hi, %41
+-    %45:hvxvr = V6_vasrh %37.vsub_lo, %40
+-    %46:hvxvr = V6_vavgh %36.vsub_lo, %45
+-    %47:hvxvr = V6_vaddhsat %42, %4
+-    %48:hvxvr = V6_vaddhsat %46, %4
+-    %50:hvxvr = V6_vasrhbsat %47, %48, %49
+-    %13:intregs = V6_vS32b_pi %96, 128, %50 :: (store (s1024) into %ir.lsr.iv)
+-    J2_jump %bb.8, implicit-def $pc
+-
+-  bb.8:
+-    successors: %bb.3(0x80000000)
+-
+-    J2_jump %bb.3, implicit-def $pc
+-
+-  bb.3.for.end.i:
+-    PS_jmpret $r31, implicit-def dead $pc
+-
+-...
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/post_inc_store.mir b/llvm/test/CodeGen/Hexagon/post_inc_store.mir
+--- a/llvm/test/CodeGen/Hexagon/post_inc_store.mir
++++ b/llvm/test/CodeGen/Hexagon/post_inc_store.mir
+@@ -1,168 +0,0 @@
+-#RUN: llc -march=hexagon -run-pass hexagon-postincopt %s -o - | FileCheck  %s
+-
+-# Test that we convert a post-inc load and store to a regular load and post-inc
+-# store.
+-# CHECK: J2_loop0r
+-# CHECK-NOT: = L2_loadruh_pi
+-# CHECK: L2_loadruh_io
+-# CHECK: S2_storerh_pi
+-# CHECK: ENDLOOP0
+-
+---- |
+-  ; Function Attrs: nofree norecurse nounwind
+-  define dso_local void @blam(i32 %arg, ptr nocapture %arg1, i16 signext %arg2) local_unnamed_addr #0 {
+-  bb:
+-    %icmp = icmp eq i32 %arg, 0
+-    br i1 %icmp, label %bb13, label %bb3
+-
+-  bb3:                                              ; preds = %bb, %bb10
+-    %phi = phi i32 [ %add11, %bb10 ], [ 0, %bb ]
+-    %mul = mul i32 %phi, %arg
+-    %cgep = getelementptr i16, ptr %arg1, i32 %mul
+-    br label %bb4
+-
+-  bb4:                                              ; preds = %bb4, %bb3
+-    %lsr.iv = phi i32 [ %lsr.iv.next, %bb4 ], [ %arg, %bb3 ]
+-    %phi5 = phi ptr [ %cgep, %bb3 ], [ %cgep1, %bb4 ]
+-    %load = load i16, ptr %phi5, align 2
+-    %add = add i16 %load, %arg2
+-    store i16 %add, ptr %phi5, align 2
+-    %lsr.iv.next = add i32 %lsr.iv, -1
+-    %icmp8 = icmp eq i32 %lsr.iv.next, 0
+-    %cgep1 = getelementptr i16, ptr %phi5, i32 1
+-    br i1 %icmp8, label %bb10, label %bb4
+-
+-  bb10:                                             ; preds = %bb4
+-    %add11 = add nuw i32 %phi, 1
+-    %icmp12 = icmp eq i32 %add11, %arg
+-    br i1 %icmp12, label %bb13, label %bb3
+-
+-  bb13:                                             ; preds = %bb10, %bb
+-    ret void
+-  }
+-
+-  attributes #0 = { nofree norecurse nounwind "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="hexagonv68" "target-features"="+v68,-long-calls" "unsafe-fp-math"="false" "use-soft-float"="false" }
+-
+-...
+----
+-name:            blam
+-alignment:       16
+-exposesReturnsTwice: false
+-legalized:       false
+-regBankSelected: false
+-selected:        false
+-failedISel:      false
+-tracksRegLiveness: true
+-hasWinCFI:       false
+-callsEHReturn:   false
+-callsUnwindInit: false
+-hasEHCatchret:   false
+-hasEHScopes:     false
+-hasEHFunclets:   false
+-isOutlined:      false
+-debugInstrRef:   false
+-failsVerification: false
+-tracksDebugUserValues: false
+-registers:
+-  - { id: 0, class: intregs, preferred-register: '' }
+-  - { id: 1, class: intregs, preferred-register: '' }
+-  - { id: 2, class: intregs, preferred-register: '' }
+-  - { id: 3, class: intregs, preferred-register: '' }
+-  - { id: 4, class: intregs, preferred-register: '' }
+-  - { id: 5, class: intregs, preferred-register: '' }
+-  - { id: 6, class: intregs, preferred-register: '' }
+-  - { id: 7, class: intregs, preferred-register: '' }
+-  - { id: 8, class: intregs, preferred-register: '' }
+-  - { id: 9, class: intregs, preferred-register: '' }
+-  - { id: 10, class: intregs, preferred-register: '' }
+-  - { id: 11, class: intregs, preferred-register: '' }
+-  - { id: 12, class: predregs, preferred-register: '' }
+-  - { id: 13, class: intregs, preferred-register: '' }
+-  - { id: 14, class: intregs, preferred-register: '' }
+-  - { id: 15, class: intregs, preferred-register: '' }
+-  - { id: 16, class: predregs, preferred-register: '' }
+-  - { id: 17, class: predregs, preferred-register: '' }
+-  - { id: 18, class: predregs, preferred-register: '' }
+-  - { id: 19, class: predregs, preferred-register: '' }
+-  - { id: 20, class: intregs, preferred-register: '' }
+-  - { id: 21, class: intregs, preferred-register: '' }
+-liveins:
+-  - { reg: '$r0', virtual-reg: '%7' }
+-  - { reg: '$r1', virtual-reg: '%8' }
+-  - { reg: '$r2', virtual-reg: '%9' }
+-frameInfo:
+-  isFrameAddressTaken: false
+-  isReturnAddressTaken: false
+-  hasStackMap:     false
+-  hasPatchPoint:   false
+-  stackSize:       0
+-  offsetAdjustment: 0
+-  maxAlignment:    1
+-  adjustsStack:    false
+-  hasCalls:        false
+-  stackProtector:  ''
+-  functionContext: ''
+-  maxCallFrameSize: 4294967295
+-  cvBytesOfCalleeSavedRegisters: 0
+-  hasOpaqueSPAdjustment: false
+-  hasVAStart:      false
+-  hasMustTailInVarArgFunc: false
+-  hasTailCall:     false
+-  localFrameSize:  0
+-  savePoint:       ''
+-  restorePoint:    ''
+-fixedStack:      []
+-stack:           []
+-entry_values:    []
+-callSites:       []
+-debugValueSubstitutions: []
+-constants:       []
+-machineFunctionInfo: {}
+-body:             |
+-  bb.0.bb:
+-    successors: %bb.4(0x30000000), %bb.5(0x50000000)
+-    liveins: $r0, $r1, $r2
+-
+-    %9:intregs = COPY $r2
+-    %8:intregs = COPY $r1
+-    %7:intregs = COPY $r0
+-    %21:intregs = COPY %7
+-    %20:intregs = COPY %7
+-    %12:predregs = C2_cmpeqi %7, 0
+-    J2_jumpt %12, %bb.4, implicit-def $pc
+-
+-  bb.5:
+-    successors: %bb.1(0x80000000)
+-
+-    %11:intregs = A2_tfrsi 0
+-    J2_loop1r %bb.1, %21, implicit-def $lc1, implicit-def $sa1
+-
+-  bb.1.bb3 (machine-block-address-taken):
+-    successors: %bb.2(0x80000000)
+-
+-    %0:intregs = PHI %11, %bb.5, %6, %bb.3
+-    %13:intregs = M2_mpyi %0, %7
+-    %1:intregs = S2_addasl_rrri %8, %13, 1
+-    J2_loop0r %bb.2, %20, implicit-def $lc0, implicit-def $sa0, implicit-def $usr
+-
+-  bb.2.bb4 (machine-block-address-taken):
+-    successors: %bb.3(0x04000000), %bb.2(0x7c000000)
+-
+-    %3:intregs = PHI %1, %bb.1, %5, %bb.2
+-    %14:intregs = L2_loadruh_io %3, 0 :: (load (s16) from %ir.phi5)
+-    %15:intregs = A2_add %14, %9
+-    %5:intregs = S2_storerh_pi %3, 2, %15 :: (store (s16) into %ir.phi5)
+-    ENDLOOP0 %bb.2, implicit-def $pc, implicit-def $lc0, implicit $sa0, implicit $lc0
+-    J2_jump %bb.3, implicit-def dead $pc
+-
+-  bb.3.bb10:
+-    successors: %bb.4(0x04000000), %bb.1(0x7c000000)
+-
+-    %6:intregs = nuw A2_addi %0, 1
+-    ENDLOOP1 %bb.1, implicit-def $pc, implicit-def $lc1, implicit $sa1, implicit $lc1
+-    J2_jump %bb.4, implicit-def dead $pc
+-
+-  bb.4.bb13:
+-    PS_jmpret $r31, implicit-def dead $pc
+-
+-...
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/postincopt-crash.mir b/llvm/test/CodeGen/Hexagon/postincopt-crash.mir
+--- a/llvm/test/CodeGen/Hexagon/postincopt-crash.mir
++++ b/llvm/test/CodeGen/Hexagon/postincopt-crash.mir
+@@ -1,58 +0,0 @@
+-# RUN: llc -march=hexagon -run-pass=hexagon-postincopt %s -o /dev/null
+-# REQUIRES: asserts
+-# Test that we do not hit unreachable code dealt with L4_ior_memoph_io.
+-
+-...
+----
+-name:            foo
+-alignment:       4
+-tracksRegLiveness: true
+-body:             |
+-  bb.0.entry:
+-    successors: %bb.4(0x30000000), %bb.5(0x50000000)
+-    liveins: $r0, $r1, $r2
+-
+-    %9:intregs = COPY $r2
+-    %8:intregs = COPY $r1
+-    %7:intregs = COPY $r0
+-    %21:intregs = COPY %7
+-    %20:intregs = COPY %7
+-    %12:predregs = C2_cmpeqi %7, 0
+-    J2_jumpt %12, %bb.4, implicit-def $pc
+-
+-  bb.5:
+-    successors: %bb.1(0x80000000)
+-
+-    %11:intregs = A2_tfrsi 0
+-    J2_loop1r %bb.1, %21, implicit-def $lc1, implicit-def $sa1
+-
+-  bb.1:
+-    successors: %bb.2(0x80000000)
+-
+-    %0:intregs = PHI %11, %bb.5, %6, %bb.3
+-    %13:intregs = M2_mpyi %0, %7
+-    %1:intregs = S2_addasl_rrri %8, %13, 1
+-    J2_loop0r %bb.2, %20, implicit-def $lc0, implicit-def $sa0, implicit-def $usr
+-
+-  bb.2:
+-    successors: %bb.3(0x04000000), %bb.2(0x7c000000)
+-
+-    %3:intregs = PHI %1, %bb.1, %5, %bb.2
+-    %14:intregs = L2_loadruh_io %3, 0
+-    L4_ior_memoph_io %3:intregs, 0, 21
+-    %15:intregs = A2_add %14, %9
+-    %5:intregs = S2_storerh_pi %3, 2, %15
+-    ENDLOOP0 %bb.2, implicit-def $pc, implicit-def $lc0, implicit $sa0, implicit $lc0
+-    J2_jump %bb.3, implicit-def dead $pc
+-
+-  bb.3:
+-    successors: %bb.4(0x04000000), %bb.1(0x7c000000)
+-
+-    %6:intregs = nuw A2_addi %0, 1
+-    ENDLOOP1 %bb.1, implicit-def $pc, implicit-def $lc1, implicit $sa1, implicit $lc1
+-    J2_jump %bb.4, implicit-def dead $pc
+-
+-  bb.4:
+-    PS_jmpret $r31, implicit-def dead $pc
+-
+-...
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/postincopt-dcfetch.mir b/llvm/test/CodeGen/Hexagon/postincopt-dcfetch.mir
+--- a/llvm/test/CodeGen/Hexagon/postincopt-dcfetch.mir
++++ b/llvm/test/CodeGen/Hexagon/postincopt-dcfetch.mir
+@@ -1,19 +0,0 @@
+-# RUN: llc -march=hexagon -run-pass hexagon-postincopt %s -o - | FileCheck %s
+-# Check that this doesn't crash.
+-# CHECK: Y2_dcfetchbo
+-
+-name: fred
+-tracksRegLiveness: true
+-body: |
+-  bb.0:
+-    successors: %bb.1
+-    %0:intregs = IMPLICIT_DEF
+-
+-  bb.1:
+-    successors: %bb.1
+-
+-    %1:intregs = PHI %0:intregs, %bb.0, %2:intregs, %bb.1
+-    Y2_dcfetchbo %1:intregs, 0
+-    %2:intregs = A2_addi %1:intregs, 1
+-    J2_jump %bb.1, implicit-def dead $pc
+-...
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/Hexagon/valid-offset-loadbsw4.mir b/llvm/test/CodeGen/Hexagon/valid-offset-loadbsw4.mir
+--- a/llvm/test/CodeGen/Hexagon/valid-offset-loadbsw4.mir
++++ b/llvm/test/CodeGen/Hexagon/valid-offset-loadbsw4.mir
+@@ -1,32 +0,0 @@
+-# RUN: llc -march=hexagon -run-pass hexagon-postincopt -o - %s | FileCheck %s
+-# REQUIRES: asserts
+-
+-# Check that this doesn't crash:
+-# CHECK: L2_loadbsw4_io
+-
+----
+-name: fred
+-tracksRegLiveness: true
+-liveins:
+-  - { reg: '$r0', virtual-reg: '%0' }
+-body: |
+-  bb.0:
+-    successors: %bb.1(0x80000000)
+-    liveins: $r0
+-
+-    %0:intregs = COPY $r0
+-    %1:intregs = A2_tfrsi 240
+-    %2:doubleregs = IMPLICIT_DEF
+-    %3:doubleregs = IMPLICIT_DEF
+-
+-  bb.1:
+-    successors: %bb.1(0x80000000)
+-
+-    %4:intregs = PHI %1, %bb.0, %5, %bb.1
+-    %6:doubleregs = L2_loadbsw4_io %4, 0
+-    %7:doubleregs = M2_vrmac_s0 %2, %6, %3
+-    S2_storeri_io %0, 0, %7.isub_lo
+-    %5:intregs = nuw A2_addi %4, 256
+-    J2_jump %bb.1, implicit-def dead $pc
+-
+-...
+diff -ruN --strip-trailing-cr a/llvm/test/MC/AArch64/arm64-optional-hash.s b/llvm/test/MC/AArch64/arm64-optional-hash.s
+--- a/llvm/test/MC/AArch64/arm64-optional-hash.s
++++ b/llvm/test/MC/AArch64/arm64-optional-hash.s
+@@ -8,6 +8,10 @@
+ ; CHECK: adds x3, x4, #1024, lsl #12 ; encoding: [0x83,0x00,0x50,0xb1]
+ adds x3, x4, 1024, lsl 12
+ 
++; CHECK-COUNT-2: mov x3, #327680 ; encoding: [0xa3,0x00,0xa0,0xd2]
++movz x3, (0x54321) >> 16, lsl 16
++movz x3, (0x54321 >> 16), lsl 16
 +
-   DeclContext *DC = CurContext;
-   if (D.getCXXScopeSpec().isInvalid())
-     D.setInvalidType();
-@@ -6529,12 +6535,6 @@
-   if (getLangOpts().CPlusPlus)
-     CheckExtraCXXDefaultArguments(D);
- 
--  // The scope passed in may not be a decl scope.  Zip up the scope tree until
--  // we find one that is.
--  while ((S->getFlags() & Scope::DeclScope) == 0 ||
--         (S->getFlags() & Scope::TemplateParamScope) != 0)
--    S = S->getParent();
--
-   NamedDecl *New;
- 
-   bool AddToScope = true;
-diff -ruN --strip-trailing-cr a/clang/test/CXX/temp/temp.res/temp.local/p6.cpp b/clang/test/CXX/temp/temp.res/temp.local/p6.cpp
---- a/clang/test/CXX/temp/temp.res/temp.local/p6.cpp
-+++ b/clang/test/CXX/temp/temp.res/temp.local/p6.cpp
-@@ -127,30 +127,16 @@
- template<typename T> // expected-note {{declared here}}
- void f(int T) {} // expected-error {{declaration of 'T' shadows template parameter}}
- 
-+// FIXME: These are ill-formed: a template-parameter shall not have the same name as the template name.
- namespace A {
-   template<typename T> struct T {};  // expected-error{{declaration of 'T' shadows template parameter}}
-                                      // expected-note@-1{{template parameter is declared here}}
--  template<typename T> struct U {
--    template<typename V> struct V {}; // expected-error{{declaration of 'V' shadows template parameter}}
--                                      // expected-note@-1{{template parameter is declared here}}
--  };
- }
- namespace B {
--  template<typename T> void T() {} // expected-error{{declaration of 'T' shadows template parameter}}
--                                   // expected-note@-1{{template parameter is declared here}}
--
--  template<typename T> struct U {
--    template<typename V> void V(); // expected-error{{declaration of 'V' shadows template parameter}}
--                                   // expected-note@-1{{template parameter is declared here}}
--  };
-+  template<typename T> void T() {}
- }
- namespace C {
--  template<typename T> int T; // expected-error{{declaration of 'T' shadows template parameter}}
--                              // expected-note@-1{{template parameter is declared here}}
--  template<typename T> struct U {
--    template<typename V> static int V; // expected-error{{declaration of 'V' shadows template parameter}}
--                                       // expected-note@-1{{template parameter is declared here}}
--  };
-+  template<typename T> int T;
+ ; Optional extend
+ ; CHECK: add sp, x2, x3              ; encoding: [0x5f,0x60,0x23,0x8b]
+ add sp, x2, x3, uxtx 0
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/Attributor/nofpclass-fpext.ll b/llvm/test/Transforms/Attributor/nofpclass-fpext.ll
+--- a/llvm/test/Transforms/Attributor/nofpclass-fpext.ll
++++ b/llvm/test/Transforms/Attributor/nofpclass-fpext.ll
+@@ -142,7 +142,7 @@
  }
  
- namespace PR28023 {
+ define double @ret_fpext_f32_to_f64_nonorm(float nofpclass(norm) %arg0) {
+-; CHECK-LABEL: define nofpclass(sub norm) double @ret_fpext_f32_to_f64_nonorm
++; CHECK-LABEL: define nofpclass(sub) double @ret_fpext_f32_to_f64_nonorm
+ ; CHECK-SAME: (float nofpclass(sub norm) [[ARG0:%.*]]) #[[ATTR0]] {
+ ; CHECK-NEXT:    [[EXT:%.*]] = fpext float [[ARG0]] to double
+ ; CHECK-NEXT:    ret double [[EXT]]
+@@ -482,7 +482,37 @@
+ }
+ 
+ define double @ret_fpext_bf16_f64_nonorm(bfloat nofpclass(norm) %arg0) {
+-; CHECK-LABEL: define nofpclass(sub norm) double @ret_fpext_bf16_f64_nonorm
++; CHECK-LABEL: define nofpclass(sub) double @ret_fpext_bf16_f64_nonorm
++; CHECK-SAME: (bfloat nofpclass(sub norm) [[ARG0:%.*]]) #[[ATTR0]] {
++; CHECK-NEXT:    [[EXT:%.*]] = fpext bfloat [[ARG0]] to double
++; CHECK-NEXT:    ret double [[EXT]]
++;
++  %ext = fpext bfloat %arg0 to double
++  ret double %ext
++}
++
++define double @ret_fpext_bf16_f64_nonorm_psub(bfloat nofpclass(norm psub) %arg0) {
++; CHECK-LABEL: define nofpclass(sub pnorm) double @ret_fpext_bf16_f64_nonorm_psub
++; CHECK-SAME: (bfloat nofpclass(sub norm) [[ARG0:%.*]]) #[[ATTR0]] {
++; CHECK-NEXT:    [[EXT:%.*]] = fpext bfloat [[ARG0]] to double
++; CHECK-NEXT:    ret double [[EXT]]
++;
++  %ext = fpext bfloat %arg0 to double
++  ret double %ext
++}
++
++define double @ret_fpext_bf16_f64_nonorm_nsub(bfloat nofpclass(norm nsub) %arg0) {
++; CHECK-LABEL: define nofpclass(sub nnorm) double @ret_fpext_bf16_f64_nonorm_nsub
++; CHECK-SAME: (bfloat nofpclass(sub norm) [[ARG0:%.*]]) #[[ATTR0]] {
++; CHECK-NEXT:    [[EXT:%.*]] = fpext bfloat [[ARG0]] to double
++; CHECK-NEXT:    ret double [[EXT]]
++;
++  %ext = fpext bfloat %arg0 to double
++  ret double %ext
++}
++
++define double @ret_fpext_bf16_f64_nonorm_sub(bfloat nofpclass(norm sub) %arg0) {
++; CHECK-LABEL: define nofpclass(sub norm) double @ret_fpext_bf16_f64_nonorm_sub
+ ; CHECK-SAME: (bfloat nofpclass(sub norm) [[ARG0:%.*]]) #[[ATTR0]] {
+ ; CHECK-NEXT:    [[EXT:%.*]] = fpext bfloat [[ARG0]] to double
+ ; CHECK-NEXT:    ret double [[EXT]]
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/InstCombine/pr80941.ll b/llvm/test/Transforms/InstCombine/pr80941.ll
+--- a/llvm/test/Transforms/InstCombine/pr80941.ll
++++ b/llvm/test/Transforms/InstCombine/pr80941.ll
+@@ -0,0 +1,32 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 4
++; RUN: opt -S -passes=instcombine < %s | FileCheck %s
++
++define float @pr80941(float %arg) {
++; CHECK-LABEL: define float @pr80941(
++; CHECK-SAME: float [[ARG:%.*]]) {
++; CHECK-NEXT:  entry:
++; CHECK-NEXT:    [[COND:%.*]] = tail call i1 @llvm.is.fpclass.f32(float [[ARG]], i32 144)
++; CHECK-NEXT:    br i1 [[COND]], label [[IF_THEN:%.*]], label [[IF_EXIT:%.*]]
++; CHECK:       if.then:
++; CHECK-NEXT:    [[FPEXT:%.*]] = fpext float [[ARG]] to double
++; CHECK-NEXT:    [[SIGN:%.*]] = call double @llvm.copysign.f64(double 0.000000e+00, double [[FPEXT]])
++; CHECK-NEXT:    [[FPTRUNC:%.*]] = fptrunc double [[SIGN]] to float
++; CHECK-NEXT:    br label [[IF_EXIT]]
++; CHECK:       if.exit:
++; CHECK-NEXT:    [[RET:%.*]] = phi float [ [[FPTRUNC]], [[IF_THEN]] ], [ [[ARG]], [[ENTRY:%.*]] ]
++; CHECK-NEXT:    ret float [[RET]]
++;
++entry:
++  %cond = tail call i1 @llvm.is.fpclass.f32(float %arg, i32 144)
++  br i1 %cond, label %if.then, label %if.exit
++
++if.then:
++  %fpext = fpext float %arg to double
++  %sign = call double @llvm.copysign.f64(double 0.000000e+00, double %fpext)
++  %fptrunc = fptrunc double %sign to float
++  br label %if.exit
++
++if.exit:
++  %ret = phi float [ %fptrunc, %if.then ], [ %arg, %entry ]
++  ret float %ret
++}

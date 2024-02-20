@@ -289,6 +289,34 @@ std::string PrintDotTestParam(
 class ParametricDotTest : public DotOperationTest,
                           public ::testing::WithParamInterface<DotTestParam> {
  protected:
+  // This method runs before each test runs.
+  void SetUp() override {
+    // Several F16 tests are subject to denormal issues on MI210 architecture.
+    // For that matter, we set propagate_grad_xy_ flag for these tests, which
+    // activates adapted GEMM algorithm on ROCM. Besides, the adapted algorithm
+    // does not work well with ROCBLAS autotuning, hence we also disable it.
+    // This also serves as a test that grad_x/y attributes are correctly
+    // propagated down to a GEMM routine.
+    const auto& gpu_comp = client_->backend()
+                               .default_stream_executor()
+                               ->GetDeviceDescription()
+                               .gpu_compute_capability();
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
+      std::string_view name(
+          ::testing::UnitTest::GetInstance()->current_test_info()->name());
+      if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
+        execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
+            0);
+        DotTestParam param = GetParam();
+        // In order to test both grad_x and grad_y attributes, we set
+        // propagate_grad_xy_ to 1 or 2 based on some alternating parameter
+        // to set it deterministically.
+        propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
+      }
+    }
+    ManifestCheckingTest::SetUp();
+  }
+
   template <typename NativeT>
   void TestImpl();
 
@@ -296,6 +324,8 @@ class ParametricDotTest : public DotOperationTest,
   void ComputeAndCompareR2WithError(XlaBuilder* builder,
                                     const Array2D<NativeT>& expected,
                                     absl::Span<GlobalData* const> arguments);
+
+  int32_t propagate_grad_xy_ = 0;
 };
 
 template <typename NativeT>
@@ -356,6 +386,15 @@ void ParametricDotTest::TestImpl() {
 
   XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
+
+  if (propagate_grad_xy_ != 0) {
+    FrontendAttributes attributes;
+    if (propagate_grad_xy_ == 1)
+      (*attributes.mutable_map())["grad_x"] = "true";
+    else
+      (*attributes.mutable_map())["grad_y"] = "true";
+    builder.SetFrontendAttributes(attributes);
+  }
   auto result =
       Dot(Parameter(&builder, 0,
                     ShapeUtil::MakeShapeWithDenseLayout(
@@ -367,6 +406,9 @@ void ParametricDotTest::TestImpl() {
                         prim_type, {param.k, param.n},
                         MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
                     "dot_rhs"));
+  if (propagate_grad_xy_ != 0) {
+    builder.ClearFrontendAttributes();
+  }
 
   if (param.has_addend) {
     result =

@@ -109,6 +109,7 @@ class Layout {
                   absl::Span<const bool> dim_unique,
                   absl::Span<const bool> dim_ordered,
                   absl::Span<const Tile> tiles,
+                  int64_t tail_padding_alignment_in_elements = 1,
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
                   int64_t element_size_in_bits = 0, int64_t memory_space = 0,
@@ -147,6 +148,11 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnoreTailPaddingAlignmentInElements() {
+      ignore_tail_padding_alignment_in_elements_ = true;
+      return *this;
+    }
+
     Equal& IgnoreIndexPrimitiveType() {
       ignore_index_primitive_type_ = true;
       return *this;
@@ -178,11 +184,13 @@ class Layout {
           .IgnorePointerPrimitiveType()
           .IgnoreMemorySpace()
           .IgnorePhysicalShape()
-          .IgnoreElementSize();
+          .IgnoreElementSize()
+          .IgnoreTailPaddingAlignmentInElements();
     }
 
    private:
     bool ignore_tiles_ = false;
+    bool ignore_tail_padding_alignment_in_elements_ = false;
     bool ignore_element_size_ = false;
     bool ignore_index_primitive_type_ = false;
     bool ignore_pointer_primitive_type_ = false;
@@ -221,11 +229,6 @@ class Layout {
     n_dim_level_types_ = 0;
     return *this;
   }
-  //  absl::Span<const DimLevelType> dim_level_types() const {
-  //    return dim_level_types_;
-  //  }
-  //  DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_;
-  //  }
 
   // Methods for accessing the dim_unique array.
   int dim_unique_size() const { return n_dim_unique_; }
@@ -242,7 +245,6 @@ class Layout {
     n_dim_unique_++;
     return *this;
   }
-  //  absl::Span<const bool> dim_unique() const { return dim_unique_; }
 
   // Methods for accessing the dim_ordered array.
   int dim_ordered_size() const { return n_dim_ordered_; }
@@ -261,7 +263,6 @@ class Layout {
     n_dim_ordered_++;
     return *this;
   }
-  //  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
 
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
@@ -303,6 +304,14 @@ class Layout {
   int64_t element_size_in_bits() const { return element_size_in_bits_; }
   Layout& set_element_size_in_bits(int64_t value) {
     element_size_in_bits_ = value;
+    return *this;
+  }
+
+  int64_t tail_padding_alignment_in_elements() const {
+    return tail_padding_alignment_in_elements_;
+  }
+  Layout& set_tail_padding_alignment_in_elements(int64_t value) {
+    tail_padding_alignment_in_elements_ = value;
     return *this;
   }
 
@@ -355,7 +364,8 @@ class Layout {
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
                       l.element_size_in_bits_, l.index_primitive_type_,
-                      l.pointer_primitive_type_, l.memory_space_);
+                      l.pointer_primitive_type_, l.memory_space_,
+                      l.tail_padding_alignment_in_elements_);
   }
 
  private:
@@ -379,12 +389,12 @@ class Layout {
   PrimitiveType index_primitive_type_ : 8;
   PrimitiveType pointer_primitive_type_ : 8;
 
+  // The assigned memory space.
+  int8_t memory_space_ = 0;
+
   // The number of bits used to store an individual array element.
   // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
   uint16_t element_size_in_bits_ = 0;
-
-  // The assigned memory space.
-  int8_t memory_space_ = 0;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying
@@ -401,6 +411,15 @@ class Layout {
 
   // The tiles used in tiling-based layout.
   TileVector tiles_;
+
+  // The shape is padded at the end to multiple of, in terms of number of
+  // elements. This is useful when tiling does not bring the shape to certain
+  // desired granules. Tiling effectively pads/reshapes/transposes the shape
+  // to another shape. This field pads the total number of elements of that
+  // new shape to a multiple of certain number of elements. This is useful such
+  // as we want a layout which does not tile the data but still requires it to
+  // be padded to certain number of elements.
+  int64_t tail_padding_alignment_in_elements_ = 1;
 
   // The physical on-device shape used to represent a sparse array.
   std::unique_ptr<Shape> physical_shape_;

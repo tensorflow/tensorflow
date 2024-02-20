@@ -62,6 +62,7 @@ enum class TargetDeviceFunctionID {
   kSqrt,
   kTan,
   kTanh,
+  kErf,
 };
 
 // HLO opcode -> TargetDeviceFunctionID mapping.

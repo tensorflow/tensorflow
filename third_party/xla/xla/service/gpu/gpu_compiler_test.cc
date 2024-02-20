@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/xla_debug_info_manager.h"
@@ -307,6 +308,60 @@ ENTRY main {
   // Make sure that the copy of AllGatherDone has been removed.
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kAllGatherDone);
+}
+
+TEST_F(GpuCompilerTest,
+       GemmRewriterTritonIsNoOpWhenTritonAutotunerFallsBackToCublas) {
+  const absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  param_0 = bf16[3,32,1024,4,1024]{4,3,2,1,0} parameter(0)
+  param_1 = bf16[4,3,32,1024]{3,2,1,0} parameter(1)
+  param_2 = s32[] parameter(2)
+  constant_0 = s32[] constant(0)
+  dynamic-slice_0 = bf16[1,3,32,1024]{3,2,1,0} dynamic-slice(param_1, param_2, constant_0, constant_0, constant_0), dynamic_slice_sizes={1,3,32,1024}
+  reshape_0 = bf16[3,32,1024]{2,1,0} reshape(dynamic-slice_0)
+  broadcast_0 = bf16[3,32,1024,4,1024]{2,1,4,3,0} broadcast(reshape_0), dimensions={0,1,2}
+  add_0 = bf16[3,32,1024,4,1024]{4,3,2,1,0} add(param_0, broadcast_0)
+  transpose_0 = bf16[3,4,1024,32,1024]{2,1,4,3,0} transpose(add_0), dimensions={0,3,4,1,2}
+  slice_0 = bf16[1,4,1024,32,1024]{4,3,2,1,0} slice(transpose_0), slice={[0:1], [0:4], [0:1024], [0:32], [0:1024]}
+  reshape_1 = bf16[4,1024,32,1024]{3,2,1,0} reshape(slice_0)
+  copy_0 = bf16[4,1024,32,1024]{3,2,1,0} copy(reshape_1)
+  constant_1 = bf16[] constant(0.08838)
+  broadcast_1 = bf16[4,1024,32,1024]{3,2,1,0} broadcast(constant_1), dimensions={}
+  multiply_0 = bf16[4,1024,32,1024]{3,2,1,0} multiply(copy_0, broadcast_1)
+  slice_1 = bf16[1,4,1024,32,1024]{4,3,2,1,0} slice(transpose_0), slice={[1:2], [0:4], [0:1024], [0:32], [0:1024]}
+  reshape_2 = bf16[4,1024,32,1024]{3,2,1,0} reshape(slice_1)
+  copy_1 = bf16[4,1024,32,1024]{3,2,1,0} copy(reshape_2)
+  ROOT dot_0 = bf16[4,32,1024,1024]{3,2,1,0} dot(multiply_0, copy_1), lhs_batch_dims={0,2}, lhs_contracting_dims={3}, rhs_batch_dims={0,2}, rhs_contracting_dims={3}
+}
+)";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  config.set_debug_options(GetDebugOptionsForTest());
+  config.set_replica_count(1);
+  config.set_num_partitions(1);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
+                          GetOptimizedModule(std::move(module)));
+  debug_options.set_xla_gpu_enable_triton_gemm(false);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
+                          GetOptimizedModule(std::move(module)));
+  // Make sure autotuner falls back to cuBLAS when enabling triton gemm
+  const HloInstruction* root =
+      triton_enabled_module->entry_computation()->root_instruction();
+  const HloInstruction* custom_op = root->operand(0)->operand(0);
+  EXPECT_TRUE(custom_op->IsCustomCall("__cublas$gemm"));
+  // Make sure that the module has the same number of computations with/without
+  // enabling triton gemm
+  EXPECT_EQ(triton_enabled_module->computation_count(),
+            triton_disabled_module->computation_count());
 }
 
 }  // namespace

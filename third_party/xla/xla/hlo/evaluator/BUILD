@@ -5,7 +5,8 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -40,7 +41,6 @@ cc_library(
         "hlo_evaluator_typed_visitor_uint8.cc",
     ],
     hdrs = ["hlo_evaluator.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array2d",
         "//xla:comparison_util",

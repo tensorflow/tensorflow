@@ -413,14 +413,6 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   // parameters set. This is usually done during quantized training.
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
       input->type == kTfLiteInt16) {
-    // Populate scalar quantization parameters.
-    double real_multiplier = 0.0;
-    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-        context, input, filter, bias, output, &real_multiplier));
-    int exponent;
-    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
-    data->output_shift = exponent;
-
     // Populate per-channel quantization parameters, if per-channel
     // quantization.
     TF_LITE_ENSURE_EQ(context, input->quantization.type,
@@ -466,6 +458,14 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
         per_channel_multiplier[i] = significand;
         per_channel_shift[i] = channel_shift;
       }
+    } else {
+      // Populate scalar quantization parameters otherwise.
+      double real_multiplier = 0.0;
+      TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
+          context, input, filter, bias, output, &real_multiplier));
+      int exponent;
+      QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
+      data->output_shift = exponent;
     }
 
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
@@ -1354,7 +1354,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
             // Block sparse with block size of 1x16.
             optimized_ops::FullyConnectedSparseWeight1x16(
                 sparsity, op_params, input_shape, GetTensorData<int8_t>(input),
-                filter_shape, GetTensorData<int8_t>(filter), bias_shape,
+                filter_shape, GetTensorData<int8_t>(filter),
+                data->per_channel_output_multiplier.data(),
+                data->per_channel_output_shift.data(), bias_shape,
                 GetTensorData<int32_t>(bias), output_shape,
                 GetTensorData<int8_t>(output),
                 CpuBackendContext::GetFromContext(context));

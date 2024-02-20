@@ -414,7 +414,7 @@ void PrepareQuantizePass::runOnOperation() {
   ApplyQuantizationParamsPropagation(
       func, is_signed, /*bit_width=*/8, !enable_per_channel_quantization_,
       GetTFOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
-      quant_specs_.legacy_float_scale);
+      quant_specs_.legacy_float_scale, /*is_qdq_conversion=*/false);
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);

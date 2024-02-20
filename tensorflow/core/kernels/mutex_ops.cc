@@ -113,7 +113,7 @@ class Mutex : public ResourceBase {
             delete cancelled;
           }
           if (local_locked) {  // Not cancelled.
-            fn_(OkStatus(),
+            fn_(absl::OkStatus(),
                 SharedLockReleaser{std::make_shared<LockReleaser>(this)});
           } else {
             fn_(errors::Cancelled("Lock acquisition cancelled."),
@@ -146,7 +146,7 @@ class MutexLockOp : public AsyncOpKernel {
                                       [c](Mutex** ptr) {
                                         *ptr = new Mutex(
                                             c, HandleFromInput(c, 0).name());
-                                        return OkStatus();
+                                        return absl::OkStatus();
                                       }),
         done);
 

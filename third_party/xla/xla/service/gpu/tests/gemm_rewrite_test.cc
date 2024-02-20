@@ -38,6 +38,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
 #endif
 
 namespace xla {
@@ -985,10 +987,6 @@ ENTRY bf16gemm {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, Int8Gemm) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
-    GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
-  }
-
   const char* hlo_text = R"(
 HloModule int8gemm
 
@@ -1044,9 +1042,6 @@ ENTRY main.4 {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, Int8GemmNoAlphaRewrite) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
-    GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
-  }
   const char* hlo_text = R"(
 HloModule int8gemm
 
@@ -1082,9 +1077,6 @@ ENTRY int8gemm {
 }
 
 TEST_P(ParameterizedGemmRewriteTest, Int8GemmNoBetaRewrite) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
-    GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
-  }
   const char* hlo_text = R"(
 HloModule int8gemm
 
@@ -1898,9 +1890,6 @@ ENTRY test {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Test gemm matrix bias add fusion with mix type
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixType) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
-    GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
-  }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
       type_combinations = {
           {"f16", "f32"},
@@ -1939,9 +1928,6 @@ ENTRY test {
 
 // Test batch gemm matrix bias add fusion with mix type
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeBatched) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
-    GTEST_SKIP() << "DoBlasGemmWithAlgorithm is not yet implemented on ROCm";
-  }
   std::vector<std::tuple<absl::string_view, absl::string_view>>
       type_combinations = {
           {"f16", "f32"},
@@ -3456,7 +3442,12 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasThenApproxGeluActivation) {
-  if (CudaOrRocmCheck(Switch::False, Switch::True)) {
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60000
+  auto rocm_switch = Switch::False;  // GELU is only available from ROCM 6.0
+#else
+  auto rocm_switch = Switch::True;
+#endif
+  if (CudaOrRocmCheck(Switch::False, rocm_switch)) {
     GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
   }
   const char* hlo_text = R"(

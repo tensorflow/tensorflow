@@ -48,6 +48,11 @@ namespace {
 struct FunctionalControlFlowToRegions
     : public impl::FunctionalControlFlowToRegionsPassBase<
           FunctionalControlFlowToRegions> {
+  FunctionalControlFlowToRegions() = default;
+  explicit FunctionalControlFlowToRegions(bool allow_passthrough_args)
+      : FunctionalControlFlowToRegionsPassBase(
+            FunctionalControlFlowToRegionsPassOptions{allow_passthrough_args}) {
+  }
   void runOnOperation() override;
 };
 
@@ -250,6 +255,11 @@ void FunctionalControlFlowToRegions::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFFunctionalControlFlowToRegions() {
   return std::make_unique<FunctionalControlFlowToRegions>();
+}
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFFunctionalControlFlowToRegions(
+    bool allow_passthrough_args) {
+  return std::make_unique<FunctionalControlFlowToRegions>(
+      allow_passthrough_args);
 }
 
 }  // namespace TF

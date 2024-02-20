@@ -217,9 +217,15 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
 
+// Records the number of times this event occured, for debugging.
+void RecordTFDataDebug(const string& event);
+
 // Records the number of times an error of this type occurred with this status
 // code.
 void RecordTFDataError(const string& error_type, const string& error_code);
+
+// Records the framework type used to build the tf.data.Dataset.
+void RecordTFDataFrameworkType(const std::string& framework_type);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
@@ -246,6 +252,12 @@ void RecordUnusedOutput(const string& op_name);
 // Records the pipeline processing time in microseconds
 void RecordPipelineProcessingTime(const string& id,
                                   double pipeline_processing_time_usec);
+
+// Increments the count of binaries loaded from the persistent cache.
+void UpdatePersistentCacheLoadCount();
+
+// Increments the count of BEF and MLIR deserialized.
+void UpdateAotBefMlirLoadCount();
 
 // Updates the metrics stored about time spent building graphs.
 //

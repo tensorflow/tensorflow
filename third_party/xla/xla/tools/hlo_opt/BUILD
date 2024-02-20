@@ -20,7 +20,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -29,7 +30,6 @@ cc_library(
     name = "opt_lib",
     srcs = ["opt_lib.cc"],
     hdrs = ["opt_lib.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:statusor",
@@ -52,7 +52,6 @@ cc_library(
     name = "gpu_opt",
     testonly = True,
     srcs = if_gpu_is_configured(["gpu_opt.cc"]),
-    visibility = ["//visibility:public"],
     deps = [
         ":opt_lib",
         "//xla:debug_options_flags",
@@ -93,7 +92,6 @@ cc_library(
     name = "cpu_opt",
     testonly = True,
     srcs = ["cpu_opt.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":opt_lib",
         "//xla/service:cpu_plugin",
@@ -108,7 +106,6 @@ cc_library(
     name = "opt_main",
     testonly = True,
     srcs = ["opt_main.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "cpu_opt",
         ":opt_lib",
@@ -121,6 +118,7 @@ cc_library(
         "//xla/tools:hlo_module_loader",
         "//xla/tools:run_hlo_module_lib",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
@@ -128,6 +126,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/util:command_line_flags",
     ] + if_gpu_is_configured([
@@ -156,8 +155,10 @@ lit_test_suite(
         ],
     ),
     args = if_cuda_is_configured([
-        "--param=GPU=a100",
+        "--param=PTX=PTX",
+        "--param=GPU=a100_80",
     ]) + if_rocm_is_configured([
+        "--param=PTX=GCN",
         "--param=GPU=mi200",
     ]),
     cfg = "//xla:lit.cfg.py",
@@ -177,17 +178,18 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "gpu_specs/a100.txtpb",
+        "gpu_specs/a100_80.txtpb",
         "gpu_specs/mi200.txtpb",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
-    visibility = ["//visibility:public"],
 )
 
-exports_files(
-    glob([
-        "gpu_specs/*.txtpb",
-    ]),
-    visibility = ["//visibility:public"],
+filegroup(
+    name = "all_gpu_specs",
+    data = glob(["gpu_specs/*.txtpb"]),
 )
+
+exports_files(glob([
+    "gpu_specs/*.txtpb",
+]))

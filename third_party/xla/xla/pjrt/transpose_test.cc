@@ -127,8 +127,10 @@ TEST(TransposeTest, InvalidTilings) {
   options.elem_size_in_bytes = sizeof(float);
   options.dims = dims;
   options.permutation = perm;
-  options.input_layout = TransposePlan::Tiling{{8, 128}};
-  options.output_tiling = TransposePlan::Tiling{{4}};
+  std::vector<int64_t> input_tiling = {8, 128};
+  std::vector<int64_t> output_tiling = {4};
+  options.input_layout = TransposePlan::Tiling{input_tiling};
+  options.output_tiling = TransposePlan::Tiling{output_tiling};
   auto plan = TransposePlan::Create(options);
   EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
   EXPECT_THAT(
@@ -422,7 +424,8 @@ TEST(TransposeTest, NegativeStrides1D) {
   options.elem_size_in_bytes = sizeof(int32_t);
   options.dims = dims;
   options.permutation = permutation;
-  options.input_layout = TransposePlan::Striding{{-int64_t{sizeof(int32_t)}}};
+  std::vector<int64_t> strides = {-int64_t{sizeof(int32_t)}};
+  options.input_layout = TransposePlan::Striding{strides};
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + (n - 1), output.data());
   EXPECT_EQ(expected, output);
@@ -447,8 +450,9 @@ TEST(TransposeTest, NegativeStrides2D) {
   options.elem_size_in_bytes = sizeof(int16_t);
   options.dims = dims;
   options.permutation = permutation;
-  options.input_layout =
-      TransposePlan::Striding{{4 * sizeof(int16_t), -int64_t{sizeof(int16_t)}}};
+  std::vector<int64_t> strides = {4 * sizeof(int16_t),
+                                  -int64_t{sizeof(int16_t)}};
+  options.input_layout = TransposePlan::Striding{strides};
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + 3, output.data());
   EXPECT_EQ(expected, output);
@@ -578,24 +582,28 @@ static void* benchmarks = []() {
 }();
 
 TEST(TransposePlanCache, Basics) {
+  std::vector<int64_t> dims = {1, 2, 3};
+  std::vector<int64_t> permutation_210 = {2, 1, 0};
+  std::vector<int64_t> permutation_120 = {1, 2, 0};
+  std::vector<int64_t> permutation_012 = {0, 1, 2};
   TransposePlanCache cache(2);
   TransposePlan::Options o;
   o.elem_size_in_bytes = 4;
-  o.dims = {1, 2, 3};
-  o.permutation = {2, 1, 0};
+  o.dims = dims;
+  o.permutation = permutation_210;
   TF_ASSERT_OK_AND_ASSIGN(auto p1, cache.GetOrCreate(o));
   TF_ASSERT_OK_AND_ASSIGN(auto p1a, cache.GetOrCreate(o));
   EXPECT_TRUE(p1.get() == p1a.get());
   TransposePlan::Options o2;
   o2.elem_size_in_bytes = 4;
-  o2.dims = {1, 2, 3};
-  o2.permutation = {1, 2, 0};
+  o2.dims = dims;
+  o2.permutation = permutation_120;
   TF_ASSERT_OK_AND_ASSIGN(auto p2, cache.GetOrCreate(o2));
   EXPECT_TRUE(p1.get() != p2.get());
   TransposePlan::Options o3;
   o3.elem_size_in_bytes = 4;
-  o3.dims = {1, 2, 3};
-  o3.permutation = {0, 1, 2};
+  o3.dims = dims;
+  o3.permutation = permutation_012;
   TF_ASSERT_OK_AND_ASSIGN(auto p3, cache.GetOrCreate(o3));
   EXPECT_TRUE(p3.get() != p1.get());
   TF_ASSERT_OK_AND_ASSIGN(auto p1b, cache.GetOrCreate(o));

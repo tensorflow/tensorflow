@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -78,47 +79,51 @@ GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues() {
   return env;
 }
 
-namespace {
-
-// Implement a CompilationEnvironment::ProcessNewEnvFn for
-// GpuCompilationEnvironment, so that we can add GpuCompilationEnvironments
-// to CompilationEnvironments.
-//
-// The implementation returns Default env if one doesn't exist already.
-// NOLINTNEXTLINE
-StatusOr<std::unique_ptr<tsl::protobuf::Message>>
-ProcessNewGpuCompilationEnvironment(
-    std::unique_ptr<tsl::protobuf::Message> env) {  // NOLINT
-  if (!env) {
-    env = std::make_unique<GpuCompilationEnvironment>();
-  }
+Status InitializeMissingFieldsFromXLAFlags(GpuCompilationEnvironment& env) {
   TF_ASSIGN_OR_RETURN(GpuCompilationEnvironment from_env,
                       CreateGpuCompEnvFromEnvVar());
 
   auto default_env = CreateGpuCompEnvWithDefaultValues();
 
-  auto reflection = env->GetReflection();
+  auto reflection = env.GetReflection();
   auto reflection_from_env = from_env.GetReflection();
   auto descriptor = GpuCompilationEnvironment::descriptor();
   std::vector<const tsl::protobuf::FieldDescriptor*> missing_fields;
 
   for (int j = 0; j < descriptor->field_count(); ++j) {
     const tsl::protobuf::FieldDescriptor* field = descriptor->field(j);
-    if (reflection->HasField(*env, field) &&
+    if (reflection->HasField(env, field) &&
         reflection_from_env->HasField(from_env, field)) {
       return InvalidArgument(
           "Flag %s is set in both XLA_FLAGS env var and "
           "GpuCompilationEnvironment.",
           field->name());
-    } else if (!reflection->HasField(*env, field) &&
+    } else if (!reflection->HasField(env, field) &&
                !reflection_from_env->HasField(from_env, field)) {
       missing_fields.push_back(field);
     }
   }
-  env->MergeFrom(from_env);
+  env.MergeFrom(from_env);
 
   if (!missing_fields.empty()) {
-    reflection->SwapFields(env.get(), &default_env, missing_fields);
+    reflection->SwapFields(&env, &default_env, missing_fields);
+  }
+  return OkStatus();
+}
+
+namespace {
+
+// Implement a CompilationEnvironment::ProcessNewEnvFn for
+// GpuCompilationEnvironment, so that we can add GpuCompilationEnvironments
+// to CompilationEnvironments.
+//
+// The implementation returns Empty env if one doesn't exist already.
+// NOLINTNEXTLINE
+StatusOr<std::unique_ptr<tsl::protobuf::Message>>
+ProcessNewGpuCompilationEnvironment(
+    std::unique_ptr<tsl::protobuf::Message> env) {  // NOLINT
+  if (!env) {
+    env = std::make_unique<GpuCompilationEnvironment>();
   }
   return env;
 }

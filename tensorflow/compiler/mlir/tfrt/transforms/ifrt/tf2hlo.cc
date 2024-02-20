@@ -59,7 +59,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -68,37 +67,27 @@ namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
 
 absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
-    mlir::func::FuncOp op, absl::Span<const tensorflow::Tensor> inputs,
+    mlir::func::FuncOp op, absl::Span<const DtypeAndShape> inputs,
     const xla::ifrt::Client& ifrt_client) {
   tensorflow::tpu::TPUCompileMetadataProto metadata;
 
-  auto metadata_attr = op->getAttrOfType<mlir::StringAttr>(kMetadataAttrName);
   auto metadata_text_attr =
       op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
 
-  if (metadata_attr && !metadata_attr.getValue().empty()) {
-    // tpu_compile_metadata takes priority if exists.
-    VLOG(1) << "Parsing from attribute " << kMetadataAttrName << " : "
-            << metadata_attr.getValue().str();
-    if (!metadata.ParseFromString(metadata_attr.getValue())) {
-      return absl::InternalError(
-          absl::StrCat("Failed to parse tpu_compile_metadata attribute:",
-                       metadata_attr.getValue().str()));
-    }
-  } else if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
+  if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
     // Try __tpu_compile_metadata_text attribute. This only for debugging
     // purpose.
     VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
             << metadata_text_attr.getValue().str();
     if (!tsl::protobuf::TextFormat::ParseFromString(
-            metadata_text_attr.getValue(), &metadata)) {
+            metadata_text_attr.getValue().str(), &metadata)) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Attribute ", kMetadataTextAttrName, ":",
           metadata_text_attr.getValue().str(), " cannot be parsed"));
     }
   } else {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Missing ", kMetadataAttrName, " and ", kMetadataTextAttrName));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing ", kMetadataTextAttrName));
   }
 
   VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
@@ -126,14 +115,14 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
           "Only support PARAMETER, but got ", metadata.args(i).kind()));
     }
 
-    if (metadata.args(i).dtype() != inputs[i].dtype()) {
+    if (metadata.args(i).dtype() != inputs[i].dtype) {
       return absl::InternalError(absl::StrCat("Dtype mismatched! Expected ",
                                               metadata.args(i).dtype(), " got ",
-                                              inputs[i].dtype()));
+                                              inputs[i].dtype));
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape().AsProto();
+    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
   }
 
   // Create a default device assignment if one is not given by the model.
@@ -154,7 +143,7 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
 }  // namespace
 
 absl::StatusOr<Tf2HloResult> CompileTfToHlo(
-    mlir::ModuleOp module, absl::Span<const tensorflow::Tensor> inputs,
+    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn) {
   if (VLOG_IS_ON(1)) {
@@ -192,7 +181,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
 
   std::vector<TensorShape> arg_shapes;
   for (const auto& input : inputs) {
-    arg_shapes.push_back(input.shape());
+    arg_shapes.push_back(input.shape);
   }
 
   bool use_tuple_args = false;
@@ -222,6 +211,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   Tf2HloResult result;
   result.mlir_hlo_module = xla::llvm_ir::CreateMlirModuleOp(module->getLoc());
   result.compile_metadata = std::move(compile_metadata);
+  result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(
       *result.mlir_hlo_module, &compilation_result.computation->proto()));

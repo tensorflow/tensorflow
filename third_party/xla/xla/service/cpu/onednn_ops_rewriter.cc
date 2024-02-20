@@ -44,21 +44,20 @@ HloInstruction* FindLayerNormScale(HloInstruction* instr) {
   auto scalePattern = m::Multiply().WithBinaryOperandsAnyOrder(
       m::Broadcast(m::Op(&scale).WithOpcode(HloOpcode::kReshape)),
       m::Broadcast(m::Reshape(m::Broadcast(m::Rsqrt()))).WithOneUser());
-  auto m = Match(instr, scalePattern);
+  Match(instr, scalePattern);
   return scale;
 }
 
 HloInstruction* FindLayerNormShift(HloInstruction* instr) {
   HloInstruction* shift = nullptr;
-  auto m = Match(
-      instr,
-      m::Add().WithBinaryOperandsAnyOrder(
-          m::Multiply()
-              .WithBinaryOperandsAnyOrder(
-                  m::Op(), m::Subtract(m::Op(), m::Broadcast().WithOneUser())
-                               .WithOneUser())
-              .WithOneUser(),
-          m::Broadcast(m::Op(&shift))));
+  Match(instr,
+        m::Add().WithBinaryOperandsAnyOrder(
+            m::Multiply()
+                .WithBinaryOperandsAnyOrder(
+                    m::Op(), m::Subtract(m::Op(), m::Broadcast().WithOneUser())
+                                 .WithOneUser())
+                .WithOneUser(),
+            m::Broadcast(m::Op(&shift))));
   return shift;
 }
 
@@ -343,7 +342,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
           producer->AddInstruction(HloInstruction::CreateConvert(
               ShapeUtil::ChangeElementType(producer->shape(),
                                            instr->shape().element_type()),
-              {producer}));
+              producer));
       absl::InlinedVector<HloInstruction*, 2> newoperands =
           ln_instr->mutable_operands();
       newoperands.at(0) = newinp;
@@ -359,13 +358,8 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     if (divide_instr->HasControlDependencies()) return OkStatus();
     if (!IsSupportedType(divide_instr->shape().element_type()))
       return OkStatus();
-    std::optional<HloInstruction*> producer;
-    bool found_pattern = false;
-    if (producer = MatchSoftmax(divide_instr)) {
-      found_pattern = true;
-    }
-
-    if (!found_pattern) return OkStatus();
+    std::optional<HloInstruction*> producer = MatchSoftmax(divide_instr);
+    if (producer == std::nullopt) return OkStatus();
 
     const Shape& output_shape = divide_instr->shape();
     HloInstruction* softmax_call =

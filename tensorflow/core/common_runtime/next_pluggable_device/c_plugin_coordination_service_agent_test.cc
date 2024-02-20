@@ -208,7 +208,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(OkStatus())));
+                           InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -228,7 +228,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(OkStatus())));
+                           InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -282,7 +282,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, InsertKeyValue_Success) {
 
   EXPECT_CALL(*GetClient(),
               InsertKeyValueAsync(Pointee(EqualsProto(expected_input)), _, _))
-      .WillOnce(InvokeArgument<2>(OkStatus()));
+      .WillOnce(InvokeArgument<2>(absl::OkStatus()));
   InitializeAgent();
 
   TF_ASSERT_OK(agent_->InsertKeyValue(test_key, test_value));
@@ -296,7 +296,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, DeleteKeyValue_Success) {
 
   EXPECT_CALL(*GetClient(),
               DeleteKeyValueAsync(Pointee(EqualsProto(expected_input)), _, _))
-      .WillOnce(InvokeArgument<2>(OkStatus()));
+      .WillOnce(InvokeArgument<2>(absl::OkStatus()));
   InitializeAgent();
 
   TF_ASSERT_OK(agent_->DeleteKeyValue(test_key));
@@ -312,7 +312,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(OkStatus())));
+                           InvokeArgument<2>(absl::OkStatus())));
 
   // Initialize coordination agent.
   InitializeAgent();

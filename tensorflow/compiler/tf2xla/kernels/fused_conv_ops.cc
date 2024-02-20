@@ -277,7 +277,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
     }
 
     ctx->SetOutput(0, result);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

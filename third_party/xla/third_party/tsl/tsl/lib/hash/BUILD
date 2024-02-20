@@ -1,7 +1,7 @@
 load(
     "//tsl:tsl.bzl",
     "if_linux_x86_64",
-    "set_external_visibility",
+    "internal_visibility",
     "tsl_copts",
 )
 load("//tsl:tsl.default.bzl", "filegroup")
@@ -15,7 +15,13 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        # tensorflow/tsl/lib/io/table_builder.cc uses crc functionality
+        "//tsl/lib/io:__pkg__",
+        # tensorflow/core/lib/hash aliases hash for now
+        "//tensorflow/core/lib/hash:__pkg__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -27,7 +33,6 @@ cc_library(
     hdrs = ["crc32c.h"],
     # -msse4.2 enables the use of crc32c compiler builtins.
     copts = tsl_copts() + if_linux_x86_64(["-msse4.2"]),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform",
         "//tsl/platform:cord",
@@ -44,7 +49,7 @@ filegroup(
         "crc32c.cc",
         "crc32c.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/lib/hash:__pkg__"]),
 )
 
 filegroup(
@@ -52,14 +57,13 @@ filegroup(
     srcs = [
         "crc32c.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility(["//tensorflow/core/lib/hash:__pkg__"]),
 )
 
 tsl_cc_test(
     name = "crc32c_test",
     size = "small",
     srcs = ["crc32c_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":crc32c",
         "//tsl/platform:logging",

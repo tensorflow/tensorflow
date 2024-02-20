@@ -202,14 +202,14 @@ TEST(AutoScalerTest, ReportProcessingTimeNewAndExisting) {
 
 TEST(AutoScalerTest, ReportProcessingTimeZeroDuration) {
   AutoScaler auto_scaler;
-  tsl::Status result = auto_scaler.ReportProcessingTime("/worker/task/0:20000",
-                                                        absl::ZeroDuration());
+  absl::Status result = auto_scaler.ReportProcessingTime("/worker/task/0:20000",
+                                                         absl::ZeroDuration());
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AutoScalerTest, ReportProcessingTimeNegativeDuration) {
   AutoScaler auto_scaler;
-  tsl::Status result = auto_scaler.ReportProcessingTime(
+  absl::Status result = auto_scaler.ReportProcessingTime(
       "/worker/task/0:20000", absl::Microseconds(-10));
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -246,14 +246,14 @@ TEST(AutoScalerTest, ReportTargetProcessingTimeNewAndExisting) {
 
 TEST(AutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
   AutoScaler auto_scaler;
-  tsl::Status result =
+  absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, absl::ZeroDuration());
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AutoScalerTest, ReportTargetProcessingTimeNegativeDuration) {
   AutoScaler auto_scaler;
-  tsl::Status result =
+  absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, absl::Microseconds(-10));
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -324,7 +324,7 @@ TEST(MultipleIterationsAutoScalerTest, UnregisterNonexistentIteration) {
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricInvalidCurrentWorkers) {
   MultipleIterationsAutoScaler auto_scaler;
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(0);
+  absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(0);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
   status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(-1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
@@ -333,7 +333,7 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricNoReportedTimes) {
   MultipleIterationsAutoScaler auto_scaler;
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
+  absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -345,7 +345,7 @@ TEST(MultipleIterationsAutoScalerTest,
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(5)));
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
+  absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -357,7 +357,7 @@ TEST(MultipleIterationsAutoScalerTest,
                                                 absl::Microseconds(10)));
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
-  tsl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
+  absl::Status status = auto_scaler.UpdateOptimalNumberOfWorkersMetric(1);
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -587,7 +587,7 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNewAndExisting) {
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeZeroDuration) {
   MultipleIterationsAutoScaler auto_scaler;
 
-  tsl::Status result = auto_scaler.ReportProcessingTime(
+  absl::Status result = auto_scaler.ReportProcessingTime(
       0, "/worker/task/0:20000", absl::ZeroDuration());
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -595,7 +595,7 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeZeroDuration) {
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNegativeDuration) {
   MultipleIterationsAutoScaler auto_scaler;
 
-  tsl::Status result = auto_scaler.ReportProcessingTime(
+  absl::Status result = auto_scaler.ReportProcessingTime(
       0, "/worker/task/0:20000", absl::Microseconds(-10));
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -655,7 +655,7 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
   MultipleIterationsAutoScaler auto_scaler;
 
-  tsl::Status result =
+  absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::ZeroDuration());
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -664,7 +664,7 @@ TEST(MultipleIterationsAutoScalerTest,
      ReportTargetProcessingTimeNegativeDuration) {
   MultipleIterationsAutoScaler auto_scaler;
 
-  tsl::Status result =
+  absl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(-10));
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }

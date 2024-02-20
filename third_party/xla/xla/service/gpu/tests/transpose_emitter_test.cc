@@ -92,14 +92,14 @@ HloModule m
 %fused_computation {
   %param_0.1 = f32[16,32]{1,0} parameter(0)
   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-  %c.1 = f32[16,32]{0,1} copy(%s.1)
-  b = f32[16,32,1]{0,1,2} bitcast(%c.1)
-  ROOT o = f32[16,32,1]{0,1,2} sqrt(b)
+  %t.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
+  b = f32[32,16,1]{2,1,0} bitcast(%t.1)
+  ROOT o = f32[32,16,1]{2,1,0} sqrt(b)
 }
 
 ENTRY main {
   %p = f32[16,32]{1,0} parameter(0)
-  ROOT %fusion = f32[16,32,1]{0,1,2} fusion(%p), kind=kInput, calls=%fused_computation
+  ROOT %fusion = f32[32,16,1]{2,1,0} fusion(%p), kind=kInput, calls=%fused_computation
 }
   )";
 
@@ -111,23 +111,23 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo, ErrorSpec{1e-3}));
 }
 
-TEST_F(TransposeEmitterTest, MultipleCopiesWithPostFusion) {
+TEST_F(TransposeEmitterTest, MultipleTransposesWithPostFusion) {
   const char* hlo = R"(
 HloModule m
 
 %fused_computation {
   %param_0.1 = f32[16,32]{1,0} parameter(0)
   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-  %c.1 = f32[16,32]{0,1} copy(%s.1)
-  %c1.1 = f32[16,32]{0,1} copy(%param_0.1)
-  %r.1 = f32[16,32,1]{0,1,2} reshape(%c.1)
-  %r1.1 = f32[16,32,1]{0,1,2} reshape(%c1.1)
-  ROOT %tuple = (f32[16,32,1]{0,1,2}, f32[16,32,1]{0,1,2}) tuple(%r.1, %r1.1)
+  %t.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
+  %t1.1 = f32[32,16]{1,0} transpose(%param_0.1), dimensions={1,0}
+  %r.1 = f32[32,16,1]{2,1,0} reshape(%t.1)
+  %r1.1 = f32[32,16,1]{2,1,0} reshape(%t1.1)
+  ROOT %tuple = (f32[32,16,1]{2,1,0}, f32[32,16,1]{2,1,0}) tuple(%r.1, %r1.1)
 }
 
 ENTRY main {
   %p = f32[16,32]{1,0} parameter(0)
-  ROOT %fusion = (f32[16,32,1]{0,1,2}, f32[16,32,1]{0,1,2}) fusion(%p), kind=kInput, calls=%fused_computation
+  ROOT %fusion = (f32[32,16,1]{2,1,0}, f32[32,16,1]{2,1,0}) fusion(%p), kind=kInput, calls=%fused_computation
 }
   )";
 

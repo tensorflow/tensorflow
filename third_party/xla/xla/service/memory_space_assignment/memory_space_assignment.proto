@@ -36,6 +36,14 @@ message SlicedPrefetchOptions {
   // size that is not a multiple of the required hardware alignment. Otherwise,
   // we will choose not to slice such situations, which is always safe.
   bool fail_on_non_alignment_boundary_slice_proposal = 3;
+
+  // The threshold for max_slices after which we limit the permutations of slice
+  // times that we try when placing a sliced allocation.
+  uint32 all_slice_time_permutations_threshold = 4;
+
+  // The preferred slize size for MSA sliced prefetches. 0 means there is no
+  // preferred slice size, in which case, we'll try to slice into max_slices.
+  uint64 preferred_slice_size = 5;
 }
 
 // Options for memory-bound loop optimizations in memory space assignment. If
@@ -113,4 +121,46 @@ message PreferredPrefetchOverride {
 // and so on.
 message PreferredPrefetchOverrides {
   repeated PreferredPrefetchOverride overrides = 1;
+}
+
+// A message that identifies one or more HloPositions.
+message HloPositionMatcher {
+  // Regex to match the entire instruction HLO. The HLO string is constructed
+  // using default HloPrintOptions. Refer to the HloPrintOptions class in
+  // hlo_instruction.h to know more about the format of the HLO string used for
+  // matching.
+  optional string instruction_regex = 1;
+  // Regex to match instruction name.
+  optional string instruction_name_regex = 2;
+  // If output of an instruction is a tuple and indexing into the
+  // tuple is required.
+  optional TupleShapeIndex tuple_index = 3;
+}
+
+// Options to override preferred prefetch time for an operand.
+message MsaSortOrderOverrideOptions {
+  oneof options {
+    // Assign alternate memory to the filtered buffer before other buffers. If
+    // multiple buffers are to be assigned first (within the same override
+    // config) other tie breakers and stable sort order will take effect.
+    bool assign_first = 1;
+    // Assign alternate memory to the filtered buffer after other buffers. If
+    // multiple buffers are to be assigned last (within the same override
+    // config) other tie breakers and stable sort order will take effect.
+    bool assign_last = 2;
+  }
+}
+
+// Specifies details on how to override the sort order for matching
+// HloPositions.
+message MsaSortOrderOverride {
+  optional HloPositionMatcher hlo_position_matcher = 1;
+  optional xla.memory_space_assignment.MsaSortOrderOverrideOptions
+      override_options = 2;
+}
+
+// Encloses chained override configs. The first config has highest precedence
+// and so on.
+message MsaSortOrderOverrides {
+  repeated MsaSortOrderOverride overrides = 1;
 }

@@ -32,20 +32,13 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
-using ::testing::HasSubstr;
-using ::testing::IsEmpty;
-
 class InputSlicesTest : public HloTestBase {
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    printer_.SetDimensionName(0, "th_x");
-    printer_.SetDimensionName(1, "th_y");
-    printer_.SetDimensionName(2, "th_z");
-    printer_.SetDimensionName(3, "bl_x");
-    printer_.SetDimensionName(4, "bl_y");
-    printer_.SetDimensionName(5, "bl_z");
+    printer_ =
+        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
+                         {"chunk_id", "unroll_id"});
   }
 
  protected:
@@ -75,27 +68,32 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused = AnalyzeFusion(*root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto emitter,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis_fused}));
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
   auto fusion = dynamic_cast<InputSlicesFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
   auto thread_id_to_output_indexing =
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
-  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
-              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z) -> "
-                        "(0, "
-                        "((th_x + bl_x * 128) floordiv 3) mod 2, "
-                        "(th_x + bl_x * 128) mod 3, "
-                        "((th_x + bl_x * 128) floordiv 6) mod 5)"));
-  EXPECT_THAT(thread_id_to_output_indexing->domain,
-              MatchDomain(ElementsAre(MatchRange(0, 127), MatchRange(0, 0),
-                                      MatchRange(0, 0), MatchRange(0, 1),
-                                      MatchRange(0, 0), MatchRange(0, 0)),
-                          IsEmpty()));
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+              MatchIndexingString(R"(
+    (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (0,
+      ((th_x + bl_x * 128) floordiv 3) mod 2,
+       (th_x + bl_x * 128) mod 3,
+       ((bl_x * 64 + th_x floordiv 2) floordiv 3) mod 5)
+    domain:
+    th_x in [0, 127]
+    th_y in [0, 0]
+    th_z in [0, 0]
+    bl_x in [0, 1]
+    bl_y in [0, 0]
+    bl_z in [0, 0]
+    chunk_id in [0, 0]
+    unroll_id in [0, 0]
+    th_x + bl_x * 128 in [0, 29]
+  )"));
 }
 
 }  // namespace

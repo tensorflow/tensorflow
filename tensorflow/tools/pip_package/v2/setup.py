@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.16.0'
+_VERSION = '2.17.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -98,7 +98,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0, < 1.15',
+    'wrapt >= 1.11.0',
     # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
     'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
@@ -114,7 +114,7 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.16.0.a',
+    'tb-nightly ~= 2.17.0.a',
     'keras-nightly ~= 3.0.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -242,6 +242,9 @@ class InstallHeaders(Command):
 
   def mkdir_and_copy_file(self, header):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
+    # Windows platform uses "\" in path strings, the external header location
+    # expects "/" in paths. Hence, we replaced "\" with "/" for this reason
+    install_dir = install_dir.replace('\\', '/')
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
@@ -327,6 +330,11 @@ if '_tpu' in project_name:
       ).strftime('%Y%m%d'),
   )
   REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  CONSOLE_SCRIPTS.extend([
+      'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
+      ('start_grpc_tpu_service = '
+       'tensorflow.python.tools.grpc_tpu_worker_service:run'),
+  ])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'

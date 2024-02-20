@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
@@ -65,7 +66,7 @@ class KernelFusionInterface : public FusionInterface {
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;
 
-  // Computes an indexing map from thread to output element(s).
+  // Computes an indexing map from thread to output element(s) of the **hero**.
   //
   // The dimensions in the resulting map are
   //   d0, d1, d2: threadIdx.{x,y,z}
@@ -77,7 +78,14 @@ class KernelFusionInterface : public FusionInterface {
   // unsupported (scatter, in-place DUS). Implementations will return nullopt.
   // Note: Work in progress, not implemented for all emitters.
   virtual std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t output_id, mlir::MLIRContext* ctx) const = 0;
+      int64_t root_index, mlir::MLIRContext* ctx) const = 0;
+
+  // Computes an indexing map from thread to input element(s) of the root's
+  // **hero**. Note that in many cases this is not computable from the output
+  // indexing. The indexing may only be known for some operands of the hero.
+  virtual std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const = 0;
 
   static constexpr std::array<int, 3> kIndexingMapThreadIdxDims = {0, 1, 2};
   static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
@@ -85,14 +93,11 @@ class KernelFusionInterface : public FusionInterface {
  protected:
   // Returns the default mapping for the given launch dimensions: linearizes
   // the thread index and then reshapes it into the output layout.
-  static mlir::AffineMap GetDefaultThreadIdToOutputIndexingMap(
-      const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& output_shape, mlir::MLIRContext* ctx);
-
   // Populates the ranges for d0, d1, d2, d3, d4, d5 from the thread counts and
   // block sizes in the given launch dimensions.
-  static Domain GetThreadIdDomain(const LaunchDimensions& launch_dims,
-                                  int unroll_factor);
+  static IndexingMap GetDefaultThreadIdToOutputIndexingMap(
+      const LaunchDimensions& launch_dims, int unroll_factor,
+      const Shape& output_shape, mlir::MLIRContext* ctx);
 };
 
 // Base class for fusions that are implemented using a single kernel, which is

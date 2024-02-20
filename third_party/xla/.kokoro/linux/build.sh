@@ -26,12 +26,21 @@ function is_linux_gpu_job() {
   [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*gpu.* ]]
 }
 
-# Pull the container (in case it was updated since the instance started) and
-# store its SHA in the Sponge log.
-docker pull "$DOCKER_IMAGE"
-echo "TF_INFO_DOCKER_IMAGE,$DOCKER_IMAGE" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
-echo "TF_INFO_DOCKER_SHA,$(docker pull "$DOCKER_IMAGE" | sed -n '/Digest:/s/Digest: //g p')" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
+function is_linux_cpu_arm64_job() {
+  [[ "$KOKORO_JOB_NAME" =~ tensorflow/xla/linux/.*arm64.*/.*cpu.* ]]
+}
 
+function pull_docker_image_with_retries() {
+  # Pull the container (in case it was updated since the instance started) and
+  # store its SHA in the Sponge log.
+  docker pull "$DOCKER_IMAGE" || sleep 15
+  docker pull "$DOCKER_IMAGE" || sleep 15
+  docker pull "$DOCKER_IMAGE"
+  echo "TF_INFO_DOCKER_IMAGE,$DOCKER_IMAGE" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
+  echo "TF_INFO_DOCKER_SHA,$(docker pull "$DOCKER_IMAGE" | sed -n '/Digest:/s/Digest: //g p')" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
+}
+
+pull_docker_image_with_retries
 # Start a container in the background
 docker run --name xla -w /tf/xla -itd --rm \
     -v "$KOKORO_ARTIFACTS_DIR/github/xla:/tf/xla" \
@@ -39,40 +48,49 @@ docker run --name xla -w /tf/xla -itd --rm \
     "$DOCKER_IMAGE" \
     bash
 
-# bazelrc Files currently come from https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools
-RC_FILE="/usertools/cpu.bazelrc"
-TARGET_FILTER=""
 TAGS_FILTER="-no_oss,-oss_excluded,-oss_serial"
 ADDITIONAL_FLAGS=""
-RBE_CONFIG=""
+RBE_FLAGS=""
 
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
+
+    # We are currently running XLA presubmits on machines with NVIDIA T4 GPUs,
+    # which have a compute compatibility of 7.5. Se we filter out all the tests
+    # that need a newer GPU:
+    UNSUPPORTED_GPU_TAGS="$(echo -requires-gpu-sm{80,86,89,90}{,-only})"
+    TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
+
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
-    RC_FILE="/usertools/gpu.bazelrc"
-    RBE_CONFIG="rbe_linux_cuda_nvcc"
+    RBE_FLAGS="--config=rbe_linux_cuda_nvcc --jobs=150"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
 else
     TAGS_FILTER="$TAGS_FILTER,-gpu,-requires-gpu-nvidia"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=nonccl"
-    RBE_CONFIG="rbe_linux_cpu"
+
+    if is_linux_cpu_arm64_job ; then
+        TAGS_FILTER="$TAGS_FILTER,-no_aarch64"
+        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=tf_public_cache_push --action_env PYTHON_BIN_PATH=/usr/bin/python3.10 --python_path=/usr/bin/python3.10"
+    else
+        RBE_FLAGS="--config=rbe_linux_cpu --jobs=150"
+    fi
 fi
 
 # Build & test XLA
-docker exec xla bazel --bazelrc=$RC_FILE \
+docker exec xla bazel \
         test \
         --build_tag_filters=$TAGS_FILTER  \
         --test_tag_filters=$TAGS_FILTER \
+        --test_output=errors \
         --keep_going \
         --features=layering_check \
         --profile=/tf/pkg/profile.json.gz \
         --flaky_test_attempts=3 \
-        --config=$RBE_CONFIG \
-        --jobs=150 \
+        $RBE_FLAGS \
         --nobuild_tests_only \
         $ADDITIONAL_FLAGS \
-        -- //xla/... //build_tools/... $TARGET_FILTER
+        -- //xla/... //build_tools/...
 
 
 # Print build time statistics, including critical path.

@@ -309,6 +309,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClz;
   } else if (isa<mlir::mhlo::CosineOp, mlir::lmhlo::CosineOp>(op)) {
     return xla::HloOpcode::kCos;
+  } else if (isa<mlir::mhlo::ErfOp>(op)) {
+    return xla::HloOpcode::kErf;
   } else if (isa<mlir::mhlo::ExpOp, mlir::lmhlo::ExpOp>(op)) {
     return xla::HloOpcode::kExp;
   } else if (isa<mlir::mhlo::Expm1Op, mlir::lmhlo::Expm1Op>(op)) {

@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/shape_util.h"
@@ -28,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/platform/logging.h"
 
 namespace xla::gpu {
 
@@ -57,6 +61,17 @@ class NcclApi {
   using NcclCommHandle = NcclComm*;
   using NcclPersistentPlanAllocatorHandle = NcclPersistentPlanAllocator*;
   using NcclRegisteredBufferHandle = NcclRegisteredBuffer*;
+
+  // RAII handle for NCCL communicator.
+  struct NcclCommDeleter {
+    void operator()(NcclCommHandle comm) {
+      if (auto destroyed = api->CommDestroy(comm); !destroyed.ok())
+        LOG(ERROR) << "Failed to destroy communicator: " << destroyed;
+    }
+    NcclApi* api;
+  };
+
+  using OwnedNcclComm = std::unique_ptr<NcclComm, NcclCommDeleter>;
 
   // Persistent plan allocator allows to pass XLA memory allocator to NCCL to
   // allocate device memory for persistent execution plans for NCCL operations
@@ -100,6 +115,14 @@ class NcclApi {
     tsl::RCReference<PersistentPlanAllocator> allocator_;
   };
 
+  struct DeviceRank {
+    DeviceRank(se::StreamExecutor* device, int32_t rank)
+        : device(device), rank(rank) {}
+
+    se::StreamExecutor* device;
+    int32_t rank;
+  };
+
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
   static se::DeviceMemoryBase Slice(se::DeviceMemoryBase buff,
@@ -114,17 +137,41 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclgetuniqueid
   virtual absl::StatusOr<NcclCliqueId> GetUniqueId() = 0;
 
-  // Creates a new communicator.
+  // Creates new communicators for given devices.
+  //
+  // This API doesn't have a corresponding API in NCCL and implemented as
+  // multiple calls to ncclCommInitRank within a single group.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
-  virtual absl::StatusOr<NcclCommHandle> CommInitRank(
-      int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) = 0;
+  virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
+      int32_t nranks, const NcclCliqueId& clique_id,
+      absl::Span<const DeviceRank> ranks) = 0;
+
+  // Creates new communicators by splitting `comms`.
+  //
+  // This API doesn't have a corresponding API in NCCL and implemented as
+  // multiple calls to ncclCommSplit within a single group.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommsplit
+  virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
+      absl::Span<const NcclCommHandle> comms, int32_t color,
+      absl::Span<const int32_t> keys) = 0;
 
   // Abort any uncompleted operations and destroys the communicator. Frees
   // resources that are allocated to a communicator object comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommabort
   virtual absl::Status CommAbort(NcclCommHandle comm) = 0;
+
+  // Finalize a communicator object comm.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy
+  virtual absl::Status CommFinalize(NcclCommHandle comm) = 0;
+
+  // Destroy a communicator object comm.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommdestroy
+  virtual absl::Status CommDestroy(NcclCommHandle comm) = 0;
 
   // Returns the number of ranks in the NCCL communicator comm.
   //

@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/hlo.proto";
+import "xla/xla.proto";
 
 message XlaRuntimeGpuExecutableProto {
   message ConstantInfoProto {
@@ -39,7 +40,7 @@ message XlaRuntimeGpuExecutableProto {
 }
 
 message CompilationResultProto {
-  HloModuleProto hlo_module = 1;
+  HloModuleProtoWithConfig hlo_module_with_config = 1;
   BufferAssignmentProto buffer_assignment = 2;
   string asm_text = 3;
   bytes binary = 4;

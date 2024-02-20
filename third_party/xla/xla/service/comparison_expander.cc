@@ -15,44 +15,59 @@ limitations under the License.
 
 #include "xla/service/comparison_expander.h"
 
-#include "xla/client/lib/comparators.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include <cstdint>
+#include <utility>
+
+#include "absl/algorithm/container.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_creation_utils.h"
+#include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
 HloInstruction* BitcastConvertFloatingPointToIntegral(
-    HloComputation* computation, HloInstruction* value,
-    const Shape& signed_shape, const Shape& unsigned_shape,
-    HloInstruction* zero, HloInstruction* max_value) {
+    HloComputation* computation, HloInstruction* value, HloInstruction* zero,
+    HloInstruction* min_value, HloInstruction* max_value) {
   // Switch from a floating point value to a integer value in such a way that
   // when using the integer value to compare, we get the same result for normal
   // values, and -Nan is treated as the smallest value, and Nan is treated as
   // the largest value.
   // If f is a float, and
   // x = bit_cast<int32_t>(f);
-  // y = x < 0 ? numeric_limits<int32_t>::max() - x : x;
+  // y = x < 0 ? numeric_limits<int32_t>::max() ^ x : x;
   // then y is ordered as an int32_t such that finite values have the obvious
   // order, -0 is ordered before 0, and -NaN and NaN appear at the beginning
   // and end of the ordering.
-  // Note that in order to avoid -x to overflow, we calculate
-  // numeric_limits<int32_t>::max() - x as unsigned, and then convert back to
-  // signed.
+  auto signed_shape = max_value->shape();
   auto signed_value = computation->AddInstruction(
       HloInstruction::CreateBitcastConvert(signed_shape, value));
-  auto unsigned_value = computation->AddInstruction(
-      HloInstruction::CreateBitcastConvert(unsigned_shape, value));
-  auto flipped_value = computation->AddInstruction(HloInstruction::CreateBinary(
-      unsigned_shape, HloOpcode::kSubtract, max_value, unsigned_value));
-  flipped_value = computation->AddInstruction(
-      HloInstruction::CreateBitcastConvert(signed_shape, flipped_value));
-  auto compare_shape = signed_shape;
-  compare_shape.set_element_type(PRED);
+  auto compare_shape = ShapeUtil::ChangeElementType(signed_shape, PRED);
+  HloInstruction* flipped_value;
+  if (primitive_util::HasNegativeZero(value->shape().element_type())) {
+    flipped_value = computation->AddInstruction(HloInstruction::CreateBinary(
+        signed_shape, HloOpcode::kXor, max_value, signed_value));
+  } else {
+    // There is no -0 so min_denorm() must take its place, this is the same as
+    // adding one to flipped_value.
+    flipped_value = computation->AddInstruction(HloInstruction::CreateBinary(
+        signed_shape, HloOpcode::kSubtract, min_value, signed_value));
+
+    // NaN is the smallest value as it is negative.
+    auto nan_bit_pattern = min_value;
+    auto is_nan = computation->AddInstruction(HloInstruction::CreateCompare(
+        compare_shape, signed_value, nan_bit_pattern,
+        ComparisonDirection::kEq));
+    flipped_value = computation->AddInstruction(HloInstruction::CreateTernary(
+        signed_shape, HloOpcode::kSelect, is_nan, min_value, flipped_value));
+  }
   auto is_negative = computation->AddInstruction(HloInstruction::CreateCompare(
       compare_shape, signed_value, zero, ComparisonDirection::kLt));
   return computation->AddInstruction(
@@ -63,9 +78,9 @@ HloInstruction* BitcastConvertFloatingPointToIntegral(
 bool ComparisonExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
   if (HloCompareInstruction* compare =
-          dynamic_cast<HloCompareInstruction*>(instruction)) {
+          DynCast<HloCompareInstruction>(instruction)) {
     HloInstruction* lhs = instruction->operands()[0];
-    if (compare->type() == Comparison::Type::kFloatTotalOrder &&
+    if (compare->order() == Comparison::Order::kTotal &&
         primitive_util::IsFloatingPointType(lhs->shape().element_type())) {
       return true;
     }
@@ -75,58 +90,62 @@ bool ComparisonExpander::InstructionMatchesPattern(
 
 StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
     HloInstruction* instruction) {
-  CHECK(instruction->opcode() == HloOpcode::kCompare);
+  CHECK_EQ(instruction->opcode(), HloOpcode::kCompare);
   HloCompareInstruction* compare =
       static_cast<HloCompareInstruction*>(instruction);
-  CHECK(compare->type() == Comparison::Type::kFloatTotalOrder);
+  CHECK(compare->order() == Comparison::Order::kTotal)
+      << ComparisonOrderToString(compare->order());
   HloComputation* computation = instruction->parent();
   HloInstruction* lhs = instruction->operands()[0];
   HloInstruction* rhs = instruction->operands()[1];
-  Shape compare_shape = lhs->shape();
-  PrimitiveType compare_type = compare_shape.element_type();
+  PrimitiveType compare_type = lhs->shape().element_type();
   CHECK(primitive_util::IsFloatingPointType(compare_type));
-  // Special-case handling for BF16. We currently do not support direct
-  // comparisons with BF16, so we convert to F32 and then use the F32
-  // comparison logic.
-  if (compare_type == BF16) {
-    compare_type = F32;
-    compare_shape.set_element_type(compare_type);
-    lhs = computation->AddInstruction(
-        HloInstruction::CreateConvert(compare_shape, lhs));
-    rhs = computation->AddInstruction(
-        HloInstruction::CreateConvert(compare_shape, rhs));
+  if (auto do_upcast = absl::c_find_if(
+          expand_via_upcast_,
+          [compare_type](std::pair<PrimitiveType, PrimitiveType> upcast) {
+            return upcast.first == compare_type;
+          });
+      do_upcast != expand_via_upcast_.end()) {
+    CHECK(primitive_util::CastPreservesValues(do_upcast->first,
+                                              do_upcast->second));
+    compare_type = do_upcast->second;
+    lhs = computation->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(lhs->shape(), compare_type), lhs));
+    rhs = computation->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(rhs->shape(), compare_type), rhs));
   }
 
-  int64_t bit_width = primitive_util::BitWidth(compare_type);
+  int64_t bit_width = primitive_util::BitWidth(lhs->shape().element_type());
   PrimitiveType signed_type =
       primitive_util::SignedIntegralTypeForBitWidth(bit_width);
-  PrimitiveType unsigned_type =
-      primitive_util::UnsignedIntegralTypeForBitWidth(bit_width);
-  auto signed_shape = compare_shape;
-  signed_shape.set_element_type(signed_type);
-  auto unsigned_shape = compare_shape;
-  unsigned_shape.set_element_type(unsigned_type);
+  auto signed_shape = ShapeUtil::ChangeElementType(lhs->shape(), signed_type);
+
   auto zero_value = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(signed_type)));
-  zero_value = computation->AddInstruction(HloInstruction::CreateBroadcast(
-      signed_shape, zero_value, zero_value->shape().dimensions()));
-  auto max_signed = computation->AddInstruction(
+  zero_value = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(signed_shape, zero_value, {}));
+
+  auto min_value = computation->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MinValue(signed_shape.element_type())));
+  min_value = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(signed_shape, min_value, {}));
+
+  auto max_value = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::MaxValue(signed_type)));
-  auto max_shape = max_signed->shape();
-  max_shape.set_element_type(unsigned_type);
-  auto max_unsigned = computation->AddInstruction(
-      HloInstruction::CreateConvert(max_shape, max_signed));
-  auto max_value = computation->AddInstruction(HloInstruction::CreateBroadcast(
-      unsigned_shape, max_unsigned, max_shape.dimensions()));
-  lhs = BitcastConvertFloatingPointToIntegral(
-      computation, lhs, signed_shape, unsigned_shape, zero_value, max_value);
-  rhs = BitcastConvertFloatingPointToIntegral(
-      computation, rhs, signed_shape, unsigned_shape, zero_value, max_value);
+  max_value = computation->AddInstruction(
+      HloInstruction::CreateBroadcast(signed_shape, max_value, {}));
+
+  lhs = BitcastConvertFloatingPointToIntegral(computation, lhs, zero_value,
+                                              min_value, max_value);
+  rhs = BitcastConvertFloatingPointToIntegral(computation, rhs, zero_value,
+                                              min_value, max_value);
+
   auto new_compare = computation->AddInstruction(HloInstruction::CreateCompare(
       instruction->shape(), lhs, rhs, compare->direction(),
       Comparison::Type::kSigned));
+
   VLOG(2) << "New comparison instruction for total order:"
-          << new_compare->ToString() << "\n";
+          << new_compare->ToString();
   return new_compare;
 }
 

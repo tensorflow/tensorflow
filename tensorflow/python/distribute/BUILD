@@ -2159,13 +2159,6 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    # copybara:uncomment_begin
-    # args = [
-    # "--tpu_use_tfrt=false",  #TODO(b/227404010): Remove once the bug is fixed.
-    # ],
-    # copybara:uncomment_end
-    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
-    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -2317,7 +2310,7 @@ cuda_py_strict_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 35,
     tags = [
         "multi_gpu",
         "no_pip",  # TODO(b/266520226)

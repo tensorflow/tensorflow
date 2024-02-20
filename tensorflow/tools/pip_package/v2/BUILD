@@ -3,7 +3,7 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow/tools/pip_package/v2/utils:data_deps.bzl", "collect_data_files")
@@ -226,7 +226,10 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/util:pywrap_xla_ops",
     "//tensorflow:tensorflow_py",
     "//tensorflow/tools/compatibility:tf_upgrade_v2",
-]
+] + if_with_tpu_support([
+    "//tensorflow/python/tools:grpc_tpu_worker",
+    "//tensorflow/python/tools:grpc_tpu_worker_service",
+])
 
 py_binary(
     name = "build_pip_package_py",

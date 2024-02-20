@@ -300,20 +300,9 @@ Status ShapeVerifier::HandleOptimizationBarrier(HloInstruction* hlo) {
 }
 
 bool ShapeVerifier::ShapesSame(const Shape& a, const Shape& b,
-                               bool minor_to_major_only,
-                               bool ignore_memory_space, bool ignore_tiles) {
+                               Shape::Equal equal) {
   if (!opts_.layout_sensitive) {
     return ShapeUtil::Compatible(a, b);
-  }
-  Shape::Equal equal;
-  if (ignore_memory_space) {
-    equal.IgnoreMemorySpaceInLayout();
-  }
-  if (minor_to_major_only) {
-    equal.MinorToMajorOnlyInLayout();
-  }
-  if (ignore_tiles) {
-    equal.IgnoreTilesInLayout();
   }
   return equal(a, b);
 }
@@ -939,14 +928,14 @@ Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
   if (hlo->shape().IsTuple() && hlo->shape().tuple_shapes_size() != 2) {
     return Internal(
         "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
-        hlo->shape().ToString());
+        hlo->shape().ToString(true));
   }
   if (!ShapeUtil::Compatible(hlo->operand(0)->shape(),
                              hlo->shape().tuple_shapes(0))) {
     return Internal(
         "Expected state shape to match between input and output for "
         "RngBitGenerator. Got %s vs. %s",
-        hlo->operand(0)->shape().ToString(),
+        hlo->operand(0)->shape().ToString(true),
         hlo->shape().tuple_shapes(0).ToString());
   }
   return OkStatus();
@@ -1285,7 +1274,7 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
           custom_call->operand_shapes_with_layout()[i];
       TF_RET_CHECK(ShapeUtil::Compatible(custom_call->operand(i)->shape(),
                                          operand_shape_with_layout))
-          << custom_call->operand(i)->shape().ToString() << " operand "
+          << custom_call->operand(i)->shape().ToString(true) << " operand "
           << operand_shape_with_layout.ToString();
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
@@ -1572,8 +1561,8 @@ Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
     return Internal(
         "The %s expects the shape of operand and output to match (%s vs %s).",
         HloOpcodeString(async_update->opcode()),
-        async_update->operand(0)->shape().ToString(),
-        async_update->shape().ToString());
+        async_update->operand(0)->shape().ToString(true),
+        async_update->shape().ToString(true));
   }
   TF_RETURN_IF_ERROR(
       CheckAsyncOpComputationShapes(async_update, async_update->shape()));
@@ -1589,8 +1578,8 @@ Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
     return Internal(
         "The %s expects the shape of output to match the async shape at index "
         "{1} (%s vs %s).",
-        HloOpcodeString(async_done->opcode()), async_done->shape().ToString(),
-        root_shape.ToString());
+        HloOpcodeString(async_done->opcode()),
+        async_done->shape().ToString(true), root_shape.ToString(true));
   }
   return CheckAsyncOpOperand(async_done);
 }
@@ -1608,8 +1597,7 @@ Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
   const Shape& dest_shape = ShapeUtil::GetTupleElementShape(operand_shape, 0);
   const Shape& src_shape = ShapeUtil::GetTupleElementShape(operand_shape, 1);
   if (!ShapesSame(dest_shape, src_shape,
-                  /*minor_to_major_only=*/false,
-                  /*ignore_memory_space=*/true)) {
+                  Shape::Equal().IgnoreMemorySpaceInLayout())) {
     return Internal(
         "Source and destination buffers in CopyDone arguments need to be the "
         "same shape found %s and %s\n%s",
@@ -1834,18 +1822,27 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kSend:
       case HloOpcode::kSendDone:
       case HloOpcode::kTuple:
-      case HloOpcode::kWhile:
-        return ShapesSame(instruction->shape(), inferred_shape,
-                          only_compare_minor_to_major_in_layout);
-      case HloOpcode::kDynamicUpdateSlice:
-        // For DynamicUpdateSlice it has an "in-place" update semantics, but
-        // inside of fusions memory space propagation doesn't propagate the
-        // memory spaces all the way, causing possible mismatches. Relax the
-        // constraint in that condition.
-        return ShapesSame(instruction->shape(), inferred_shape,
-                          only_compare_minor_to_major_in_layout,
-                          /*ignore_memory_space=*/
-                          instruction->parent()->IsFusionComputation());
+      case HloOpcode::kWhile: {
+        Shape::Equal equal;
+        if (only_compare_minor_to_major_in_layout) {
+          equal.MinorToMajorOnlyInLayout();
+        }
+        return ShapesSame(instruction->shape(), inferred_shape, equal);
+      }
+      case HloOpcode::kDynamicUpdateSlice: {
+        Shape::Equal equal;
+        if (only_compare_minor_to_major_in_layout) {
+          equal.MinorToMajorOnlyInLayout();
+        }
+        if (instruction->parent()->IsFusionComputation()) {
+          // For DynamicUpdateSlice it has an "in-place" update semantics, but
+          // inside of fusions memory space propagation doesn't propagate the
+          // memory spaces all the way, causing possible mismatches. Relax the
+          // constraint in that condition.
+          equal.IgnoreMemorySpaceInLayout();
+        }
+        return ShapesSame(instruction->shape(), inferred_shape, equal);
+      }
 
       // We allow arbitrary layout and f32->bf16 transformations on all other
       // instructions, although this may be made more strict pending discussion
@@ -1918,8 +1915,9 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   // let's not check that.
   if (!ShapesSame(computation->root_instruction()->shape(),
                   result_layout.shape(),
-                  /*minor_to_major_only=*/false, /*ignore_memory_space=*/false,
-                  /*ignore_tiles=*/true)) {
+                  Shape::Equal()
+                      .IgnoreTilesInLayout()
+                      .IgnoreTailPaddingAlignmentInElements())) {
     return Internal(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
@@ -1941,9 +1939,9 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     // TPU layout assignment doesn't set the tiles on entry_computation_layout,
     // so let's not check that.
     if (!ShapesSame(parameter->shape(), layout.parameter_shape(i),
-                    /*minor_to_major_only=*/false,
-                    /*ignore_memory_space=*/false,
-                    /*ignore_tiles=*/true)) {
+                    Shape::Equal()
+                        .IgnoreTilesInLayout()
+                        .IgnoreTailPaddingAlignmentInElements())) {
       return Internal(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "
@@ -2248,20 +2246,40 @@ Status VerifyChannels(const HloModule& module) {
         }
         case HloOpcode::kRecv: {
           TF_RET_CHECK(instruction->users().size() == 1);
-          const HloInstruction* recv_done = instruction->users().front();
-          TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
-          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
-          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          const HloInstruction* recv_user = instruction->users().front();
+          if (recv_user->opcode() == HloOpcode::kRecvDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_user));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_user));
+          } else {
+            // If a Recv user is not a RecvDone, it has to be a tuple that is
+            // either the root of a while-body or the init of a while-loop.
+            TF_RET_CHECK(recv_user->opcode() == HloOpcode::kTuple);
+            if (recv_user != recv_user->parent()->root_instruction()) {
+              TF_RET_CHECK(recv_user->users().size() == 1);
+              const HloInstruction* user = recv_user->users().front();
+              TF_RET_CHECK(user->opcode() == HloOpcode::kWhile);
+            }
+          }
           break;
         }
         case HloOpcode::kSendDone:
           TF_RET_CHECK(instruction->operands().size() == 1);
           TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kSend);
           break;
-        case HloOpcode::kRecvDone:
+        case HloOpcode::kRecvDone: {
           TF_RET_CHECK(instruction->operands().size() == 1);
-          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kRecv);
+          const HloInstruction* recv_done_operand = instruction->operand(0);
+          if (recv_done_operand->opcode() != HloOpcode::kRecv) {
+            // If the RecvDone operand is not a Recv, it has to be either part
+            // of a while-loop result or a parameter of a while-body.
+            TF_RET_CHECK(recv_done_operand->opcode() ==
+                         HloOpcode::kGetTupleElement);
+            HloOpcode opcode = recv_done_operand->operand(0)->opcode();
+            TF_RET_CHECK(opcode == HloOpcode::kWhile ||
+                         opcode == HloOpcode::kParameter);
+          }
           break;
+        }
         default:
           break;
       }
@@ -2858,12 +2876,6 @@ void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
   }
   if (metadata.source_line() != 0) {
     ++has_source_line_count_;
-  }
-  if (metadata.creation_pass_id() != 0) {
-    ++has_creation_pass_id_count_;
-  }
-  if (metadata.logical_creation_pass_id() != 0) {
-    ++has_logical_creation_pass_id_count_;
   }
   if (metadata.size_of_generated_code_in_bytes() != 0) {
     ++has_size_of_generated_code_in_bytes_count_;

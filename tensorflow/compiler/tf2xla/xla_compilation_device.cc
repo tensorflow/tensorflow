@@ -140,7 +140,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   VLOG(4) << "Done";
 }
 
-Status XlaCompilationDevice::Sync() { return OkStatus(); }
+Status XlaCompilationDevice::Sync() { return absl::OkStatus(); }
 
 Status XlaCompilationDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,

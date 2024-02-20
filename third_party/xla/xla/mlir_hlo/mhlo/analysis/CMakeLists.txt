@@ -20,7 +20,6 @@ add_mlir_library(MhloTestAnalysis
   LMHLOTransformsPassIncGen
 
   LINK_LIBS PUBLIC
-  MLIRHLOAnalysis
   MLIRAnalysis
   MLIRPass
   MLIRTransforms

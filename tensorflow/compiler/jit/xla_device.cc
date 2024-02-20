@@ -501,38 +501,6 @@ Status XlaDevice::Sync() {
   return OkStatus();
 }
 
-// TODO(b/112409994): This is no longer necessary. Consolidate it with the
-// synchronous version.
-void XlaDevice::Sync(const DoneCallback& done) {
-  VLOG(1) << "XlaDevice::Sync (asynchronous)";
-  std::shared_ptr<se::Stream> stream;
-  {
-    mutex_lock lock(mu_);
-    stream = stream_;
-  }
-  if (!stream) {
-    done(OkStatus());
-    return;
-  }
-
-  // The call to ThenEnqueueOnBackgroundThread below enqueues a host callback at
-  // the end of the stream, after everything that has already been enqueued
-  // there at this moment. When the host callback is called, everything before
-  // it must have already finished, and the host callback will then place the
-  // task below onto a background thread. (See the implementation of
-  // ThenEnqueueOnBackgroundThread for details.) Therefore, when the done
-  // callback is finally called from that background thread, we know for sure
-  // that everything enqueued onto the stream (i.e., the device) at this very
-  // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
-  // This achieves a device-wide sync.
-  stream->ThenEnqueueOnBackgroundThread([stream, done](se::StreamExecutor*) {
-    profiler::TraceMe activity("XlaDevice::Sync::Callback",
-                               profiler::TraceMeLevel::kInfo);
-    done(stream->ok() ? OkStatus()
-                      : errors::Internal("XlaDevice::Sync() failed."));
-  });
-}
-
 Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
                                       const TensorProto& tensor_proto,
                                       const AllocatorAttributes alloc_attrs,

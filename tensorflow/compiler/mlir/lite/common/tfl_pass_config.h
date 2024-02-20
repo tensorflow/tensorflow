@@ -95,6 +95,10 @@ struct PassConfig {
   // ops and to convert kernels to quantized kernels wherever appropriate.
   quant::QDQConversionMode qdq_conversion_mode =
       quant::QDQConversionMode::kQDQNone;
+
+  // When set to true, StableHLO Quantizer is run. The full configuration for
+  // the quantizer is at `TocoFlags::quantization_config`.
+  bool enable_stablehlo_quantizer = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

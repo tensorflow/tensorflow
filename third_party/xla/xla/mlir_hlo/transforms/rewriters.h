@@ -31,11 +31,6 @@ void populateExtraBufferizePatterns(
     MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
-/// Populate pattern to bufferize `linalg.tiled_loop`.
-void populateTiledLoopBufferizePattern(
-    MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
-    RewritePatternSet *patterns);
-
 }  // namespace mlir
 
 #endif  // MLIR_HLO_TRANSFORMS_REWRITERS_H

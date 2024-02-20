@@ -5,7 +5,8 @@ load("@local_tsl//tsl/platform:build_config.bzl", "if_llvm_system_z_available")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/mlir/runtime:friends"],
     licenses = ["notice"],
 )
 
@@ -39,7 +40,6 @@ cc_library(
     ],
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":custom_call_encoding",
         ":passes_inc_gen",
@@ -70,7 +70,6 @@ cc_library(
     srcs = ["calling_convention.cc"],
     hdrs = ["calling_convention.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:IR",
@@ -195,7 +194,6 @@ cc_library(
     name = "compilation_pipeline_options",
     hdrs = ["compilation_pipeline_options.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":custom_call_encoding",
         "//xla/runtime:type_id",
@@ -208,7 +206,6 @@ cc_library(
     srcs = ["custom_call_encoding.cc"],
     hdrs = ["custom_call_encoding.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla/mlir/runtime/ir:rt",
@@ -232,7 +229,6 @@ cc_library(
     srcs = ["jit_compiler.cc"],
     hdrs = ["jit_compiler.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":calling_convention",
         ":compiler",
@@ -283,7 +279,6 @@ cc_library(
     srcs = ["specialization.cc"],
     hdrs = ["specialization.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":type_converter",
         "//xla/mlir/runtime/utils:constraints",
@@ -307,7 +302,6 @@ cc_library(
     srcs = ["type_converter.cc"],
     hdrs = ["type_converter.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla/mlir/runtime/ir:rt",
@@ -337,7 +331,6 @@ cc_library(
     name = "compiler",
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

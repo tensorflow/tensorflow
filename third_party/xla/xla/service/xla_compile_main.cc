@@ -88,8 +88,8 @@ xla::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   auto format = std::string(tsl::io::Extension(module_path));
   if (format == "hlo" || format == "txt") {
     return LoadModuleFromFile(
-        module_path, hlo_module_loader_details::Config(),
-        /*format=*/"hlo", [&](HloModuleConfig* c) {}, nullptr);
+        module_path, /*format=*/"hlo", hlo_module_loader_details::Config(),
+        [&](HloModuleConfig* c) {}, nullptr);
   }
   std::string module_string;
   TF_RETURN_IF_ERROR(

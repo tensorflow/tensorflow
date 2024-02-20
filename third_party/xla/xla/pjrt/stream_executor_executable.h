@@ -27,12 +27,14 @@ class StreamExecutorExecutable : public PjRtExecutable {
   StreamExecutorExecutable(
       const CompileOptions& compile_options,
       std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
-      int num_replicas, int num_partitions, absl::string_view name)
+      int num_replicas, int num_partitions, absl::string_view name,
+      absl::string_view fingerprint)
       : compile_options_(compile_options),
         aot_executables_(std::move(executables)),
         num_replicas_(num_replicas),
         num_partitions_(num_partitions),
-        name_(name) {}
+        name_(name),
+        fingerprint_(fingerprint) {}
 
   StatusOr<std::string> SerializeExecutable() const override;
 
@@ -63,12 +65,17 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return aot_executables_;
   }
 
+  StatusOr<std::string> FingerprintExecutable() const override {
+    return fingerprint_;
+  }
+
  private:
   CompileOptions compile_options_;
   std::vector<std::unique_ptr<xla::AotCompilationResult>> aot_executables_;
   int num_replicas_;
   int num_partitions_;
   std::string name_;
+  std::string fingerprint_;
 };
 }  // namespace xla
 

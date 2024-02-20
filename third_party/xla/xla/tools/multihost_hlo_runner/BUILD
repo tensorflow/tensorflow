@@ -7,7 +7,8 @@ load("@local_tsl//tsl:tsl.bzl", "if_cuda_or_rocm")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -57,7 +58,6 @@ cc_library(
     name = "functional_hlo_runner",
     srcs = ["functional_hlo_runner.cc"],
     hdrs = ["functional_hlo_runner.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -92,7 +92,6 @@ cc_library(
     name = "hlo_runner_flags",
     srcs = ["hlo_runner_flags.cc"],
     hdrs = ["hlo_runner_flags.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":functional_hlo_runner",
         "//xla/pjrt:pjrt_executable",

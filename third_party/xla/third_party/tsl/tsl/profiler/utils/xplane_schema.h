@@ -77,6 +77,9 @@ TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
 TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
 
+// Name of Xplane that contains environment information
+TF_CONST_INIT extern const absl::string_view kTaskEnvPlaneName;
+
 // Max collectives to display per TPU.
 // Since in most cases there will be more than 9 collectives, the last line
 // contains all collectives that did not qualify to get their own line.
@@ -252,6 +255,7 @@ enum StatType {
   kTfFunctionCall,
   kTfFunctionTracingCount,
   kFlops,
+  kModelFlops,
   kBytesAccessed,
   kMemoryAccessBreakdown,
   kSourceInfo,
@@ -313,7 +317,8 @@ enum StatType {
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
-  kLastStatType = kEdgeTpuMlir,
+  kDroppedTraces,
+  kLastStatType = kDroppedTraces,
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -338,6 +343,13 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleLoopIteration,
   kMegaScaleGraphProtos,
   kLastMegaScaleStatType = kMegaScaleGraphProtos,
+};
+
+enum TaskEnvStatType {
+  kFirstTaskEnvStatType = 1,
+  kEnvProfileStartTime = kFirstTaskEnvStatType,
+  kEnvProfileStopTime,
+  kLastTaskEnvStatType = kEnvProfileStopTime,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
@@ -399,6 +411,10 @@ bool IsInternalEvent(std::optional<int64_t> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
 bool IsInternalStat(std::optional<int64_t> stat_type);
+
+absl::string_view GetTaskEnvStatTypeStr(TaskEnvStatType stat_type);
+
+std::optional<int64_t> FindTaskEnvStatType(absl::string_view stat_name);
 
 // Support for flow events:
 // This class enables encoding/decoding the flow id and direction, stored as

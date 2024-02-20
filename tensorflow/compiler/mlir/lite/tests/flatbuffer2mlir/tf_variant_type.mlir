@@ -4,6 +4,5 @@ func.func @main(%arg0 : tensor<!tf_type.variant<tensor<2xi32>>>, %arg1: tensor<!
   func.return %arg0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }
 
-// CHECK: module attributes {tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}
 // CHECK:          func.func @main(%[[ARG0:.*]]: tensor<!tf_type.variant<tensor<2xi32>>>, %[[ARG1:.*]]: tensor<!tf_type.variant<tensor<*xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>>
 // CHECK-NEXT:       return %[[ARG0]] : tensor<!tf_type.variant<tensor<2xi32>>>

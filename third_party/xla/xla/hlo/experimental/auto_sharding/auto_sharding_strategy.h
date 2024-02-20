@@ -130,6 +130,10 @@ using EdgeStrategyIdx = int64_t;  // An index into an edge's strategy vector.
 using LivenessIdx = int64_t;      // An index into the liveness vector.
 using AliasIdx = int64_t;         // An index into the alias vector.
 
+// Various classes needed to support strategy shaving.
+using NodeStrategy = std::pair<NodeIdx, NodeStrategyIdx>;
+using NodeStrategies = StableHashSet<NodeStrategy>;
+
 // A group of strategy choices (along with details like index values)
 // for each instruction.
 struct StrategyGroup {

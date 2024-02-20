@@ -46,6 +46,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
+<<<<<<< HEAD
 
 tf_cc_test(
     name = "stablehlo_op_quant_spec_test",
@@ -67,3 +68,5 @@ tf_cc_test(
         "@stablehlo//:stablehlo_ops",
     ],
 )
+=======
+>>>>>>> upstream/master

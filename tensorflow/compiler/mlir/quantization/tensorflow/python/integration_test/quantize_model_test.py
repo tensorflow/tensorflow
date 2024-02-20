@@ -42,6 +42,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -1790,6 +1791,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'enable_per_channel_quantization': True,
           'dilations': [1, 2, 2, 1],
       },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_stablehlo_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.STABLEHLO,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(
@@ -1950,6 +1960,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ),
       )
       self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
+    elif target_opset == quant_opts_pb2.STABLEHLO:
+      # This is to verify the invocation of StableHLO quantizer works. More
+      # thorough functional tests are in StableHLO quantizer directory.
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaCallModule'))
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
@@ -5831,7 +5845,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
 class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
 
-  def _run_model_in_sess(self, model_dir, tags, signature_key, sample_input):
+  def _run_model_in_sess(self, model_dir, tags, signature_key, sample_inputs):
     with tensorflow.compat.v1.Session(graph=tensorflow.Graph()) as sess:
       meta_graph = saved_model_loader.load(sess, tags, export_dir=model_dir)
       signature_def = meta_graph.signature_def[signature_key]
@@ -5843,13 +5857,26 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
           for output_tensor_info in signature_def.outputs.values()
       ]
 
-      feed_dict = {}
-      for input_key, input_value in sample_input.items():
-        input_tensor_name = signature_def.inputs[input_key].name
-        feed_dict[input_tensor_name] = input_value
+      output_values = []
+      for sample_input in sample_inputs:
+        feed_dict = {}
+        for input_key, input_value in sample_input.items():
+          input_tensor_name = signature_def.inputs[input_key].name
+          feed_dict[input_tensor_name] = input_value
 
-      # Obtain the output of the model.
-      return sess.run(output_tensor_names, feed_dict=feed_dict)[0]
+        # Obtain the output of the model.
+        output_values.append(
+            sess.run(output_tensor_names, feed_dict=feed_dict)[0]
+        )
+    return output_values
+
+  def _read_tensor_array_file(self, file_path):
+    tensor_protos = []
+    for raw_record in tf_record.tf_record_iterator(file_path, options='ZLIB'):
+      tensor_protos.append(
+          tensorflow.make_ndarray(tensor_pb2.TensorProto.FromString(raw_record))
+      )
+    return np.array(tensor_protos)
 
   @parameterized.named_parameters(
       {
@@ -5926,9 +5953,10 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
 
-    sample_input = {
-        'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))
-    }
+    sample_inputs = [
+        {'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))},
+        {'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))},
+    ]
 
     # Check if output of the model and value saved by DumpTensorOp matches.
     # Verify for both unquantized model and quantized model.
@@ -5936,24 +5964,19 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         [unquantized_dump_model_path, 'unquantized_tensor_data.pb'],
         [self._output_saved_model_path, 'quantized_tensor_data.pb'],
     ]:
-      output_value = self._run_model_in_sess(
-          model_path, tags, 'serving_default', sample_input
+      output_values = self._run_model_in_sess(
+          model_path, tags, 'serving_default', sample_inputs
       )
 
       # Find the dump file and parse it.
       folder = os.path.join(log_dir_path, os.listdir(log_dir_path)[0])
       dump_file_path = os.path.join(log_dir_path, folder, file_name)
-
-      dump_file_proto = tensor_pb2.TensorProto.FromString(
-          open(dump_file_path, 'rb').read()
-      )
-
-      dump_file_numpy = tensorflow.make_ndarray(dump_file_proto)
+      dump_file_numpy = self._read_tensor_array_file(dump_file_path)
 
       # Since the model only has one conv2d and its output is directly used as
       # the output of the model, output of the model and conv2d's dump value
       # should be the same.
-      self.assertAllEqual(output_value, dump_file_numpy)
+      self.assertAllEqual(output_values, dump_file_numpy)
 
       # Verify if quant_unit.pb file was created correctly.
       quant_unit_file_path = os.path.join(log_dir_path, folder, 'quant_unit.pb')
@@ -6070,15 +6093,16 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
 
-    sample_input = {
-        'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))
-    }
+    sample_inputs = [
+        {'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))},
+        {'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))},
+    ]
 
     output_value_from_original_model = self._run_model_in_sess(
-        self._input_saved_model_path, tags, 'serving_default', sample_input
+        self._input_saved_model_path, tags, 'serving_default', sample_inputs
     )
     output_value_from_debugging_model = self._run_model_in_sess(
-        self._output_saved_model_path, tags, 'serving_default', sample_input
+        self._output_saved_model_path, tags, 'serving_default', sample_inputs
     )
 
     # Find the both quantized and unquantized dump file.
@@ -6090,18 +6114,11 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         log_dir_path, folder, 'quantized_tensor_data.pb'
     )
 
-    unquantized_dump_file_proto = tensor_pb2.TensorProto.FromString(
-        open(unquantized_dump_file_path, 'rb').read()
+    unquantized_dump_file_numpy = self._read_tensor_array_file(
+        unquantized_dump_file_path
     )
-    quantized_dump_file_proto = tensor_pb2.TensorProto.FromString(
-        open(quantized_dump_file_path, 'rb').read()
-    )
-
-    unquantized_dump_file_numpy = tensorflow.make_ndarray(
-        unquantized_dump_file_proto
-    )
-    quantized_dump_file_numpy = tensorflow.make_ndarray(
-        quantized_dump_file_proto
+    quantized_dump_file_numpy = self._read_tensor_array_file(
+        quantized_dump_file_path
     )
 
     # Since the model only has one conv2d and its output is directly used as
@@ -6143,169 +6160,46 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   (default in TF2) to ensure support for when TF2 is disabled.
   """
 
-  @parameterized.named_parameters(
-      {
-          'testcase_name': 'with_min_max',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_min_max_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_min_max_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_average_min_max',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_average_min_max_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_average_min_max_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_percentile',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+  @parameterized.parameters(
+      parameter_combinations([{
+          'target_opset': [
+              quant_opts_pb2.TF,
+              quant_opts_pb2.XLA,
+              quant_opts_pb2.UNIFORM_QUANTIZED,
+          ],
+          'calibration_options': [
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_percentile_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_percentile_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_bruteforce',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_bruteforce_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_bruteforce_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_max_frequency',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_max_frequency_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_max_frequency_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_symmetric',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_symmetric_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_symmetric_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
+          ],
+      }])
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model_by_calibration_options(

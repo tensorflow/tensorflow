@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 
@@ -30,7 +31,7 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
  public:
   GpuCodegenTest()
       : is_built_with_rocm_(
-            se::MultiPlatformManager::PlatformWithName("ROCM").ok()) {}
+            se::PlatformManager::PlatformWithName("ROCM").ok()) {}
 
  protected:
   // Converts LLVM match to be platform-specific.

@@ -1,8 +1,8 @@
+load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
-load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -189,6 +189,8 @@ py_strict_library(
         ":lite_constants",
         ":op_hint",
         ":util",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/python/metrics",
@@ -207,7 +209,6 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:versions",
         "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
@@ -452,6 +453,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
     ],
@@ -479,12 +481,13 @@ pytype_strict_library(
         ":lite_constants",
         ":util",
         ":wrap_toco",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_py",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
+        "//tensorflow/lite/toco:types_proto_py",
         "//tensorflow/lite/toco/python:toco_from_protos",
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:dtypes",

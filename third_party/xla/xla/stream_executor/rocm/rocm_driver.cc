@@ -743,16 +743,16 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
 
 /* static */ absl::StatusOr<GpuDriver::GpuGraphNodeResult>
 GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
-                        absl::Span<hipGraphNode_t> deps,
+                        absl::Span<const hipGraphNode_t> deps,
                         const GpuGraphNodeParams& params) {
   return absl::UnimplementedError("unsupported node type");
 }
 
 /* static */ absl::Status GpuDriver::GraphAddKernelNode(
-    hipGraphNode_t* node, hipGraph_t graph, absl::Span<hipGraphNode_t> deps,
-    absl::string_view kernel_name, hipFunction_t function,
-    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-    unsigned int block_dim_x, unsigned int block_dim_y,
+    hipGraphNode_t* node, hipGraph_t graph,
+    absl::Span<const hipGraphNode_t> deps, absl::string_view kernel_name,
+    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes,
     void** kernel_params, void** extra) {
   VLOG(2) << "Add kernel node to a graph " << graph
@@ -833,8 +833,8 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
 }
 
 /* static */ absl::Status GpuDriver::GraphAddChildNode(
-    hipGraphNode_t* node, hipGraph_t graph, absl::Span<hipGraphNode_t> deps,
-    hipGraph_t child) {
+    hipGraphNode_t* node, hipGraph_t graph,
+    absl::Span<const hipGraphNode_t> deps, hipGraph_t child) {
   VLOG(2) << "Create a new node by cloning the child graph " << child
           << " and add it to " << graph << "; deps: " << deps.size();
 

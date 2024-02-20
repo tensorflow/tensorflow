@@ -303,8 +303,56 @@ class ShardingUtilTest(test.TestCase):
       sharding_util.validate_shards(
           shards, shardable_tensors_flat, sharding_callback.description)
 
+  def test_validate_shards_task_change(self):
+    servers = [server_lib.Server.create_local_server() for _ in range(2)]
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": [s.target[len("grpc://"):] for s in servers]})
+    remote.connect_to_cluster(cluster_spec)
+
+    root = module.Module()
+    with ops.device("/job:worker/task:0/cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
+    with ops.device("/job:worker/task:1/cpu:0"):
+      v1 = resource_variable_ops.ResourceVariable(0.0, name="v1")
+    root.v0 = v0
+    root.v1 = v1
+
+    class TaskChangeCallback(sharding_util.ShardingCallback):
+      @property
+      def description(self):
+        return "task change callback"
+
+      def __call__(
+          self, shardable_tensors: Sequence[sharding_util.ShardableTensor]
+      ) -> Sequence[sharding_util.TensorSliceDict]:
+        shards = []
+        for shardable_tensor in shardable_tensors:
+          tensor = shardable_tensor.tensor
+          checkpoint_key = shardable_tensor.checkpoint_key
+          slice_spec = shardable_tensor.slice_spec
+          if checkpoint_key == "v0/.ATTRIBUTES/VARIABLE_VALUE":
+            with ops.device("/job:worker/task:1/cpu:0"):
+              tensor = array_ops.identity(tensor)
+          shards.append({checkpoint_key: {slice_spec: tensor}})
+        return shards
+
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+    shardable_tensors_flat = []
+    for tensors in shardable_tensors:
+      shardable_tensors_flat.extend(tensors)
+
+    sharding_callback = TaskChangeCallback()
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(sharding_callback(tensors))
+
+    with self.assertRaisesRegex(RuntimeError,
+                                "a tensor was found with an altered task"):
+      sharding_util.validate_shards(
+          shards, shardable_tensors_flat, sharding_callback.description)
+
   def test_validate_shards_different_tasks(self):
-    servers = [server_lib.Server.create_local_server() for _ in range(3)]
+    servers = [server_lib.Server.create_local_server() for _ in range(2)]
     cluster_spec = server_lib.ClusterSpec({
         "worker": [s.target[len("grpc://"):] for s in servers]})
     remote.connect_to_cluster(cluster_spec)

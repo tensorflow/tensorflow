@@ -3115,13 +3115,14 @@ Status HloEvaluator::HandleAsyncStart(const HloInstruction* async_start) {
     arg_literals.push_back(&arg_literal);
   }
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   TF_ASSIGN_OR_RETURN(
       Literal result,
-      embedded_evaluator.Evaluate(*async_start->async_wrapped_computation(),
-                                  arg_literals));
+      embedded_evaluator->Evaluate(*async_start->async_wrapped_computation(),
+                                   arg_literals));
 
   evaluated_[async_start] = Literal(async_start->shape());
   // Copy the operand values to the index {0, i} of the output.

@@ -1,0 +1,14 @@
+build --action_env CLANG_COMPILER_PATH=/usr/lib/llvm-17/bin/clang
+build --repo_env CC=/usr/lib/llvm-17/bin/clang
+build --repo_env BAZEL_COMPILER=/usr/lib/llvm-17/bin/clang
+build --action_env PYTHON_BIN_PATH=/usr/bin/python3
+build --python_path /usr/bin/python3
+test --test_env LD_LIBRARY_PATH
+test --test_size_filters small,medium
+build --copt -Wno-sign-compare
+build --copt -Wno-error=unused-command-line-argument
+build --copt -Wno-gnu-offsetof-extensions
+build --build_tag_filters -no_oss,-gpu
+build --test_tag_filters -no_oss,-gpu
+test --build_tag_filters -no_oss,-gpu
+test --test_tag_filters -no_oss,-gpu

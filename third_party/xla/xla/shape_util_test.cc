@@ -337,6 +337,14 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
 }
 
+TEST(ShapeUtilTest, ByteStrides) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  Shape shape2 = ShapeUtil::MakeShape(F16, {5, 7, 9});
+
+  EXPECT_THAT(*ShapeUtil::ByteStrides(shape1), ElementsAre(140, 28, 4));
+  EXPECT_THAT(*ShapeUtil::ByteStrides(shape2), ElementsAre(126, 18, 2));
+}
+
 TEST(ShapeUtilTest, NilShape) {
   EXPECT_TRUE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeNil()));
   EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {1, 2, 3})));

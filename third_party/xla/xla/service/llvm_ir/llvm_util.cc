@@ -50,6 +50,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -361,6 +362,49 @@ llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
       llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name) {
+  llvm::Type* ty = element_type;
+  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
+    ty = llvm::ArrayType::get(ty, dim);
+  }
+  return SharedMemoryTile{
+      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
+}
+
+static std::vector<llvm::Value*> IndexWith0(
+    absl::Span<llvm::Value* const> index, llvm::IRBuilder<>* b) {
+  std::vector<llvm::Value*> index_with_0{
+      llvm::ConstantInt::get(index.front()->getType(), 0)};
+  absl::c_copy(index, std::back_inserter(index_with_0));
+  return index_with_0;
+}
+
+llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
+                                       llvm::IRBuilder<>* b) const {
+  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
+                                          IndexWith0(index, b));
+  // __shared__ memory uses a different address space, so we cast it
+  // to global address space before writing or reading.
+  return b->CreateAddrSpaceCast(gep,
+                                llvm::PointerType::get(b->getContext(), 0));
+};
+
+llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
+                                    llvm::IRBuilder<>* b) const {
+  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
+      base_ptr_->getValueType(), IndexWith0(index, b));
+  return b->CreateLoad(load_type, Address(index, b));
+}
+
+llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
+                                         absl::Span<llvm::Value* const> index,
+                                         llvm::IRBuilder<>* b) const {
+  return b->CreateStore(value, Address(index, b));
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
                                             llvm::IRBuilder<>* b,
@@ -377,8 +421,11 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  // Explicitly set local addrspace for SPIR backend.
+  int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 5 : 0;
   llvm::AllocaInst* alloca =
-      b->CreateAlloca(type, element_count, AsStringRef(name));
+      b->CreateAlloca(type, addrspace, element_count, AsStringRef(name));
   if (alignment != 0) {
     alloca->setAlignment(llvm::Align(alignment));
   }
@@ -496,7 +543,12 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 }
 
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
-                                    llvm::Instruction* inst) {
+                                    llvm::Instruction* inst,
+                                    llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
+    return inst;
+  }
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
   inst->setMetadata(

@@ -215,14 +215,33 @@ LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
-    int64_t output_id, mlir::MLIRContext* ctx) const {
+    int64_t root_index, mlir::MLIRContext* ctx) const {
   auto launch_dims = launch_dimensions();
-  const auto& shape = analysis_.fusion_roots()[output_id]->shape();
-  IndexingMap result{GetDefaultThreadIdToOutputIndexingMap(
-                         launch_dims, config_.unroll_factor, shape, ctx),
-                     GetThreadIdDomain(launch_dims, config_.unroll_factor)};
-  result.Simplify();
-  return result;
+  const auto& shape = analysis_.fusion_roots()[root_index]->shape();
+  return GetDefaultThreadIdToOutputIndexingMap(
+      launch_dims, config_.unroll_factor, shape, ctx);
+}
+
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  std::optional<IndexingMap> thread_id_to_output_indexing =
+      ComputeThreadIdToOutputIndexing(root_index, ctx);
+  if (!thread_id_to_output_indexing.has_value()) {
+    return std::nullopt;
+  }
+  const HloInstruction* fusion_root = analysis_.fusion_roots()[root_index];
+  auto output_to_input_indexing =
+      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
+  IndexingMapSet output_to_input_indexing_set =
+      output_to_input_indexing.indexing_maps[hero_operand_index];
+  // Since we are computing the indexing for a non-fusion op, there is only one
+  // indexing map per operand.
+  CHECK_EQ(output_to_input_indexing_set.size(), 1);
+  IndexingMap thread_id_to_input_indexing_map = ComposeIndexingMaps(
+      *thread_id_to_output_indexing, *output_to_input_indexing_set.begin());
+  thread_id_to_input_indexing_map.Simplify();
+  return thread_id_to_input_indexing_map;
 }
 
 absl::Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,

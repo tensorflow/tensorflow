@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -95,6 +96,8 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
   llvm::Module* module = elemental_emitter_.module();
   llvm::IRBuilder<>* b = elemental_emitter_.b();
 
+  // Explicitly set global addrspace for SPIR backend.
+  int addrspace = llvm::Triple(module->getTargetTriple()).isSPIR() ? 1 : 0;
   llvm::Constant* initializer =
       llvm_ir::ConvertLiteralToIrConstant(constant.literal(), module);
   llvm::GlobalVariable* global = new llvm::GlobalVariable(
@@ -104,7 +107,7 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
       /*Initializer=*/initializer,
       /*Name=*/"", /*InsertBefore=*/nullptr,
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/0,
+      /*AddressSpace=*/addrspace,
       /*isExternallyInitialized=*/false);
   global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
 

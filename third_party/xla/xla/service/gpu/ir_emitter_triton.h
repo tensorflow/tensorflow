@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_TRITON_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_TRITON_H_
 
+#include <cstdint>
 #include <functional>
+#include <optional>
 
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
@@ -32,13 +34,15 @@ limitations under the License.
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace gpu {
 
 struct TritonWrapperResult {
-  int64_t shmem_bytes;
+  int64_t shmem_bytes = 0;
+  std::optional<se::ClusterDim> cluster_dim;
 };
 
 // Compute the launch dimensions for the given Triton MatMul.
@@ -88,6 +92,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
+
+// Compiles a given Triton module to LLVM IR.
+absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
+    const HloModuleConfig& hlo_config, absl::string_view hlo_module_name,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info, const TritonGemmConfig& config,
+    mlir::ModuleOp triton_module, llvm::Module* llvm_module,
+    mlir::MLIRContext& mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

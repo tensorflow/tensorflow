@@ -119,8 +119,8 @@ std::string ToString(enum OperationType op);
 OperationType OperationTypeFromString(const std::string& name);
 
 template <DataType DataTypeT, typename t>
-using TensorOrScalarBase = absl::variant<std::monostate, Tensor<HWC, DataTypeT>,
-                                         Tensor<Linear, DataTypeT>, t>;
+using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
+                                        Tensor<Linear, DataTypeT>, t>;
 
 using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
@@ -416,8 +416,8 @@ struct ReLUAttributes {
 struct PReLUAttributes {
   // If alpha is linear, then it is sharded across CHANNELS axis, otherwise
   // full shape alpha is required.
-  absl::variant<Tensor<Linear, DataType::FLOAT32>,
-                Tensor<HWC, DataType::FLOAT32>>
+  std::variant<Tensor<Linear, DataType::FLOAT32>,
+               Tensor<HWC, DataType::FLOAT32>>
       alpha;
 };
 

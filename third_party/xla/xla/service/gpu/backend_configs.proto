@@ -165,6 +165,14 @@ message CudnnNormBackendConfig {
 
   // Opaque algorithm number.
   stream_executor.dnn.AlgorithmProto algorithm = 2;
+
+  // Norm type.
+  enum Kind {
+    LAYER_FWD_INFER = 0;
+    LAYER_FWD_TRAIN = 1;
+    LAYER_BWD = 2;
+  }
+  Kind kind = 3;
 }
 
 // Backend config for a fused Multi-Headed Attention (fMHA) that runs through

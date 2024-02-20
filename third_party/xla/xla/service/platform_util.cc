@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
@@ -64,7 +65,7 @@ std::string CanonicalPlatformName(const std::string& platform_name) {
 }
 
 StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
-  return se::MultiPlatformManager::PlatformsWithFilter(
+  return se::PlatformManager::PlatformsWithFilter(
       [](const se::Platform* platform) {
         auto compiler_status = Compiler::GetForPlatform(platform);
         bool supported = compiler_status.ok();
@@ -124,7 +125,7 @@ PlatformUtil::GetSupportedPlatforms() {
 /*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithName(
+                      se::PlatformManager::PlatformWithName(
                           xla::CanonicalPlatformName(platform_name)));
   TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
   return platform;

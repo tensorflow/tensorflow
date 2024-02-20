@@ -198,7 +198,7 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
     }
   }
   LOG(INFO) << "Number of shared nodes: " << shared_nodes_.size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool AutoParallel::NotSharedNode(const string& name) {
@@ -268,7 +268,7 @@ Status AutoParallel::Optimize(Cluster* cluster, const GrapplerItem& item,
                               GraphDef* output) {
   TF_RETURN_IF_ERROR(Initialize(item));
   BuildGraph(output);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

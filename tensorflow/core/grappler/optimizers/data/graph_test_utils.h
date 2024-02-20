@@ -73,6 +73,13 @@ NodeDef MakeParallelInterleaveV4Node(StringPiece name,
                                      StringPiece function_name,
                                      StringPiece deterministic);
 
+// Creates a test NodeDef for InterleaveDataset.
+NodeDef MakeInterleaveNode(StringPiece name, StringPiece input_node_name,
+                           StringPiece cycle_length_node_name,
+                           StringPiece block_length_node_name,
+                           StringPiece function_name,
+                           StringPiece deterministic);
+
 // Creates a test NodeDef for ParallelMapDataset.
 NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
                             StringPiece num_parallel_calls_node_name,

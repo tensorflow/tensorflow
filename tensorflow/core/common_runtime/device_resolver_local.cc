@@ -31,7 +31,7 @@ Status DeviceResolverLocal::GetDeviceAttributes(const string& device,
     return s;
   }
   *attributes = dev->attributes();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DeviceResolverLocal::GetAllDeviceAttributes(

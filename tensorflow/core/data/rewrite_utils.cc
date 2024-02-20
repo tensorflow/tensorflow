@@ -131,7 +131,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
     RemoveFakeSinks(&function_def);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // anonymous namespace
 
@@ -245,7 +245,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
     });
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
@@ -332,7 +332,7 @@ absl::flat_hash_set<tstring> SelectOptimizations(
 StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def) {
   // Symbolic `_Retval` node indicates which node corresponds to the dataset.
   for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
+    if (node.op() == kRetvalOp) {
       return node.input(0);
     }
   }

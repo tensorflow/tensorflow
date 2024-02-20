@@ -1,5 +1,5 @@
-// RUN: hlo_to_llvm_ir --ptx --sm=70 --xla_disable_all_hlo_passes=true %s | FileCheck %s
-// RUN: hlo_to_llvm_ir --xla_disable_all_hlo_passes=true %s | FileCheck --check-prefix=CHECK-LLVM %s
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/v100.txtpb --split-input-file | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck --check-prefixes=CHECK-LLVM %s
 // We check that the row loads are vectorized.
 
 HloModule SimpleAddRowBroadcasting, is_scheduled=true
@@ -310,5 +310,8 @@ ENTRY computation {
   ROOT %fusion.9 = f16[5000,65,65,32] fusion(p0, zero), kind=kLoop, calls=%fused_computation.1
 }
 
-// Check that we emit vectorized read.
-// CHECK: ld.global.nc.v4.f32
+// Our codegen can't emit a vectorized load here, but it can emit a vectorized
+// store.
+// CHECK-LABEL: .visible .entry fusion_9
+// CHECK-COUNT-4: ld.global.nc.u16
+// CHECK: st.global.v4.b16

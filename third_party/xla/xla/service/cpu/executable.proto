@@ -19,6 +19,7 @@ package xla.cpu;
 
 import "xla/service/cpu/xla_framework.proto";
 import "xla/service/hlo.proto";
+import "xla/xla.proto";
 
 message XlaRuntimeCpuExecutableProto {
   optional XlaRuntimeExecutableProto xla_runtime_executable = 1;
@@ -26,7 +27,7 @@ message XlaRuntimeCpuExecutableProto {
 }
 
 message CompilationResultProto {
-  HloModuleProto hlo_module = 1;
+  HloModuleProtoWithConfig hlo_module = 1;
   BufferAssignmentProto buffer_assignment = 2;
   string entry_function_name = 3;
   bytes obj_file = 4;

@@ -72,7 +72,8 @@ TfLiteStatus QuantizeModel(
     const TensorType& activations_type, ErrorReporter* error_reporter,
     std::string& output_buffer, const bool disable_per_channel = false,
     const absl::flat_hash_set<std::string>& blocked_ops = {},
-    const absl::flat_hash_set<std::string>& blocked_nodes = {}) {
+    const absl::flat_hash_set<std::string>& blocked_nodes = {},
+    const bool disable_per_channel_for_dense_layers = false) {
   TensorType inference_tensor_type = activations_type;
   const bool fully_quantize = !allow_float;
 
@@ -87,7 +88,10 @@ TfLiteStatus QuantizeModel(
       input_buffer, input_type, output_type, inference_tensor_type,
       /*operator_names=*/{}, disable_per_channel, fully_quantize, output_buffer,
       error_reporter, /*verify_numeric=*/false, /*whole_model_verify=*/false,
-      /*legacy_float_scale=*/true, blocked_ops, blocked_nodes);
+      /*legacy_float_scale=*/true, blocked_ops, blocked_nodes,
+      /*enable_variable_quantization=*/false,
+      /*disable_per_channel_for_dense_layers=*/
+      disable_per_channel_for_dense_layers);
   if (status != kTfLiteOk) {
     return status;
   }
@@ -138,6 +142,21 @@ TfLiteStatus QuantizeModelAllOperators(
   return QuantizeModel(model, input_type, output_type, allow_float,
                        /*operator_names=*/{}, activations_type, error_reporter,
                        output_buffer);
+}
+
+TfLiteStatus QuantizeModelAllOperators(
+    ModelT* model, const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    ErrorReporter* error_reporter, std::string& output_buffer,
+    bool disable_per_channel_for_dense_layers) {
+  return QuantizeModel(model, input_type, output_type, allow_float,
+                       /*operator_names=*/{}, activations_type, error_reporter,
+                       output_buffer,
+                       /*disable_per_channel=*/false,
+                       /* blocked_ops=*/{},
+                       /*blocked_nodes=*/{},
+                       /*disable_per_channel_for_dense_layers=*/
+                       disable_per_channel_for_dense_layers);
 }
 
 std::unique_ptr<FlatBufferModel> ReadModel(const string& model_name) {
@@ -1118,16 +1137,20 @@ TEST_F(QuantizeSVDFTest, VerifySVDF) {
   ExpectSameModels(model_, expected_model);
 }
 
-class QuantizeFCTest : public QuantizeModelTest {
+class QuantizeFCTest : public QuantizeModelTest,
+                       public testing::WithParamInterface<bool> {
  protected:
   QuantizeFCTest() {
+    disable_per_channel_quantization_for_dense_ = GetParam();
     input_model_ = ReadModel(internal::kModelWithFCOp);
     readonly_model_ = input_model_->GetModel();
     model_ = UnPackFlatBufferModel(*readonly_model_);
   }
+
+  bool disable_per_channel_quantization_for_dense_;
 };
 
-TEST_F(QuantizeFCTest, VerifyFC8x8) {
+TEST_P(QuantizeFCTest, VerifyFC8x8) {
   auto status = QuantizeModelAllOperators(
       &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
       TensorType_INT8, &error_reporter_, output_buffer_);
@@ -1180,7 +1203,7 @@ TEST_F(QuantizeFCTest, VerifyFC8x8) {
                           /*bit_num=*/8, /*symmetric=*/false);
 }
 
-TEST_F(QuantizeFCTest, VerifyFCFor16x8) {
+TEST_P(QuantizeFCTest, VerifyFCFor16x8) {
   auto status = QuantizeModelAllOperators(
       &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
       TensorType_INT16, &error_reporter_, output_buffer_);
@@ -1195,7 +1218,7 @@ TEST_F(QuantizeFCTest, VerifyFCFor16x8) {
   ASSERT_THAT(op->outputs, SizeIs(1));
 
   const SubGraph* float_graph = readonly_model_->subgraphs()->Get(0);
-  // Verify FC input tesnor and weight are int16 and int8 quantized.
+  // Verify FC input tensor and weight are int16 and int8 quantized.
   const Operator* float_op = float_graph->operators()->Get(0);
   ASSERT_THAT(float_graph->tensors()->Get(float_op->inputs()->Get(0))->type(),
               Eq(TensorType_FLOAT32));
@@ -1234,6 +1257,136 @@ TEST_F(QuantizeFCTest, VerifyFCFor16x8) {
   VerifyQuantizationScale(*float_input_quant_params, *input_quant_params,
                           /*bit_num=*/16, /*symmetric=*/true);
 }
+
+TEST_P(QuantizeFCTest, VerifyDisablePerChannelQuantization) {
+  auto status = QuantizeModelAllOperators(
+      &model_, TensorType_INT8, TensorType_INT8, /*allow_float=*/false,
+      TensorType_INT8, &error_reporter_, output_buffer_,
+      /*disable_per_channel_for_dense_layers=*/
+      disable_per_channel_quantization_for_dense_);
+  ASSERT_THAT(status, Eq(kTfLiteOk));
+  const auto& subgraph = model_.subgraphs[0];
+  auto fc_op = subgraph->operators[0].get();
+
+  ASSERT_THAT(fc_op->inputs, SizeIs(3));
+  ASSERT_THAT(fc_op->outputs, SizeIs(1));
+
+  const int input_tensor_idx = 0;
+  const int weights_tensor_idx = 1;
+  const int bias_tensor_index = 2;
+  const int output_tensor_idx = 0;
+  const auto bias_tensor =
+      subgraph->tensors[fc_op->inputs[bias_tensor_index]].get();
+  const auto input_tensor =
+      subgraph->tensors[fc_op->inputs[input_tensor_idx]].get();
+  const auto weights_tensor =
+      subgraph->tensors[fc_op->inputs[weights_tensor_idx]].get();
+  const auto output_tensor =
+      subgraph->tensors[fc_op->outputs[output_tensor_idx]].get();
+
+  EXPECT_THAT(bias_tensor->type, Eq(TensorType_INT32));
+  EXPECT_THAT(input_tensor->type, Eq(TensorType_INT8));
+  EXPECT_THAT(weights_tensor->type, Eq(TensorType_INT8));
+  EXPECT_THAT(output_tensor->type, Eq(TensorType_INT8));
+
+  ASSERT_TRUE(weights_tensor->quantization);
+  ASSERT_TRUE(bias_tensor->quantization);
+  ASSERT_TRUE(weights_tensor->quantization);
+  const std::vector<float>& bias_scales = bias_tensor->quantization->scale;
+  const std::vector<float>& weights_scales =
+      weights_tensor->quantization->scale;
+  const std::vector<int64_t>& weights_zero_points =
+      weights_tensor->quantization->zero_point;
+
+  const int out_channel_size = 2;
+  ASSERT_THAT(bias_scales, SizeIs(disable_per_channel_quantization_for_dense_
+                                      ? 1
+                                      : out_channel_size));
+  ASSERT_THAT(weights_scales, SizeIs(disable_per_channel_quantization_for_dense_
+                                         ? 1
+                                         : out_channel_size));
+  ASSERT_THAT(
+      weights_zero_points,
+      SizeIs(disable_per_channel_quantization_for_dense_ ? 1
+                                                         : out_channel_size));
+  ASSERT_THAT(input_tensor->quantization->scale, SizeIs(1));
+  ASSERT_THAT(output_tensor->quantization->scale, SizeIs(1));
+
+  const float eps = 1e-7;
+
+  // Bias scale should be input * per_channel_weight_scale.
+  for (size_t i = 0; i < out_channel_size; i++) {
+    EXPECT_THAT((disable_per_channel_quantization_for_dense_ ? bias_scales[0]
+                                                             : bias_scales[i]),
+                FloatNear(input_tensor->quantization->scale[0] *
+                              (disable_per_channel_quantization_for_dense_
+                                   ? weights_scales[0]
+                                   : weights_scales[i]),
+                          eps));
+  }
+
+  const auto bias_buffer = model_.buffers[bias_tensor->buffer].get();
+  auto control_size = sizeof(int32_t) * bias_tensor->shape[0];
+
+  ASSERT_THAT(bias_buffer->data, SizeIs(control_size));
+  const auto float_op =
+      readonly_model_->subgraphs()->Get(0)->operators()->Get(0);
+  const auto original_bias_tensor =
+      readonly_model_->subgraphs()->Get(0)->tensors()->Get(
+          float_op->inputs()->Get(2));
+  ASSERT_THAT(bias_buffer->data, SizeIs(control_size));
+  const auto original_bias_buffer =
+      readonly_model_->buffers()->Get(original_bias_tensor->buffer());
+  const float* bias_float_buffer =
+      reinterpret_cast<const float*>(original_bias_buffer->data()->data());
+
+  int32_t* bias_values = reinterpret_cast<int32_t*>(bias_buffer->data.data());
+  for (size_t i = 0; i < out_channel_size; i++) {
+    const float bias_scale = disable_per_channel_quantization_for_dense_
+                                 ? bias_scales[0]
+                                 : bias_scales[i];
+    auto dequantized_value = bias_values[i] * bias_scale;
+    EXPECT_THAT(dequantized_value,
+                FloatNear(bias_float_buffer[i], bias_scale / 2));
+  }
+
+  const auto weights_buffer = model_.buffers[weights_tensor->buffer].get();
+  const auto original_weights_tensor =
+      readonly_model_->subgraphs()->Get(0)->tensors()->Get(
+          float_op->inputs()->Get(1));
+  const auto original_weights_buffer =
+      readonly_model_->buffers()->Get(original_weights_tensor->buffer());
+  const int8_t* weight_values =
+      reinterpret_cast<int8_t*>(weights_buffer->data.data());
+  const float* weights_float_buffer =
+      reinterpret_cast<const float*>(original_weights_buffer->data()->data());
+  ASSERT_THAT(sizeof(float) * weights_buffer->data.size(),
+              Eq(original_weights_buffer->data()->size()));
+  int num_values_in_channel = weights_buffer->data.size() / out_channel_size;
+  for (size_t channel_idx = 0; channel_idx < out_channel_size; channel_idx++) {
+    for (size_t j = 0; j < num_values_in_channel; j++) {
+      size_t element_idx = channel_idx * num_values_in_channel + j;
+      auto scale = disable_per_channel_quantization_for_dense_
+                       ? weights_scales[0]
+                       : weights_scales[channel_idx];
+      auto zero_point = disable_per_channel_quantization_for_dense_
+                            ? weights_zero_points[0]
+                            : weights_zero_points[channel_idx];
+      auto dequantized_value = weight_values[element_idx] * scale;
+      EXPECT_THAT(dequantized_value,
+                  FloatNear(weights_float_buffer[element_idx], scale / 2));
+      EXPECT_THAT(zero_point, Eq(0));
+    }
+  }
+
+  // check op and versioning.
+  EXPECT_THAT(model_.operator_codes, SizeIs(1));
+  EXPECT_THAT(GetBuiltinCode(model_.operator_codes[0].get()),
+              Eq(BuiltinOperator_FULLY_CONNECTED));
+  ASSERT_THAT(model_.operator_codes[0]->version, 5);
+}
+
+INSTANTIATE_TEST_SUITE_P(QuantizeFCTestInst, QuantizeFCTest, testing::Bool());
 
 class QuantizeCustomOpTest
     : public QuantizeModelTest,

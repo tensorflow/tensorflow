@@ -60,14 +60,17 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   }
   // `gpu_device_ids` is the list of logical device ids for the GPU devices and
   // will be used to initialize the GPU topology.
-  StreamExecutorGpuTopologyDescription(const PjRtPlatformId platform_id,
-                                       const absl::string_view platform_name,
-                                       const absl::string_view platform_version,
-                                       const std::vector<int>& gpu_device_ids)
+  StreamExecutorGpuTopologyDescription(
+      const PjRtPlatformId platform_id, const absl::string_view platform_name,
+      const absl::string_view platform_version,
+      const std::vector<int>& gpu_device_ids,
+      const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
+          {})
       : platform_id_(platform_id),
         platform_name_(platform_name),
         platform_version_(platform_version),
-        gpu_topology_(gpu_device_ids) {}
+        gpu_topology_(gpu_device_ids),
+        attributes_(attributes) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
@@ -215,6 +218,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
       const LoadOptions& load_options);
+
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;

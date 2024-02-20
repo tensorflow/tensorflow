@@ -73,164 +73,6 @@ class EventInterface {
 };
 
 //===----------------------------------------------------------------------===//
-// KernelInterface
-//===----------------------------------------------------------------------===//
-
-// Pointer-to-implementation object type (i.e. the Kernel class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any kernel data/resource info/functionality
-// off of.
-class KernelInterface {
- public:
-  // Default constructor for the abstract interface.
-  KernelInterface() = default;
-
-  // Default destructor for the abstract interface.
-  virtual ~KernelInterface() = default;
-
-  // Returns the number of formal parameters that this kernel accepts.
-  virtual unsigned Arity() const = 0;
-
-  // Sets the preferred cache configuration.
-  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
-
-  // Gets the preferred cache configuration.
-  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
-
-  // Returns the maximum number of blocks (per multiprocessor) occupied by the
-  // kernel given the number of threads per block and shared memory size.
-  virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
-      ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
- private:
-  KernelInterface(const KernelInterface&) = delete;
-  void operator=(const KernelInterface&) = delete;
-};
-
-//===----------------------------------------------------------------------===//
-// CommandBufferInterface
-//===----------------------------------------------------------------------===//
-
-// Platform-dependent interface class for implementing generic CommandBuffer.
-//
-// TODO(ezhulenev): Currently we assume that all operations between barriers
-// can execute concurrently, and it's up to the caller to insert barriers to
-// guarantee correctness. Consider adding finer grained synchronization
-// mechanism between different commands.
-//
-// TODO(ezhulenev): Currently command buffers do no support updates, and once
-// finalized can be executed as recorded. We need to support cheap command
-// buffer updates that in GPU backend will be mapped to CUDA/HIP graph node
-// updates.
-class CommandBufferInterface {
- public:
-  CommandBufferInterface() = default;
-  virtual ~CommandBufferInterface() = default;
-
-  // Traces `function` invocation by recording all operations on the `stream`
-  // into the command buffer. Command buffer must be empty.
-  virtual absl::Status Trace(Stream* stream,
-                             absl::AnyInvocable<absl::Status()> function) = 0;
-
-  // Adds an execution barrier to a command buffer: all commands added before a
-  // barrier will complete before any of the commands added after a barrier.
-  virtual absl::Status Barrier(StreamExecutor* executor) = 0;
-
-  // Adds a kernel launch command to the command buffer.
-  virtual absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                              const Kernel& kernel, const KernelArgs& args) = 0;
-
-  // Adds a nested command buffer to the command buffer.
-  virtual absl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
-
-  // Adds a device-to-device memory copy to the command buffer.
-  virtual absl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
-                                            const DeviceMemoryBase& src,
-                                            uint64_t size) = 0;
-
-  // Adds a memset node to the command buffer.
-  virtual absl::Status Memset(DeviceMemoryBase* dst,
-                              CommandBuffer::BitPattern bit_pattern,
-                              size_t num_elements) = 0;
-
-  // Adds a device memory allocation node to the command buffer.
-  virtual absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) = 0;
-
-  // Adds a device memory free command to the command buffer, buffer is
-  // allocated in other command buffer, free through real address.
-  virtual absl::Status Free(DeviceMemoryBase dst) = 0;
-
-  // For all conditional command APIs defined below, nested command buffers
-  // constructed for conditional branches owned by *this and should never be
-  // finalized or updated inside builders.
-
-  // Adds a conditional operation that will run a command buffer constructed by
-  // `then_builder` if `predicate` value is `true`.
-  virtual absl::Status If(StreamExecutor* executor,
-                          DeviceMemory<bool> predicate,
-                          CommandBuffer::Builder then_builder) = 0;
-
-  // Adds a conditional operation that will run a command buffer constructed by
-  // `then_builder` if `predicate` value is `true`, or a command buffer
-  // constructed by `else_builder` if `predicate` is `false`.
-  virtual absl::Status IfElse(StreamExecutor* executor,
-                              DeviceMemory<bool> predicate,
-                              CommandBuffer::Builder then_builder,
-                              CommandBuffer::Builder else_builder) = 0;
-
-  // Adds a conditional operation that will run a command buffer constructed by
-  // the `branches` builder at `index`. If `index` is out of range, then it will
-  // run a conditional command buffer constructed by the last builder.
-  //
-  // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
-  virtual absl::Status Case(StreamExecutor* executor,
-                            DeviceMemory<int32_t> index,
-                            std::vector<CommandBuffer::Builder> branches) = 0;
-
-  // Adds a conditional operation that will run a command buffer constructed by
-  // the `body_builder` exactly `num_iteration` times.
-  virtual absl::Status For(StreamExecutor* executor, int32_t num_iteration,
-                           DeviceMemory<int32_t> loop_index,
-                           CommandBuffer::Builder body_builder) = 0;
-
-  // Adds a conditional operation that will execute a command buffer constructed
-  // by the `cond_builder` that must update `pred` value, and then depending on
-  // the value might execute command buffer constructed by `body_builder` and
-  // `cond_builder`. Will continue while `pred` value is `true`.
-  //
-  // In pseudocode:
-  //
-  //   cond_builder()
-  //   while(pred):
-  //     body_builder()
-  //     cond_builder()
-  //
-  virtual absl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
-                             CommandBuffer::Builder cond_builder,
-                             CommandBuffer::Builder body_builder) = 0;
-
-  // Finalizes command buffer and makes it executable. Once command buffer is
-  // finalized no commands can be added to it.
-  virtual absl::Status Finalize() = 0;
-
-  // Begins command buffer update. Command buffer update should be finalized
-  // before it can be executed.
-  virtual absl::Status Update() = 0;
-
-  // Returns command buffer execution mode.
-  virtual CommandBuffer::Mode mode() const = 0;
-
-  // Returns command buffer state.
-  virtual CommandBuffer::State state() const = 0;
-
- private:
-  CommandBufferInterface(const CommandBufferInterface&) = delete;
-  void operator=(const CommandBufferInterface&) = delete;
-};
-
-//===----------------------------------------------------------------------===//
 // StreamInterface
 //===----------------------------------------------------------------------===//
 
@@ -455,11 +297,14 @@ class StreamExecutorInterface {
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
-  virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
 
-  virtual absl::StatusOr<std::unique_ptr<CommandBufferInterface>>
-  GetCommandBufferImplementation(CommandBuffer::Mode mode) {
+  virtual absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() {
+    return absl::UnimplementedError("Kernels are not implemented");
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
+      CommandBuffer::Mode mode) {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 

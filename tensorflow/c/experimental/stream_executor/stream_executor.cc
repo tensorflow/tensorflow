@@ -573,11 +573,6 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::EventInterface>(
         new CEvent(&device_, stream_executor_));
   }
-  std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override {
-    LOG(FATAL)
-        << "CreateKernelImplementation is not supported by pluggable device.";
-  }
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
     return std::unique_ptr<internal::StreamInterface>(

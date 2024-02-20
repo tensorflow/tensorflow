@@ -172,7 +172,7 @@ Status TFGGrapplerOptimizer::Optimize(
     module.dump();
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace tfg

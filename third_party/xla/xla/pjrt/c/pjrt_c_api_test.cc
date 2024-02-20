@@ -149,7 +149,7 @@ TEST_F(PjrtCApiTest, PlatformName) {
   PJRT_Client_PlatformName_Args args;
   args.client = client_;
   args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   PJRT_Error* error = api_->PJRT_Client_PlatformName(&args);
   ASSERT_EQ(error, nullptr);
   absl::string_view platform_name(args.platform_name, args.platform_name_size);
@@ -160,7 +160,7 @@ TEST_F(PjrtCApiTest, ClientProcessIndex) {
   PJRT_Client_ProcessIndex_Args process_index_args =
       PJRT_Client_ProcessIndex_Args{
           .struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE,
-          .priv = nullptr,
+          .extension_start = nullptr,
           .client = client_,
           .process_index = -1,
       };
@@ -199,7 +199,7 @@ TEST_F(PjrtCApiTest, LookupDevice) {
   PJRT_Client_LookupDevice_Args lookup_device_args =
       PJRT_Client_LookupDevice_Args{
           .struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE,
-          .priv = nullptr,
+          .extension_start = nullptr,
           .client = client_,
           .id = 0,
           .device = nullptr,
@@ -217,7 +217,7 @@ TEST_F(PjrtCApiTest, LookupAddressableDevice) {
   PJRT_Client_LookupAddressableDevice_Args lookup_addressable_device_args =
       PJRT_Client_LookupAddressableDevice_Args{
           .struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE,
-          .priv = nullptr,
+          .extension_start = nullptr,
           .client = client_,
           .local_hardware_id = 0,
           .addressable_device = nullptr,
@@ -239,7 +239,7 @@ TEST_F(PjrtCApiTest, GetDefaultDeviceAssignmentNominal) {
   std::vector<int> assignment_buffer(kNumReplicas * kNumPartitions);
   PJRT_Client_DefaultDeviceAssignment_Args args{
       .struct_size = PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
       .num_replicas = kNumReplicas,
       .num_partitions = kNumPartitions,
@@ -257,7 +257,7 @@ TEST_F(PjrtCApiTest, GetDefaultDeviceAssignmentBufferTooSmall) {
   std::vector<int> assignment_buffer(kBufferSize);
   PJRT_Client_DefaultDeviceAssignment_Args args{
       .struct_size = PJRT_Client_DefaultDeviceAssignment_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
       .num_replicas = kNumReplicas,
       .num_partitions = kNumPartitions,
@@ -276,7 +276,7 @@ TEST_F(PjrtCApiTest, GetDefaultDeviceAssignmentBufferTooSmall) {
 TEST_F(PjrtCApiTest, LookupDeviceNegativeId) {
   PJRT_Client_LookupDevice_Args args = PJRT_Client_LookupDevice_Args{
       .struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
       .id = -1,
       .device = nullptr,
@@ -296,7 +296,7 @@ TEST_F(PjrtCApiTest, LookupDeviceOutOfRangeId) {
   int out_of_range_id = GetNumDevices();
   PJRT_Client_LookupDevice_Args args = PJRT_Client_LookupDevice_Args{
       .struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
       .id = out_of_range_id,
       .device = nullptr,
@@ -318,7 +318,7 @@ void destroy_executable(PJRT_LoadedExecutable* executable,
                         const PJRT_Api* api) {
   PJRT_LoadedExecutable_Destroy_Args args{
       .struct_size = PJRT_LoadedExecutable_Destroy_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .executable = executable,
   };
   PJRT_Error* error = api->PJRT_LoadedExecutable_Destroy(&args);
@@ -345,7 +345,7 @@ TEST_F(PjrtCApiTest, BufferTransferImmutableUntilTransferCompletes) {
 
   PJRT_Event_Await_Args await_args;
   await_args.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
-  await_args.priv = nullptr;
+  await_args.extension_start = nullptr;
   await_args.event = event.get();
   PJRT_Error* event_error = api_->PJRT_Event_Await(&await_args);
   ASSERT_EQ(event_error, nullptr);
@@ -354,7 +354,7 @@ TEST_F(PjrtCApiTest, BufferTransferImmutableUntilTransferCompletes) {
 TEST_F(PjrtCApiTest, Compile) {
   PJRT_Client_Compile_Args args = PJRT_Client_Compile_Args{
       .struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
   };
   std::string options_str = BuildSingleDeviceCompileOptionStr();
@@ -365,7 +365,7 @@ TEST_F(PjrtCApiTest, Compile) {
   std::string program_code{module_add_one};
   PJRT_Program program = PJRT_Program{
       .struct_size = PJRT_Program_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .code = program_code.data(),
       .code_size = program_code.length(),
       .format = format.c_str(),
@@ -383,7 +383,7 @@ TEST_F(PjrtCApiTest, Compile) {
 TEST_F(PjrtCApiTest, CompileXlaComputation) {
   PJRT_Client_Compile_Args args = PJRT_Client_Compile_Args{
       .struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
   };
   xla::DeviceAssignment device_assignment(1, 1);
@@ -403,7 +403,7 @@ TEST_F(PjrtCApiTest, CompileXlaComputation) {
   std::string format(::pjrt::kHloFormat);
   PJRT_Program program = PJRT_Program{
       .struct_size = PJRT_Program_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .code = module_str.data(),
       .code_size = module_str.size(),
       .format = format.c_str(),
@@ -421,7 +421,7 @@ TEST_F(PjrtCApiTest, CompileXlaComputation) {
 TEST_F(PjrtCApiTest, CompileInvalidOption) {
   PJRT_Client_Compile_Args args = PJRT_Client_Compile_Args{
       .struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
   };
   std::string options_str = "invalid compile options";
@@ -432,7 +432,7 @@ TEST_F(PjrtCApiTest, CompileInvalidOption) {
   std::string program_code{module_add_one};
   PJRT_Program program = PJRT_Program{
       .struct_size = PJRT_Program_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .code = program_code.data(),
       .code_size = program_code.length(),
       .format = format.c_str(),
@@ -453,7 +453,7 @@ TEST_F(PjrtCApiTest, CompileInvalidOption) {
 TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
   PJRT_Client_Compile_Args args = PJRT_Client_Compile_Args{
       .struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .client = client_,
   };
   xla::DeviceAssignment device_assignment(1, 1);
@@ -468,7 +468,7 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
   std::string format("invalid");
   PJRT_Program program = PJRT_Program{
       .struct_size = PJRT_Program_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .code = nullptr,
       .code_size = 0,
       .format = format.c_str(),
@@ -498,7 +498,7 @@ TEST_F(PjrtCApiTest, DeviceProcessIndex) {
   PJRT_DeviceDescription_ProcessIndex_Args args =
       PJRT_DeviceDescription_ProcessIndex_Args{
           .struct_size = PJRT_DeviceDescription_ProcessIndex_Args_STRUCT_SIZE,
-          .priv = nullptr,
+          .extension_start = nullptr,
           .device_description =
               ::pjrt::GetDeviceDescription(api_, GetClientDevices()[0]),
           .process_index = -1,
@@ -512,7 +512,7 @@ TEST_F(PjrtCApiTest, DeviceProcessIndex) {
 TEST_F(PjrtCApiTest, DeviceIsAddressable) {
   PJRT_Device_IsAddressable_Args args = PJRT_Device_IsAddressable_Args{
       .struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .device = GetClientDevices()[0],
       .is_addressable = false,
   };
@@ -525,7 +525,7 @@ TEST_F(PjrtCApiTest, DeviceIsAddressable) {
 TEST_F(PjrtCApiTest, DeviceLocalHardwareId) {
   PJRT_Device_LocalHardwareId_Args args = PJRT_Device_LocalHardwareId_Args{
       .struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE,
-      .priv = nullptr,
+      .extension_start = nullptr,
       .device = GetClientDevices()[0],
       .local_hardware_id = -1,
   };
@@ -565,7 +565,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
 TEST_F(PjrtCApiBufferTest, IsDeleted) {
   PJRT_Buffer_IsDeleted_Args is_deleted_args;
   is_deleted_args.struct_size = PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE;
-  is_deleted_args.priv = nullptr;
+  is_deleted_args.extension_start = nullptr;
   is_deleted_args.buffer = buffer_.get();
   PJRT_Error* is_deleted_error = api_->PJRT_Buffer_IsDeleted(&is_deleted_args);
   ASSERT_EQ(is_deleted_error, nullptr);
@@ -573,7 +573,7 @@ TEST_F(PjrtCApiBufferTest, IsDeleted) {
 
   PJRT_Buffer_Delete_Args delete_args;
   delete_args.struct_size = PJRT_Buffer_Delete_Args_STRUCT_SIZE;
-  delete_args.priv = nullptr;
+  delete_args.extension_start = nullptr;
   delete_args.buffer = buffer_.get();
   PJRT_Error* delete_error = api_->PJRT_Buffer_Delete(&delete_args);
   ASSERT_EQ(delete_error, nullptr);
@@ -586,7 +586,7 @@ TEST_F(PjrtCApiBufferTest, IsDeleted) {
 TEST_F(PjrtCApiBufferTest, GetOnDeviceSizeInBytes) {
   PJRT_Buffer_OnDeviceSizeInBytes_Args args;
   args.struct_size = PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.buffer = buffer_.get();
   PJRT_Error* on_device_size_bytes_error =
       api_->PJRT_Buffer_OnDeviceSizeInBytes(&args);
@@ -598,7 +598,7 @@ TEST_F(PjrtCApiBufferTest, GetOnDeviceSizeInBytes) {
 TEST_F(PjrtCApiBufferTest, ReadyEvent) {
   PJRT_Buffer_ReadyEvent_Args get_event_args;
   get_event_args.struct_size = PJRT_Buffer_ReadyEvent_Args_STRUCT_SIZE;
-  get_event_args.priv = nullptr;
+  get_event_args.extension_start = nullptr;
   get_event_args.buffer = buffer_.get();
   auto error = ToUniquePtr(api_->PJRT_Buffer_ReadyEvent(&get_event_args));
   ASSERT_EQ(error, nullptr);
@@ -609,7 +609,7 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
   // Wait for `buffer_`'s data transfer to complete (if it hasn't already)
   PJRT_Event_Await_Args await_args;
   await_args.struct_size = PJRT_Event_Await_Args_STRUCT_SIZE;
-  await_args.priv = nullptr;
+  await_args.extension_start = nullptr;
   await_args.event = event;
   error.reset(api_->PJRT_Event_Await(&await_args));
   ASSERT_EQ(error, nullptr);
@@ -617,7 +617,7 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
   // Must be ready when `PJRT_Event_Await` completes
   PJRT_Event_IsReady_Args ready_args;
   ready_args.struct_size = PJRT_Event_IsReady_Args_STRUCT_SIZE;
-  ready_args.priv = nullptr;
+  ready_args.extension_start = nullptr;
   ready_args.event = event;
   error.reset(api_->PJRT_Event_IsReady(&ready_args));
   ASSERT_EQ(error, nullptr);
@@ -626,7 +626,7 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
   // Clean up
   PJRT_Event_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
-  destroy_args.priv = nullptr;
+  destroy_args.extension_start = nullptr;
   destroy_args.event = event;
   error.reset(api_->PJRT_Event_Destroy(&destroy_args));
   EXPECT_EQ(error, nullptr);
@@ -635,7 +635,7 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
 TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   PJRT_Buffer_ToHostBuffer_Args args;
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.src = buffer_.get();
   xla::Shape host_shape = xla::ShapeUtil::MakeShape(xla::F32, {4});
   auto literal = std::make_shared<xla::Literal>(host_shape);
@@ -661,7 +661,7 @@ TEST_F(PjrtCApiBufferTest, IncreaseAndDecreaseReferenceCount) {
   PJRT_Buffer_IncreaseExternalReferenceCount_Args increase_reference_count_args;
   increase_reference_count_args.struct_size =
       PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE;
-  increase_reference_count_args.priv = nullptr;
+  increase_reference_count_args.extension_start = nullptr;
   increase_reference_count_args.buffer = buffer_.get();
   PJRT_Error* increase_reference_count_error =
       api_->PJRT_Buffer_IncreaseExternalReferenceCount(
@@ -671,7 +671,7 @@ TEST_F(PjrtCApiBufferTest, IncreaseAndDecreaseReferenceCount) {
   PJRT_Buffer_DecreaseExternalReferenceCount_Args decrease_reference_count_args;
   decrease_reference_count_args.struct_size =
       PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
-  decrease_reference_count_args.priv = nullptr;
+  decrease_reference_count_args.extension_start = nullptr;
   decrease_reference_count_args.buffer = buffer_.get();
   PJRT_Error* decrease_reference_error =
       api_->PJRT_Buffer_DecreaseExternalReferenceCount(
@@ -683,7 +683,7 @@ TEST_F(PjrtCApiBufferTest, DecreaseReferenceCountReturnsError) {
   PJRT_Buffer_DecreaseExternalReferenceCount_Args args;
   args.struct_size =
       PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.buffer = buffer_.get();
   auto error =
       ToUniquePtr(api_->PJRT_Buffer_DecreaseExternalReferenceCount(&args));
@@ -698,7 +698,7 @@ TEST_F(PjrtCApiBufferTest, DecreaseReferenceCountReturnsError) {
 TEST_F(PjrtCApiBufferTest, OpaqueDeviceMemoryDataPointer) {
   PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args args;
   args.struct_size = PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.buffer = buffer_.get();
   PJRT_Error* error = api_->PJRT_Buffer_OpaqueDeviceMemoryDataPointer(&args);
   EXPECT_EQ(error, nullptr);

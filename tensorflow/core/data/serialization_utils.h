@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -32,6 +33,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+inline constexpr absl::string_view kRetvalOp = "_Retval";
 
 // Reads dataset elements from the checkpoint reader using the given key prefix.
 Status ReadElementsFromCheckpoint(IteratorContext* ctx,

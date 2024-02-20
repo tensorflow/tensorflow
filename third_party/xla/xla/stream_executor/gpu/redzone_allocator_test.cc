@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
@@ -52,7 +52,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   constexpr int64_t kAllocSize = (1 << 25) + 1;
 
   Platform* platform =
-      MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
+      PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
@@ -126,7 +126,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   // Make sure the redzone size would require grid dimension > 65535.
   constexpr int64_t kRedzoneSize = 65535 * 1024 + 1;
   Platform* platform =
-      MultiPlatformManager::PlatformWithName(GpuPlatformName()).value();
+      PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
   GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});

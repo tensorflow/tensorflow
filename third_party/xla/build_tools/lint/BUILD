@@ -17,7 +17,6 @@ load("//xla:pytype.default.bzl", "pytype_strict_library")
 # Placeholder: load py_test
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -46,9 +45,9 @@ py_test(
         "testdata/bad_cc.diff",
         "testdata/important_cc.diff",
     ],
-    tags = ["no_oss"],
     deps = [
         ":check_contents",
+        "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],
 )
@@ -61,9 +60,9 @@ py_test(
         "testdata/crosstool.diff",
         "testdata/important_cc.diff",
     ],
-    tags = ["no_oss"],
     deps = [
         ":diff_parser",
+        "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],
 )
@@ -71,7 +70,6 @@ py_test(
 py_test(
     name = "generate_compile_commands_test",
     srcs = ["generate_compile_commands_test.py"],
-    tags = ["no_oss"],
     deps = [
         ":generate_compile_commands",
         "@absl_py//absl/testing:absltest",

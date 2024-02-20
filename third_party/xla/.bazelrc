@@ -255,6 +255,14 @@ build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-1
 build:cuda_clang_official --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 build:cuda_clang_official --crosstool_top="@sigbuild-r2.16-clang_config_cuda//crosstool:toolchain"
 
+# Build with nvcc for CUDA and clang for host
+build:nvcc_clang --config=cuda
+# Unfortunately, cuda_configure.bzl demands this for using nvcc + clang
+build:nvcc_clang --action_env=TF_CUDA_CLANG="1"
+build:nvcc_clang --action_env=TF_NVCC_CLANG="1"
+build:nvcc_clang --@local_config_cuda//:cuda_compiler=nvcc
+
+
 # Debug config
 build:dbg -c dbg
 # Only include debug info for files under tensorflow/, excluding kernels, to
@@ -527,8 +535,8 @@ build:rbe_linux_cuda --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.16-clang_confi
 test:rbe_linux_cuda --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
 
 build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
+build:rbe_linux_cuda_nvcc --config=nvcc_clang
 build:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
-build:rbe_linux_cuda_nvcc --action_env=TF_NVCC_CLANG="1"
 
 # TODO(kanglan): Remove rbe_win and rbe_win_py3* after b/289091160 is fixed
 build:rbe_win --config=rbe_base
@@ -577,6 +585,7 @@ build:elinux_armhf --copt -mfp16-format=ieee
 
 # Load rc file written by ./configure.
 try-import %workspace%/.tf_configure.bazelrc
+try-import %workspace%/xla_configure.bazelrc
 
 # Load rc file with user-specific options.
 try-import %workspace%/.bazelrc.user
@@ -719,7 +728,7 @@ build:no_tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compil
 # Use --config=tf_public_cache to try and use the TensorFlow public build cache
 # to build TensorFlow. Look at ci/official/envs to find which types of jobs
 # push to the cache.  For macOS, use --config=tf_public_macos_cache
-build:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --remote_upload_local_results=false
+build:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/january2024" --remote_upload_local_results=false
 # Cache pushes are limited to TF's CI system.
 build:tf_public_cache_push --config=tf_public_cache --remote_upload_local_results=true --google_default_credentials
 # Public cache for macOS builds
@@ -777,28 +786,38 @@ test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-os
 test:linux_cuda_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # ARM64 PYCPP
-test:linux_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:linux_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:linux_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --flaky_test_attempts=3
+# In Linux Arm64 presubmit/continuous build, we cross-compile the binaries on
+# Linux x86 so that we can use RBE. Since tests still need to run on the single
+# host Arm64 machine, the build becomes too slow (~30 min) to be a presubmit.
+# For testing purposes, we want to see the runtime performance of an
+# experimental job that is build-only, i.e, we only build the test targets and
+# do not run them. By prefixing the configs with "build", we can run both
+# `bazel build` and `bazel test` commands with the same config as test configs
+# inherit from build.
+build:linux_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+build:linux_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+build:linux_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --flaky_test_attempts=3
 # TODO(michaelhudgins): Why do we need to specifically omit go and java here? 
-test:linux_arm64_pycpp_test --config=linux_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test -//tensorflow/compiler/mlir/tfr/examples/customization:test_ops_test -//tensorflow/compiler/mlir/tfr/examples/mnist:mnist_ops_test -//tensorflow/compiler/mlir/tfr/examples/pad:pad_ops_test -//tensorflow/python/tools:aot_compiled_test
+build:linux_arm64_pycpp_test --config=linux_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test -//tensorflow/compiler/mlir/tfr/examples/customization:test_ops_test -//tensorflow/compiler/mlir/tfr/examples/mnist:mnist_ops_test -//tensorflow/compiler/mlir/tfr/examples/pad:pad_ops_test -//tensorflow/python/tools:aot_compiled_test
 # CROSS-COMPILE ARM64 PYCPP
-test:cross_compile_linux_arm64_pycpp_test --config=linux_arm64_pycpp_test
+build:cross_compile_linux_arm64_pycpp_test --config=linux_arm64_pycpp_test
 # Tests that fail only when cross-compiled
-test:cross_compile_linux_arm64_pycpp_test -//tensorflow/compiler/mlir/quantization/stablehlo:convert_tf_quant_to_mhlo_int_test
+build:cross_compile_linux_arm64_pycpp_test -//tensorflow/compiler/mlir/quantization/stablehlo:convert_tf_quant_to_mhlo_int_test
 # MACOS ARM64 PYCPP
 test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:macos_arm64_pycpp_test --config=macos_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/... -//tensorflow/core/kernels/image:resize_bicubic_op_test
 # MACOS X86 PYCPP
-test:macos_x86_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
-test:macos_x86_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
-test:macos_x86_pycpp_test_filters --keep_going --test_lang_filters=cc,py --test_size_filters=small,medium
-test:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/...
+# These are defined as build configs so that we can run a build only job. See
+# the note under "ARM64 PYCPP" for more details.
+build:macos_x86_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+build:macos_x86_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+build:macos_x86_pycpp_test_filters --keep_going --test_lang_filters=cc,py --test_size_filters=small,medium
+build:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/...
 # CROSS-COMPILE MACOS X86 PYCPP
-test:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
-test:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
+build:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
+build:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
 # END TF TEST SUITE OPTIONS
 
 # START CROSS-COMPILE CONFIGS
@@ -855,8 +874,12 @@ build:cross_compile_macos_x86 --platform_mappings=tensorflow/tools/toolchains/cr
 # RBE cross-compile configs for Darwin x86
 build:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
 build:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
+build:rbe_cross_compile_macos_x86 --bes_upload_mode=fully_async
 test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 # Increase the test timeout as tests often take longer on mac.
 test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
+# Limit jobs to 100 to avoid running into "out of memory" issues (b/316266643)
+build:rbe_cross_compile_macos_x86 --jobs=100
+test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS

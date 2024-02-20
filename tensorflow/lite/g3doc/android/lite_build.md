@@ -23,6 +23,20 @@ allprojects {
 }
 ```
 
+add nightly snapshots to dependencies (or edit as needed) to your build.gradle
+
+```groovy
+...
+dependencies {
+    ...
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.0.0-nightly-SNAPSHOT'
+    ...
+}
+...
+```
+
 ## Build TensorFlow Lite locally
 
 In some cases, you might wish to use a local build of TensorFlow Lite. For

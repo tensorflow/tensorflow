@@ -142,7 +142,7 @@ Status CheckStateShape(xla::RandomAlgorithm alg, const TensorShape& shape) {
     return errors::InvalidArgument("The size of the state must be at least ",
                                    min_state_size, "; got ", state_size);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<xla::RandomAlgorithm> ResolveAlg(int alg_id) {
@@ -227,7 +227,7 @@ Status CompileImpl(
   var = BitcastConvertType(var, state_element_type);
   TF_RETURN_IF_ERROR(
       ctx->AssignVariable(state_input_idx, STATE_ELEMENT_DTYPE, var));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class StatefulUniformOp : public XlaOpKernel {

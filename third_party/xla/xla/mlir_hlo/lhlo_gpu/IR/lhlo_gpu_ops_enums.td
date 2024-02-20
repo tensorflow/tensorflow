@@ -121,6 +121,19 @@ def NormAlgorithmConfigAttr : AttrDef<
  let summary = "GPU Norm Algorithm configuration";
 }
 
+def CudnnNormKindLayerFwdInfer : I32EnumAttrCase<"LayerFwdInfer", 0>;
+def CudnnNormKindLayerFwdTrain : I32EnumAttrCase<"LayerFwdTrain", 1>;
+def CudnnNormKindLayerBwd : I32EnumAttrCase<"LayerBwd", 2>;
+
+def CudnnNormKind: I32EnumAttr<"CudnnNormKind",
+    "Mode of cuDNN norm",
+    [CudnnNormKindLayerFwdInfer, CudnnNormKindLayerFwdTrain, CudnnNormKindLayerBwd]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::lmhlo_gpu";
+}
+
+def CudnnNormKindAttr : EnumAttr<LmhloGpuDialect, CudnnNormKind, "kind">;
+
 def FusedMHAAlgorithmConfigAttr : AttrDef<
   LmhloGpuDialect, "FusedMHAAlgorithmConfig"> {
   let mnemonic = "fHMA_algorithm_config";
@@ -155,6 +168,8 @@ def FusedMhaBackwardDagScaleBiasMaskSoftmax : I32EnumAttrCase<"BackwardScaleBias
 def FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleBiasMaskSoftmaxDropout", 3>;
 def FusedMhaBackwardDagSoftmax : I32EnumAttrCase<"BackwardSoftmax", 4>;
 def FusedMhaBackwardDagSoftmaxDropout : I32EnumAttrCase<"BackwardSoftmaxDropout", 5>;
+def FusedMhaBackwardDagScaleMaskSoftmax : I32EnumAttrCase<"BackwardScaleMaskSoftmax", 6>;
+def FusedMhaBackwardDagScaleMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleMaskSoftmaxDropout", 7>;
 
 def FusedMhaDagSignature: I32EnumAttr<"FusedMhaDagSignature",
     "DAG configuration for Fused Multi-Headed Attention",
@@ -179,7 +194,9 @@ def FusedMhaBackwardDagSignature: I32EnumAttr<"FusedMhaBackwardDagSignature",
     FusedMhaBackwardDagScaleBiasMaskSoftmax,
     FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout,
     FusedMhaBackwardDagSoftmax,
-    FusedMhaBackwardDagSoftmaxDropout]> {
+    FusedMhaBackwardDagSoftmaxDropout,
+    FusedMhaBackwardDagScaleMaskSoftmax,
+    FusedMhaBackwardDagScaleMaskSoftmaxDropout]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }
