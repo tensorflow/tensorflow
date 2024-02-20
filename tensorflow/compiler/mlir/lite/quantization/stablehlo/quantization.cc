@@ -23,11 +23,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
@@ -93,6 +95,11 @@ absl::StatusOr<mlir::ModuleOp> RunQuantization(
   std::vector<std::string> exported_names;
   for (const auto& [key, value_unused] : signature_def_map) {
     exported_names.push_back(key);
+  }
+
+  if (failed(mlir::tf_saved_model::FreezeVariables(
+          module_op, saved_model_bundle->GetSession()))) {
+    return absl::InternalError("Failed to freeze variables.");
   }
 
   StaticRangePtqComponent static_range_ptq_component(
