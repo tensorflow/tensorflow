@@ -90,6 +90,7 @@ ifrt_proxy_cc_test(
     name = "grpc_service_impl_test",
     size = "small",
     srcs = ["grpc_service_impl_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         ":grpc_server",
         ":grpc_service_impl",
