@@ -398,6 +398,7 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
       "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
       color, absl::StrJoin(keys, ","));
 
+#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   if (keys.size() != comms.size()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Comms and keys must have the same size, but %d != %d",
@@ -426,6 +427,11 @@ absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>> DefaultNcclApi::CommSplit(
                              NcclCommDeleter{this});
   }
   return split_comms;
+#else
+  return absl::UnimplementedError(
+      absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
+                      __FILE__, __LINE__));
+#endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
 }
 
 absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {
