@@ -168,3 +168,16 @@ func.func @reduce_innerop_type_not_trivially_derived(%arg0: tensor<4x4xf32>, %ar
 
   func.return %0: tensor<4xf32>
 }
+
+
+// The test case makes sure any custom attrs set on the reduce-op are
+// printed/parsed when pretty-printed.
+
+// CHECK-LABEL:  func @pretty_print_with_custom_attr
+// CHECK:          applies mhlo.add across dimensions = [1] {custom_user_attr = 1 : i64}
+
+func.func @pretty_print_with_custom_attr(%arg0: tensor<2x64x13xf32>) -> tensor<2x13xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = mhlo.reduce(%arg0 init: %0) applies mhlo.add across dimensions = [1] {custom_user_attr = 1 : i64} : (tensor<2x64x13xf32>, tensor<f32>) -> tensor<2x13xf32>
+  return %1 : tensor<2x13xf32>
+}

@@ -3705,6 +3705,7 @@ void ReduceOp::print(OpAsmPrinter& p) {
     p << " across dimensions = [";
     llvm::interleaveComma(getDimensions().getValues<int64_t>(), p);
     p << "]";
+    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
     p << " : ";
     p.printFunctionalType(*this);
   } else {
@@ -3867,7 +3868,8 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
       parser.parseEqual() ||
       parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
-      parser.parseColon() || parser.parseType(reduceOpFntype) ||
+      parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
+      parser.parseType(reduceOpFntype) ||
       parser.parseOptionalLocationSpecifier(explicitLoc))
     return failure();
 
