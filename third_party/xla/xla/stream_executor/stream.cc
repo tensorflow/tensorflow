@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
 
@@ -230,7 +231,7 @@ Stream &Stream::ThenRecordEvent(Event *event) {
   return *this;
 }
 
-Stream *Stream::GetOrCreateSubStream() {
+absl::StatusOr<Stream *> Stream::GetOrCreateSubStream() {
   // Do not destroy bad streams when holding mu_ because ~Stream() may
   // BlockHostUntilDone and it's host callbacks might attempt to acquire mu_.
   std::vector<std::unique_ptr<Stream>> bad_streams;
@@ -269,13 +270,9 @@ Stream *Stream::GetOrCreateSubStream() {
   }
 
   // No streams are reusable; create a new stream.
-  sub_streams_.emplace_back(std::unique_ptr<Stream>{new Stream{parent_}},
-                            false);
+  sub_streams_.emplace_back(std::make_unique<Stream>(parent_), false);
   Stream *sub_stream = sub_streams_.back().first.get();
-  sub_stream->Init();
-  if (!sub_stream->ok()) {
-    LOG(ERROR) << "sub-stream failed to be initialized";
-  }
+  TF_RETURN_IF_ERROR(sub_stream->Initialize());
   VLOG(1) << DebugStreamPointers() << " created new sub_stream "
           << sub_stream->DebugStreamPointers();
 

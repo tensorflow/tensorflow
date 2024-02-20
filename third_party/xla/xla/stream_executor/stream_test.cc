@@ -16,6 +16,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
@@ -48,12 +49,12 @@ TEST_F(StreamTest, OneSubStream) {
   CHECK_OK(stream.Initialize());
 
   // Get and return a sub-stream. Sub-streams are always initialized.
-  Stream* sub_stream1 = stream.GetOrCreateSubStream();
+  TF_ASSERT_OK_AND_ASSIGN(Stream * sub_stream1, stream.GetOrCreateSubStream());
   EXPECT_TRUE(sub_stream1->ok());
   stream.ReturnSubStream(sub_stream1);
 
   // Get and return another sub-stream.
-  Stream* sub_stream2 = stream.GetOrCreateSubStream();
+  TF_ASSERT_OK_AND_ASSIGN(Stream * sub_stream2, stream.GetOrCreateSubStream());
   EXPECT_TRUE(sub_stream2->ok());
   stream.ReturnSubStream(sub_stream1);
 
@@ -68,9 +69,9 @@ TEST_F(StreamTest, TwoSubStreams) {
   CHECK_OK(stream.Initialize());
 
   // Get two sub-streams.
-  Stream* sub_stream1 = stream.GetOrCreateSubStream();
+  TF_ASSERT_OK_AND_ASSIGN(Stream * sub_stream1, stream.GetOrCreateSubStream());
   EXPECT_TRUE(sub_stream1->ok());
-  Stream* sub_stream2 = stream.GetOrCreateSubStream();
+  TF_ASSERT_OK_AND_ASSIGN(Stream * sub_stream2, stream.GetOrCreateSubStream());
   EXPECT_TRUE(sub_stream2->ok());
 
   // The underlying sub-streams should be different, since neither
@@ -79,14 +80,14 @@ TEST_F(StreamTest, TwoSubStreams) {
 
   // Return sub_stream1 and get sub_stream3, which should be the same.
   stream.ReturnSubStream(sub_stream1);
-  Stream* sub_stream3 = stream.GetOrCreateSubStream();
+  TF_ASSERT_OK_AND_ASSIGN(Stream * sub_stream3, stream.GetOrCreateSubStream());
   EXPECT_TRUE(sub_stream3->ok());
   EXPECT_EQ(sub_stream1, sub_stream3);
   EXPECT_NE(sub_stream2, sub_stream3);
 
   // Return sub_stream2 and get sub_stream4, which should be the same.
   stream.ReturnSubStream(sub_stream2);
-  Stream* sub_stream4 = stream.GetOrCreateSubStream();
+  TF_ASSERT_OK_AND_ASSIGN(Stream * sub_stream4, stream.GetOrCreateSubStream());
   EXPECT_TRUE(sub_stream4->ok());
   EXPECT_EQ(sub_stream2, sub_stream4);
   EXPECT_NE(sub_stream3, sub_stream4);

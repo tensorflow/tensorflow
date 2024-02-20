@@ -1520,7 +1520,6 @@ cc_library(
     hdrs = ["transfer_manager.h"],
     deps = [
         ":compiler",
-        ":executable",
         ":maybe_owning_device_memory",
         ":shaped_buffer",
         "//xla:literal",
@@ -1529,7 +1528,6 @@ cc_library(
         "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
@@ -1537,12 +1535,12 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:notification",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

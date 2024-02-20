@@ -343,7 +343,11 @@ void UnregisterCancellation(OpKernelContext* ctx,
   // the frequency of back-to-back programs (which are most efficient because
   // they don't require host synchronization). Instead, borrow a substream and
   // have the substream wait on the compute stream.
-  se::Stream* deregister_stream = stream->GetOrCreateSubStream();
+  se::Stream* deregister_stream =
+      stream->GetOrCreateSubStream().value_or(nullptr);
+  if (deregister_stream == nullptr) {
+    return;
+  }
   deregister_stream->ThenWaitFor(stream);
   deregister_stream->ThenDoHostCallback([=]() {
     // We must deregister the callback in the success case, to avoid closing all

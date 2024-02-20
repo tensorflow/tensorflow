@@ -177,7 +177,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
                              : nullptr;
     se::Stream* const dst_device_to_device_stream =
         should_use_substream
-            ? device_to_device_master_stream->GetOrCreateSubStream()
+            ? device_to_device_master_stream->GetOrCreateSubStream().value_or(
+                  nullptr)
             : dst_xla_context->GetDeviceToDeviceStream();
     TF_RET_CHECK(dst_device_to_device_stream != nullptr);
     auto return_substream = gtl::MakeCleanup(

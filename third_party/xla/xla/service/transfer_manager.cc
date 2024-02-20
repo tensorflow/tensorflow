@@ -39,6 +39,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/notification.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -65,7 +66,7 @@ Status TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
-  se::Stream* substream = stream->GetOrCreateSubStream();
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
   substream->ThenWaitFor(stream);
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
@@ -89,7 +90,7 @@ Status TransferManager::TransferLiteralToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
   substream->ThenWaitFor(stream);
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
@@ -118,7 +119,7 @@ Status TransferManager::TransferArrayToDevice(
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
+  TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
   substream->ThenWaitFor(stream);
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(

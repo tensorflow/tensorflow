@@ -116,7 +116,7 @@ class Stream {
   // create a new sub-stream.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  Stream *GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
+  absl::StatusOr<Stream *> GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later. Sub-streams that are !ok() will not be reused.
