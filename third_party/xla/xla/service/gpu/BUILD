@@ -581,10 +581,7 @@ xla_test(
         "gpu_v100",
     ],
     shard_count = 20,
-    tags = [
-        "noasan",  # TODO(b/319626241): Reenable once the signed-integer-overflow is fixed
-        "nomac",
-    ],
+    tags = ["nomac"],
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
