@@ -31,6 +31,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant {
 namespace {
@@ -70,6 +71,34 @@ constexpr absl::string_view kModuleMultipleUses = R"mlir(
       %1 = stablehlo.subtract %0, %arg2 : tensor<1x3xf32>
       %2 = stablehlo.add %0, %arg2 : tensor<1x3xf32>
       return %2 : tensor<1x3xf32>
+    }
+  }
+)mlir";
+
+constexpr absl::string_view kModuleXlaCallModule = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+      %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+      %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+      %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_entry_function = @composite_fn_1, _original_entry_function = "composite_fn_1", _tfl_quant_trait = "fully_quantizable"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+      return %2 : tensor<?x2xf32>
+    }
+    func.func private @composite_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+      return %arg0 : tensor<?x2xf32>
+    }
+  }
+)mlir";
+
+constexpr absl::string_view kModulePartitionedCall = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<2x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<2x2xf32>) {
+      %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+      %0 = "tf.PartitionedCall"(%arg0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32> loc(callsite("test@main"("MatMul") at "QuantizationUnit(\12\06MatMul\1a\07main)"))
+      return %0 : tensor<2x2xf32>
+    }
+    func.func private @composite_fn_1(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf32> attributes {tf_quant.composite_function} {
+      %0 = "tf.MatMul"(%arg0, %arg1) {attr_map = "0:transpose_a,1:transpose_b", device = "", transpose_a = false, transpose_b = false} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+      return %0 : tensor<2x2xf32>
     }
   }
 )mlir";
@@ -178,6 +207,26 @@ TEST_F(AttrsAndConstraintsTest, FindUserOfDifferentTypes) {
   ASSERT_NE(FindUserOfType<SubtractOp>(dot_general_op), nullptr);
   ASSERT_NE(FindUserOfType<>(dot_general_op), nullptr);
   ASSERT_EQ(FindUserOfType<ConvolutionOp>(dot_general_op), nullptr);
+}
+
+TEST_F(AttrsAndConstraintsTest, CallGetFuncAttr) {
+  OwningOpRef<ModuleOp> xla_module_op_ref =
+      ParseModuleOpString(kModuleXlaCallModule);
+  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
+  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
+  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+  FlatSymbolRefAttr xla_call_op_attr = GetFuncAttr(xla_call_op);
+  EXPECT_EQ(xla_call_op_attr.getValue(), "composite_fn_1");
+
+  OwningOpRef<ModuleOp> partitioned_module_op_ref =
+      ParseModuleOpString(kModulePartitionedCall);
+  func::FuncOp partitioned_main_fn = FindMainFuncOp(*partitioned_module_op_ref);
+  Operation* partitioned_op =
+      FindOperationOfType<TF::PartitionedCallOp>(partitioned_main_fn);
+  auto partitioned_call_op =
+      dyn_cast_or_null<TF::PartitionedCallOp>(*partitioned_op);
+  FlatSymbolRefAttr partitioned_call_op_attr = GetFuncAttr(partitioned_call_op);
+  EXPECT_EQ(partitioned_call_op_attr.getValue(), "composite_fn_1");
 }
 
 }  // namespace

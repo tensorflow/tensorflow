@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
 namespace mlir::quant {
 
@@ -167,6 +168,26 @@ Operation *FindUserOfType(Operation *op) {
     }
   }
   return nullptr;
+}
+
+// Returns the function attribute for the given call op which is lifted for
+// quantization.
+template <typename LiftedOp>
+inline FlatSymbolRefAttr GetFuncAttr(LiftedOp call_op) {
+  static_assert(false, "DuplicateOp for call_op is not implemented.");
+}
+
+template <>
+inline FlatSymbolRefAttr GetFuncAttr<TF::PartitionedCallOp>(
+    TF::PartitionedCallOp call_op) {
+  return call_op.getFAttr().template dyn_cast<FlatSymbolRefAttr>();
+}
+
+template <>
+inline FlatSymbolRefAttr GetFuncAttr<TF::XlaCallModuleOp>(
+    TF::XlaCallModuleOp call_op) {
+  return call_op->getAttrOfType<FlatSymbolRefAttr>(
+      TF::kStablehloEntryFunctionAttrName);
 }
 
 }  // namespace mlir::quant
