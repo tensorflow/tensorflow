@@ -208,8 +208,38 @@ ENTRY entry_computation {
                   )")))));
 }
 
+TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1000, 1000] parameter(0)
+      p1 = f32[1000, 1000] parameter(1)
+      exp0 = f32[1000, 1000] exponential(p1)
+      ROOT a0 = f32[1000, 1000] add(p0, exp0)
+    }
+  )");
+  EXPECT_TRUE(module.ok());
+  HloComputation* entry_computation = (*module)->entry_computation();
+  const HloInstruction* exponential =
+      entry_computation->GetInstructionWithName("exp0");
+  const HloInstruction* parameter =
+      entry_computation->GetInstructionWithName("p1");
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(exponential);
+  HloInstructionAdaptor parameter_adaptor(*parameter);
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, parameter_adaptor, &mlir_context_);
+  EXPECT_THAT(grouped_indexing, UnorderedElementsAre(Pair(
+                                    parameter, ElementsAre(MatchIndexingMap(R"(
+                                                     (d0, d1) -> (d0, d1)
+                                                     domain:
+                                                     d0 in [0, 999]
+                                                     d1 in [0, 999]
+                                                   )")))));
+}
+
 TEST_F(IndexingAnalysisTest,
-       ComputeGroupedOutputToInputIndexingStartNotAtRoot) {
+       ComputeGroupedOutputToInputIndexing_StartNotAtRoot) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
     max {

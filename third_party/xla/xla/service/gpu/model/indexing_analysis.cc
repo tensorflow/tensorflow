@@ -1015,15 +1015,17 @@ GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
   auto initial_map = CreateIdentityMap(target_instr.instruction().shape(), ctx);
 
   GroupedByOpIndexingMap grouped_indexing_maps;
-  // If target_instr is a parameter, then we create an identity map for the
-  // fusion operand.
-  if (auto parameter_instr =
-          DynCast<HloParameterInstruction>(&target_instr.instruction())) {
-    const HloInstruction* user = parameter_instr->users().front();
-    auto fusion_operand = HloInstructionAdaptor(*user).GetOperand(
-        parameter_instr->parameter_number());
-    grouped_indexing_maps[&fusion_operand.instruction()] = {initial_map};
-    return grouped_indexing_maps;
+  // If target_instr is a parameter of a fusion, then we create an identity map
+  // for the fusion operand.
+  if (fusion_adaptor.ContainsInstruction(target_instr)) {
+    if (auto parameter_instr =
+            DynCast<HloParameterInstruction>(&target_instr.instruction())) {
+      const HloInstruction* user = parameter_instr->users().front();
+      auto fusion_operand = HloInstructionAdaptor(*user).GetOperand(
+          parameter_instr->parameter_number());
+      grouped_indexing_maps[&fusion_operand.instruction()] = {initial_map};
+      return grouped_indexing_maps;
+    }
   }
   grouped_indexing_maps[&target_instr.instruction()].insert(initial_map);
 
