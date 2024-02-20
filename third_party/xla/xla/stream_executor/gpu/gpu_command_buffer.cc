@@ -189,7 +189,8 @@ absl::Status GpuCommandBuffer::Trace(
 }
 
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier() {
-  return barrier_ ? Dependencies{barrier_} : Dependencies{};
+  return barriers_.empty() ? Dependencies{}
+                           : Dependencies{barriers_.back().handle};
 }
 
 absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
@@ -267,9 +268,11 @@ absl::StatusOr<GpuCommandBuffer::NoOpKernel*> GpuCommandBuffer::GetNoOpKernel(
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
     GpuGraphExecHandle exec) {
-  for (GpuGraphNodeHandle barrier : barriers_) {
-    if (barrier == nullptr) continue;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphNodeSetEnabled(exec, barrier, false));
+  for (GpuGraphBarrierInfo& barrier : barriers_) {
+    if (barrier.is_barrier_node) {
+      TF_RETURN_IF_ERROR(
+          GpuDriver::GraphNodeSetEnabled(exec, barrier.handle, false));
+    }
   }
   for (ConditionalCommandBuffers& cmd_buffers : conditional_command_buffers_) {
     for (auto& cmd_buffer : cmd_buffers.command_buffers) {
@@ -303,42 +306,42 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
     return absl::OkStatus();
 
   if (state_ == State::kCreate) {
-    // Collect nodes that will become a new barrier dependencies.
+    // Collect nodes that will become a new barrier dependencies starting from
+    // the first command node added after the last barrier.
     Dependencies dependencies;
-    for (int32_t i = nodes_.size() - 1; i >= 0; --i) {
-      if (nodes_[i].handle == barrier_) break;
+    for (size_t i = barriers_.empty() ? 0 : barriers_.back().nodes_offset;
+         i < nodes_.size(); ++i) {
       dependencies.push_back(nodes_[i].handle);
     }
 
-    // Add a noop kernel node acting as a barrier.
-    if (dependencies.size() > 1) {
+    GpuGraphBarrierInfo& barrier_info = barriers_.emplace_back();
+    barrier_info.nodes_offset = nodes_.size();
+
+    // If we have only one (or none at all) nodes added after the last barrier
+    // simply reuse the last node corresponding to a command as a barrier.
+    if (dependencies.size() <= 1) {
+      barrier_info.handle = nodes_.back().handle;
+      barrier_info.is_barrier_node = false;
+    } else {
       // TODO(b/316343054): This should be an empty node, however CUDA 12.3 does
       // not support empty nodes inside conditional command buffers.
-      GpuGraphNodeInfo& node_info = nodes_.emplace_back();
       TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel(executor));
       TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-          &node_info.handle, graph_, absl::MakeSpan(dependencies), "noop",
+          &barrier_info.handle, graph_, absl::MakeSpan(dependencies), "noop",
           AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
           /*kernel_params=*/nullptr, /*extra=*/nullptr));
-      barriers_.push_back(node_info.handle);
-    } else {
-      barriers_.push_back(nullptr);
+      barrier_info.is_barrier_node = true;
     }
 
-    // Make the last node a barrier, if we didn't add a new no-op node acting
-    // as a barrier we simply reuse the last node.
-    barrier_ = nodes_.back().handle;
     return absl::OkStatus();
   }
 
   if (state_ == State::kUpdate) {
-    // Increment update node index only if we added a no-op node earlier and it
-    // means that we just updated a "real" barrier node, otherwise barrier is
-    // the last updated node.
-    if (barriers_[update_state_.barrier_idx++]) {
-      barrier_ = nodes_[update_state_.node_idx++].handle;
-    } else if (update_state_.node_idx) {
-      barrier_ = nodes_[update_state_.node_idx - 1].handle;
+    // Command buffer updates can't change the structure of the underlying gpu
+    // graph (add or delete barriers). We simply do a sanity check that at
+    // update time we didn't try to add more barriers than we had originally.
+    if (update_state_.barrier_idx++ >= barriers_.size()) {
+      return absl::InternalError("Barrier index out of range");
     }
     return absl::OkStatus();
   }
@@ -919,7 +922,6 @@ absl::Status GpuCommandBuffer::Update() {
           << " command buffer update for executable graph " << exec_;
 
   state_ = State::kUpdate;
-  barrier_ = nullptr;
   update_state_ = UpdateState();
   return absl::OkStatus();
 }

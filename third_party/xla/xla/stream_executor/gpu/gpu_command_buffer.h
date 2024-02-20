@@ -44,6 +44,33 @@ namespace stream_executor::gpu {
 // (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
 class GpuCommandBuffer : public CommandBuffer {
  public:
+  // A handle to a Gpu graph node and a metadata describing its properties. Each
+  // command (launch, memcpy, etc.) creates one or more graph nodes.
+  struct GpuGraphNodeInfo {
+    // A handle to the gpu graph node corresponding to a command.
+    GpuGraphNodeHandle handle = nullptr;
+  };
+
+  // A handle to Gpu graph barrier and metadata describing its properties. Each
+  // call to `Barrier` creates a new barrier record.
+  struct GpuGraphBarrierInfo {
+    // A handle to graph node acting as a barrier that defines execution order.
+    // It can be a handle to a `GpuGraphNodeInfo` node or a handle to an empty
+    // node created to be a barrier. We try to reuse existing nodes as barriers
+    // if possible to reduce the size of constructed gpu graphs.
+    GpuGraphNodeHandle handle = nullptr;
+
+    // If `true` it means `handle` corresponds to an empty node specifically
+    // created to act as an execution barrier, otherwise `handle` points to one
+    // of the nodes created for recorded commands.
+    bool is_barrier_node = true;
+
+    // Nodes with index smaller than `nodes_offset` are synchronized with this
+    // barrier. We use this offset to find nodes added after the last barrier
+    // that should be added as dependencies to the next barrier.
+    size_t nodes_offset = 0;
+  };
+
   GpuCommandBuffer(Mode mode, GpuExecutor* parent, GpuGraphHandle graph,
                    bool is_owned_graph = true);
   ~GpuCommandBuffer() override;
@@ -98,6 +125,9 @@ class GpuCommandBuffer : public CommandBuffer {
   static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
     return static_cast<const GpuCommandBuffer*>(command_buffer);
   }
+
+  absl::Span<const GpuGraphNodeInfo> nodes() const { return nodes_; }
+  absl::Span<const GpuGraphBarrierInfo> barriers() const { return barriers_; }
 
  private:
   absl::Status Trace(Stream* stream,
@@ -256,23 +286,11 @@ class GpuCommandBuffer : public CommandBuffer {
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
-  // Handle of a graph node that acts as a barrier for all newly added commands.
-  GpuGraphNodeHandle barrier_ = nullptr;
-
-  // A handle to a Gpu graph node and a metadata describing the node properties.
-  struct GpuGraphNodeInfo {
-    // Gpu graph node handle owned by `graph_` instance.
-    GpuGraphNodeHandle handle = nullptr;
-  };
-
-  // Gpu graph nodes info for load bearing graph nodes (kernel, memcpy, etc.)
-  // corresponding to command buffer commands and also to no-op nodes
-  // corresponding to barriers (nodes defining DAG structure).
+  // Gpu graph nodes corresponding to recorded commands (launch, memcpy, etc.).
   std::vector<GpuGraphNodeInfo> nodes_;
 
-  // Handles to no-op graph nodes corresponding to barriers that define nodes
-  // execution order. Can be nullptr if regular node acts as a barrier.
-  std::vector<GpuGraphNodeHandle> barriers_;
+  // Gpu graph barriers that define recorded commands execution order.
+  std::vector<GpuGraphBarrierInfo> barriers_;
 
   // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
   // graphs owned by the `graph_` instance.
