@@ -36,7 +36,7 @@ class CoalescingAnalysis {
   // Computes read coalescing for operands of `instr`.
   CoalescingAnalysis(const HloInstruction* instr,
                      absl::Span<const HloInstruction* const> operands,
-                     HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                     const HloFusionAnalysis& fusion_analysis,
                      KernelFusionInterface* fusion_interface = nullptr,
                      mlir::MLIRContext* mlir_context = nullptr,
                      bool use_heuristic = true);
@@ -45,7 +45,7 @@ class CoalescingAnalysis {
   CoalescingAnalysis(const HloInstruction* producer,
                      const HloInstruction* consumer,
                      absl::Span<const HloInstruction* const> operands,
-                     HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                     const HloFusionAnalysis& fusion_analysis,
                      KernelFusionInterface* fusion_interface = nullptr,
                      mlir::MLIRContext* mlir_context = nullptr,
                      bool use_heuristic = true);
@@ -57,7 +57,7 @@ class CoalescingAnalysis {
   bool ComputeCoalescingForAllOperands(
       const HloFusionAdaptor& fusion_adaptor,
       absl::Span<const HloInstruction* const> operands,
-      HloFusionAnalysis::EmitterFusionKind fusion_kind,
+      const HloFusionAnalysis& fusion_analysis,
       KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context);
 
   absl::flat_hash_map<const HloInstruction*, bool> coalescing_per_operand_;

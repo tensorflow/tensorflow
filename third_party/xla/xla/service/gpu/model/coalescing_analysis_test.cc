@@ -48,8 +48,7 @@ class CoalescingTest : public HloTestBase {
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.value().get());
     EXPECT_TRUE(emitter.ok());
 
-    CoalescingAnalysis coalescing_analysis(root, root->operands(),
-                                           analysis.GetEmitterFusionKind(),
+    CoalescingAnalysis coalescing_analysis(root, root->operands(), analysis,
                                            fusion, &mlir_context_,
                                            /*use_heuristic=*/false);
 
@@ -161,7 +160,7 @@ TEST_F(CoalescingTest, Transpose) {
   })";
   // thread_x to linearized input mapping for thread_x in [0, 31]:
   // Operand 1: (thread_x) -> (thread_x * 32 + s0 * 4) for s0 in [0, 7]
-  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(false));
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
 }
 
 TEST_F(CoalescingTest, TransposeOnlyOuterDims) {

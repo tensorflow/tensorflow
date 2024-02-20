@@ -92,8 +92,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
 
-  CoalescingAnalysis coalescing_analysis(
-      instr, instr->operands(), fusion_analysis.GetEmitterFusionKind());
+  CoalescingAnalysis coalescing_analysis(instr, instr->operands(),
+                                         fusion_analysis);
 
   absl::Duration read_time;
   int64_t bytes_read = 0;
@@ -226,9 +226,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
 
   std::vector<const HloInstruction*> fusion_operands =
       GetUniqueFusionOperands(producer, consumer);
-  CoalescingAnalysis coalescing_analysis(
-      producer, consumer, fusion_operands,
-      fusion_analysis.GetEmitterFusionKind());
+  CoalescingAnalysis coalescing_analysis(producer, consumer, fusion_operands,
+                                         fusion_analysis);
 
   absl::Duration read_time;
   int64_t bytes_read = 0;
