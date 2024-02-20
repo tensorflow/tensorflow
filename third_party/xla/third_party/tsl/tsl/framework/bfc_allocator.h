@@ -579,10 +579,6 @@ class BFCAllocator : public Allocator {
   // The size of the current region allocation.
   size_t curr_region_allocation_bytes_;
 
-  // An indicator that expansion of a region has hit the limits
-  // of the available memory.
-  bool started_backpedal_ = false;
-
   // Whether the allocator will coalesce adjacent sub allocator provided
   // AllocationRegions. This may be disabled if discrete sub allocator
   // regions can't be treated as contiguous (e.g. if the allocation refers to
