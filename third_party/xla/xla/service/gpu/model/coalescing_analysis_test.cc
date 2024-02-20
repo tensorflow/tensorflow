@@ -159,7 +159,7 @@ TEST_F(CoalescingTest, Transpose) {
       ROOT %fusion = f32[32, 100, 64] fusion(%input), kind=kLoop, calls=fusion
   })";
   // thread_x to linearized input mapping for thread_x in [0, 31]:
-  // Operand 1: (thread_x) -> (thread_x * 32 + s0 * 4) for s0 in [0, 7]
+  // Operand 1:  (thread_x)[s0] -> (thread_x + s0 * 128) for s0 in [0, 7]
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
 }
 
@@ -197,10 +197,77 @@ TEST_F(CoalescingTest, PadOp) {
       ROOT %fusion = f32[1024, 512] fusion(p0, p1), kind=kLoop, calls=fusion
   })";
   // thread_x to linearized input mapping for thread_x in [0, 31]:
-  // Operand 1: (d0)[s0] -> (d0 * 4 + s0 - 4384)
-  //   for s0 in [0, 3]
-  // Operand 2: (d0) -> ()
+  // Operand 1: (thread_x)[s0] -> (thread_x * 4 + s0 - 4384)
+  //   for s0 in [0, 3] and thread_x * 4 + s0 in [24, 459]
+  // Operand 2: (thread_x) -> ()
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true));
+}
+
+TEST_F(CoalescingTest, RowReduction) {
+  absl::string_view ir = R"(
+    HloModule module
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    fusion {
+      %input = f32[100,64,512] parameter(0)
+      %c0 = f32[] constant(0)
+      ROOT reduce = f32[100,64] reduce(%input, %c0), dimensions={2}, to_apply=add
+    }
+    ENTRY entry {
+      %input = f32[100,64,512] parameter(0)
+      ROOT %fusion = f32[100,64] fusion(%input), kind=kInput, calls=fusion
+    })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x)[s0] -> (thread_x + s0 * 32) for s0 in [0, 15]
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, MultiRowReduction) {
+  absl::string_view ir = R"(
+    HloModule module
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    fusion {
+      %input = f32[100,64,4] parameter(0)
+      %c0 = f32[] constant(0)
+      ROOT reduce = f32[100,64] reduce(%input, %c0), dimensions={2}, to_apply=add
+    }
+    ENTRY entry {
+      %input = f32[100,64,4] parameter(0)
+      ROOT %fusion = f32[100,64] fusion(%input), kind=kInput, calls=fusion
+  })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x) -> (thread_x)
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, ColumnReduction) {
+  absl::string_view ir = R"(
+    HloModule module
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    fusion {
+      %input = f32[100,64,32] parameter(0)
+      %c0 = f32[] constant(0)
+      ROOT reduce = f32[100,32] reduce(%input, %c0),
+        dimensions={1}, to_apply=add
+    }
+    ENTRY entry {
+      %input = f32[100,64,32] parameter(0)
+      ROOT %fusion = f32[100,32] fusion(%input), kind=kInput, calls=fusion
+    })";
+  // thread_x to linearized input mapping for thread_x in [0, 31]:
+  // Operand 1: (thread_x)[s0] -> (thread_x + s0 * 1024) for s0 in [0, 1]
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
 }
 
 }  // namespace

@@ -228,6 +228,7 @@ bool IsCoalesced(const IndexingMap& thread_id_to_input_indexing_map,
   IndexingMap thread_x_to_linearized_input =
       thread_x_first_32_elements * thread_id_to_input_indexing_map;
   thread_x_to_linearized_input.Simplify();
+  thread_x_to_linearized_input.RemoveUnusedSymbols();
   return EstimateCoalescingViaMemoryTransactionsCount(
       FindContiguousIntervals(thread_x_to_linearized_input), element_type);
 }
@@ -256,6 +257,9 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
     for (const auto& [hero_operand_index, hero_operand] :
          llvm::enumerate(hero->operands())) {
+      if (hero_operand->shape().rank() == 0) {
+        continue;
+      }
       // Compute thread ID -> hero operand indexing map.
       std::optional<IndexingMap> thread_id_to_hero_operand_map =
           fusion_interface->ComputeThreadIdToInputIndexing(
@@ -363,6 +367,10 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
     return false;
   }
   for (const HloInstruction* operand : operands) {
+    if (operand->shape().rank() == 0) {
+      coalescing_per_operand_.insert({operand, true});
+      continue;
+    }
     const IndexingMapSet& operand_indexing_maps =
         thread_id_to_input_memory_layouts->at(operand);
     for (const IndexingMap& operand_indexing_map : operand_indexing_maps) {
