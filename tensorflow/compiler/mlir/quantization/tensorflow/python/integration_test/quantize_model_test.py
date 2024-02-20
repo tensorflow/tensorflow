@@ -6160,169 +6160,46 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   (default in TF2) to ensure support for when TF2 is disabled.
   """
 
-  @parameterized.named_parameters(
-      {
-          'testcase_name': 'with_min_max',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_min_max_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_min_max_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_average_min_max',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_average_min_max_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_average_min_max_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_percentile',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+  @parameterized.parameters(
+      parameter_combinations([{
+          'target_opset': [
+              quant_opts_pb2.TF,
+              quant_opts_pb2.XLA,
+              quant_opts_pb2.UNIFORM_QUANTIZED,
+          ],
+          'calibration_options': [
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_percentile_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_percentile_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_bruteforce',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_bruteforce_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_bruteforce_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
+              quant_opts_pb2.CalibrationOptions(
+                  calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
+                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
+                      initial_num_bins=10,
+                  ),
               ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_max_frequency',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_max_frequency_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_max_frequency_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_symmetric',
-          'target_opset': quant_opts_pb2.TF,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_symmetric_to_xla',
-          'target_opset': quant_opts_pb2.XLA,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
-      {
-          'testcase_name': 'with_histogram_mse_symmetric_to_uq',
-          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=10,
-              ),
-          ),
-      },
+          ],
+      }])
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model_by_calibration_options(
