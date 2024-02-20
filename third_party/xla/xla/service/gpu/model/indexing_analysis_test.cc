@@ -146,6 +146,69 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
 }
 
 TEST_F(IndexingAnalysisTest,
+       ComputeGroupedOutputToInputIndexing_VariadicReduce) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[] parameter(3)
+  add.0 = f32[] add(param_0, param_2)
+  add.1 = f32[] add(param_1, param_3)
+  ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  param_1.3 = f32[32,40]{1,0} parameter(1)
+  param_2.2 = f32[] parameter(2)
+  constant = f32[] constant(0)
+  ROOT reduce = (f32[32]{0}, f32[32]{0}) reduce(param_0.3, param_1.3, param_2.2, constant), dimensions={1}, to_apply=add
+}
+  )");
+  EXPECT_TRUE(module.ok());
+  const HloInstruction* root =
+      (*module)->entry_computation()->root_instruction();
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
+
+  EXPECT_THAT(grouped_indexing,
+              UnorderedElementsAre(
+                  Pair(root, ElementsAre(MatchIndexingMap(R"(
+                    (d0) -> (d0)
+                    domain:
+                    d0 in [0, 31]
+                  )"))),
+                  Pair(root->operand(0), ElementsAre(MatchIndexingMap(R"(
+                    (d0)[s0] -> (d0, s0)
+                    domain:
+                    d0 in [0, 31]
+                    s0 in [0, 39]
+                  )"))),
+                  Pair(root->operand(1), ElementsAre(MatchIndexingMap(R"(
+                    (d0)[s0] -> (d0, s0)
+                    domain:
+                    d0 in [0, 31]
+                    s0 in [0, 39]
+                  )"))),
+                  Pair(root->operand(2), ElementsAre(MatchIndexingMap(R"(
+                    (d0) -> ()
+                    domain:
+                    d0 in [0, 31]
+                  )"))),
+                  Pair(root->operand(3), ElementsAre(MatchIndexingMap(R"(
+                    (d0) -> ()
+                    domain:
+                    d0 in [0, 31]
+                  )")))));
+}
+
+TEST_F(IndexingAnalysisTest,
        ComputeGroupedOutputToInputIndexingStartNotAtRoot) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m

@@ -77,6 +77,12 @@ HloInstructionIndexing CreateUnknownIndexing(int64_t count = 1) {
 }
 
 IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* ctx) {
+  if (shape.IsTuple()) {
+    // Should happen only for variadic reduce. In that case all tuple shapes are
+    // equal.
+    return CreateIdentityMap(shape.tuple_shapes(0), ctx);
+  }
+
   auto dims = shape.dimensions();
   IndexingMap identity_map = IndexingMap::FromTensorSizes(
       AffineMap::getMultiDimIdentityMap(dims.size(), ctx), dims, {});
