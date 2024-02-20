@@ -72,6 +72,9 @@ using ::mlir::quant::QuantizedType;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
 
+const char* kPaddingSame = "SAME";
+const char* kPaddingValid = "VALID";
+
 #define GEN_PASS_DEF_UNIFORMQUANTIZEDSTABLEHLOTOTFLPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
@@ -177,7 +180,8 @@ TFL::QConstOp CreateTflConstOpForFilter(
 // transformation). The quantization scale for the bias is input scale *
 // filter scale. `filter_const_op` is used to retrieve the filter scales and
 // the size of the bias constant.
-// TODO - b/309896242: Support bias fusion legalization.
+// TODO - b/309896242: Support bias fusion legalization and spatial dimension
+// check when `stride` is not 1.
 TFL::QConstOp CreateTflConstOpForDummyBias(
     const Location loc, const double input_scale, TFL::QConstOp filter_const_op,
     PatternRewriter& rewriter, bool is_per_channel, MLIRContext& ctx) {
@@ -828,6 +832,8 @@ class RewriteQuantizedConvolutionOp
                PatternRewriter& rewriter) const override {
     const bool has_i32_output = IsI32F32UniformQuantizedPerAxisType(
         op.getResult().getType().cast<TensorType>().getElementType());
+    stablehlo::ConvDimensionNumbersAttr dimension_numbers =
+        op.getDimensionNumbers();
 
     Value filter_value = op.getOperand(1);
     Operation* filter_op = filter_value.getDefiningOp();
@@ -915,11 +921,10 @@ class RewriteQuantizedConvolutionOp
                                        /*value=*/bias_value);
 
     // Determine the attributes for the TFL::Conv2DOp.
-    // TODO: b/294808863 - Use `padding = "SAME"` if the padding attribute
-    // matches the semantics.
+
     Value input_value = op.getOperand(0);
     if (const DenseIntElementsAttr padding_attr = op.getPaddingAttr();
-        !IsPaddingValid(padding_attr)) {
+        !HasProperPadding(op, dimension_numbers, padding_attr)) {
       // Add an extra tfl.pad_op if there are explicit padding values. This
       // extra pad op will allow us to always set the `padding` attribute of
       // the newly created tfl.conv_2d op as "VALID".
@@ -960,7 +965,10 @@ class RewriteQuantizedConvolutionOp
         /*dilation_h_factor=*/rewriter.getI32IntegerAttr(dilation_h_factor),
         /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
-        /*padding=*/rewriter.getStringAttr("VALID"),
+        /*padding=*/
+        rewriter.getStringAttr(UseSamePadding(op, dimension_numbers)
+                                   ? kPaddingSame
+                                   : kPaddingValid),
         /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
         /*stride_w=*/rewriter.getI32IntegerAttr(stride_w));
   }
@@ -1152,12 +1160,34 @@ class RewriteQuantizedConvolutionOp
     return new_filter_constant_value_attr;
   }
 
-  // Determines if the padding attribute corresponds to "VALID"
+  bool UseSamePadding(
+      Operation* op,
+      stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
+    // TODO: b/294808863 - Account for dynamic shapes.
+    const ArrayRef<int64_t> input_shape =
+        op->getOperand(0).getType().cast<ShapedType>().getShape();
+    const ArrayRef<int64_t> output_shape =
+        op->getResult(0).getType().cast<ShapedType>().getShape();
+    const ArrayRef<int64_t> input_spatial_dim_inds =
+        dimension_numbers.getInputSpatialDimensions();
+    const ArrayRef<int64_t> output_spatial_dim_inds =
+        dimension_numbers.getOutputSpatialDimensions();
+    return (input_shape[input_spatial_dim_inds[0]] ==
+                output_shape[output_spatial_dim_inds[0]] &&
+            input_shape[input_spatial_dim_inds[1]] ==
+                output_shape[output_spatial_dim_inds[1]]);
+  }
+
+  // Determines if the padding attribute corresponds to "VALID" or "SAME".
+  // If not, the input's shape should be adjusted with explicit `tfl.pad` op.
   // (https://www.tensorflow.org/api_docs/python/tf/nn).
-  bool IsPaddingValid(const DenseIntElementsAttr& padding_attr) const {
+  bool HasProperPadding(Operation* op,
+                        stablehlo::ConvDimensionNumbersAttr dimension_numbers,
+                        const DenseIntElementsAttr& padding_attr) const {
     // If padding_attr is empty, it defaults to splat 0s.
-    return !padding_attr || (padding_attr.isSplat() &&
-                             padding_attr.getSplatValue<int64_t>() == 0);
+    return UseSamePadding(op, dimension_numbers) ||
+           (!padding_attr || (padding_attr.isSplat() &&
+                              padding_attr.getSplatValue<int64_t>() == 0));
   }
 
   // Returns the stride amount for the height and width, respectively.
