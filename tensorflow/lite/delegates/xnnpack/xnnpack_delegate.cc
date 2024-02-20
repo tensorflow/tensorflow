@@ -4441,6 +4441,7 @@ class Subgraph {
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
     if (subgraph != nullptr) {
+      uint32_t flags = reducer_params->keep_dims ? XNN_FLAG_KEEP_DIMS : 0;
       xnn_status status = xnn_status_success;
       switch (num_reduction_axes) {
         case 1:
@@ -4450,7 +4451,7 @@ class Subgraph {
               /*output_max=*/+std::numeric_limits<float>::infinity(),
               /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
               /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              /*flags=*/0);
+              flags);
           break;
         case 2:
           status = xnn_define_global_average_pooling_2d(
@@ -4459,7 +4460,7 @@ class Subgraph {
               /*output_max=*/+std::numeric_limits<float>::infinity(),
               /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
               /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              /*flags=*/0);
+              flags);
           break;
         default:
           break;
