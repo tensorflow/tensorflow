@@ -66,6 +66,9 @@ public final class Interpreter {
   /// The underlying `TfLiteInterpreter` C pointer.
   internal var cInterpreter: CInterpreter?
 
+  /// Keep reference to underlying model's data in case of init(modelData:) is used.
+  internal let _model: Model
+
   /// The underlying `TfLiteDelegate` C pointer for XNNPACK delegate.
   private var cXNNPackDelegate: Delegate.CDelegate?
 
@@ -121,6 +124,7 @@ public final class Interpreter {
 
     self.options = options
     self.delegates = delegates
+    self._model = model
     options.map {
       if let threadCount = $0.threadCount, threadCount > 0 {
         TfLiteInterpreterOptionsSetNumThreads(cInterpreterOptions, Int32(threadCount))
