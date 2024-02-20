@@ -21,9 +21,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace xla {
 namespace gpu {
