@@ -597,6 +597,10 @@ bool IsCollective(const HloInstruction* instruction) {
         }
       }
       return false;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return IsCollective(instruction->async_wrapped_instruction());
     default:
       return false;
   }

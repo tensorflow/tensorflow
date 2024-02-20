@@ -792,6 +792,27 @@ ENTRY main {
   EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "fusion");
 }
 
+TEST_F(HloControlFlowFlatteningTest, AsyncAllToAll) {
+  absl::string_view hlo = R"(
+
+  ENTRY main {
+  param = f32[4,8,128]{2,1,0} parameter(0)
+  all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}, u32[], u32[]) all-to-all-start(param), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={1}
+  ROOT all-to-all-done = f32[4,8,128]{2,1,0} all-to-all-done(all-to-all-start)
+  }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
+  HloControlFlowFlattening flattening({});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::CustomCall(op::Parameter(0))));
+}
+
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {
   auto* cond = while_op->while_condition();
   ASSERT_NE(cond, nullptr);
