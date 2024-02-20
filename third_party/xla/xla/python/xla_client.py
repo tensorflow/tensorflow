@@ -24,7 +24,7 @@ import inspect
 import logging
 import os
 import threading
-from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
 import ml_dtypes
 import numpy as np
@@ -564,14 +564,22 @@ LoadedExecutable.execute = LoadedExecutable_execute
 LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
 
 
-_custom_callback_handler: dict[str, Any] = {}
-# Key is xla_platform_name, value is (function_name, function)
-_custom_callback: dict[str, list[Tuple[str, Any]]] = {}
+class CustomCallHandler(Protocol):
+
+  def __call__(
+      self, name: str, fn: Any, platform: str, /, api_version: int = ...
+  ) -> None:
+    ...
+
+
+_custom_callback_handler: dict[str, CustomCallHandler] = {}
+# Key is xla_platform_name, value is (function_name, function, api_version)
+_custom_callback: dict[str, list[tuple[str, Any, int]]] = {}
 _custom_callback_lock = threading.Lock()
 
 
 def register_custom_call_target(
-    name: str, fn: Any, platform: str = 'cpu'
+    name: str, fn: Any, platform: str = 'cpu', api_version: int = 0
 ) -> None:
   """Registers a custom call target.
 
@@ -579,18 +587,26 @@ def register_custom_call_target(
     name: bytes containing the name of the function.
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
+    api_version: the XLA FFI version to use. Supported versions are: 0 for the
+      untyped FFI and 0 for the typed FFI.
   """
   # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
   # Since that is hardcoded to CUDA, we are using the following as workaround.
   xla_platform_name = xla_platform_names.get(platform, platform)
   with _custom_callback_lock:
     if xla_platform_name in _custom_callback_handler:
-      _custom_callback_handler[xla_platform_name](name, fn, xla_platform_name)
+      _custom_callback_handler[xla_platform_name](
+          name, fn, xla_platform_name, api_version
+      )
     else:
-      _custom_callback.setdefault(xla_platform_name, []).append((name, fn))
+      _custom_callback.setdefault(xla_platform_name, []).append(
+          (name, fn, api_version)
+      )
 
 
-def register_custom_call_handler(platform: str, handler: Any) -> None:
+def register_custom_call_handler(
+    platform: str, handler: CustomCallHandler
+) -> None:
   """Registers a custom handler and use it to register existing custom calls.
 
   If a custom call handler for the platform already exist, calling this method
@@ -610,8 +626,8 @@ def register_custom_call_handler(platform: str, handler: Any) -> None:
       return
     _custom_callback_handler[xla_platform_name] = handler
     if xla_platform_name in _custom_callback:
-      for name, fn in _custom_callback[xla_platform_name]:
-        handler(name, fn, xla_platform_name)
+      for name, fn, api_version in _custom_callback[xla_platform_name]:
+        handler(name, fn, xla_platform_name, api_version)
       del _custom_callback[xla_platform_name]
 
 

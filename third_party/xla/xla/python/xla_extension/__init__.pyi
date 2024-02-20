@@ -258,7 +258,7 @@ class CompileOptions:
   env_option_overrides: List[Tuple[str, str]]
 
 def register_custom_call_target(
-    fn_name: str, capsule: Any, platform: str
+    fn_name: str, capsule: Any, platform: str, api_version: int = ...,
 ) -> _Status: ...
 def register_custom_call_partitioner(
     name: str,
