@@ -295,7 +295,7 @@ class DefaultNcclApi final : public NcclApi {
 
   absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
       int32_t nranks, const NcclCliqueId& clique_id,
-      absl::Span<const DeviceRank> ranks) final;
+      absl::Span<const DeviceRank> ranks, const Config& config) final;
 
   absl::StatusOr<std::vector<OwnedNcclComm>> CommSplit(
       absl::Span<const NcclCommHandle> comms, int32_t color,
@@ -366,9 +366,13 @@ absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
 
 absl::StatusOr<std::vector<NcclApi::OwnedNcclComm>>
 DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
-                              absl::Span<const DeviceRank> ranks) {
+                              absl::Span<const DeviceRank> ranks,
+                              const Config& config) {
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size()
           << " devices; hash(id)=" << absl::HashOf(clique_id);
+
+  ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
+  comm_config.splitShare = config.split_share;
 
   std::vector<OwnedNcclComm> comms;
   comms.reserve(ranks.size());
@@ -381,8 +385,9 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
     se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
 
     ncclComm_t comm_handle = nullptr;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRank(
-        &comm_handle, nranks, AsNcclUniqueId(clique_id), ranks[i].rank));
+    XLA_NCCL_RETURN_IF_ERROR(
+        ncclCommInitRankConfig(&comm_handle, nranks, AsNcclUniqueId(clique_id),
+                               ranks[i].rank, &comm_config));
 
     comms.emplace_back(Cast(comm_handle), NcclCommDeleter{this});
   }

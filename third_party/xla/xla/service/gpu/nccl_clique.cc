@@ -267,9 +267,14 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
         clique_key.ToString(), DeviceRanksToString(ranks),
         absl::HashOf(clique_id));
 
+    // We enable resource sharing between parent and split communicators by
+    // default because that's the only reason why we use comm splitting.
+    NcclApi::Config config;
+    config.split_share = true;
+
     TF_ASSIGN_OR_RETURN(
         std::vector<NcclApi::OwnedNcclComm> created_comms,
-        NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks));
+        NcclApi::Default()->CommInitRanks(nranks, clique_id, ranks, config));
 
     absl::btree_map<int32_t, NcclApi::OwnedNcclComm> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {

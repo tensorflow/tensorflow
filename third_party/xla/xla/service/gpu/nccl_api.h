@@ -47,6 +47,13 @@ class NcclApi {
  public:
   virtual ~NcclApi() = default;
 
+  // Communicator configuration.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#ncclconfig
+  struct Config {
+    bool split_share = false;
+  };
+
   // Returns a default NcclApi for a current process. Can be a real one based on
   // NCCL or a stub if XLA compiled without NCCL or CUDA support.
   static NcclApi* Default();
@@ -145,7 +152,7 @@ class NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
   virtual absl::StatusOr<std::vector<OwnedNcclComm>> CommInitRanks(
       int32_t nranks, const NcclCliqueId& clique_id,
-      absl::Span<const DeviceRank> ranks) = 0;
+      absl::Span<const DeviceRank> ranks, const Config& config) = 0;
 
   // Creates new communicators by splitting `comms`.
   //
