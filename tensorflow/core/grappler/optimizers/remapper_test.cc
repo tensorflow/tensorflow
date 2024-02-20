@@ -2962,7 +2962,7 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
     auto add0 = ops::Add(s.WithOpName("add_0"), input0, input1);
     auto add1 = ops::Add(s.WithOpName("add_1"), input0, input1);
 
-    // Adding two control dependencies to the const
+    // Adding two control dependencies to the const.
     float leakyrelu_alpha = 0.18;
     typedef typename EnumToDataType<DTYPE>::Type CType;
     auto const1 = ops::Const<CType>(
@@ -2998,9 +2998,9 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
     for (int i = 0; i < num_nodes; i++) {
       auto* node = graph_view.GetNode(i)->node();
 
-      // Check if the node is LeakyRelu
+      // Check if the node is LeakyRelu.
       if (node->name() == "max_0") {
-        // Checks to see if the LeakyRelu fusion happened
+        // Checks to see if the LeakyRelu fusion happened.
         EXPECT_EQ(node->op(), "LeakyRelu");
         EXPECT_EQ(node->attr().at("alpha").f(), leakyrelu_alpha);
 
@@ -3011,7 +3011,7 @@ class RemapperControlDependencyPatternMatcher : public RemapperTest {
         // ^ in the name of the node also indicates a control fan input.
         auto* node_view = graph_view.GetNode(i);
         EXPECT_EQ(node_view->NumControllingFanins(), 2);
-        // The sequence of control inputs could be different
+        // The sequence of control inputs could be different.
         if (node->input(1).compare("^add_0")) {
           if (node->input(2).compare("^add_1")) found++;
         } else if (node->input(1).compare("^add_1")) {
