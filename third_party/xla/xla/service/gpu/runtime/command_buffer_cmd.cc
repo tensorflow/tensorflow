@@ -61,6 +61,7 @@ limitations under the License.
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -293,6 +294,7 @@ std::vector<bool> CommandBufferCmdSequence::barriers() const {
 TracedCommandBuffer::TracedCommandBuffer(
     CommandBufferCmd::BufferUsageVector buffers, int64_t capacity)
     : capacity_(capacity), entries_(capacity) {
+  CHECK_GT(capacity, 0) << "capacity must be larger than 0";  // NOLINT
   // Collect unique buffer allocation indices in a set first and convert to
   // vector as flat hash set iteration has measurable overheads.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices;
@@ -313,10 +315,13 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   // Moves entry at `i` position to front and moves entries in `[0, i)` range
   // one element to the right. Returns reference to the first entry.
   auto shift_right = [&](size_t i) -> Entry& {
+    if (i == 0) return entries_[0];
+
     Entry entry = std::move(entries_[i]);
     do {
       entries_[i] = std::move(entries_[i - 1]);
     } while (--i > 0);
+
     return entries_[0] = std::move(entry);
   };
 
@@ -325,8 +330,7 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     // pointer to cached command buffer.
     if (ABSL_PREDICT_TRUE(absl::c_equal(entries_[i].recorded_allocs, allocs) &&
                           entries_[i].command_buffer)) {
-      return i == 0 ? entries_[i].command_buffer.get()
-                    : shift_right(i).command_buffer.get();
+      return shift_right(i).command_buffer.get();
     }
 
     // Create a new entry by calling a user-provided tracing function, move it
@@ -335,8 +339,7 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
       TF_ASSIGN_OR_RETURN(entries_[i].command_buffer,
                           se::CommandBuffer::Trace(executor, stream, trace));
       entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
-      return i == 0 ? entries_[i].command_buffer.get()
-                    : shift_right(i).command_buffer.get();
+      return shift_right(i).command_buffer.get();
     }
   }
 
