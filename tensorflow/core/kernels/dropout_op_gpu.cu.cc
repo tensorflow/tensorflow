@@ -189,18 +189,21 @@ void ApplyDropout<GPUDevice, T>::operator()(const GPUDevice& d, T* out, uint8* m
   uint64 num_blocks = (num_groups + kThreadInBlock - 1) / kThreadInBlock;
   // for FP32, it's optimal to run at 256x256
   if (std::is_same<T, float>::value && num_blocks > 256) num_blocks = 256;
-
+  // NOTE: A convoluted half2 initialization is done this way to circumvent implicit
+  // float to half conversion.
   if (do_half2) {
     TF_CHECK_OK(GpuLaunchKernel(
         RNGAndApplyDropoutKernel<half2, half2, half2>, num_blocks,
         kThreadInBlock, 0, d.stream(), gen, num_elements,
         reinterpret_cast<half2*>(out), mask, reinterpret_cast<const half2*>(in),
-        __floats2half2_rn(rate, rate), __floats2half2_rn(scale, scale)));
+        half2{half(Eigen::half(rate)), half(Eigen::half(rate))},
+        half2{half(Eigen::half(scale)), half(Eigen::half(scale))}));
   } else {
     TF_CHECK_OK(GpuLaunchKernel(
         RNGAndApplyDropoutKernel<T, half2, float2>, num_blocks, kThreadInBlock,
         0, d.stream(), gen, num_elements, out, mask, in,
-        __floats2half2_rn(rate, rate), make_float2(scale, scale)));
+        half2{half(Eigen::half(rate)), half(Eigen::half(rate))},
+        make_float2(scale, scale)));
   }
 }
 
