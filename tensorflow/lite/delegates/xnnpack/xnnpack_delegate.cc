@@ -557,8 +557,12 @@ class Delegate {
   }
 
   bool transient_indirection_buffer() const {
+#ifdef XNNPACK_DELEGATE_USE_TRANSIENT_INDIRECTION_BUFFERS
+    return true;
+#else
     return (options_.flags &
             TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER) != 0;
+#endif
   }
 
   bool experimental_adaptive_avx_optimization() const {

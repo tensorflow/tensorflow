@@ -33,6 +33,12 @@ config_setting(
     define_values = {"xnnpack_use_latest_ops": "true"},
 )
 
+# Use transient indirection buffers.
+config_setting(
+    name = "xnnpack_use_transient_indirection_buffers_explicit",
+    define_values = {"xnnpack_use_transient_indirection_buffers": "true"},
+)
+
 # Enable offloading of quantized 8-bit signed operators to XNNPACK delegate
 config_setting(
     name = "tflite_with_xnnpack_qs8_explicit_true",
@@ -222,6 +228,9 @@ cc_library(
         "//conditions:default": [],
     }) + select({
         ":xnnpack_use_latest_ops_explicit": ["-DXNNPACK_DELEGATE_USE_LATEST_OPS=1"],
+        "//conditions:default": [],
+    }) + select({
+        ":xnnpack_use_transient_indirection_buffers_explicit": ["-DXNNPACK_DELEGATE_USE_TRANSIENT_INDIRECTION_BUFFERS=1"],
         "//conditions:default": [],
     }),
     linkstatic = True,
