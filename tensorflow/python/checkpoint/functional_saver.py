@@ -57,7 +57,7 @@ MappedCapturesCallable = Callable[
 
 def _single_shard_save(
     file_prefix: tensor_lib.Tensor,
-    shard: sharding_util.TensorSliceDict,
+    shard: sharding_util.Shard,
     task: device_lib.DeviceSpec,
     options: "checkpoint_options.CheckpointOptions | None" = None,
 ) -> ops.Operation:
@@ -106,7 +106,7 @@ def _single_shard_restore(
     file_prefix: tensor_lib.Tensor,
     shardable_tensors: Sequence[sharding_util.ShardableTensor],
     options: "checkpoint_options.CheckpointOptions | None" = None
-) -> sharding_util.TensorSliceDict:
+) -> sharding_util.Shard:
   """Restore the saveable objects from a checkpoint with `file_prefix`.
 
   Args:
@@ -221,6 +221,9 @@ def _get_mapped_registered_restore_fn(
 
 _restore_noop = lambda *args, **kwargs: None
 
+TensorKeyAndSliceSpec = tuple[str, str]
+RestoreFn = Callable[[Mapping[str, tensor_lib.Tensor]], ops.Operation]
+
 
 class MultiDeviceSaver:
   """Saves checkpoints directly from multiple devices.
@@ -233,7 +236,7 @@ class MultiDeviceSaver:
   def __init__(
       self,
       serialized_tensors: Mapping[
-          base.Trackable, sharding_util.TensorSliceDict],
+          base.Trackable, sharding_util.Shard],
       registered_savers: "RegisteredSaversDict | None" = None,
       call_with_mapped_captures: "MappedCapturesCallable | None" = None):
     """Specify a list of `SaveableObject`s to save and restore.
@@ -255,11 +258,9 @@ class MultiDeviceSaver:
     # Keep these two data structures so that we can map restored tensors to
     # the Trackable restore functions.
     self._keys_to_restore_fn: MutableMapping[
-        sharding_util.TensorSlice,
-        Callable[Mapping[str, tensor_lib.Tensor]]] = {}
+        TensorKeyAndSliceSpec, RestoreFn] = {}
     self._restore_fn_to_keys: MutableMapping[
-        Callable[Mapping[str, tensor_lib.Tensor]],
-        MutableSequence[sharding_util.TensorSlice]] = {}
+        RestoreFn, MutableSequence[TensorKeyAndSliceSpec]] = {}
 
     unique_tasks = set()
     for obj, tensor_dict in serialized_tensors.items():
@@ -377,7 +378,7 @@ class MultiDeviceSaver:
   def _get_shards_by_task(
       self,
       sharding_callback: sharding_util.ShardingCallback
-  ) -> Sequence[sharding_util.TensorSliceDict]:
+  ) -> Sequence[sharding_util.Shard]:
     """Calls the sharding callback with shardable_tensors.
 
     Args:
