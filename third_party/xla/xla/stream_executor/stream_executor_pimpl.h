@@ -365,6 +365,10 @@ class StreamExecutor {
   // Performs linear search over alive GPU streams.
   Stream* FindAllocatedStream(void* gpu_stream);
 
+  // Creates and initializes a Stream.
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
+      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+
  private:
   friend class Event;
   friend class Stream;

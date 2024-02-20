@@ -438,6 +438,20 @@ Event::Status StreamExecutor::PollForEventStatus(Event* event) {
   return implementation_->PollForEventStatus(event);
 }
 
+absl::StatusOr<std::unique_ptr<Stream>> StreamExecutor::CreateStream(
+    std::optional<std::variant<StreamPriority, int>> priority) {
+  auto stream = std::make_unique<Stream>(this);
+  if (priority.has_value()) {
+    if (std::holds_alternative<StreamPriority>(*priority)) {
+      stream->SetPriority(std::get<StreamPriority>(*priority));
+    } else {
+      stream->SetPriority(std::get<int>(*priority));
+    }
+  }
+  TF_RETURN_IF_ERROR(stream->Initialize());
+  return std::move(stream);
+}
+
 bool StreamExecutor::AllocateStream(Stream* stream) {
   live_stream_count_.fetch_add(1, std::memory_order_relaxed);
   if (!implementation_->AllocateStream(stream)) {
