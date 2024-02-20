@@ -824,8 +824,9 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
 
 AffineMap GetTilingAffineMap(llvm::ArrayRef<AffineExpr> exprs,
                              const Tiling& tiling) {
-  return AffineMap::get(/*dimCount=*/6, /*symbolCount=*/3, exprs,
-                        exprs[0].getContext());
+  return AffineMap::get(
+      /*dimCount=*/6, /*symbolCount=*/tiling.GetShape().size(), exprs,
+      exprs[0].getContext());
 }
 
 }  // namespace

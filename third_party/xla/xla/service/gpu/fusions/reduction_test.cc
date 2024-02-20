@@ -355,6 +355,55 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
       MatchIndexingString(kExpectedIndexing));
 }
 
+TEST_F(ReductionTest, bla) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    fusion {
+      %input = f32[1024, 8192] parameter(0)
+      %c0 = f32[] constant(0)
+      ROOT reduce = f32[1024]{0} reduce(f32[1024, 8192] %input, f32[] %c0),
+        dimensions={1}, to_apply=add
+    }
+    ENTRY entry {
+      %input = f32[1024, 8192] parameter(0)
+      ROOT %fusion = f32[1024] fusion(%input), kind=kInput, calls=fusion
+    })")
+                    .value();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = AnalyzeFusion(*root, device_info_);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  mlir::MLIRContext mlir_context;
+
+  EXPECT_THAT(
+      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      MatchIndexingString(R"(
+        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
+          d3,
+          (d0 + s2 * 512) * 2 + s3
+        )
+        domain:
+        d0 in [0, 511]
+        d1 in [0, 0]
+        d2 in [0, 0]
+        d3 in [0, 1023]
+        d4 in [0, 0]
+        d5 in [0, 0]
+        s0 in [0, 0]
+        s1 in [0, 0]
+        s2 in [0, 7]
+        s3 in [0, 1]
+        0 in [0, 0]
+        d0 + s2 * 512 in [0, 4095]
+      )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
