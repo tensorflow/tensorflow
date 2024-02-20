@@ -22,9 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
@@ -216,21 +218,24 @@ std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {
 }
 
 std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
-  absl::MutexLock lock(&mu_);
-  if (usage_stream_pool_.empty()) {
-    auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
-    stream->Init();
-    return stream;
-  } else {
-    std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
-    usage_stream_pool_.pop();
-    auto status = stream->RefreshStatus();  // Can return error::Unimplemented
-    // Stream may fail with "ABORTED: Bad connection".
-    if (status.code() != tsl::error::ABORTED) {
-      CHECK(stream->ok()) << status;
+  {
+    absl::MutexLock lock(&stream_pool_mu_);
+    if (!usage_stream_pool_.empty()) {
+      std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
+      usage_stream_pool_.pop();
+      auto status = stream->RefreshStatus();  // Can return error::Unimplemented
+      // Stream may fail with "ABORTED: Bad connection".
+      if (status.code() != tsl::error::ABORTED) {
+        CHECK(stream->ok()) << status;
+      }
+      return stream;
     }
-    return stream;
   }
+
+  // The stream pool is empty, create a new stream.
+  auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
+  stream->Init();
+  return stream;
 }
 
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
@@ -239,7 +244,7 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   if (status.code() != tsl::error::ABORTED) {
     CHECK(stream->ok()) << status;
   }
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(&stream_pool_mu_);
   usage_stream_pool_.push(std::move(stream));
 }
 
