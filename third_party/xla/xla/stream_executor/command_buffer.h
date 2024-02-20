@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "tsl/lib/gtl/int_type.h"
 #include "tsl/platform/errors.h"
 
 namespace stream_executor {
@@ -51,6 +52,47 @@ class CommandBuffer {
  public:
   // Builder constructs nested command buffers owned by a parent command buffer.
   using Builder = std::function<absl::Status(CommandBuffer*)>;
+
+  // Execution scope enables fine-grained synchronization scopes inside
+  // commands buffers. Implementation is very backend-specific and for CUDA/ROCM
+  // backends it's implemented as DAG edges. By default all commands launched in
+  // the `kDefaulExecutionScope` execution scope.
+  //
+  // Example #1: independent execution scopes and independent barriers
+  //
+  // ExecutionScope #0       ExecutionScope #1
+  //
+  //          A                        D
+  //          B                        E
+  // ----- barrier -----      ----- barrier -----
+  //          C                        F
+  //
+  //   (1) Commands A and B can run concurrently and must complete before C.
+  //   (2) Commands D and E can run concurrently and must complete before F.
+  //   (3) There is no syncrhonization between execution scopes, and commands
+  //       from different execution scopes can execute concurrently with each
+  //       other as long as they satisfy constraints of their respective
+  //       execution scopes.
+  //
+  // Example #2: dependencies between scopes and inter-scope barriers
+  //
+  // ExecutionScope #0       ExecutionScope #1
+  //
+  //          A                        D
+  //          B                        E
+  // ----------------- barrier ------------------
+  //          C                        F
+  //
+  //   (1) Commands A and B can run concurrently and must complete before
+  //       C and F.
+  //   (2) Commands D and E can run concurrently and must complete before
+  //       C and F.
+  //   (3) Commands C and F can run concurrently.
+  //   (4) All commands before a shared barrier (in both excecution scopes)
+  //       should complete before any command after a berrier starts execution.
+  //
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionScopeId, int64_t);
+  static constexpr auto kDefaulExecutionScope = ExecutionScopeId(0);
 
   CommandBuffer() = default;
   virtual ~CommandBuffer() = default;
