@@ -55,7 +55,6 @@ limitations under the License.
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/threadpool.h"
 
-
 static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 static constexpr bool FLAGS_gpuexec_cuda_device_0_only = false;
@@ -791,7 +790,7 @@ static std::string ConditionalTypeToString(
 
 /* static */ absl::StatusOr<GpuDriver::GpuGraphNodeResult>
 GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
-                        absl::Span<CUgraphNode> deps,
+                        absl::Span<const CUgraphNode> deps,
                         const GpuGraphNodeParams& params) {
 #if CUDA_VERSION >= 12030
   // Add conditional node to a graph.
@@ -833,7 +832,7 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
 }
 
 /* static */ absl::Status GpuDriver::GraphAddEmptyNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps) {
+    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps) {
   VLOG(2) << "Add empty node to a graph " << graph << "; deps: " << deps.size();
 
   RETURN_IF_CUDA_RES_ERROR(
@@ -844,7 +843,7 @@ GpuDriver::GraphAddNode(CUgraphNode* node, CUgraph graph,
 }
 
 /* static */ absl::Status GpuDriver::GraphAddKernelNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
     absl::string_view kernel_name, CUfunction function, unsigned int grid_dim_x,
     unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
     unsigned int block_dim_y, unsigned int block_dim_z,
@@ -977,7 +976,7 @@ static CUmemAllocationType ToCudaAllocationType(
 }
 
 /*static*/ absl::Status GpuDriver::GraphAddMemAllocNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
     GpuDriver::MemAccessFlags access_flags,
     GpuDriver::MemLocationType location_type, int device_id,
     GpuDriver::MemAllocationType allocation_type, uint64_t size,
@@ -1028,7 +1027,7 @@ GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
 }
 
 /*static*/ absl::Status GpuDriver::GraphAddMemFreeNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
     CUdeviceptr gpu_dst) {
   RETURN_IF_CUDA_RES_ERROR(
       cuGraphAddMemFreeNode(node, graph, deps.data(), deps.size(), gpu_dst),
@@ -1038,8 +1037,8 @@ GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
 
 /* static */ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
     GpuContext* context, CUgraphNode* node, CUgraph graph,
-    absl::Span<CUgraphNode> deps, CUdeviceptr gpu_dst, CUdeviceptr gpu_src,
-    uint64_t size) {
+    absl::Span<const CUgraphNode> deps, CUdeviceptr gpu_dst,
+    CUdeviceptr gpu_src, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
@@ -1124,7 +1123,7 @@ struct BitPatternToValue {
 
 /* static */ absl::Status GpuDriver::GraphAddMemsetNode(
     GpuContext* context, CUgraphNode* node, GpuGraphHandle graph,
-    absl::Span<CUgraphNode> deps, CUdeviceptr dst,
+    absl::Span<const CUgraphNode> deps, CUdeviceptr dst,
     std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph
@@ -1183,7 +1182,7 @@ struct BitPatternToValue {
 }
 
 /* static */ absl::Status GpuDriver::GraphAddChildNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
     CUgraph child) {
   VLOG(2) << "Create a new node by cloning the child graph " << child
           << " and add it to " << graph << "; deps: " << deps.size();

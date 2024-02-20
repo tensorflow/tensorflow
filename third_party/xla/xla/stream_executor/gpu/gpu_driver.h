@@ -493,20 +493,21 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g4210c258cbba352040a26d1b4e658f9d
   static absl::StatusOr<GpuGraphNodeResult> GraphAddNode(
       GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<GpuGraphNodeHandle> deps, const GpuGraphNodeParams& params);
+      absl::Span<const GpuGraphNodeHandle> deps,
+      const GpuGraphNodeParams& params);
 
   // Creates an empty node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g14b625984430cb2d574c63f29c9b9223
-  static absl::Status GraphAddEmptyNode(GpuGraphNodeHandle* node,
-                                        GpuGraphHandle graph,
-                                        absl::Span<GpuGraphNodeHandle> deps);
+  static absl::Status GraphAddEmptyNode(
+      GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<const GpuGraphNodeHandle> deps);
 
   // Creates a kernel execution node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g50d871e3bd06c1b835e52f2966ef366b
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   static absl::Status GraphAddKernelNode(
       GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<GpuGraphNodeHandle> deps, absl::string_view kernel_name,
+      absl::Span<const GpuGraphNodeHandle> deps, absl::string_view kernel_name,
       GpuFunctionHandle function, unsigned int grid_dim_x,
       unsigned int grid_dim_y, unsigned int grid_dim_z,
       unsigned int block_dim_x, unsigned int block_dim_y,
@@ -553,7 +554,7 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g73a351cb71b2945a0bcb913a93f69ec9
   static absl::Status GraphAddMemAllocNode(
       GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
+      absl::Span<const GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
       MemLocationType location_type, int device_id,
       MemAllocationType allocation_type, uint64_t size, GpuDevicePtr* d_ptr,
       uint64_t max_pool_size = 0);
@@ -565,16 +566,15 @@ class GpuDriver {
 
   // Create a memfree node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1geb7cdce5d9be2d28d9428e74eb00fa53
-  static absl::Status GraphAddMemFreeNode(GpuGraphNodeHandle* node,
-                                          GpuGraphHandle graph,
-                                          absl::Span<GpuGraphNodeHandle> deps,
-                                          GpuDevicePtr gpu_dst);
+  static absl::Status GraphAddMemFreeNode(
+      GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst);
 
   // Creates a memcpy node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
   static absl::Status GraphAddMemcpyD2DNode(
       GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
+      absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
       GpuDevicePtr gpu_src, uint64_t size);
 
   // Sets the parameters for a memcpy node in the given graphExec.
@@ -587,7 +587,7 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g89dc8fc3743392777c0daa2c4aca40d3
   static absl::Status GraphAddMemsetNode(
       GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr dst,
+      absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr dst,
       std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
       uint64_t num_elements);
 
@@ -600,10 +600,9 @@ class GpuDriver {
 
   // Creates a child graph node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gde52afbcf91a8c79d4d7efbe0e3b6844
-  static absl::Status GraphAddChildNode(GpuGraphNodeHandle* node,
-                                        GpuGraphHandle graph,
-                                        absl::Span<GpuGraphNodeHandle> deps,
-                                        GpuGraphHandle child);
+  static absl::Status GraphAddChildNode(
+      GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<const GpuGraphNodeHandle> deps, GpuGraphHandle child);
 
   // Sets the parameters for a child graph node in the given graph exec.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g8f2d9893f6b899f992db1a2942ec03ff
