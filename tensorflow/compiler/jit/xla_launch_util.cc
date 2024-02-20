@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -411,7 +412,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     } else {
       // Stream is not set for the host platform.
       TF_ASSIGN_OR_RETURN(platform,
-                          se::MultiPlatformManager::PlatformWithId(
+                          se::PlatformManager::PlatformWithId(
                               XlaPlatformInfoFromDevice(ctx->device())));
     }
     TF_ASSIGN_OR_RETURN(auto transfer_manager,

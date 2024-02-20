@@ -62,7 +62,7 @@ struct StreamExecutorConfig {
   DeviceOptions device_options;
 };
 
-// Abstract base class for a platform registered with the MultiPlatformManager.
+// Abstract base class for a platform registered with the PlatformManager.
 class Platform {
  public:
   virtual ~Platform();
@@ -103,7 +103,7 @@ class Platform {
   // initialized before obtaining StreamExecutor objects.  The interpretation of
   // the platform_options argument is implementation specific.  This method may
   // return an error if unrecognized options are provided.  If using
-  // MultiPlatformManager, this method will be called automatically by
+  // PlatformManager, this method will be called automatically by
   // InitializePlatformWithId/InitializePlatformWithName.
   virtual absl::Status Initialize(
       const std::map<std::string, std::string>& platform_options);

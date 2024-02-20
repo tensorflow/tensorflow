@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -248,7 +249,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     return errors::InvalidArgument("platform_id is null.");
   }
   auto platform =
-      se::MultiPlatformManager::PlatformWithId(platform_info.platform_id());
+      se::PlatformManager::PlatformWithId(platform_info.platform_id());
   if (!platform.ok()) {
     return platform.status();
   }
@@ -412,7 +413,7 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
   if (!stream) {
     // Stream is not set for the host platform.
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
+        se::PlatformManager::PlatformWithId(platform_info.platform_id())
             .value();
     return std::make_shared<se::TfAllocatorAdapter>(alloc, platform);
   }

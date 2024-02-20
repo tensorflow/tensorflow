@@ -131,6 +131,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@local_xla//xla/stream_executor:platform_manager",
     ] + if_libtpu(
         if_false = [
             "@local_xla//xla/service:cpu_plugin",  # buildcleaner: keep
@@ -160,6 +161,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ] + if_libtpu(
         if_false = [
@@ -364,6 +366,7 @@ cc_library(
         "@local_xla//xla/pjrt:tf_pjrt_client",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:executable",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,
 )
@@ -598,6 +601,7 @@ cc_library(
         "@local_xla//xla/pjrt:tracked_device_buffer",
         "@local_xla//xla/service:shaped_buffer",
         "@local_xla//xla/stream_executor:device_memory_allocator",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -1734,7 +1738,7 @@ tf_cuda_only_cc_test(
         "@local_xla//xla:shape_util",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:device_memory",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -1842,6 +1846,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/log/check.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
@@ -23,7 +24,7 @@ namespace {
 class StreamTest : public ::testing::Test {
  protected:
   std::unique_ptr<StreamExecutor> NewStreamExecutor() {
-    Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();
+    Platform* platform = PlatformManager::PlatformWithName("Host").value();
     StreamExecutorConfig config(/*ordinal=*/0);
     return platform->GetUncachedExecutor(config).value();
   }

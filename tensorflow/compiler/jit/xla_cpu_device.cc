@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -84,7 +85,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   (void)registrations;
 
   TF_ASSIGN_OR_RETURN(auto platform,
-                      se::MultiPlatformManager::PlatformWithName("Host"));
+                      se::PlatformManager::PlatformWithName("Host"));
 
   XlaDevice::Options options;
   options.platform = platform;
