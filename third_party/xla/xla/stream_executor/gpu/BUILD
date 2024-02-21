@@ -154,6 +154,7 @@ gpu_only_cc_library(
         ":gpu_types_header",
         "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",

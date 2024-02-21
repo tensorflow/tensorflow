@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -126,8 +127,12 @@ class GpuCommandBuffer : public CommandBuffer {
     return static_cast<const GpuCommandBuffer*>(command_buffer);
   }
 
-  absl::Span<const GpuGraphNodeInfo> nodes() const { return nodes_; }
-  absl::Span<const GpuGraphBarrierInfo> barriers() const { return barriers_; }
+  absl::Span<const GpuGraphNodeInfo> nodes() const {
+    return execution_scopes_.at(kDefaulExecutionScope).nodes;
+  }
+  absl::Span<const GpuGraphBarrierInfo> barriers() const {
+    return execution_scopes_.at(kDefaulExecutionScope).barriers;
+  }
 
  private:
   absl::Status Trace(Stream* stream,
@@ -286,34 +291,44 @@ class GpuCommandBuffer : public CommandBuffer {
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
-  // Gpu graph nodes corresponding to recorded commands (launch, memcpy, etc.).
-  std::vector<GpuGraphNodeInfo> nodes_;
+  // ExecutionScope holds the state of an underlying CUDA graph (nodes an
+  // barriers added to a graph) for a single execution scope.
+  struct ExecutionScope {
+    // Tracks indices into data structures during command buffer updates.
+    struct UpdateState {
+      // Index points to the graph node inside `nodes` that will be updated
+      // next.
+      int64_t node_idx = 0;
 
-  // Gpu graph barriers that define recorded commands execution order.
-  std::vector<GpuGraphBarrierInfo> barriers_;
+      // Index points to the barrier node inside `barriers` that will be updated
+      // on a next call to `Barrier(...)`.
+      int64_t barrier_idx = 0;
 
-  // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
-  // graphs owned by the `graph_` instance.
-  std::vector<ConditionalCommandBuffers> conditional_command_buffers_;
+      // Index points to the conditional command buffers that will be updated
+      // next when we'll be updating next conditional command (If, Case, While).
+      int64_t conditional_idx = 0;
+    };
+
+    // Gpu graph nodes corresponding to recorded commands (launch, memcpy,
+    // etc.).
+    std::vector<GpuGraphNodeInfo> nodes;
+
+    // Gpu graph barriers that define recorded commands execution order.
+    std::vector<GpuGraphBarrierInfo> barriers;
+
+    // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
+    // graphs owned by the `graph_` instance.
+    std::vector<ConditionalCommandBuffers> conditional_command_buffers;
+
+    // Tracks execution scope update state.
+    UpdateState update_state;
+  };
+
+  // Execution scopes recorded into the command buffer.
+  absl::flat_hash_map<ExecutionScopeId, ExecutionScope> execution_scopes_;
 
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
-
-  // Tracks indices into internal data structures during command buffer updates.
-  struct UpdateState {
-    // Index points to the graph node inside `nodes_` that will be updated next.
-    int64_t node_idx = 0;
-
-    // Index points to the barrier node inside `barriers_` that will be updated
-    // on a next call to `Barrier()`.
-    int64_t barrier_idx = 0;
-
-    // Index points to the conditional command buffers that will be updated next
-    // when we'll be updating next conditional command (If, Case, While).
-    int64_t conditional_idx = 0;
-  };
-
-  UpdateState update_state_;
 
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).
