@@ -402,3 +402,66 @@ tf_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "lowering_passes",
+    hdrs = [
+        "lowering_passes.h",
+    ],
+    textual_hdrs = [
+        "lowering_passes.h.inc",
+    ],
+    deps = [
+        ":input_metrics_lowering_pass",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+gentbl_cc_library(
+    name = "lowering_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TFXLABridgeLowering",
+            ],
+            "lowering_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lowering_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "input_metrics_lowering_pass",
+    srcs = [
+        "input_lowering_metrics_pass.cc",
+    ],
+    deps = [
+        ":lowering_passes_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "input_metrics_lowering_pass_test",
+    srcs = ["input_lowering_metrics_pass_test.cc"],
+    deps = [
+        ":lowering_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
