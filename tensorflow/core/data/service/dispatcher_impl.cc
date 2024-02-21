@@ -268,6 +268,8 @@ Status DataServiceDispatcherImpl::Start() {
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   TF_RETURN_IF_ERROR(RestoreSnapshots());
   started_ = true;
+  LOG(INFO) << "Started tf.data service dispatcher with config "
+            << config_.DebugString();
   return absl::OkStatus();
 }
 
