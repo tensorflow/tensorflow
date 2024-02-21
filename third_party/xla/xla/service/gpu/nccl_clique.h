@@ -137,7 +137,8 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     se::StreamExecutor* device, RunId run_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     size_t num_local_participants,
-    const NcclClique::AcquiredCliquesMap& acquired_cliques);
+    const NcclClique::AcquiredCliquesMap& acquired_cliques,
+    int64_t max_nchannels = 0);
 
 }  // namespace xla::gpu
 

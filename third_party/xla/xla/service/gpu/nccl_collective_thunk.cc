@@ -220,7 +220,8 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
 static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t stream_id) {
+    CollectiveOpGroupMode group_mode, int64_t stream_id,
+    AsyncStreamKind stream_kind) {
   GlobalDeviceId global_device_id = params.global_device_id;
 
   TF_ASSIGN_OR_RETURN(
@@ -235,17 +236,18 @@ static absl::StatusOr<NcclCliqueKey> GetNcclCliqueKey(
         "environment configuration.");
   }
 
-  return NcclCliqueKey(std::move(participants), stream_id);
+  return NcclCliqueKey(std::move(participants), stream_id, stream_kind);
 }
 
 absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t stream_id) {
-  TF_ASSIGN_OR_RETURN(
-      NcclCliqueKey clique_key,
-      GetNcclCliqueKey(params, replica_groups, group_mode, stream_id));
+    CollectiveOpGroupMode group_mode, int64_t stream_id,
+    AsyncStreamKind stream_kind) {
+  TF_ASSIGN_OR_RETURN(NcclCliqueKey clique_key,
+                      GetNcclCliqueKey(params, replica_groups, group_mode,
+                                       stream_id, stream_kind));
 
   std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
   return collective_cliques.GetComm(std::move(clique_key), *rank);
@@ -385,9 +387,9 @@ absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
   size_t num_local_participants = GetNumLocalParticipants(
       participants,
       collectives->global_device_id_map ? &local_devices : nullptr);
-
+  AsyncStreamKind stream_kind = GetAsyncStreamKind();
   return resource_requests.AddClique(
-      NcclCliqueKey(std::move(participants), GetStreamId()),
+      NcclCliqueKey(std::move(participants), GetStreamId(), stream_kind),
       num_local_participants);
 }
 
@@ -420,13 +422,15 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
   const int64_t stream_id = GetStreamId();
+  AsyncStreamKind stream_kind = GetAsyncStreamKind();
   TF_ASSIGN_OR_RETURN(
       NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
-                  config().replica_groups, config().group_mode, stream_id));
+                  config().replica_groups, config().group_mode, stream_id,
+                  stream_kind));
 
   se::StreamExecutor* executor = params.stream->parent();
-  int64_t async_stream_idx = static_cast<int64_t>(GetAsyncStreamKind());
+  int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
   if (IsAsync()) {
     // Launch collective operation on an async stream.
@@ -454,7 +458,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_ASSIGN_OR_RETURN(
         NcclCliqueKey clique_key,
         GetNcclCliqueKey(*params.collective_params, config().replica_groups,
-                         config().group_mode, stream_id));
+                         config().group_mode, stream_id, stream_kind));
 
     TF_ASSIGN_OR_RETURN(
         size_t num_local_participants,

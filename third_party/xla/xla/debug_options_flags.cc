@@ -226,6 +226,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
   opts.set_xla_gpu_enable_bf16_6way_gemm(false);
+  opts.set_xla_gpu_nccl_collective_max_nchannels(0);
+  opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
   return opts;
 }
@@ -1536,6 +1538,21 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
       debug_options->xla_gpu_enable_dot_strength_reduction(),
       "Enable rewriting matmuls with a vector into reductions."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_nccl_collective_max_nchannels",
+                int64_setter_for(
+                    &DebugOptions::set_xla_gpu_nccl_collective_max_nchannels),
+                debug_options->xla_gpu_nccl_collective_max_nchannels(),
+                "Specify the maximum number of channels(SMs) NCCL will use "
+                "for collective operations. Default is 0 which is to let "
+                "NCCL decide."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_p2p_max_nchannels",
+      int64_setter_for(&DebugOptions::set_xla_gpu_nccl_p2p_max_nchannels),
+      debug_options->xla_gpu_nccl_p2p_max_nchannels(),
+      "Specify the maximum number of channels(SMs) NCCL will use "
+      "for p2p operations. Default is 0 which is to let "
+      "NCCL decide."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

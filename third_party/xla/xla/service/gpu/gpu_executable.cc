@@ -248,7 +248,10 @@ class ResourceRequests : public Thunk::ResourceRequests {
     VLOG(2) << "Acquire " << cliques_.size()
             << " collective cliques for global device id "
             << params.global_device_id.value()
-            << "; run_id=" << params.run_id.ToInt();
+            << "; run_id=" << params.run_id.ToInt()
+            << "; max number of channels for collectives "
+            << params.collective_max_nchannels
+            << "; max number of channels for p2p " << params.p2p_max_nchannels;
 
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
@@ -273,11 +276,15 @@ class ResourceRequests : public Thunk::ResourceRequests {
           const NcclCliqueIdCallback* clique_id_callback,
           GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
+      int64_t max_channels =
+          clique_key.stream_kind() == AsyncStreamKind::kCollective
+              ? params.collective_max_nchannels
+              : params.p2p_max_nchannels;
       TF_ASSIGN_OR_RETURN(
           std::shared_ptr<NcclClique::Lock> clique,
           AcquireNcclClique(params.executor, params.run_id, clique_key,
                             *clique_id_callback, *rank, num_local_participants,
-                            cliques_map));
+                            cliques_map, max_channels));
 
       cliques_map[clique_key] = std::move(clique);
     }
@@ -314,7 +321,8 @@ absl::Status ExecuteThunks(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     bool use_highest_priority_for_async_stream,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
+    int64_t collective_max_nchannels, int64_t p2p_max_nchannels) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
   stream_executor::StreamPriority stream_priority =
@@ -375,10 +383,10 @@ absl::Status ExecuteThunks(
 #endif
 
   // Parameters for executing collective operations.
-  TF_ASSIGN_OR_RETURN(
-      Thunk::CollectiveExecuteParams collective_params,
-      Thunk::CollectiveExecuteParams::Create(
-          *run_options, main_stream->parent()->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams collective_params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, main_stream->parent()->device_ordinal(),
+                          collective_max_nchannels, p2p_max_nchannels));
 
   ResourceRequests resource_requests;
 
@@ -946,6 +954,15 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
 
   if (thunks_) {
     Thunk::ExecutableSource executable_source = {text_, binary_};
+    int64_t collective_max_nchannels =
+        has_module() ? module_config()
+                           .debug_options()
+                           .xla_gpu_nccl_collective_max_nchannels()
+                     : 0;
+    int64_t p2p_max_nchannels =
+        has_module()
+            ? module_config().debug_options().xla_gpu_nccl_p2p_max_nchannels()
+            : 0;
 
     return ExecuteThunks(
         module_name_, unique_id, *thunks_, executable_source, run_options,
@@ -955,7 +972,7 @@ absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                            .debug_options()
                            .xla_gpu_enable_highest_priority_async_stream()
                      : false,
-        execution_stream_ids_);
+        execution_stream_ids_, collective_max_nchannels, p2p_max_nchannels);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");

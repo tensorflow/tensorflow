@@ -1111,7 +1111,8 @@ absl::Status CollectiveCmd::Prepare(
       collectives->global_device_id_map ? &local_devices : nullptr);
 
   return resource_requests.AddClique(
-      NcclCliqueKey(std::move(participants), /*stream_id=*/0),
+      NcclCliqueKey(std::move(participants), /*stream_id=*/0,
+                    GetAsyncStreamKind()),
       num_local_participants);
 }
 
@@ -1155,7 +1156,7 @@ absl::Status AllReduceCmd::Record(const Thunk::ExecuteParams& params,
       NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode,
-                  /*stream_id=*/0));
+                  /*stream_id=*/0, GetAsyncStreamKind()));
 
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
@@ -1220,7 +1221,7 @@ absl::Status ReduceScatterCmd::Record(const Thunk::ExecuteParams& params,
       NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode,
-                  /*stream_id=*/0));
+                  /*stream_id=*/0, GetAsyncStreamKind()));
 
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
@@ -1282,7 +1283,7 @@ absl::Status AllGatherCmd::Record(const Thunk::ExecuteParams& params,
       NcclApi::NcclCommHandle comm,
       GetNcclComm(*params.collective_params, *params.collective_cliques,
                   config().replica_groups, config().group_mode,
-                  /*stream_id=*/0));
+                  /*stream_id=*/0, GetAsyncStreamKind()));
 
   // Use custom allocator for persistent execution plans.
   NcclApi::ScopedPersistentPlanAllocator scoped_allocator(

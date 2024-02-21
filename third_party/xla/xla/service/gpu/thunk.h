@@ -206,7 +206,8 @@ class Thunk {
     // missing a global device mapping for a local device ordinal).
     static absl::StatusOr<CollectiveExecuteParams> Create(
         const ServiceExecutableRunOptions& run_options,
-        int64_t local_device_ordinal);
+        int64_t local_device_ordinal, int64_t collective_max_nchannels = 0,
+        int64_t p2p_max_nchannels = 0);
 
     // A mapping from local device ordinals to global device IDs.
     using GlobalDeviceIdMap = std::map<int32_t, GlobalDeviceId>;
@@ -224,13 +225,18 @@ class Thunk {
     const GlobalDeviceIdMap* global_device_id_map;
     const NcclCliqueIdCallback* nccl_clique_id_callback;
 
+    int64_t collective_max_nchannels;
+    int64_t p2p_max_nchannels;
+
    private:
-    CollectiveExecuteParams(
-        se::StreamExecutor* executor, RunId run_id,
-        int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-        const DeviceAssignment* device_assn,
-        const GlobalDeviceIdMap* global_device_id_map,
-        const NcclCliqueIdCallback* nccl_clique_id_callback);
+    CollectiveExecuteParams(se::StreamExecutor* executor, RunId run_id,
+                            int64_t local_device_ordinal,
+                            GlobalDeviceId global_device_id,
+                            const DeviceAssignment* device_assn,
+                            const GlobalDeviceIdMap* global_device_id_map,
+                            const NcclCliqueIdCallback* nccl_clique_id_callback,
+                            int64_t collective_max_nchannels,
+                            int64_t p2p_max_nchannels);
   };
 
   //===--------------------------------------------------------------------===//

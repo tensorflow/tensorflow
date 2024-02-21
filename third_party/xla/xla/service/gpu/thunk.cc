@@ -114,7 +114,8 @@ static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
     const ServiceExecutableRunOptions& run_options,
-    int64_t local_device_ordinal) {
+    int64_t local_device_ordinal, int64_t collective_max_nchannels,
+    int64_t p2p_max_nchannels) {
   const GpuExecutableRunOptions* gpu_options =
       run_options.run_options().gpu_executable_run_options();
 
@@ -129,25 +130,28 @@ Thunk::CollectiveExecuteParams::Create(
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
-  return CollectiveExecuteParams(run_options.stream()->parent(),
-                                 run_options.run_options().run_id(),
-                                 local_device_ordinal, global_device_id,
-                                 run_options.run_options().device_assignment(),
-                                 device_id_map, nccl_callback);
+  return CollectiveExecuteParams(
+      run_options.stream()->parent(), run_options.run_options().run_id(),
+      local_device_ordinal, global_device_id,
+      run_options.run_options().device_assignment(), device_id_map,
+      nccl_callback, collective_max_nchannels, p2p_max_nchannels);
 }
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     se::StreamExecutor* executor, RunId run_id, int64_t local_device_ordinal,
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
-    const NcclCliqueIdCallback* nccl_clique_id_callback)
+    const NcclCliqueIdCallback* nccl_clique_id_callback,
+    int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : executor(executor),
       run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),
-      nccl_clique_id_callback(nccl_clique_id_callback) {}
+      nccl_clique_id_callback(nccl_clique_id_callback),
+      collective_max_nchannels(collective_max_nchannels),
+      p2p_max_nchannels(p2p_max_nchannels) {}
 
 //===----------------------------------------------------------------------===//
 // Thunk::ExecuteParams

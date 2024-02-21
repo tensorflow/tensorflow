@@ -37,8 +37,10 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                             int64_t stream_id)
-    : devices_(std::move(devices)), stream_id_(stream_id) {}
+                             int64_t stream_id, AsyncStreamKind stream_kind)
+    : devices_(std::move(devices)),
+      stream_id_(stream_id),
+      stream_kind_(stream_kind) {}
 
 absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;

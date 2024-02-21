@@ -698,6 +698,8 @@ class CollectiveCmd : public TracedCommandBufferCmd {
 
   bool IsNestedCommandBuffer() const final { return true; }
 
+  virtual AsyncStreamKind GetAsyncStreamKind() = 0;
+
  protected:
   NcclApi* nccl_api() const { return nccl_api_; }
   const NcclCollectiveConfig& config() const { return config_; }
@@ -722,6 +724,10 @@ class AllReduceCmd : public CollectiveCmd {
 
   BufferUsageVector buffers() override;
 
+  AsyncStreamKind GetAsyncStreamKind() override {
+    return AsyncStreamKind::kCollective;
+  };
+
  private:
   ReductionKind reduction_kind_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
@@ -742,6 +748,10 @@ class ReduceScatterCmd : public CollectiveCmd {
 
   BufferUsageVector buffers() override;
 
+  AsyncStreamKind GetAsyncStreamKind() override {
+    return AsyncStreamKind::kCollective;
+  };
+
  private:
   ReductionKind reduction_kind_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
@@ -760,6 +770,10 @@ class AllGatherCmd : public CollectiveCmd {
                       se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
+
+  AsyncStreamKind GetAsyncStreamKind() override {
+    return AsyncStreamKind::kCollective;
+  };
 
  private:
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
