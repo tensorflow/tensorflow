@@ -24,18 +24,18 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
+#include "tsl/framework/serving_device_selector.h"
 
 namespace tensorflow {
 namespace gpu {
 
-class GpuServingDeviceSelector : public ServingDeviceSelector {
+class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
   GpuServingDeviceSelector(
       int num_devices,
       std::unique_ptr<ServingDeviceSelector::Policy> device_selector_policy);
 
-  DeviceReservation ReserveDevice(
+  tsl::DeviceReservation ReserveDevice(
       absl::string_view program_fingerprint) override;
 
   // Enqueues the program on the stream of index `index_on_host`.
@@ -52,10 +52,8 @@ class GpuServingDeviceSelector : public ServingDeviceSelector {
   friend class ServingDeviceSelectorTestHelper;
   static void OverwriteNowNsFunctionForTest(int64_t (*now_ns)());
 
-  void FreeDeviceReservation(const DeviceReservation& reservation) override;
-
-  // Helper to estimate the time until the stream becomes idle in nanoseconds.
-  static int64_t EstimateTimeTillIdleNs(const DeviceState& device_state);
+  void FreeDeviceReservation(
+      const tsl::DeviceReservation& reservation) override;
 
   absl::Mutex mu_;
   absl::FixedArray<DeviceState, 8> device_states_ ABSL_GUARDED_BY(mu_);
@@ -64,6 +62,7 @@ class GpuServingDeviceSelector : public ServingDeviceSelector {
   // Map from program fingerprint to execution info.
   absl::node_hash_map<std::string, ExecutionInfo> execution_info_
       ABSL_GUARDED_BY(mu_);
+  std::optional<int64_t> min_exec_time_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

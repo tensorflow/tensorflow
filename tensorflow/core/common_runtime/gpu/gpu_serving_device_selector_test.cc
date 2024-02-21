@@ -21,8 +21,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
-#include "tensorflow/core/common_runtime/serving_device_selector_policies.h"
+#include "tsl/framework/serving_device_selector.h"
+#include "tsl/framework/serving_device_selector_policies.h"
 
 namespace tensorflow {
 namespace gpu {
@@ -52,10 +52,11 @@ namespace {
 TEST(GpuServingDeviceSelector, Basic) {
   // Create a selector with two devices and round-robin policy.
   GpuServingDeviceSelector selector(/*num_devices=*/2,
-                                    std::make_unique<RoundRobinPolicy>());
+                                    std::make_unique<tsl::RoundRobinPolicy>());
 
   const std::string program_fingerprint = "TensorFlow";
-  DeviceReservation reservation = selector.ReserveDevice(program_fingerprint);
+  tsl::DeviceReservation reservation =
+      selector.ReserveDevice(program_fingerprint);
   EXPECT_EQ(reservation.device_index(), 0);
 
   reservation = selector.ReserveDevice(program_fingerprint);
@@ -67,7 +68,7 @@ TEST(GpuServingDeviceSelector, Basic) {
 
 TEST(GpuServingDeviceSelector, DefaultPolicyOnlyEnqueueCall) {
   ServingDeviceSelectorTestHelper helper;
-  auto policy = std::make_unique<RoundRobinPolicy>();
+  auto policy = std::make_unique<tsl::RoundRobinPolicy>();
   auto serving_device_selector =
       std::make_unique<tensorflow::gpu::GpuServingDeviceSelector>(
           4, std::move(policy));

@@ -12,20 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/common_runtime/serving_device_selector_policies.h"
+#ifndef TENSORFLOW_TSL_FRAMEWORK_SERVING_DEVICE_SELECTOR_POLICIES_H_
+#define TENSORFLOW_TSL_FRAMEWORK_SERVING_DEVICE_SELECTOR_POLICIES_H_
 
 #include <atomic>
 
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
+#include "tsl/framework/serving_device_selector.h"
 
-namespace tensorflow {
+namespace tsl {
 
-int RoundRobinPolicy::SelectDevice(
-    absl::string_view program_fingerprint,
-    const ServingDeviceSelector::DeviceStates& device_states) {
-  const int num_devices = device_states.states.size();
-  return ordinal_.fetch_add(1, std::memory_order_relaxed) % num_devices;
-}
+enum class ServingDeviceSelectorPolicy {
+  kRoundRobin,
+};
 
-}  // namespace tensorflow
+class RoundRobinPolicy : public ServingDeviceSelector::Policy {
+ public:
+  RoundRobinPolicy() : ordinal_(0) {}
+
+  int SelectDevice(
+      absl::string_view program_fingerprint,
+      const ServingDeviceSelector::DeviceStates& device_states) override;
+
+ private:
+  std::atomic<uint64_t> ordinal_;
+};
+
+}  // namespace tsl
+
+#endif  // TENSORFLOW_TSL_FRAMEWORK_SERVING_DEVICE_SELECTOR_POLICIES_H_

@@ -7,16 +7,16 @@
 load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
+    "//tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
+load(
     "//tsl/platform:build_config_root.bzl",
     "if_static",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
-)
-load(
-    "//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
 )
 
 package(
@@ -371,6 +371,31 @@ cc_library(
         "//tsl/platform:thread_annotations",
         "//tsl/platform:types",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "serving_device_selector",
+    srcs = ["serving_device_selector.cc"],
+    hdrs = ["serving_device_selector.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tsl/platform:logging",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "serving_device_selector_policies",
+    srcs = ["serving_device_selector_policies.cc"],
+    hdrs = ["serving_device_selector_policies.h"],
+    features = ["-layering_check"],
+    deps = [
+        ":serving_device_selector",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

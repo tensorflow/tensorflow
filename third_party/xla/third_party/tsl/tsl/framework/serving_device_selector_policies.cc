@@ -12,24 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
-#define TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
-#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tsl/framework/serving_device_selector_policies.h"
 
-namespace tensorflow {
-namespace gpu {
+#include <atomic>
 
-struct GpuRunnerOptions {
-  int num_gpu_streams = 1;
-  tsl::ServingDeviceSelectorPolicy serving_selector_policy =
-      tsl::ServingDeviceSelectorPolicy::kRoundRobin;
-};
+#include "absl/strings/string_view.h"
+#include "tsl/framework/serving_device_selector.h"
 
-Status InitTfrtGpu(const GpuRunnerOptions& options,
-                   tensorflow::tfrt_stub::Runtime& runtime);
+namespace tsl {
 
-}  // namespace gpu
-}  // namespace tensorflow
+int RoundRobinPolicy::SelectDevice(
+    absl::string_view program_fingerprint,
+    const ServingDeviceSelector::DeviceStates& device_states) {
+  const int num_devices = device_states.states.size();
+  return ordinal_.fetch_add(1, std::memory_order_relaxed) % num_devices;
+}
 
-#endif  // TENSORFLOW_CORE_TFRT_GPU_KERNEL_TFRT_GPU_INIT_H_
+}  // namespace tsl

@@ -3502,31 +3502,6 @@ tf_cc_fuzz_test(
 )
 
 cc_library(
-    name = "serving_device_selector",
-    srcs = ["serving_device_selector.cc"],
-    hdrs = ["serving_device_selector.h"],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform:logging",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "serving_device_selector_policies",
-    srcs = ["serving_device_selector_policies.cc"],
-    hdrs = ["serving_device_selector_policies.h"],
-    copts = tf_copts(),
-    features = ["-layering_check"],
-    deps = [
-        ":serving_device_selector",
-    ],
-)
-
-cc_library(
     name = "device_id_utils",
     hdrs = ["device_id_utils.h"],
     deps = [

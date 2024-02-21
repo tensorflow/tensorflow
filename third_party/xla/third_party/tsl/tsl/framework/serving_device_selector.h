@@ -12,18 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_H_
+#ifndef TENSORFLOW_TSL_FRAMEWORK_SERVING_DEVICE_SELECTOR_H_
+#define TENSORFLOW_TSL_FRAMEWORK_SERVING_DEVICE_SELECTOR_H_
 
 #include <cstdint>
 #include <deque>
+#include <optional>
 
 #include "absl/container/fixed_array.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 
 class ServingDeviceSelector;
 
@@ -52,9 +53,6 @@ class DeviceReservation {
 // NOTE: This interface is experimental and subject to change.
 class ServingDeviceSelector {
  public:
-  // Enumerates the cases of prefetch hit and miss.
-  enum class PrefetchResults { kPrefetchHit = 0, kPrefetchMiss };
-
   // Tracks the running average of certain program execution time.
   class RunningAverage {
    public:
@@ -79,32 +77,22 @@ class ServingDeviceSelector {
     explicit ExecutionInfo(int64_t num_prefetch_result = 1)
         : running_average_(num_prefetch_result) {}
 
-    void AddTime(int64_t value,
-                 PrefetchResults result = PrefetchResults::kPrefetchHit) {
+    virtual ~ExecutionInfo() = default;
+
+    void AddTime(int64_t value, int result) {
       DCHECK_GE(value, 0);
-      const int index = static_cast<int>(result);
-      DCHECK_LT(index, running_average_.size());
-      running_average_.at(index).Add(value);
+      DCHECK_LT(result, running_average_.size());
+      running_average_.at(result).Add(value);
     }
 
-    int64_t GetTime(
-        PrefetchResults result = PrefetchResults::kPrefetchHit) const {
-      const int index = static_cast<int>(result);
-      DCHECK_LT(index, running_average_.size());
-      return running_average_.at(index).Get();
+    int64_t GetTime(int result) const {
+      DCHECK_LT(result, running_average_.size());
+      return running_average_.at(result).Get();
     }
 
     // To be conservative when one of the path is missing.
-    int64_t MaybeGetValidTime(PrefetchResults result) const {
-      const auto miss_time = GetTime(PrefetchResults::kPrefetchMiss);
-      const auto hit_time = GetTime(PrefetchResults::kPrefetchHit);
-
-      if (miss_time != 0 && hit_time != 0) {
-        return result == PrefetchResults::kPrefetchMiss ? miss_time : hit_time;
-      } else {
-        auto dummy = std::max(miss_time, hit_time);
-        return dummy;
-      }
+    virtual int64_t MaybeGetValidTime(int result) const {
+      return GetTime(result);
     }
 
    private:
@@ -119,11 +107,11 @@ class ServingDeviceSelector {
     // TODO(b/295352859): Add more stats to track that are useful for the Policy
     // to use when selecting a device.
     struct ProgramInfo {
-      absl::string_view fingerprint;
+      std::string fingerprint;
       int32_t priority;
       int64_t req_id = -1;
-      ExecutionInfo* execution_info;
-      PrefetchResults prefetch_results;
+      const ExecutionInfo* execution_info;
+      int prefetch_results;
     };
     // A queue of enqueued programs, one for each priority level
     absl::FixedArray<std::deque<ProgramInfo>> enqueued_programs;
@@ -133,7 +121,7 @@ class ServingDeviceSelector {
     // Timestamp in nanoseconds of last started program.
     int64_t last_started_ns = 0;
     // Fingerprint of last enqueued high priority program.
-    absl::string_view last_fingerprint;
+    std::string last_fingerprint;
     // The number of scheduled not yet enqueued programs with unknown
     // fingerprints.
     int32_t unknown_fingerprint_requests;
@@ -164,6 +152,35 @@ class ServingDeviceSelector {
   virtual DeviceReservation ReserveDevice(
       absl::string_view program_fingerprint) = 0;
 
+ protected:
+  // A helper function for Enqueue. The EnqueueHelper does the following things.
+  //  1. If there are programs in the scheduled_programs queue of the given
+  //     priority, move the program to the corresponding enqueued_programs
+  //     queue. Update the fingerprint if it is unknown. This is a typical TF1
+  //     use case.
+  //  2. If there are no programs in the scheduled_programs queue of the given
+  //     priority, create the program of the fingerprint and place it in the
+  //     corresponding enqueued_programs queue.
+  //     This can happen in two cases: (1) TFRT that doesn't need
+  //     scheduled_programs queue. (2) In TF1, Schedule() was not called prior
+  //     to Enqueue().
+  // This helper also updates last_started_ns and timer_reset.
+  static void EnqueueHelper(DeviceState& device_state, int32_t device_index,
+                            ExecutionInfo& execution_info,
+                            absl::string_view fingerprint, int32_t priority,
+                            int64_t req_id, size_t priority_queue_count,
+                            int prefetch_results, int64_t now_ns);
+  // A helper function tells a program has completed on the given device.
+  static void CompletedHelper(DeviceState& device_state, int32_t device_index,
+                              int32_t priority,
+                              std::optional<int64_t>& min_exec_time,
+                              bool had_error, int64_t now_ns);
+  // Helper to estimate the time until the core becomes idle in nanoseconds.
+  // Only considers queues with priority at least as high as 'priority'.
+  static int64_t EstimateTimeTillIdleNs(const DeviceState& device_state,
+                                        int32_t priority, int64_t min_exec_time,
+                                        int64_t now_ns);
+
  private:
   friend DeviceReservation;
 
@@ -171,6 +188,6 @@ class ServingDeviceSelector {
   virtual void FreeDeviceReservation(const DeviceReservation& reservation) = 0;
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SERVING_DEVICE_SELECTOR_H_
+#endif  // TENSORFLOW_TSL_FRAMEWORK_SERVING_DEVICE_SELECTOR_H_
