@@ -831,7 +831,7 @@ Status BFloat16Propagation::SkipNoopConversions(
 // their users. During the backward pass, the potential changes are stored in
 // changes_to_bf16_ which are subject to further adjustments then applied to the
 // HLOs.
-StatusOr<bool> BFloat16Propagation::Run(
+absl::StatusOr<bool> BFloat16Propagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   consider_using_bfloat16_.clear();

@@ -92,7 +92,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   // Resolves the callee subcomputation_hlo to the new (inline) HLO in the
   // caller computation, or returns a NotFound error if that subcomputation HLO
   // has not been mapped.
-  StatusOr<HloInstruction*> Resolve(HloInstruction* subcomputation_hlo) {
+  absl::StatusOr<HloInstruction*> Resolve(HloInstruction* subcomputation_hlo) {
     auto it = subcomputation_hlo_to_new_hlo_.find(subcomputation_hlo);
     if (it == subcomputation_hlo_to_new_hlo_.end()) {
       return NotFound(
@@ -123,8 +123,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-/* static */ StatusOr<CallInliner::InlinedInstructionMap> CallInliner::Inline(
-    HloInstruction* call) {
+/* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
+CallInliner::Inline(HloInstruction* call) {
   TF_RET_CHECK(call->opcode() == HloOpcode::kCall)
       << "Instruction was not a call op: " << call->opcode();
   const auto& callees = call->called_computations();
@@ -136,7 +136,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   return visitor.ConsumeInstructionMap();
 }
 
-StatusOr<bool> CallInliner::Run(
+absl::StatusOr<bool> CallInliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
