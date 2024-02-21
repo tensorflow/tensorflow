@@ -406,7 +406,7 @@ class ShapeInference {
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast
   // up to match the size of the dimension in the other operand).
   static StatusOr<Shape> InferDegenerateDimensionBroadcastShape(
-      HloOpcode operation, const Shape& lhs, const Shape& rhs);
+      const Shape& lhs, const Shape& rhs);
 
   // Helper for inferring shapes of binary operations using "InDim"
   // broadcasting. This is the broadcasting used in the *InDim binary operations

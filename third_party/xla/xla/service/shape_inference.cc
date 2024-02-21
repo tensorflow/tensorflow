@@ -941,8 +941,7 @@ Status ValidateDotDimensionNumbers(
 }
 
 /* static */ StatusOr<Shape>
-ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
-                                                       const Shape& lhs,
+ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                                                        const Shape& rhs) {
   TF_RET_CHECK(lhs.rank() == rhs.rank());
 
@@ -995,10 +994,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                             ? rhs.is_dynamic_dimension(i)
                                             : lhs.is_dynamic_dimension(i);
     } else {
-      return InvalidArgument(
-          "Binary op %s with incompatible shapes: %s and %s.",
-          HloOpcodeString(operation), ShapeUtil::HumanString(lhs),
-          ShapeUtil::HumanString(rhs));
+      return InvalidArgument("Binary op with incompatible shapes: %s and %s.",
+                             ShapeUtil::HumanString(lhs),
+                             ShapeUtil::HumanString(rhs));
     }
   }
 
@@ -1172,7 +1170,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return result;
 
   } else if (lhs.rank() == rhs.rank()) {
-    return InferDegenerateDimensionBroadcastShape(operation, lhs, rhs);
+    return InferDegenerateDimensionBroadcastShape(lhs, rhs);
   } else {
     // Ranks do not match, so perform InDim broadcasting using
     // broadcast_dimensions. Scalar broadcasting is a special case of this.
@@ -1184,8 +1182,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                         InferInDimBroadcastShape(smaller_shape, larger_shape,
                                                  broadcast_dimensions));
 
-    return InferDegenerateDimensionBroadcastShape(
-        operation, indim_broadcast_shape, larger_shape);
+    return InferDegenerateDimensionBroadcastShape(indim_broadcast_shape,
+                                                  larger_shape);
   }
 }
 

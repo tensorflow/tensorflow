@@ -45,6 +45,9 @@ namespace {
 using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 
+constexpr absl::string_view kIncompatibleBinaryOpShapeErrorMessage =
+    "Binary op with incompatible shapes";
+
 class ShapeInferenceTest : public ::testing::Test {
  protected:
   // Some handy scalar shapes.
@@ -3792,7 +3795,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op add with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -3809,7 +3812,7 @@ TEST_P(UnboundedAndOpShapeInferenceTest, UnboundedAnd) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op and with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -3965,7 +3968,7 @@ TEST_P(UnboundedCompareOpShapeInferenceTest, UnboundedCompare) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op compare with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -4069,7 +4072,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op divide with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -4146,7 +4149,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMax) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op maximum with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -4163,7 +4166,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op multiply with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -4201,7 +4204,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op power with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
@@ -4351,7 +4354,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
     EXPECT_THAT(inferred_status.status().message(),
-                HasSubstr("Binary op subtract with incompatible shapes"));
+                HasSubstr(kIncompatibleBinaryOpShapeErrorMessage));
   }
 }
 
