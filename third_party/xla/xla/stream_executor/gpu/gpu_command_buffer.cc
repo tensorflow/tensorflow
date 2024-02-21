@@ -189,8 +189,9 @@ absl::Status GpuCommandBuffer::Trace(
   return absl::OkStatus();
 }
 
-GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier() {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
+    ExecutionScopeId execution_scope_id) {
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
   return execution_scope.barriers.empty()
              ? Dependencies{}
              : Dependencies{execution_scope.barriers.back().handle};
@@ -444,6 +445,48 @@ absl::Status GpuCommandBuffer::Barrier(
   return UnsupportedStateError(state_);
 }
 
+absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
+                                       ExecutionScopeId from_execution_scope_id,
+                                       ExecutionScopeId to_execution_scope_id) {
+  // Create new barriers in both execution scopes.
+  TF_RETURN_IF_ERROR(Barrier(executor, from_execution_scope_id));
+  TF_RETURN_IF_ERROR(Barrier(executor, to_execution_scope_id));
+
+  if (state_ == State::kCreate) {
+    // Collect barriers from each scope as dependencies.
+    Dependencies dependencies = {
+        execution_scopes_[from_execution_scope_id].barriers.back().handle,
+        execution_scopes_[to_execution_scope_id].barriers.back().handle};
+
+    // Create a new barrier that joins `from` and `to` scopes.
+    TF_ASSIGN_OR_RETURN(auto barrier_handle,
+                        CreateBarrierNode(executor, dependencies));
+
+    // Add a new barrier only to the `to_execution_scope_id`.
+    ExecutionScope& execution_scope = execution_scopes_[to_execution_scope_id];
+    size_t nodes_offset = execution_scope.nodes.size();
+    execution_scope.barriers.push_back({barrier_handle, true, nodes_offset});
+
+    return absl::OkStatus();
+  }
+
+  if (state_ == State::kUpdate) {
+    // Command buffer updates can't change the structure of the underlying gpu
+    // graph (add or delete barriers). We simply do a sanity check that at
+    // update time we didn't try to add more barriers than we had originally.
+    ExecutionScope& execution_scope = execution_scopes_[to_execution_scope_id];
+    if (execution_scope.update_state.barrier_idx++ >=
+        execution_scope.barriers.size()) {
+      return absl::InternalError(
+          absl::StrFormat("Execution scope %d barrier index out of range",
+                          to_execution_scope_id.value()));
+    }
+    return absl::OkStatus();
+  }
+
+  return UnsupportedStateError(state_);
+}
+
 absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args) {
@@ -569,7 +612,7 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddMemsetNode(
         parent_->gpu_context(), &node_info.handle, graph_, barrier,

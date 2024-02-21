@@ -83,6 +83,10 @@ class GpuCommandBuffer : public CommandBuffer {
       StreamExecutor* executor,
       absl::Span<const ExecutionScopeId> execution_scope_ids) override;
 
+  absl::Status Barrier(StreamExecutor* executor,
+                       ExecutionScopeId from_execution_scope_id,
+                       ExecutionScopeId to_execution_scope_id) override;
+
   absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                       const Kernel& kernel, const KernelArgs& args) override;
 
@@ -241,7 +245,9 @@ class GpuCommandBuffer : public CommandBuffer {
       SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);
 
-  Dependencies GetBarrier();
+  Dependencies GetBarrier(ExecutionScopeId execution_scope_id);
+  // TODO(ezhulenev): Remove this once all commands migrated to scopes.
+  Dependencies GetBarrier() { return GetBarrier(kDefaulExecutionScope); }
 
   // Returns loaded auxiliary kernels, or loads them on a given stream executor.
   // Loaded kernels owned by a current command buffer.

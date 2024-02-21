@@ -75,6 +75,8 @@ class CommandBuffer {
   //       other as long as they satisfy constraints of their respective
   //       execution scopes.
   //
+  //
+  //
   // Example #2: dependencies between scopes and inter-scope barriers
   //
   // ExecutionScope #0       ExecutionScope #1
@@ -91,6 +93,30 @@ class CommandBuffer {
   //   (3) Commands C and F can run concurrently.
   //   (4) All commands before a shared barrier (in both excecution scopes)
   //       should complete before any command after a berrier starts execution.
+  //
+  //
+  //
+  // Example #3: one-directional barriers between execution scopes
+  //
+  // ExecutionScope #0       ExecutionScope #1
+  //
+  //          A
+  //          B
+  // ----- barrier -----               D
+  //          C            \           E
+  //                           ----- barrier -----
+  //                                   F
+  //
+  //   (1) Commands A and B can run concurrently and must complete before
+  //       C and F.
+  //   (2) Commands D and E can run concurrently and must complete before
+  //       F (does not synchronize with C).
+  //   (3) Commands C and F can run concurrently.
+  //
+  //  This is a more fine-grained barrier than in example #2: it enforces
+  //  synchronization from execution scope #0 to execution scope #1 but no
+  //  synchronization in other direction. For CUDA/ROCM backend it has the same
+  //  semantics as stream wait operation.
   //
   TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionScopeId, int64_t);
   static constexpr auto kDefaulExecutionScope = ExecutionScopeId(0);
@@ -180,6 +206,12 @@ class CommandBuffer {
   virtual absl::Status Barrier(
       StreamExecutor* executor,
       absl::Span<const ExecutionScopeId> execution_scope_ids) = 0;
+
+  // Adds an execution barrier from execution scope `from_execution_scope_id` to
+  // execution scope `to_execution_scope_id`. See example #3 for details.
+  virtual absl::Status Barrier(StreamExecutor* executor,
+                               ExecutionScopeId from_execution_scope_id,
+                               ExecutionScopeId to_execution_scope_id) = 0;
 
   // Adds an execution barrier to the default execution scope.
   absl::Status Barrier(StreamExecutor* executor) {
