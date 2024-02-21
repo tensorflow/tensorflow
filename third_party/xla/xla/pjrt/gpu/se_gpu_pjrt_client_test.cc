@@ -328,11 +328,6 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
     buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
   }
 
-  absl::Mutex mu;
-  std::vector<std::shared_ptr<Literal>> literals;
-  int got_literal_count = 0;
-  int got_callback_count = 0;
-
   for (int i = 0; i < src_shapes.size(); ++i) {
     TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
         i,
@@ -340,6 +335,11 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
                           src_literals[i].size_bytes()),
         [&]() {}));
   }
+
+  absl::Mutex mu;
+  std::vector<std::shared_ptr<Literal>> literals;
+  int got_literal_count = 0;
+  int got_callback_count = 0;
 
   for (auto& buffer : buffers) {
     literals.push_back(std::make_shared<Literal>(
