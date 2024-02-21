@@ -327,7 +327,7 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
       // not support empty nodes inside conditional command buffers.
       TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel(executor));
       TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-          &barrier_info.handle, graph_, absl::MakeSpan(dependencies), "noop",
+          &barrier_info.handle, graph_, dependencies, "noop",
           AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
           /*kernel_params=*/nullptr, /*extra=*/nullptr));
       barrier_info.is_barrier_node = true;
@@ -366,8 +366,8 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
     Dependencies barrier = GetBarrier();
     GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     return GpuDriver::GraphAddKernelNode(
-        &node_info.handle, graph_, absl::MakeSpan(barrier), kernel.name(),
-        gpu_func, blocks.x, blocks.y, blocks.z, threads.x, threads.y, threads.z,
+        &node_info.handle, graph_, barrier, kernel.name(), gpu_func, blocks.x,
+        blocks.y, blocks.z, threads.x, threads.y, threads.z,
         packed_args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
   }
 
@@ -420,8 +420,8 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier();
     GpuGraphNodeInfo& node_info = nodes_.emplace_back();
-    return GpuDriver::GraphAddChildNode(&node_info.handle, graph_,
-                                        absl::MakeSpan(barrier), child_graph);
+    return GpuDriver::GraphAddChildNode(&node_info.handle, graph_, barrier,
+                                        child_graph);
   }
 
   // Updates child graph node in the executable graph.
@@ -442,8 +442,8 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
     Dependencies barrier = GetBarrier();
     GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     return GpuDriver::GraphAddMemcpyD2DNode(
-        parent_->gpu_context(), &node_info.handle, graph_,
-        absl::MakeSpan(barrier), AsDevicePtr(*dst), AsDevicePtr(src), size);
+        parent_->gpu_context(), &node_info.handle, graph_, barrier,
+        AsDevicePtr(*dst), AsDevicePtr(src), size);
   }
 
   if (state_ == State::kUpdate) {
@@ -465,8 +465,8 @@ absl::Status GpuCommandBuffer::Memset(DeviceMemoryBase* dst,
     Dependencies barrier = GetBarrier();
     GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     return GpuDriver::GraphAddMemsetNode(
-        parent_->gpu_context(), &node_info.handle, graph_,
-        absl::MakeSpan(barrier), AsDevicePtr(*dst), bit_pattern, num_elements);
+        parent_->gpu_context(), &node_info.handle, graph_, barrier,
+        AsDevicePtr(*dst), bit_pattern, num_elements);
   }
 
   if (state_ == State::kUpdate) {
@@ -489,7 +489,7 @@ absl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
 
     GpuDevicePtr ptr;
     TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemAllocNode(
-        &node_info.handle, graph_, absl::MakeSpan(barrier),
+        &node_info.handle, graph_, barrier,
         GpuDriver::MemAccessFlags::kReadWrite,
         GpuDriver::MemLocationType::kDevice, parent_->device_ordinal(),
         GpuDriver::MemAllocationType::kPinned, bytes, &ptr));
@@ -524,8 +524,8 @@ absl::Status GpuCommandBuffer::Free(DeviceMemoryBase dst) {
     Dependencies barrier = GetBarrier();
     GpuGraphNodeInfo& node_info = nodes_.emplace_back();
     GpuDevicePtr gpu_dptr = AsDevicePtr(dst);
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemFreeNode(
-        &node_info.handle, graph_, absl::MakeSpan(barrier), gpu_dptr));
+    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemFreeNode(&node_info.handle, graph_,
+                                                      barrier, gpu_dptr));
     return absl::OkStatus();
   }
 
@@ -581,8 +581,7 @@ GpuCommandBuffer::CreateConditionalNodes(
 
     TF_ASSIGN_OR_RETURN(
         GpuDriver::GpuGraphNodeResult result,
-        GpuDriver::GraphAddNode(&node_info.handle, graph_,
-                                absl::MakeSpan(barrier), params));
+        GpuDriver::GraphAddNode(&node_info.handle, graph_, barrier, params));
 
     conditional_graphs.push_back(std::get<ConditionalResult>(result).graph);
   }

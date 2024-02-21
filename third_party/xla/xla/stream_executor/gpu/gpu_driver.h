@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -436,6 +437,12 @@ class GpuDriver {
   // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#ga87c68ae9408a6438d4a1101560ceea11
   static absl::StatusOr<GraphNodeType> GraphNodeGetType(
       GpuGraphNodeHandle node);
+
+  // Returns a node's dependencies.
+  //
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g048f4c0babcbba64a933fc277cd45083
+  static absl::StatusOr<std::vector<GpuGraphNodeHandle>>
+  GraphNodeGetDependencies(GpuGraphNodeHandle node);
 
   // Destroys an executable graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1ga32ad4944cc5d408158207c978bc43a7

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
@@ -74,6 +75,11 @@ using AddI32Ptrs3 = TypedKernel<internal::Ptrs3<int32_t>>;
 
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
+
+template <typename... GpuGraphNodeHandles>
+static std::vector<GpuGraphNodeHandle> Deps(GpuGraphNodeHandles... handle) {
+  return {handle...};
+}
 
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   Platform* platform = GpuPlatform();
@@ -414,6 +420,16 @@ TEST(GpuCommandBufferTest, Barriers) {
   // Fourth and fifth barriers are empty barrier nodes.
   EXPECT_TRUE(barriers[3].is_barrier_node);
   EXPECT_TRUE(barriers[4].is_barrier_node);
+
+  // Check fourth barrier dependencies
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deps3, GpuDriver::GraphNodeGetDependencies(barriers[3].handle));
+  EXPECT_EQ(deps3, Deps(nodes[2].handle, nodes[3].handle));
+
+  // Check fifth barrier dependencies
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deps4, GpuDriver::GraphNodeGetDependencies(barriers[4].handle));
+  EXPECT_EQ(deps4, Deps(nodes[4].handle, nodes[5].handle));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());

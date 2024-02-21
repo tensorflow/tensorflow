@@ -711,6 +711,25 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return absl::InternalError("Invalid CUDA graph node type");
 }
 
+absl::StatusOr<std::vector<GpuGraphNodeHandle>>
+GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
+  VLOG(2) << "Get CUDA graph node " << node << " dependencies";
+
+  std::vector<CUgraphNode> dependencies;
+
+  size_t num_dependencies = 0;
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphNodeGetDependencies(node, nullptr, &num_dependencies),
+      "Failed to get CUDA graph node depedencies size");
+
+  dependencies.resize(num_dependencies, nullptr);
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphNodeGetDependencies(node, dependencies.data(), &num_dependencies),
+      "Failed to get CUDA graph node depedencies");
+
+  return dependencies;
+}
+
 /* static */ absl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {
   VLOG(2) << "Destroying CUDA executable graph " << exec;
   RETURN_IF_CUDA_RES_ERROR(cuGraphExecDestroy(exec),
