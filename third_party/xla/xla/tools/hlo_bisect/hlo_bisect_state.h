@@ -38,7 +38,7 @@ class BugCheckerInterface {
   virtual ~BugCheckerInterface() {}
 
   // Returns true if `module` has a bug we're interested in.
-  virtual StatusOr<bool> Run(const HloModule& module) = 0;
+  virtual absl::StatusOr<bool> Run(const HloModule& module) = 0;
 
   // Returns mapping of instruction names to their results after the run
   // (empty if this information is unavailable).
@@ -54,11 +54,11 @@ class HloBisectState {
       : module_(std::move(module)), bug_checker_(bug_checker) {}
 
   // Returns true if the current module has a bug and should be processed.
-  StatusOr<bool> ShouldProcess();
+  absl::StatusOr<bool> ShouldProcess();
 
   // Trims the entry computation until no more reductions are possible. Returns
   // a boolean to indicate whether the computation has been reduced.
-  StatusOr<bool> TrimEntryComputation();
+  absl::StatusOr<bool> TrimEntryComputation();
 
   // Returns the resulting module.
   std::unique_ptr<xla::HloModule>&& GetResult();
@@ -66,19 +66,19 @@ class HloBisectState {
  private:
   // Runs a modified module and updates the foldable instructions data, if
   // available. Returns true if `module` has a bug.
-  StatusOr<bool> RunModule(const HloModule& module);
+  absl::StatusOr<bool> RunModule(const HloModule& module);
 
   // Trims the entry computation by reducing the total number of outputs.
   // Returns a boolean to indicate whether the computation has been reduced.
-  StatusOr<bool> TrimByOutputs();
+  absl::StatusOr<bool> TrimByOutputs();
 
   // Trims the entry computation by reducing the total number of instructions.
   // Returns a boolean to indicate whether the computation has been reduced.
-  StatusOr<bool> TrimByInstructions();
+  absl::StatusOr<bool> TrimByInstructions();
 
   // Trims the given computation by replacing instructions with constant values.
   // Returns a boolean to indicate whether the computation has been reduced.
-  StatusOr<bool> TrimByUsingConstants();
+  absl::StatusOr<bool> TrimByUsingConstants();
 
   // Asserts that the module still has the bug. If negative, runs the bug
   // checker repeatedly to verify that it's deterministic.
