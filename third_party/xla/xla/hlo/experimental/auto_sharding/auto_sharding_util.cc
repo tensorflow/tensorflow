@@ -1074,8 +1074,8 @@ void UseAllReduceForGradAcc(StableHashSet<HloInstruction*>& replicated_set,
 // dimensions at 0, e.g., array is 2D and dim = 1, this returns array[0, 1],
 // array[1, 1], array [2, 1], ....
 // Returns error status if dim >= array.num_dimensions().
-StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
-                                                    int dim) {
+absl::StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(
+    const Array<int64_t>& array, int dim) {
   if (dim >= array.num_dimensions()) {
     return absl::OutOfRangeError(absl::StrCat(
         "Input dim (", dim,
@@ -1092,7 +1092,8 @@ StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
 }
 
 // Check whether a sequence is an arithmetic sequence.
-StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence) {
+absl::StatusOr<int64_t> CheckArithmeticSequence(
+    absl::Span<const int64_t> sequence) {
   if (sequence.size() < 2) {
     return absl::OutOfRangeError(
         "Invalid device id assignment: sequence.size() < 2");
@@ -1963,7 +1964,7 @@ double ReshardingCostMixedMeshShape(
   return resharding_costs;
 }
 
-StatusOr<std::optional<HloSharding>>
+absl::StatusOr<std::optional<HloSharding>>
 AdjustShardingWithPartialMeshShapePerElement(
     const HloSharding& sharding,
     const absl::flat_hash_set<int64_t>& valid_shards, int64_t total_num_devices,
@@ -2053,7 +2054,7 @@ AdjustShardingWithPartialMeshShapePerElement(
   return std::nullopt;
 }
 
-StatusOr<bool> AdjustShardingsWithPartialMeshShape(
+absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error) {
@@ -2074,7 +2075,7 @@ StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
         auto shape = inst->shape().tuple_shapes(i);
         auto sharding = inst->sharding().tuple_elements()[i];
-        StatusOr<std::optional<HloSharding>> new_sharding_result =
+        absl::StatusOr<std::optional<HloSharding>> new_sharding_result =
             AdjustShardingWithPartialMeshShapePerElement(
                 sharding, valid_shards, total_num_devices, crash_on_error);
         if (new_sharding_result.ok()) {
@@ -2093,7 +2094,7 @@ StatusOr<bool> AdjustShardingsWithPartialMeshShape(
       }
       inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
     } else {
-      StatusOr<std::optional<HloSharding>> sharding_result =
+      absl::StatusOr<std::optional<HloSharding>> sharding_result =
           AdjustShardingWithPartialMeshShapePerElement(
               inst->sharding(), valid_shards, total_num_devices,
               crash_on_error);

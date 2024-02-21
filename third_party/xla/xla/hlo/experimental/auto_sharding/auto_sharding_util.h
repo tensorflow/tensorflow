@@ -533,10 +533,11 @@ std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
 // dimensions at 0, e.g., array is 2D and dim = 1, this returns array[0, 1],
 // array[1, 1], array [2, 1], ....
 // Returns error status if dim >= array.num_dimensions().
-StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
-                                                    int dim);
+absl::StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(
+    const Array<int64_t>& array, int dim);
 
-StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence);
+absl::StatusOr<int64_t> CheckArithmeticSequence(
+    absl::Span<const int64_t> sequence);
 
 // Checks if the number of sharded dimensions in the tile assignment matches the
 // device mesh.
@@ -622,7 +623,7 @@ double ReshardingCostMixedMeshShape(
 // If a sharding is [8, 4] for the complete mesh shape, we convert it to [8, 1]
 // given [1, 8, 1] as the partial mesh shape.
 // total_num_devices should equal to the product of mesh_shape elements.
-StatusOr<bool> AdjustShardingsWithPartialMeshShape(
+absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
     bool crash_on_error);

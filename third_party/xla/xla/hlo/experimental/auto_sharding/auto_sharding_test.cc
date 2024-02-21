@@ -589,7 +589,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
                   IsTrue())));
 
   auto verified_parse_sharding = [](const absl::string_view sharding_str) {
-    StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
+    absl::StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
     CHECK_OK(sharding);
     return *sharding;
   };
@@ -643,7 +643,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
                   IsTrue())));
 
   auto verified_parse_sharding = [](const absl::string_view sharding_str) {
-    StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
+    absl::StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
     CHECK_OK(sharding);
     return *sharding;
   };

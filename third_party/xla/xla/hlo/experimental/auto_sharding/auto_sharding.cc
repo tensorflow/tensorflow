@@ -319,7 +319,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
   return strategy_group;
 }
 
-StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
+absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
     const HloInstruction* operand, const HloInstruction* unit,
     const size_t instruction_id, StrategyMap& strategy_map,
@@ -1179,7 +1179,7 @@ void FillAllStrategiesForArray(
   }
 }
 
-StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
+absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, const size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
@@ -3337,7 +3337,7 @@ AutoShardingImplementation::AutoShardingImplementation(
     const AutoShardingOption& option)
     : option_(option) {}
 
-StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
+absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     HloModule* module,
     const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -3354,7 +3354,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
       unspecified_dims;
-  StatusOr<bool> changed = ProcessShardingInstruction(
+  absl::StatusOr<bool> changed = ProcessShardingInstruction(
       module, execution_threads, /*replace_sharding_with_copy=*/true,
       &unspecified_dims, /*saved_root_shardings=*/nullptr,
       /*saved_parameter_shardings=*/nullptr);
@@ -3463,7 +3463,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       total_devices *= i;
     }
     if (mesh_idx != partial_mesh_shapes.size() - 1) {
-      StatusOr<bool> changed = spmd::AdjustShardingsWithPartialMeshShape(
+      absl::StatusOr<bool> changed = spmd::AdjustShardingsWithPartialMeshShape(
           sequence.instructions(), mesh_shape, total_devices,
           /* crash_on_error */ !option_.try_multiple_mesh_shapes);
       if (changed.ok()) {
@@ -3688,7 +3688,7 @@ std::unique_ptr<HloModule> CloneModule(const HloModule* module) {
   return module_clone;
 }
 
-StatusOr<bool> AutoSharding::Run(
+absl::StatusOr<bool> AutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {
@@ -3828,7 +3828,7 @@ StatusOr<bool> AutoSharding::Run(
     }
   }
 
-  StatusOr<bool> module_is_changed;
+  absl::StatusOr<bool> module_is_changed;
   if (skip_auto_sharding) {
     VLOG(1) << "Solver timed out. Will now rely on sharding propagation to "
                "perform sharding.";
@@ -3907,7 +3907,7 @@ StatusOr<bool> AutoSharding::Run(
   return module_is_changed;
 }
 
-StatusOr<bool> DummyAutoSharding::Run(
+absl::StatusOr<bool> DummyAutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // ----- Set Dummy Replicated Sharding -----

@@ -33,13 +33,13 @@ namespace spmd {
 struct AutoShardingSolverResult {
  public:
   AutoShardingSolverResult(
-      StatusOr<std::tuple<std::vector<NodeStrategyIdx>,
-                          std::vector<EdgeStrategyIdx>, double>>
+      absl::StatusOr<std::tuple<std::vector<NodeStrategyIdx>,
+                                std::vector<EdgeStrategyIdx>, double>>
           status,
       bool skip_auto_sharding)
       : status(status), skip_auto_sharding(skip_auto_sharding) {}
   bool operator==(const AutoShardingSolverResult& other) const;
-  StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
+  absl::StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
       status;
   bool skip_auto_sharding;
 };

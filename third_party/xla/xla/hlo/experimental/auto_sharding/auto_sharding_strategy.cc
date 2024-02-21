@@ -67,7 +67,7 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
 
 // NOLINTBEGIN(readability/fn_size)
 // TODO(zhuohan): Decompose this function into smaller pieces
-StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
+absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&
