@@ -46,8 +46,8 @@ def _global_shuffle(  # pylint: disable=unused-private-name
 
   Args:
     input_dataset: The dataset to be shuffled.
-    seed: A `tf.int64` scalar `tf.Tensor` to control the shuffle order. If
-      `None`, a random seed will be used.
+    seed: An int or `tf.int64` scalar `tf.Tensor` to control the shuffle order.
+      If `None`, a random seed will be used.
     reshuffle_each_iteration: A boolean, which if True, indicates that a
       different shuffle order should be generated for each iteration of the
       dataset. (Defaults to `True`.)

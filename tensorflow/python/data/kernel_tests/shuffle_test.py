@@ -30,6 +30,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -107,7 +108,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # Assert that shuffling twice with a different seed gives a different
     # permutation of the same elements.
-    get_next = self.getNext(dataset_fn(buffer_size=100, seed=137))
+    get_next = self.getNext(dataset_fn(
+        buffer_size=100, seed=constant_op.constant(137, dtype=dtypes.int64)))
     reshuffled_elements_different_seed = []
     for _ in range(20):
       reshuffled_elements_different_seed.append(self.evaluate(get_next()))
