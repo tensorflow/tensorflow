@@ -207,7 +207,7 @@ absl::Status PreemptionSyncManagerImpl::Initialize(
                       death_time)));
       });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PreemptionSyncManagerImpl::ComputeSyncCallCounter(absl::Time death_time) {
