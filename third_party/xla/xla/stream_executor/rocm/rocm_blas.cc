@@ -913,25 +913,12 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-<<<<<<< HEAD
-  assert(batch_count > 0);
-  char* device_memory_ptr = static_cast<char*>(device_memory->opaque());
-  char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
-  char* dst_ptr = device_memory_ptr;
-  uint64_t cur_stride_size = matrix_byte_size;
-
-  reallocated = true;
-
-  if (copy_data)
-    return ReorganizeMemory(stream, device_memory, raw_ptrs, batch_count,
-=======
   TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> batch_matrix_bytes,
                       scratch_allocator->AllocateBytes(matrix_batch_byte_size));
   res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
   if (copy_data) {
     return ReorganizeMemory(stream, &res.device_mem, raw_ptrs, batch_count,
->>>>>>> upstream/master
                             batch_stride, true);
   }
   return res;

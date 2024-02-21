@@ -1,12 +1,5 @@
-<<<<<<< HEAD
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "cuda_default_copts")
-load("@local_config_rocm//rocm:build_defs.bzl", "rocm_default_copts")
-load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
-=======
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
->>>>>>> upstream/master
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")

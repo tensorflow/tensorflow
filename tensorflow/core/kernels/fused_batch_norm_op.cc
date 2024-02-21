@@ -1273,21 +1273,7 @@ struct FusedBatchNormGradImplGPU {
         reserve_space_data_ptr = &reserve_space_data;
       }
     }
-<<<<<<< HEAD
 #endif  // CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50100
-    bool cudnn_launch_status =
-        stream
-            ->ThenBatchNormalizationBackward(
-                y_backprop_ptr, x_ptr, scale_ptr, offset_ptr, mean_ptr,
-                inv_variance_ptr, y_ptr, x_desc, scale_offset_desc,
-                static_cast<double>(epsilon),
-                AsDnnActivationMode(activation_mode), &x_backprop_ptr,
-                &scale_backprop_ptr, &offset_backprop_ptr,
-                &side_input_backprop_ptr, reserve_space_data_ptr,
-                workspace_allocator.get())
-            .ok();
-=======
-#endif  // CUDNN_VERSION >= 7402
     auto dnn = stream->parent()->AsDnn();
     if (dnn == nullptr) {
       context->SetStatus(absl::InternalError("No DNN support for stream"));
@@ -1301,7 +1287,6 @@ struct FusedBatchNormGradImplGPU {
         &x_backprop_ptr, &scale_backprop_ptr, &offset_backprop_ptr,
         &side_input_backprop_ptr, reserve_space_data_ptr,
         workspace_allocator.get());
->>>>>>> upstream/master
 
     if (!cudnn_launch_status) {
       context->SetStatus(

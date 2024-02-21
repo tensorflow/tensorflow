@@ -634,13 +634,8 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   auto expected_ir = is_built_with_rocm_ ? R"(
-<<<<<<< HEAD
-; CHECK: %llvm.amdgcn.kernel.fusion.lds.t = type { [1 x [1 x [2 x float]]] }
-; CHECK: @llvm.amdgcn.kernel.fusion.lds = internal addrspace(3) global %llvm.amdgcn.kernel.fusion.lds.t {{.*}}, align 8
-=======
 ; CHECK: %llvm.amdgcn.kernel.input_reduce_fusion.lds.t = type { [4 x [2 x float]] }
 ; CHECK: @llvm.amdgcn.kernel.input_reduce_fusion.lds = internal addrspace(3) global %llvm.amdgcn.kernel.input_reduce_fusion.lds.t poison
->>>>>>> upstream/master
   )"
                                          : R"(
 ; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [4 x [2 x float]]

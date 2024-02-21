@@ -737,35 +737,6 @@ java_test_with_tflite(
     ],
 )
 
-<<<<<<< HEAD
-java_test_with_tflite(
-    name = "NnApiDelegateNativeTest",
-    size = "small",
-    srcs = [
-        "src/test/java/org/tensorflow/lite/NnApiDelegateNativeTest.java",
-        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestUtils.java",
-    ],
-    data = [
-        "src/testdata/add.bin",
-    ],
-    tags = ["no_mac"],
-    test_class = "org.tensorflow.lite.NnApiDelegateNativeTest",
-    tflite_deps = [
-        ":test_init",
-    ],
-    tflite_jni_binaries = [
-        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":tensorflowlite_javalib",
-        #"//third_party/java/mockito",
-        "@com_google_truth",
-        "@junit",
-    ],
-)
-=======
 # Commented out under the (b/279852433) because caused an error in the OSS
 # TODO(zhurakovskyi): Uncomment when fixed.
 # copybara:uncomment_begin
@@ -797,7 +768,6 @@ java_test_with_tflite(
 #     ],
 # )
 # copybara:uncomment_end
->>>>>>> upstream/master
 
 java_test_with_tflite(
     name = "NnApiDelegateTest",
