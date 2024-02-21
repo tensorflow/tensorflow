@@ -424,6 +424,47 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_stablehlo_to_vhlo_pass",
+    srcs = [
+        "transforms/legalize_stablehlo_to_vhlo.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:base",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_ops_inc_gen",
+        "@stablehlo//:stablehlo_pass_inc_gen",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_type_inference",
+        "@stablehlo//:version",
+        "@stablehlo//:vhlo_ops",
+        "@stablehlo//:vhlo_types",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "optimize",
     srcs = [
         "transforms/optimize.cc",
@@ -637,6 +678,7 @@ tf_cc_binary(
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_stablehlo_to_vhlo_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",

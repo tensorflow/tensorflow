@@ -63,6 +63,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass();
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
                                      MLIRContext* context);
 
+#define GEN_PASS_DECL_LEGALIZESTABLEHLOTOVHLOPASS
+#define GEN_PASS_DECL_LEGALIZEVHLOTOSTABLEHLOPASS
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 

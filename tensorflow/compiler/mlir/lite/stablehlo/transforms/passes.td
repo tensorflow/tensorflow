@@ -85,6 +85,17 @@ def LegalizeHloToTfLitePass : Pass<"tfl-legalize-hlo", "mlir::ModuleOp"> {
   let constructor = "mlir::odml::CreateLegalizeHloToTfLitePass()";
 }
 
+def LegalizeStablehloToVhloPass : Pass<"stablehlo-legalize-vhlo", "ModuleOp"> {
+  let summary = "Legalize StableHLO to VHLO for ODML.";
+  let dependentDialects = ["mlir::vhlo::VhloDialect"];
+}
+
+def LegalizeVhloToStablehloPass : Pass<"vhlo-legalize-stablehlo", "ModuleOp"> {
+  let summary = "Legalize VHLO to StableHLO for ODML.";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+
 def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
   let summary = "Replaces a splat constant tensor with a BroadcastInDim op.";
   let constructor = "mlir::odml::CreateUnfoldSplatConstantPass()";
