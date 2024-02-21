@@ -57,7 +57,6 @@ cc_library(
         ":fusion_emitter",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",
         "//xla/ffi:ffi_api",

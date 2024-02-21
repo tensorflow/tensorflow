@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -145,14 +144,18 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   auto slice_adaptor =
       HloFindIf({HloInstructionAdaptor(start)}, fusion,
                 [](auto node) { return node.opcode() == HloOpcode::kSlice; });
-  TF_RET_CHECK(slice_adaptor.has_value())
-      << "AddressComputationFusion expects at least one sliced operand";
+  if (!slice_adaptor.has_value()) {
+    return absl::InternalError(
+        "AddressComputationFusion expects at least one sliced operand");
+  }
 
   const auto& slice_instr =
       *static_cast<const HloSliceInstruction*>(&slice_adaptor->instruction());
 
-  TF_RET_CHECK(IsContiguousSlice(slice_instr))
-      << "AddressComputationFusion only handles contiguous slices currently";
+  if (!IsContiguousSlice(slice_instr)) {
+    return absl::InternalError(
+        "AddressComputationFusion only handles contiguous slices currently");
+  }
 
   const Shape& src_shape = slice_instr.operand(0)->shape();
   const Shape& dst_shape = slice_instr.shape();
@@ -253,9 +256,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
   bool found_ffi_handler = is_ffi_custom_call && handler.ok();
 
-  TF_RET_CHECK(found_custom_call || found_ffi_handler)
-      << "AddressComputationFusion expects custom calls that are emittable as "
-         "thunks";
+  if (!found_custom_call && !found_ffi_handler) {
+    return absl::InternalError(
+        "AddressComputationFusion expects custom calls that are emittable as "
+        "thunks");
+  }
 
   using Slices = std::vector<std::optional<CustomCallThunk::Slice>>;
 
@@ -445,8 +450,10 @@ absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
   auto maybe_custom_call_adaptor = HloFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-  TF_RET_CHECK(maybe_custom_call_adaptor != std::nullopt)
-      << "AddressComputationFusion requires a CustomCall hero";
+  if (maybe_custom_call_adaptor == std::nullopt) {
+    return absl::InternalError(
+        "AddressComputationFusion requires a CustomCall hero");
+  }
 
   const auto& custom_call = *static_cast<const HloCustomCallInstruction*>(
       &maybe_custom_call_adaptor->instruction());
