@@ -50,7 +50,7 @@ class StatefulRngSpmdPartitionerTest : public HloTestBase {
     if (add_passes) {
       add_passes(pass);
     }
-    pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+    pass.AddPass<ShardingPropagation>();
     pass.AddPass<StatefulRngSpmdPartitioner>(num_partitions,
                                              /*num_replicas=*/1);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,

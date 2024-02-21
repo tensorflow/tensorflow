@@ -60,7 +60,7 @@ void AddPassesToPipeline(HloExpandConfig& config, HloPassPipeline& pipeline,
   }
   if (config.spmd_expander) {
     pipeline.AddPass<ShardingPropagation>(
-        /*is_spmd=*/true, /*propagate_metadata=*/false,
+        /*propagate_metadata=*/false,
         hlo_module_config.allow_spmd_sharding_propagation_to_output(),
         hlo_module_config.allow_spmd_sharding_propagation_to_parameters());
     pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(

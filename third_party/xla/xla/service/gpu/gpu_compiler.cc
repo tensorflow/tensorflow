@@ -701,7 +701,7 @@ absl::Status RunSPMDPasses(
 #endif  // PLATFORM_GOOGLE
 
     spmd_pipeline.AddPass<ShardingPropagation>(
-        /*is_spmd=*/true, /*propagate_metadata=*/false,
+        /*propagate_metadata=*/false,
         hlo_module->config().allow_spmd_sharding_propagation_to_output());
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, hlo_module->config().replica_count(),

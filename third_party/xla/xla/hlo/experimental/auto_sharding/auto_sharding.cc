@@ -469,7 +469,7 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
       if (!s.ok()) {
         continue;
       }
-      CHECK(InferReduceShardingFromOperand(new_reduce.get(), false, true));
+      CHECK(InferReduceShardingFromOperand(new_reduce.get(), false));
       HloSharding output_spec = new_reduce->sharding();
       new_reduce.reset();
       operand_clone.reset();
@@ -1455,7 +1455,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
                 instructions.at(strategy_group->in_nodes.at(i)->instruction_id);
             std::optional<HloSharding> input_sharding =
                 ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
-                                                         true, call_graph);
+                                                         call_graph);
             StrategyGroup* operand_strategy_group =
                 strategy_map.at(operand).get();
             Shape operand_shape = operand->shape();
@@ -3967,7 +3967,7 @@ absl::StatusOr<bool> AutoSharding::Run(
     // TODO(pratikf): Ensure that we're passing the correct custom call sharding
     // helper to the sharding propagation pass.
     auto sharding_prop = ShardingPropagation(
-        /*is_spmd */ true, /*propagate_metadata */ false,
+        /*propagate_metadata */ false,
         /*allow_spmd_sharding_propagation_to_output*/
         module->config().allow_spmd_sharding_propagation_to_output(),
         module->config().allow_spmd_sharding_propagation_to_parameters(),

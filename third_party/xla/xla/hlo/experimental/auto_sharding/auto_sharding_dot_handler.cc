@@ -349,12 +349,12 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
   if (ins_->opcode() == HloOpcode::kConvolution) {
     xla::InferConvolutionShardingFromOperands(
         ins_clone.get(), call_graph_, 10,
-        /* may_combine_partial_sharding */ true, /* is_spmd */ true);
+        /* may_combine_partial_sharding */ true);
   } else {
     xla::InferDotShardingFromOperands(
         ins_clone.get(), call_graph_,
         dot_as_convolution_util::ParseDotGeneralFromDot(ins_clone.get()),
-        /* may_combine_partial_sharding/ */ true, /* is_spmd */ true);
+        /* may_combine_partial_sharding/ */ true);
   }
   if (!ins_clone->has_sharding()) {
     return std::nullopt;
