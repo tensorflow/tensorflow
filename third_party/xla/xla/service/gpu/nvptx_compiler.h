@@ -138,7 +138,7 @@ class NVPTXCompiler : public GpuCompiler {
   };
   struct CompilationCacheValue {
     bool compilation_done = false;
-    std::vector<uint8_t> cubin_data;
+    absl::StatusOr<std::vector<uint8_t>> maybe_cubin;
     // mutex and condition variable to serialize compilation completing.
     absl::Mutex mutex;
     absl::CondVar compilation_done_cv;

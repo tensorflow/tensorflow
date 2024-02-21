@@ -516,8 +516,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
           (debug_module != nullptr ? debug_module->name() : "(unknown)"),
           relocatable, options);
 
-  if (maybe_cubin.status().code() == absl::StatusCode::kCancelled ||
-      maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
+  if (!maybe_cubin.ok()) {
     return maybe_cubin.status();
   }
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
@@ -615,13 +614,10 @@ static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
   }
 
   if (maybe_cubin.status().code() != absl::StatusCode::kUnimplemented) {
-    // If unimplemented is returned, we fallback to the driver.
-    LOG(FATAL) << "ptxas returned an error during compilation of ptx "
-                  "to sass: '"
-               << maybe_cubin.status() << "'  "
-               << "If the error message indicates that a file could "
-                  "not be written, please verify that sufficient "
-                  "filesystem space is provided.";
+    return AppendStatus(
+        maybe_cubin.status(),
+        "If the error message indicates that a file could not be written, "
+        "please verify that sufficient filesystem space is provided.");
   }
 
   return maybe_cubin;
@@ -666,17 +662,16 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       cache_value->compilation_done_cv.SignalAll();
     };
 
-    TF_ASSIGN_OR_RETURN(cache_value->cubin_data,
-                        AssembleOptionsAndCompile(ptx, cc, hlo_module_config,
-                                                  options, relocatable));
-    return cache_value->cubin_data;
+    cache_value->maybe_cubin = AssembleOptionsAndCompile(
+        ptx, cc, hlo_module_config, options, relocatable);
+    return cache_value->maybe_cubin;
   }
 
   while (!cache_value->compilation_done) {
     cache_value->compilation_done_cv.Wait(&cache_value->mutex);
   }
 
-  return cache_value->cubin_data;
+  return cache_value->maybe_cubin;
 }
 
 static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
