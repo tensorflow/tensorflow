@@ -214,14 +214,6 @@ class Stream {
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpyD2H(const DeviceMemory<T> &gpu_src,
-                        absl::Span<T> host_dst) {
-    auto host_size = host_dst.size() * sizeof(T);
-    CHECK(gpu_src.size() == 0 || host_size >= gpu_src.size());
-    return ThenMemcpy(host_dst.begin(), gpu_src, host_size);
-  }
-  template <typename T>
   absl::Status MemcpyD2H(const DeviceMemory<T> &gpu_src,
                          absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
@@ -234,14 +226,6 @@ class Stream {
   // Alternative interface for memcpying from host to device that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
-  template <typename T>
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpyH2D(absl::Span<const T> host_src,
-                        DeviceMemory<T> *gpu_dst) {
-    auto host_size = host_src.size() * sizeof(T);
-    CHECK(gpu_dst->size() == 0 || gpu_dst->size() >= host_size);
-    return ThenMemcpy(gpu_dst, host_src.begin(), host_size);
-  }
   template <typename T>
   absl::Status MemcpyH2D(absl::Span<const T> host_src,
                          DeviceMemory<T> *gpu_dst) {
