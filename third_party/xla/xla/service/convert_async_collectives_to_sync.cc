@@ -30,8 +30,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
-                                            HloInstruction* async_done) {
+absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
+                                                  HloInstruction* async_done) {
   HloInstruction* sync_instruction = nullptr;
   HloComputation* computation = async_start->parent();
 
@@ -144,7 +144,7 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
   return OkStatus();
 }
 
-StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
+absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
     HloComputation* computation) {
   HloModule* module = computation->parent();
   std::vector<std::pair<HloInstruction*, HloInstruction*>> async_pairs;
@@ -193,7 +193,7 @@ StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
   return true;
 }
 
-StatusOr<bool> ConvertAsyncCollectivesToSync::Run(
+absl::StatusOr<bool> ConvertAsyncCollectivesToSync::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->has_schedule()) {

@@ -28,7 +28,7 @@
 
 namespace xla {
 
-StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
+absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

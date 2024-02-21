@@ -152,7 +152,7 @@ class GetCollectOpGroupModeTest : public testing::TestWithParam<TestCase> {};
 
 TEST_P(GetCollectOpGroupModeTest, Test) {
   const TestCase &tc = GetParam();
-  StatusOr<CollectiveOpGroupMode> actual =
+  absl::StatusOr<CollectiveOpGroupMode> actual =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
   if (tc.expected) {
     TF_ASSERT_OK(actual.status());
@@ -195,7 +195,7 @@ struct TestCase {
 // modes and their behavior.
 std::string TestCase::ToString() const {
   std::ostringstream s;
-  StatusOr<CollectiveOpGroupMode> group_mode =
+  absl::StatusOr<CollectiveOpGroupMode> group_mode =
       GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids);
   if (group_mode.ok()) {
     s << CollectiveOpGroupModeToString(*group_mode);
@@ -449,7 +449,7 @@ TEST_P(GetParticipatingDevicesTest, Test) {
                       return group;
                     });
 
-  StatusOr<CollectiveOpGroupMode> group_mode =
+  absl::StatusOr<CollectiveOpGroupMode> group_mode =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
 
   if (!group_mode.ok()) {
@@ -459,7 +459,7 @@ TEST_P(GetParticipatingDevicesTest, Test) {
 
   // Execute each sub-test.
   for (const TestCase::CurrentIdAndOutput &subtest : tc.subtests) {
-    StatusOr<std::vector<GlobalDeviceId>> actual =
+    absl::StatusOr<std::vector<GlobalDeviceId>> actual =
         GetParticipatingDevices(GlobalDeviceId(subtest.current_id),
                                 device_assignment, replica_groups, *group_mode);
     if (!actual.ok()) {
@@ -473,9 +473,9 @@ TEST_P(GetParticipatingDevicesTest, Test) {
     EXPECT_EQ(*actual, expected);
   }
 
-  StatusOr<std::vector<std::vector<GlobalDeviceId>>> actual_device_groups =
-      GetParticipatingDevicesGroups(device_assignment, replica_groups,
-                                    *group_mode);
+  absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+      actual_device_groups = GetParticipatingDevicesGroups(
+          device_assignment, replica_groups, *group_mode);
 
   if (!actual_device_groups.ok()) {
     EXPECT_TRUE(tc.expected_failure);

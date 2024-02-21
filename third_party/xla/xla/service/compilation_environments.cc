@@ -124,7 +124,7 @@ CompilationEnvironments& CompilationEnvironments::operator=(
   return *this;
 }
 
-StatusOr<std::unique_ptr<CompilationEnvironments>>
+absl::StatusOr<std::unique_ptr<CompilationEnvironments>>
 CompilationEnvironments::CreateFromProto(
     const CompilationEnvironmentsProto& proto) {
   auto envs = std::make_unique<CompilationEnvironments>();

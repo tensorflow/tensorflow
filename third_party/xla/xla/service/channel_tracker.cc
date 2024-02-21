@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<ChannelHandle> ChannelTracker::NewChannel(
+absl::StatusOr<ChannelHandle> ChannelTracker::NewChannel(
     ChannelHandle::ChannelType type) {
   if (type != ChannelHandle::DEVICE_TO_DEVICE &&
       type != ChannelHandle::HOST_TO_DEVICE &&

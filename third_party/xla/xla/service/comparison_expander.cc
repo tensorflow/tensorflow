@@ -88,7 +88,7 @@ bool ComparisonExpander::InstructionMatchesPattern(
   return false;
 }
 
-StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ComparisonExpander::ExpandInstruction(
     HloInstruction* instruction) {
   CHECK_EQ(instruction->opcode(), HloOpcode::kCompare);
   HloCompareInstruction* compare =

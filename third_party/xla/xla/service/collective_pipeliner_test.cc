@@ -53,7 +53,7 @@ class CollectivePipelinerTest : public HloTestBase {
   HloModuleConfig config_;
 };
 
-StatusOr<bool> RunOptimizer(
+absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
     bool pipeline_use_tree = false, bool process_different_sized_ops = true,
     CollectivePipeliner::PipeliningDirection direction =

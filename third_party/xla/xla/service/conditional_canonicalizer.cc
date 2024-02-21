@@ -43,7 +43,7 @@ Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
 }
 }  // namespace
 
-StatusOr<bool> ConditionalCanonicalizer::Run(
+absl::StatusOr<bool> ConditionalCanonicalizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

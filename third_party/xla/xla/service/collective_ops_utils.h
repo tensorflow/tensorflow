@@ -97,7 +97,7 @@ enum class CollectiveOpGroupMode {
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
 // groups cannot be empty, so `total_participant_count` is an optional.
-StatusOr<std::vector<int>> GetParticipatingIDs(
+absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups);
@@ -107,7 +107,7 @@ absl::string_view CollectiveOpGroupModeToString(
 
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
-StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
+absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
@@ -123,32 +123,32 @@ StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
 //
 //   This functions returns {{33, 34}, {44, 45, 55, 56}}
 //   There are 2 subgroups of participating devices {33, 34}, {44, 45, 55, 56}.
-StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode replica_group_mode, int replica_count,
     int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
-StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
+absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
 
 // Figures out how many ranks are participating in each collective subgroup.
-StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
+absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
     int64_t num_replicas, int64_t num_partitions,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode);
