@@ -1142,16 +1142,12 @@ add {
   // CHECK: mhlo.tuple %0#0, %0#1 {xla_shape = {{.*}}} : tuple<tensor<f32>, tensor<f32>>
   %reduce.1 = (f32[], f32[]) reduce(%Arg_0.1, %Arg_0.1, %Arg_2.3, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.1
 
-  // CHECK:  [[VAL2:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG2]])
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  [[VAL2:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG2]]) applies mhlo.add across dimensions = [0, 1] : (tensor<4x4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.3 = f32[] reduce(%Arg_0.1, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.3
   // CHECK:  [[VAL3:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG1]])
-  // CHECK-
   // CHECK:  mhlo.add{{.*}} : tensor<4xf32>
   %reduce.2 = f32[4] reduce(%Arg_0.1, %Arg_1.2), dimensions={0}, to_apply=%reduce_helper.2
-  // CHECK:  [[VAL4:%.*]] = mhlo.reduce([[VAL3]] init: [[ARG2]])
-  // CHECK-SAME:  dimensions = [0]
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  [[VAL4:%.*]] = mhlo.reduce([[VAL3]] init: [[ARG2]]) applies mhlo.add across dimensions = [0] : (tensor<4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.4 = f32[] reduce(%reduce.2, %Arg_2.3), dimensions={0}, to_apply=%reduce_helper.3
 
   // CHECK:  %5 = mhlo.subtract [[VAL2]], [[VAL4]] : tensor<f32>
