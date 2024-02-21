@@ -79,6 +79,10 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Barrier(StreamExecutor* executor,
                        ExecutionScopeId execution_scope_id) override;
 
+  absl::Status Barrier(
+      StreamExecutor* executor,
+      absl::Span<const ExecutionScopeId> execution_scope_ids) override;
+
   absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                       const Kernel& kernel, const KernelArgs& args) override;
 
@@ -209,12 +213,6 @@ class GpuCommandBuffer : public CommandBuffer {
   // For each conditional node in the Gpu graph we keep a record of conditional
   // command buffers attached to a node, so we can apply updates to them.
   struct ConditionalCommandBuffers {
-    ConditionalCommandBuffers(
-        std::vector<GpuGraphConditionalHandle> handles,
-        std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers)
-        : handles(std::move(handles)),
-          command_buffers(std::move(command_buffers)) {}
-
     std::vector<GpuGraphConditionalHandle> handles;
     std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers;
   };
@@ -278,6 +276,13 @@ class GpuCommandBuffer : public CommandBuffer {
   // one, otherwise returns internal error.
   absl::Status CheckNumCommandBuffers(
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
+
+  // Creates a new no-op node acting as a barrier.
+  absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
+      StreamExecutor* executor, const Dependencies& dependencies);
+
+  // Collects a set of dependencies for a new barrier.
+  Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
 
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");

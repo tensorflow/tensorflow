@@ -305,45 +305,69 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
   return absl::OkStatus();
 }
 
+absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
+    StreamExecutor* executor, const Dependencies& dependencies) {
+  // TODO(b/316343054): Instead of empty nodes we create no-op kernel nodes as
+  // barriers because CUDA 12.3 does not support empty nodes inside
+  // conditional command buffers. This should be fixed in CUDA 12.4.
+  TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel(executor));
+
+  GpuGraphNodeHandle barrier_handle = nullptr;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
+      &barrier_handle, graph_, dependencies, "noop",
+      AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
+      /*kernel_params=*/nullptr, /*extra=*/nullptr));
+
+  return barrier_handle;
+}
+
+GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrierDependencies(
+    ExecutionScopeId execution_scope_id) {
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
+  auto& barriers = execution_scope.barriers;
+
+  // Collect nodes that will become a new barrier dependencies starting from
+  // the first command node added after the last barrier in the scope.
+  Dependencies dependencies;
+  for (size_t i = barriers.empty() ? 0 : barriers.back().nodes_offset;
+       i < execution_scope.nodes.size(); ++i) {
+    dependencies.push_back(execution_scope.nodes[i].handle);
+  }
+  return dependencies;
+}
+
 absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
                                        ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
-  // We don't support adding barriers as root nodes and simply skip them.
-  if ((state_ == State::kCreate && execution_scope.nodes.empty()) ||
-      (state_ == State::kUpdate && execution_scope.update_state.node_idx == 0))
-    return absl::OkStatus();
-
   if (state_ == State::kCreate) {
+    // Nodes offset for a newly created barrier.
+    size_t nodes_offset = execution_scope.nodes.size();
+
     // Collect nodes that will become a new barrier dependencies starting from
     // the first command node added after the last barrier.
-    Dependencies dependencies;
-    for (size_t i = execution_scope.barriers.empty()
-                        ? 0
-                        : execution_scope.barriers.back().nodes_offset;
-         i < execution_scope.nodes.size(); ++i) {
-      dependencies.push_back(execution_scope.nodes[i].handle);
+    Dependencies dependencies = GetBarrierDependencies(execution_scope_id);
+
+    // If there are no new dependencies and we have an existing barrier simply
+    // copy information from the last barrier to a new one.
+    if (dependencies.empty() && !execution_scope.barriers.empty()) {
+      execution_scope.barriers.push_back({execution_scope.barriers.back()});
+      return absl::OkStatus();
     }
 
-    GpuGraphBarrierInfo& barrier_info = execution_scope.barriers.emplace_back();
-    barrier_info.nodes_offset = execution_scope.nodes.size();
-
-    // If we have only one (or none at all) nodes added after the last barrier
-    // simply reuse the last node corresponding to a command as a barrier.
-    if (dependencies.size() <= 1) {
-      barrier_info.handle = execution_scope.nodes.back().handle;
-      barrier_info.is_barrier_node = false;
-    } else {
-      // TODO(b/316343054): This should be an empty node, however CUDA 12.3 does
-      // not support empty nodes inside conditional command buffers.
-      TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel(executor));
-      TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-          &barrier_info.handle, graph_, dependencies, "noop",
-          AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
-          /*kernel_params=*/nullptr, /*extra=*/nullptr));
-      barrier_info.is_barrier_node = true;
+    // If we have only one node added after the last barrier simply reuse the
+    // last node corresponding to a command as a barrier.
+    if (dependencies.size() == 1) {
+      execution_scope.barriers.push_back(
+          {execution_scope.nodes.back().handle, false, nodes_offset});
+      return absl::OkStatus();
     }
 
+    // If we have multiple dependencies or no existing barriers we have to
+    // create a new empty node acting as an execution barrier.
+    TF_ASSIGN_OR_RETURN(auto barrier_handle,
+                        CreateBarrierNode(executor, dependencies));
+    execution_scope.barriers.push_back({barrier_handle, true, nodes_offset});
     return absl::OkStatus();
   }
 
@@ -353,7 +377,66 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
     // update time we didn't try to add more barriers than we had originally.
     if (execution_scope.update_state.barrier_idx++ >=
         execution_scope.barriers.size()) {
-      return absl::InternalError("Barrier index out of range");
+      return absl::InternalError(
+          absl::StrFormat("Execution scope %d barrier index out of range",
+                          execution_scope_id.value()));
+    }
+    return absl::OkStatus();
+  }
+
+  return UnsupportedStateError(state_);
+}
+
+absl::Status GpuCommandBuffer::Barrier(
+    StreamExecutor* executor,
+    absl::Span<const ExecutionScopeId> execution_scope_ids) {
+  // Nothing to synchronize here.
+  if (execution_scope_ids.empty()) return absl::OkStatus();
+
+  // Do not create two-level barriers for single execution scope.
+  if (execution_scope_ids.size() == 1) {
+    return Barrier(executor, execution_scope_ids[0]);
+  }
+
+  // Add a new barrier to every synchronized execution scope.
+  for (ExecutionScopeId execution_scope_id : execution_scope_ids) {
+    TF_RETURN_IF_ERROR(Barrier(executor, execution_scope_id));
+  }
+
+  if (state_ == State::kCreate) {
+    // Collect barriers from each scope as a dependencies.
+    Dependencies dependencies;
+    for (ExecutionScopeId execution_scope_id : execution_scope_ids) {
+      ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
+      dependencies.push_back(execution_scope.barriers.back().handle);
+    }
+
+    // Create a new barrier that joins all per-scope barriers together.
+    TF_ASSIGN_OR_RETURN(auto barrier_handle,
+                        CreateBarrierNode(executor, dependencies));
+
+    // Broadcast new barrier to all participating execution scopes.
+    for (ExecutionScopeId execution_scope_id : execution_scope_ids) {
+      ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
+      size_t nodes_offset = execution_scope.nodes.size();
+      execution_scope.barriers.push_back({barrier_handle, true, nodes_offset});
+    }
+
+    return absl::OkStatus();
+  }
+
+  if (state_ == State::kUpdate) {
+    // Command buffer updates can't change the structure of the underlying gpu
+    // graph (add or delete barriers). We simply do a sanity check that at
+    // update time we didn't try to add more barriers than we had originally.
+    for (ExecutionScopeId execution_scope_id : execution_scope_ids) {
+      ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
+      if (execution_scope.update_state.barrier_idx++ >=
+          execution_scope.barriers.size()) {
+        return absl::InternalError(
+            absl::StrFormat("Execution scope %d barrier index out of range",
+                            execution_scope_id.value()));
+      }
     }
     return absl::OkStatus();
   }
@@ -687,8 +770,8 @@ absl::Status GpuCommandBuffer::CreateConditionalCommand(
                                               handles, graphs, builders));
 
     // Keep track of created conditional handles and command buffers.
-    execution_scope.conditional_command_buffers.emplace_back(
-        std::move(handles), std::move(cmd_buffers));
+    execution_scope.conditional_command_buffers.push_back(
+        {std::move(handles), std::move(cmd_buffers)});
 
     return absl::OkStatus();
   }

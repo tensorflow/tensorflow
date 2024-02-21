@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -173,6 +174,12 @@ class CommandBuffer {
   // commands added after a barrier in the same execution scope.
   virtual absl::Status Barrier(StreamExecutor* executor,
                                ExecutionScopeId execution_scope_id) = 0;
+
+  // Adds an execution barrier that synchronizes commands across multiple
+  // execution scopes. See example #2 in execution scope id documentation.
+  virtual absl::Status Barrier(
+      StreamExecutor* executor,
+      absl::Span<const ExecutionScopeId> execution_scope_ids) = 0;
 
   // Adds an execution barrier to the default execution scope.
   absl::Status Barrier(StreamExecutor* executor) {
