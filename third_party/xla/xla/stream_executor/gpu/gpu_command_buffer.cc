@@ -305,8 +305,9 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
   return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
+                                       ExecutionScopeId execution_scope_id) {
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   // We don't support adding barriers as root nodes and simply skip them.
   if ((state_ == State::kCreate && execution_scope.nodes.empty()) ||
@@ -476,10 +477,11 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Memset(DeviceMemoryBase* dst,
+absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
+                                      DeviceMemoryBase* dst,
                                       CommandBuffer::BitPattern bit_pattern,
                                       size_t num_elements) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
@@ -662,7 +664,8 @@ absl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
 absl::Status GpuCommandBuffer::CreateConditionalCommand(
     StreamExecutor* executor, ConditionType type, SetConditionFn set_condition,
     absl::Span<const ConditionBuilder> builders) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
@@ -676,7 +679,7 @@ absl::Status GpuCommandBuffer::CreateConditionalCommand(
     TF_RETURN_IF_ERROR(set_condition(handles));
 
     // Add a barrier between conditional handles and conditional nodes.
-    TF_RETURN_IF_ERROR(Barrier(executor));
+    TF_RETURN_IF_ERROR(Barrier(executor, execution_scope_id));
 
     // Create conditional command buffer for each builder.
     TF_ASSIGN_OR_RETURN(auto graphs, CreateConditionalNodes(type, handles));
@@ -702,7 +705,7 @@ absl::Status GpuCommandBuffer::CreateConditionalCommand(
     TF_RETURN_IF_ERROR(set_condition(cond_cmd_buffers.handles));
 
     // Update a barrier between conditional handles and conditional nodes.
-    TF_RETURN_IF_ERROR(Barrier(executor));
+    TF_RETURN_IF_ERROR(Barrier(executor, execution_scope_id));
 
     // Skip updating conditional nodes.
     execution_scope.update_state.node_idx += num_handles;
@@ -802,14 +805,16 @@ absl::Status GpuCommandBuffer::For(StreamExecutor* executor,
                                    int32_t num_iteration,
                                    DeviceMemory<int32_t> loop_counter,
                                    CommandBuffer::Builder body_builder) {
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+
   DCHECK(executor->implementation() == parent_);
 
   TF_ASSIGN_OR_RETURN(SetForConditionKernel * set_for_condition,
                       GetSetForConditionKernel(executor));
 
   // Reset loop counter to zero.
-  TF_RETURN_IF_ERROR(Memset(&loop_counter, uint32_t{0}, 1));
-  TF_RETURN_IF_ERROR(Barrier(executor));
+  TF_RETURN_IF_ERROR(Memset(execution_scope_id, &loop_counter, uint32_t{0}, 1));
+  TF_RETURN_IF_ERROR(Barrier(executor, execution_scope_id));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     return CommandBuffer::Launch(*set_for_condition, ThreadDim(), BlockDim(),
@@ -835,6 +840,7 @@ absl::Status GpuCommandBuffer::While(StreamExecutor* executor,
                                      DeviceMemory<bool> pred,
                                      CommandBuffer::Builder cond_builder,
                                      CommandBuffer::Builder body_builder) {
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
   DCHECK(executor->implementation() == parent_);
 
   TF_ASSIGN_OR_RETURN(SetWhileConditionKernel * set_while_condition,
@@ -842,7 +848,7 @@ absl::Status GpuCommandBuffer::While(StreamExecutor* executor,
 
   // Record condition commands into the parent command buffer.
   TF_RETURN_IF_ERROR(cond_builder(this));
-  TF_RETURN_IF_ERROR(Barrier(executor));
+  TF_RETURN_IF_ERROR(Barrier(executor, execution_scope_id));
 
   auto set_cond_fn = [&](absl::Span<const GpuGraphConditionalHandle> handles) {
     return CommandBuffer::Launch(*set_while_condition, ThreadDim(), BlockDim(),
@@ -966,6 +972,20 @@ absl::Status GpuCommandBuffer::Update() {
     execution_scope.update_state = ExecutionScope::UpdateState();
   }
   return absl::OkStatus();
+}
+
+absl::Span<const GpuCommandBuffer::GpuGraphNodeInfo> GpuCommandBuffer::nodes(
+    ExecutionScopeId id) const {
+  if (auto it = execution_scopes_.find(id); it != execution_scopes_.end())
+    return it->second.nodes;
+  return {};
+}
+
+absl::Span<const GpuCommandBuffer::GpuGraphBarrierInfo>
+GpuCommandBuffer::barriers(ExecutionScopeId id) const {
+  if (auto it = execution_scopes_.find(id); it != execution_scopes_.end())
+    return it->second.barriers;
+  return {};
 }
 
 }  // namespace stream_executor::gpu

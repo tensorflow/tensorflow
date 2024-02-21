@@ -76,7 +76,8 @@ class GpuCommandBuffer : public CommandBuffer {
                    bool is_owned_graph = true);
   ~GpuCommandBuffer() override;
 
-  absl::Status Barrier(StreamExecutor* executor) override;
+  absl::Status Barrier(StreamExecutor* executor,
+                       ExecutionScopeId execution_scope_id) override;
 
   absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                       const Kernel& kernel, const KernelArgs& args) override;
@@ -87,7 +88,8 @@ class GpuCommandBuffer : public CommandBuffer {
                                     const DeviceMemoryBase& src,
                                     uint64_t size) override;
 
-  absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+  absl::Status Memset(ExecutionScopeId execution_scope_id,
+                      DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
 
   absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) override;
@@ -127,11 +129,15 @@ class GpuCommandBuffer : public CommandBuffer {
     return static_cast<const GpuCommandBuffer*>(command_buffer);
   }
 
+  absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
+  absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
+
   absl::Span<const GpuGraphNodeInfo> nodes() const {
-    return execution_scopes_.at(kDefaulExecutionScope).nodes;
+    return nodes(kDefaulExecutionScope);
   }
+
   absl::Span<const GpuGraphBarrierInfo> barriers() const {
-    return execution_scopes_.at(kDefaulExecutionScope).barriers;
+    return barriers(kDefaulExecutionScope);
   }
 
  private:

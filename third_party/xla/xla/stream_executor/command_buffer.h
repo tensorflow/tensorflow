@@ -168,9 +168,16 @@ class CommandBuffer {
   // Command buffer API
   //===--------------------------------------------------------------------===//
 
-  // Adds an execution barrier to a command buffer: all commands added before a
-  // barrier will complete before any of the commands added after a barrier.
-  virtual absl::Status Barrier(StreamExecutor* executor) = 0;
+  // Adds an execution barrier to a given execution scope: all commands added
+  // before a barrier in a the execution scope will complete before any of the
+  // commands added after a barrier in the same execution scope.
+  virtual absl::Status Barrier(StreamExecutor* executor,
+                               ExecutionScopeId execution_scope_id) = 0;
+
+  // Adds an execution barrier to the default execution scope.
+  absl::Status Barrier(StreamExecutor* executor) {
+    return Barrier(executor, kDefaulExecutionScope);
+  }
 
   // Adds a kernel launch command to the command buffer.
   virtual absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
@@ -191,10 +198,19 @@ class CommandBuffer {
                                             const DeviceMemoryBase& src,
                                             uint64_t size) = 0;
 
-  // Adds a memset node to the command buffer.
+  // Supported bit patterns for memset commands.
   using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
-  virtual absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+
+  // Adds a memset command to the given execution scope.
+  virtual absl::Status Memset(ExecutionScopeId execution_scope_id,
+                              DeviceMemoryBase* dst, BitPattern bit_pattern,
                               size_t num_elements) = 0;
+
+  // Adds a memset command to the default execution scope.
+  absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+                      size_t num_elements) {
+    return Memset(kDefaulExecutionScope, dst, bit_pattern, num_elements);
+  }
 
   //--------------------------------------------------------------------------//
   // Command buffer memory allocation API
