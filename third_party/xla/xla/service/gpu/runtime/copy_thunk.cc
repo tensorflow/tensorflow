@@ -40,8 +40,7 @@ absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
   se::DeviceMemoryBase source_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
-  params.stream->ThenMemcpy(&destination_data, source_data, mem_size_);
-  return absl::OkStatus();
+  return params.stream->Memcpy(&destination_data, source_data, mem_size_);
 }
 }  // namespace gpu
 }  // namespace xla

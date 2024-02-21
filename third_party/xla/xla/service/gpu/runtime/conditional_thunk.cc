@@ -95,11 +95,11 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase branch_index_address =
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_index_);
   if (config_.branch_index_is_bool) {
-    stream.ThenMemcpy(std::get<bool*>(branch_index_or_pred),
-                      branch_index_address, sizeof(bool));
+    TF_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
+                                     branch_index_address, sizeof(bool)));
   } else {
-    stream.ThenMemcpy(std::get<int32_t*>(branch_index_or_pred),
-                      branch_index_address, sizeof(int32_t));
+    TF_RETURN_IF_ERROR(stream.Memcpy(std::get<int32_t*>(branch_index_or_pred),
+                                     branch_index_address, sizeof(int32_t)));
   }
 
   if (absl::Status blocked = stream.BlockHostUntilDone(); !blocked.ok()) {

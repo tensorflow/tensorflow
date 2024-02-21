@@ -116,7 +116,7 @@ static void PrintBufferContents(
   int input_idx = 0;
   for (const se::DeviceMemoryBase& buf : buffer_args) {
     auto host_buffer = std::make_unique<char[]>(buf.size());
-    CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
+    CHECK(stream->Memcpy(host_buffer.get(), buf, buf.size()).ok());
     CHECK_OK(stream->BlockHostUntilDone());
 
     std::string buffer_contents;

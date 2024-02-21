@@ -88,10 +88,9 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     // TODO(b/111309141): Run this on a separate stream so it doesn't block
     // the GPU from doing work during the transfer.
-    stream
-        .ThenMemcpy(buffer->destination()->untyped_data(), data_address,
-                    buffer->length())
-        .ThenDoHostCallback([&buffer]() { buffer->Done(); });
+    TF_RETURN_IF_ERROR(stream.Memcpy(buffer->destination()->untyped_data(),
+                                     data_address, buffer->length()));
+    TF_RETURN_IF_ERROR(stream.DoHostCallback([&buffer]() { buffer->Done(); }));
   }
 
   absl::Status block_status = stream.BlockHostUntilDone();
