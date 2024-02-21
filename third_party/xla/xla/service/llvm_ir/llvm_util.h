@@ -143,9 +143,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32_t* shape_size,
-                                                         llvm::IRBuilder<>* b);
+absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilder<>* b);
 
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.

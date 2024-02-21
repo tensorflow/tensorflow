@@ -45,14 +45,14 @@ namespace xla {
 
 using llvm_ir::IrArray;
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
+absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
     const HloInstruction& instruction) {
   IndexedGenerator generator = elemental_emitter_.MakeElementGenerator(
       &instruction, indexed_generators_);
 
-  return StatusOr<IndexedGenerator>([&, generator = std::move(generator)](
-                                        const IrArray::Index& index)
-                                        -> StatusOr<llvm::Value*> {
+  return absl::StatusOr<IndexedGenerator>([&, generator = std::move(generator)](
+                                              const IrArray::Index& index)
+                                              -> absl::StatusOr<llvm::Value*> {
     ValueCacheKey key{&instruction, index.multidim()};
     llvm::Value* value = value_cache_.insert({key, nullptr}).first->second;
 
@@ -119,7 +119,7 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
   };
 }
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
+absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
     const HloInstruction& tuple) {
   std::vector<llvm::Type*> element_ir_types;
   element_ir_types.reserve(tuple.operand_count());
@@ -131,8 +131,9 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   llvm::IRBuilder<>* b = elemental_emitter_.b();
   llvm::Type* type = llvm::StructType::get(b->getContext(), element_ir_types);
 
-  return StatusOr<IndexedGenerator>([&, b, type](const IrArray::Index& index)
-                                        -> StatusOr<llvm::Value*> {
+  return absl::StatusOr<IndexedGenerator>([&, b,
+                                           type](const IrArray::Index& index)
+                                              -> absl::StatusOr<llvm::Value*> {
     llvm::Value* ret = llvm::UndefValue::get(type);
     for (size_t i = 0; i < tuple.operand_count(); ++i) {
       IrArray::Index used_index = index;
@@ -149,8 +150,8 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   });
 }
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
-    const HloInstruction& instruction) {
+absl::StatusOr<FusedIrEmitter::IndexedGenerator>
+FusedIrEmitter::CreateGenerator(const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     case HloOpcode::kConstant:
       return HandleConstant(instruction);
@@ -165,7 +166,7 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
   }
 }
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
+absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
     const HloInstruction& instruction) {
   std::vector<const HloInstruction*> stack = {&instruction};
   while (!stack.empty()) {

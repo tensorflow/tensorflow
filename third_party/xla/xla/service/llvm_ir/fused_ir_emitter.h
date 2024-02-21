@@ -56,13 +56,16 @@ class FusedIrEmitter {
   }
 
   // Returns the generator function for the given instruction.
-  StatusOr<IndexedGenerator> GetGenerator(const HloInstruction& instruction);
+  absl::StatusOr<IndexedGenerator> GetGenerator(
+      const HloInstruction& instruction);
 
  private:
-  StatusOr<IndexedGenerator> CreateGenerator(const HloInstruction& instruction);
-  StatusOr<IndexedGenerator> DefaultAction(const HloInstruction& instruction);
+  absl::StatusOr<IndexedGenerator> CreateGenerator(
+      const HloInstruction& instruction);
+  absl::StatusOr<IndexedGenerator> DefaultAction(
+      const HloInstruction& instruction);
   IndexedGenerator HandleConstant(const HloInstruction& constant);
-  StatusOr<IndexedGenerator> HandleTuple(const HloInstruction& tuple);
+  absl::StatusOr<IndexedGenerator> HandleTuple(const HloInstruction& tuple);
 
   ElementalIrEmitter& elemental_emitter_;
 
