@@ -125,7 +125,9 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (hlo->custom_call_target() == "triton_kernel_call") return true;
+  if (config.enabled_commands.contains(DebugOptions::CUSTOM_CALL) &&
+      hlo->custom_call_target() == "triton_kernel_call")
+    return true;
 
   return false;
 }
