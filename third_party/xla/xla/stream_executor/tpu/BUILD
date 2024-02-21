@@ -11,7 +11,6 @@ package(
         "//learning/brain/google/xla/kernels:__subpackages__",
         "//learning/brain/research/pjrt:__subpackages__",
         "//learning/brain/tfrc/executor:__subpackages__",
-        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
         "//learning/brain/tfrt/tpu_plugin:__subpackages__",
         "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/mlir:__subpackages__",
