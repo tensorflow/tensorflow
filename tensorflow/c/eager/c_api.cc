@@ -495,7 +495,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::StatusOr<bool> ShallPinToThisDevice(
+  absl::StatusOr<bool> ShallPinToThisDevice(
       const ImmediateExecutionOperation* op) override {
     TF_Status status;
     // Let this custom device choose the device to pin this op on if it
