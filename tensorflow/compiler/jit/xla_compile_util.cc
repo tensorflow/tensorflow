@@ -36,7 +36,7 @@ constexpr const char* kPjRtDeviceCompilationProfilerResourceName =
     "pjrt_device_compilation_profiler";
 }  // namespace
 
-StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
+absl::StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
     const NodeDef& node_def, absl::Span<const XlaArgument> args,
     absl::Span<const DataType> result_types) {
   // TODO(b/74182462): We implement this by creating a new dummy Graph including
@@ -95,7 +95,7 @@ std::string GetPjRtDeviceCompilationProfilerResourceName(
                       device_type.type_string());
 }
 
-StatusOr<ResourceMgr*> GetResourceMgrForDeviceCompiler(
+absl::StatusOr<ResourceMgr*> GetResourceMgrForDeviceCompiler(
     const OpKernelContext& ctx, const DeviceType& device_type) {
   // We store information about the JIT-compiled XLA computation in the
   // ResourceMgr. The DeviceCompiler (which contains the DeviceCompilationCache)
