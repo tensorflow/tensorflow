@@ -639,6 +639,7 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Unique nodes: " << unique_nodes << "\n"
           << "Unique edges: " << unique_edges << "\n"
           << "Total instructions: " << request.num_nodes() << "\n"
+          << "Total edges: " << request.edges_size() << "\n"
           << "Memory budget: " << request.memory_budget() / (1024 * 1024 * 1024)
           << "GB\n"
           << "Number variables for ILP: " << solver->NumVariables() << "\n"
