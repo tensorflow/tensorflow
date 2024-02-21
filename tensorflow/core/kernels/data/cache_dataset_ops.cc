@@ -115,8 +115,9 @@ class PartialCache {
     return absl::OkStatus();
   }
 
-  StatusOr<core::RefCountPtr<IteratorResource>> GetIteratorResourceFromDataset(
-      OpKernelContext* ctx, const DatasetBase* dataset) {
+  absl::StatusOr<core::RefCountPtr<IteratorResource>>
+  GetIteratorResourceFromDataset(OpKernelContext* ctx,
+                                 const DatasetBase* dataset) {
     FunctionLibraryRuntime* flr;
     std::unique_ptr<DeviceMgr> device_mgr(nullptr);
     std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
