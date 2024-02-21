@@ -197,6 +197,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
@@ -3217,8 +3218,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       return builder->AddInstruction(HloInstruction::CreateSetDimensionSize(
           *shape, operands[0], operands[1], (*dimensions)[0]));
     }
+    default:
+      return nullptr;
   }
-  return nullptr;
 }  // NOLINT(readability/fn_size)
 
 // ::= '{' (single_sharding | tuple_sharding) '}'

@@ -303,6 +303,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
     case HloOpcode::kErf:

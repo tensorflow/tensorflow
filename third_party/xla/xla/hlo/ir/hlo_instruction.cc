@@ -2459,6 +2459,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 0);
       clone = CreatePartitionId(shape);
       break;
+    default:
+      CHECK(0) << "Unsupported opcode: " << opcode_;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
@@ -2887,6 +2889,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
@@ -4180,11 +4183,12 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCholesky(this);
     case HloOpcode::kOptimizationBarrier:
       return visitor->HandleOptimizationBarrier(this);
+    default:
+      return Internal(
+          "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
+          "please file a bug for XLA.",
+          HloOpcodeString(opcode_));
   }
-  return Internal(
-      "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
-      "please file a bug for XLA.",
-      HloOpcodeString(opcode_));
 }
 
 // Explicit instantiations.
