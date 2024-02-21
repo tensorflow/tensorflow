@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -123,7 +124,7 @@ absl::Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Use device_to_host stream if it is available.
   se::Stream* stream = params.device_to_host_stream;
   if (stream) {
-    stream->ThenWaitFor(params.stream);
+    TF_RETURN_IF_ERROR(stream->WaitFor(params.stream));
   } else {
     stream = params.stream;
   }
@@ -175,8 +176,7 @@ absl::Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(5) << "Completed Send operation: channel_id=" << channel_id_;
 
   // Once event is recorded we can add a stream dependency.
-  params.stream->ThenWaitFor(&done_event.get());
-  return absl::OkStatus();
+  return params.stream->WaitFor(&done_event.get());
 }
 
 //===----------------------------------------------------------------------===//
@@ -210,7 +210,7 @@ absl::Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Use host_to_device stream if it is available.
   se::Stream* stream = params.host_to_device_stream;
   if (stream) {
-    stream->ThenWaitFor(params.stream);
+    TF_RETURN_IF_ERROR(stream->WaitFor(params.stream));
   } else {
     stream = params.stream;
   }
@@ -261,8 +261,7 @@ absl::Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(5) << "Completed Recv operation: channel=" << channel_id_;
 
   // Once event is recorded we can add a stream dependency.
-  params.stream->ThenWaitFor(&done_event.get());
-  return absl::OkStatus();
+  return params.stream->WaitFor(&done_event.get());
 }
 
 }  // namespace xla::gpu
