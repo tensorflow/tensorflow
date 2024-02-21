@@ -38,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
+absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
     const tensorflow::Tensor* cpu_tensor, tensorflow::Device* device,
     xla::PjRtClient* pjrt_client,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns
@@ -154,14 +154,15 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   }
 
   // TODO(b/252887149): figure out how to cache PJRT client.
-  StatusOr<xla::PjRtClient*> pjrt_client =
+  absl::StatusOr<xla::PjRtClient*> pjrt_client =
       GetOrCreatePjRtClient(DeviceType(device->device_type()));
   if (!pjrt_client.ok()) {
     done(pjrt_client.status());
     return;
   }
-  StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or = HostTensorToPjRtBuffer(
-      cpu_tensor, device, *pjrt_client, shape_determination_fns_);
+  absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
+      HostTensorToPjRtBuffer(cpu_tensor, device, *pjrt_client,
+                             shape_determination_fns_);
   if (!buffer_or.ok()) {
     done(buffer_or.status());
     return;
@@ -171,7 +172,7 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   if (use_pjrt_tensor_buffer_) {
     // Copy the newly created tensor with PjRtTensorBuffer to output device
     // tensor.
-    StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
+    absl::StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
         device_tensor->dtype(), device_tensor->shape(), std::move(*buffer_or));
     if (!t.ok()) {
       done(t.status());
@@ -203,13 +204,15 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
   }
   // TODO(b/288585098): consider whether to support same device copy in PJRT
   // API.
-  StatusOr<PJRT_Buffer*> c_src_buffer = GetPjRtCBufferFromTensor(input_tensor);
+  absl::StatusOr<PJRT_Buffer*> c_src_buffer =
+      GetPjRtCBufferFromTensor(input_tensor);
   if (!c_src_buffer.ok()) {
     done(c_src_buffer.status());
     return;
   }
-  StatusOr<xla::PjRtCApiClient*> c_api_client = tensorflow::GetPjRtCApiClient(
-      tensorflow::DeviceType(device->device_type()));
+  absl::StatusOr<xla::PjRtCApiClient*> c_api_client =
+      tensorflow::GetPjRtCApiClient(
+          tensorflow::DeviceType(device->device_type()));
   if (!c_api_client.ok()) {
     done(c_api_client.status());
     return;
@@ -247,7 +250,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
     return;
   }
 
-  StatusOr<xla::PjRtClient*> pjrt_dst_client =
+  absl::StatusOr<xla::PjRtClient*> pjrt_dst_client =
       GetOrCreatePjRtClient(DeviceType(dst->device_type()));
 
   if (!pjrt_dst_client.ok()) {
@@ -267,7 +270,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
   xla::PjRtDevice* pjrt_dst_device =
       (*pjrt_dst_client)->LookupAddressableDevice(pjrt_dst_device_id).value();
 
-  StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
+  absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
       src_device_buffer->CopyToDevice(pjrt_dst_device);
   if (!buffer_or.ok()) {
     done(buffer_or.status());
@@ -280,7 +283,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
           ->use_pjrt_tensor_buffer()) {
     // Copy the newly created tensor with PjRtTensorBuffer to output device
     // tensor.
-    StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
+    absl::StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
         output->dtype(), output->shape(), std::move(*buffer_or));
     if (!t.ok()) {
       done(t.status());
