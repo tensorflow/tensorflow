@@ -491,7 +491,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
 
       auto done = [this, ctx, result](Status status) {
-        result->status.Update(status);
+        if (!status.ok()) {
+          result->status = AddErrorContext(status);
+        }
         RecordBufferEnqueue(ctx.get(), result->return_values);
         CallCompleted(ctx, result);
       };

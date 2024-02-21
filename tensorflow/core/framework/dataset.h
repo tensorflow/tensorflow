@@ -1566,6 +1566,16 @@ class DatasetBaseIterator : public IteratorBase {
     return node_ && node_->is_recording();
   }
 
+  // Returns a copy of the `status` where the error message is prepended with
+  // dataset name and the iterator prefix.
+  Status AddErrorContext(const Status& status) {
+    return Status(status.code(),
+                  strings::StrCat("Error in user-defined function passed to ",
+                                  dataset()->metadata().name(),
+                                  " transformation with iterator: ", prefix(),
+                                  ": ", status.message()));
+  }
+
  private:
   bool collect_resource_usage(IteratorContext* ctx) {
     return ctx->model() && node_;
