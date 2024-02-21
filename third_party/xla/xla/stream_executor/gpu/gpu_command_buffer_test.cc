@@ -109,9 +109,9 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // Create a command buffer with a single kernel launch.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
@@ -122,14 +122,14 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
 
   // Prepare argument for graph update: d = 0
   DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
-  stream.ThenMemZero(&d, byte_length);
+  TF_ASSERT_OK(stream.MemZero(&d, byte_length));
 
   // Update command buffer to write into `d` buffer.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -140,7 +140,7 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
-  stream.ThenMemcpy(dst.data(), d, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), d, byte_length));
   ASSERT_EQ(dst, expected);
 }
 
@@ -182,9 +182,9 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // Use an array of device memory base pointers as argument to test packing.
   KernelArgsDeviceMemoryArray args({a, b, c}, 0);
@@ -202,7 +202,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
@@ -227,9 +227,9 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // Create a command buffer with a single kernel launch.
   auto primary_cmd = CommandBuffer::Create(executor).value();
@@ -242,14 +242,14 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
 
   // Prepare argument for graph update: d = 0
   DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
-  stream.ThenMemZero(&d, byte_length);
+  TF_ASSERT_OK(stream.MemZero(&d, byte_length));
 
   // Update command buffer to write into `d` buffer by creating a new nested
   // command buffer.
@@ -263,7 +263,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
-  stream.ThenMemcpy(dst.data(), d, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), d, byte_length));
   ASSERT_EQ(dst, expected);
 }
 
@@ -282,7 +282,7 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 42, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 42, byte_length));
 
   // Create a command buffer with a single a to b memcpy command.
   auto cmd_buffer = CommandBuffer::Create(executor).value();
@@ -293,7 +293,7 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  stream.ThenMemcpy(dst.data(), a, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), a, byte_length));
 
   std::vector<int32_t> expected = {42, 42, 42, 42};
   ASSERT_EQ(dst, expected);
@@ -304,13 +304,13 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   TF_ASSERT_OK(cmd_buffer->Finalize());
 
   // Clear destination to test that command buffer actually copied memory.
-  stream.ThenMemset32(&a, 0, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 0, byte_length));
 
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
   // Copy `a` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
-  stream.ThenMemcpy(dst.data(), a, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), a, byte_length));
   ASSERT_EQ(dst, expected);
 }
 
@@ -336,7 +336,7 @@ TEST(GpuCommandBufferTest, Memset) {
 
   // Copy `a` data back to host.
   std::vector<int32_t> dst(4, 0);
-  stream.ThenMemcpy(dst.data(), a, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), a, byte_length));
 
   std::vector<int32_t> expected = {42, 42, 42, 42};
   ASSERT_EQ(dst, expected);
@@ -350,7 +350,7 @@ TEST(GpuCommandBufferTest, Memset) {
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 0);
-  stream.ThenMemcpy(dst.data(), a, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), a, byte_length));
 
   expected = {43, 43, 43, 43};
   ASSERT_EQ(dst, expected);
@@ -373,7 +373,7 @@ TEST(GpuCommandBufferTest, Barriers) {
   auto transfer_buffers = [&]() -> std::vector<int32_t> {
     std::vector<int32_t> dst(buffers.size(), 0);
     for (size_t i = 0; i < buffers.size(); ++i) {
-      stream.ThenMemcpy(dst.data() + i, buffers[i], sizeof(int32_t));
+      TF_CHECK_OK(stream.Memcpy(dst.data() + i, buffers[i], sizeof(int32_t)));
     }
     return dst;
   };
@@ -642,10 +642,10 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   constexpr bool kTrue = true;
-  stream.ThenMemcpy(&pred, &kTrue, 1);
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(&pred, &kTrue, 1));
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // if (pred == true) c = a + b
   CommandBuffer::Builder then_builder = [&](CommandBuffer* then_cmd) {
@@ -661,30 +661,30 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
 
   // Reset predicate to false and clear output buffer.
   constexpr bool kFalse = false;
-  stream.ThenMemcpy(&pred, &kFalse, 1);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(&pred, &kFalse, 1));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // Submit the same command buffer, but this time it should not execute
   // conditional branch as conditional handle should be updated to false.
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
   std::vector<int32_t> zeroes = {0, 0, 0, 0};
   ASSERT_EQ(dst, zeroes);
 
   // Prepare argument for graph update: d = 0
   DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
-  stream.ThenMemZero(&d, byte_length);
+  TF_ASSERT_OK(stream.MemZero(&d, byte_length));
 
   // Set predicate buffer to true to run conditional command buffer.
-  stream.ThenMemcpy(&pred, &kTrue, 1);
+  TF_ASSERT_OK(stream.Memcpy(&pred, &kTrue, 1));
 
   // if (pred == true) d = a + b (write to a new location).
   then_builder = [&](CommandBuffer* then_cmd) {
@@ -700,7 +700,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
-  stream.ThenMemcpy(dst.data(), d, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), d, byte_length));
   ASSERT_EQ(dst, expected);
 }
 
@@ -736,10 +736,10 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   constexpr bool kTrue = true;
-  stream.ThenMemcpy(&pred, &kTrue, 1);
-  stream.ThenMemset32(&a, 2, byte_length);
-  stream.ThenMemset32(&b, 3, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(&pred, &kTrue, 1));
+  TF_ASSERT_OK(stream.Memset32(&a, 2, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 3, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // if (pred == true) c = a + b
   CommandBuffer::Builder then_builder = [&](CommandBuffer* then_cmd) {
@@ -761,27 +761,27 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected_add = {5, 5, 5, 5};
   ASSERT_EQ(dst, expected_add);
 
   // Reset predicate to false.
   constexpr bool kFalse = false;
-  stream.ThenMemcpy(&pred, &kFalse, 1);
+  TF_ASSERT_OK(stream.Memcpy(&pred, &kFalse, 1));
 
   // Submit the same command buffer, but this time it should execute `else`
   // branch and multiply inputs.
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
   std::vector<int32_t> expected_mul = {6, 6, 6, 6};
   ASSERT_EQ(dst, expected_mul);
 
   // Prepare argument for graph update: d = 0
   DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
-  stream.ThenMemZero(&d, byte_length);
+  TF_ASSERT_OK(stream.MemZero(&d, byte_length));
 
   // if (pred == false) d = a * b (write to a new location).
   else_builder = [&](CommandBuffer* else_cmd) {
@@ -798,7 +798,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Copy `d` data back to host.
   std::fill(dst.begin(), dst.end(), 42);
-  stream.ThenMemcpy(dst.data(), d, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), d, byte_length));
   ASSERT_EQ(dst, expected_mul);
 }
 
@@ -833,10 +833,10 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&index, 0, sizeof(int32_t));
-  stream.ThenMemset32(&a, 2, byte_length);
-  stream.ThenMemset32(&b, 3, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&index, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memset32(&a, 2, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 3, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // if (index == 0) c = a + b
   CommandBuffer::Builder branch0 = [&](CommandBuffer* branch0_cmd) {
@@ -858,38 +858,38 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected_add = {5, 5, 5, 5};
   ASSERT_EQ(dst, expected_add);
 
   // Set index to `1`
-  stream.ThenMemset32(&index, 1, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memset32(&index, 1, sizeof(int32_t)));
 
   // Submit the same command buffer, but this time it should multiply inputs.
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
   std::vector<int32_t> expected_mul = {6, 6, 6, 6};
   ASSERT_EQ(dst, expected_mul);
 
   // Set index to `-1` (out of bound index value).
-  stream.ThenMemset32(&index, -1, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memset32(&index, -1, sizeof(int32_t)));
 
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
   ASSERT_EQ(dst, expected_mul);
 
   // Set index to `2` (out of bound index value).
-  stream.ThenMemset32(&index, 2, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memset32(&index, 2, sizeof(int32_t)));
 
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
   ASSERT_EQ(dst, expected_mul);
 }
 
@@ -918,9 +918,9 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
   // Set loop counter to 100 to check that command buffer resets it.
-  stream.ThenMemset32(&loop_counter, 100, sizeof(int32_t));
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemZero(&b, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&loop_counter, 100, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&b, byte_length));
 
   // Loop body: b = a + b
   CommandBuffer::Builder body_builder = [&](CommandBuffer* body_cmd) {
@@ -939,7 +939,7 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), b, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), b, byte_length));
 
   std::vector<int32_t> expected = {10, 10, 10, 10};
   ASSERT_EQ(dst, expected);
@@ -980,10 +980,10 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
   static constexpr bool kFalse = false;
-  stream.ThenMemcpy(&pred, &kFalse, 1);
-  stream.ThenMemset32(&loop_counter, 0, sizeof(int32_t));
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemZero(&b, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(&pred, &kFalse, 1));
+  TF_ASSERT_OK(stream.Memset32(&loop_counter, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&b, byte_length));
 
   int32_t num_iters = 10;
 
@@ -1007,7 +1007,7 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), b, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), b, byte_length));
 
   std::vector<int32_t> expected = {10, 10, 10, 10};
   ASSERT_EQ(dst, expected);

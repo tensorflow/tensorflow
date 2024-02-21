@@ -258,9 +258,6 @@ class Stream {
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
-                       uint64_t size);
   absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
                         uint64_t size);
 

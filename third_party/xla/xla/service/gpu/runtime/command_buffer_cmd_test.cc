@@ -164,8 +164,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 42, byte_length);
-  stream.ThenMemZero(&b, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&b, byte_length));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -194,7 +194,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  stream.ThenMemcpy(dst.data(), b, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
@@ -211,8 +211,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 42, byte_length);
-  stream.ThenMemZero(&b, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&b, byte_length));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -258,7 +258,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  stream.ThenMemcpy(dst.data(), b, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }

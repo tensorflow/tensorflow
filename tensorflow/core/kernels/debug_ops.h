@@ -778,9 +778,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemZero(&output_tensor_ptr, 2 * sizeof(Tout));
+      OP_REQUIRES_OK(context,
+                     stream->MemZero(&output_tensor_ptr, 2 * sizeof(Tout)));
       // Copy tensor_id to slot zero
-      stream->ThenMemcpy(&output_tensor_ptr, &tensor_id, sizeof(Tout));
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &tensor_id,
+                                             sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;
@@ -812,9 +814,11 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemset32(&output_tensor_ptr, 0, 5 * sizeof(Tout));
+      OP_REQUIRES_OK(context,
+                     stream->Memset32(&output_tensor_ptr, 0, 5 * sizeof(Tout)));
       const Tout static_output[] = {tensor_id, num_elem};
-      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 2 * sizeof(Tout));
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
+                                             2 * sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;
@@ -846,14 +850,16 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemset32(&output_tensor_ptr, 0, 11 * sizeof(Tout));
+      OP_REQUIRES_OK(
+          context, stream->Memset32(&output_tensor_ptr, 0, 11 * sizeof(Tout)));
 
       int num_dims = tensor.dims();
       const Tout static_output[] = {tensor_id,
                                     -1.0,  // TODO(144919262): Device ID
                                     static_cast<Tout>(tensor.dtype()),
                                     static_cast<Tout>(num_dims), num_elem};
-      stream->ThenMemcpy(&output_tensor_ptr, &static_output, 5 * sizeof(Tout));
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
+                                             5 * sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;
@@ -897,7 +903,8 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
         static_output[dim_idx++] = static_cast<Tout>(tensor.dim_size(i));
       }
       // Write to device stream
-      stream->ThenMemcpy(&output_tensor_ptr, &static_output, sizeof(Tout) * 10);
+      OP_REQUIRES_OK(context, stream->Memcpy(&output_tensor_ptr, &static_output,
+                                             sizeof(Tout) * 10));
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(stream, std::move(check_cb));
@@ -913,8 +920,10 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
           output_tensor->flat<Tout>().size());
-      stream->ThenMemset32(&output_tensor_ptr, 0,
-                           output_tensor->flat<Tout>().size() * sizeof(Tout));
+      OP_REQUIRES_OK(
+          context,
+          stream->Memset32(&output_tensor_ptr, 0,
+                           output_tensor->flat<Tout>().size() * sizeof(Tout)));
       if (num_elem == 0) {
         done();
         return;

@@ -65,9 +65,9 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   se::DeviceMemory<float> b = executor->AllocateArray<float>(k * n, 0);
   se::DeviceMemory<float> c = executor->AllocateArray<float>(m * n, 0);
 
-  stream.ThenMemset32(&a, BitPattern(1.1f), a.size());
-  stream.ThenMemset32(&b, BitPattern(1.2f), b.size());
-  stream.ThenMemZero(&c, c.size());
+  TF_CHECK_OK(stream.Memset32(&a, BitPattern(1.1f), a.size()));
+  TF_CHECK_OK(stream.Memset32(&b, BitPattern(1.2f), b.size()));
+  TF_CHECK_OK(stream.MemZero(&c, c.size()));
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),

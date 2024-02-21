@@ -426,14 +426,6 @@ absl::Status Stream::MemZero(DeviceMemoryBase *location, uint64_t size) {
   return parent_->MemZero(this, location, size);
 }
 
-Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32_t pattern,
-                             uint64_t size) {
-  VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
-
-  CheckStatus(Memset32(location, pattern, size));
-  return *this;
-}
-
 absl::Status Stream::Memset32(DeviceMemoryBase *location, uint32_t pattern,
                               uint64_t size) {
   return parent_->Memset32(this, location, pattern, size);

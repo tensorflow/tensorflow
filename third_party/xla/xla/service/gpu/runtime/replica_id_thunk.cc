@@ -32,8 +32,7 @@ absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
                           global_device_id));
   int id = kind() == Kind::kReplicaId ? logical_id.replica_id
                                       : logical_id.computation_id;
-  params.stream->ThenMemset32(&dest_addr, id, /*size=*/4);
-  return absl::OkStatus();
+  return params.stream->Memset32(&dest_addr, id, /*size=*/4);
 }
 
 }  // namespace gpu

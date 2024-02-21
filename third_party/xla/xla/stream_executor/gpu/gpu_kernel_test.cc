@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -40,7 +41,7 @@ TEST(GpuKernelTest, Add) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
@@ -61,16 +62,16 @@ TEST(GpuKernelTest, Add) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  stream.ThenMemset32(&a, 1, byte_length);
-  stream.ThenMemset32(&b, 2, byte_length);
-  stream.ThenMemZero(&c, byte_length);
+  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream.Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
 
   // Launch kernel.
   ASSERT_TRUE(stream.ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
-  stream.ThenMemcpy(dst.data(), c, byte_length);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);

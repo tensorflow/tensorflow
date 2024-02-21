@@ -24,16 +24,14 @@ namespace gpu {
 absl::Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
-  params.stream->ThenMemZero(&dest_data, dest_data.size());
-  return absl::OkStatus();
+  return params.stream->MemZero(&dest_data, dest_data.size());
 }
 
 absl::Status Memset32BitValueThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
-  params.stream->ThenMemset32(&dest_data, value_, dest_data.size());
-  return absl::OkStatus();
+  return params.stream->Memset32(&dest_data, value_, dest_data.size());
 }
 
 }  // namespace gpu
