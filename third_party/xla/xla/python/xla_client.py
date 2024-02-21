@@ -588,7 +588,7 @@ def register_custom_call_target(
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
     api_version: the XLA FFI version to use. Supported versions are: 0 for the
-      untyped FFI and 0 for the typed FFI.
+      untyped FFI and 1 for the typed FFI.
   """
   # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
   # Since that is hardcoded to CUDA, we are using the following as workaround.
