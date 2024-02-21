@@ -76,10 +76,11 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   TF_ASSIGN_OR_RETURN(
       ComparisonKernelT<ElementT> comparison_kernel,
-      (executor->CreateTypedKernel<se::DeviceMemory<ElementT>,
-                                   se::DeviceMemory<ElementT>, float, uint64_t,
-                                   se::DeviceMemory<uint64_t>>(kernel_name,
-                                                               kernel_symbol)));
+      (se::TypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
+                       float, uint64_t,
+                       se::DeviceMemory<uint64_t>>::Create(executor,
+                                                           kernel_name,
+                                                           kernel_symbol)));
 
   const se::DeviceDescription& gpu_device_info =
       executor->GetDeviceDescription();

@@ -345,9 +345,9 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
 #elif TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       ComparisonKernelT loaded_kernel,
-      (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
-                                   DeviceMemory<uint64_t>>("redzone_checker",
-                                                           kernel_symbol())));
+      (TypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
+                   DeviceMemory<uint64_t>>::Create(executor, "redzone_checker",
+                                                   kernel_symbol())));
   // CUDA side returns a pointer => hence get a pointer to the loaded kernel
   auto* kernel_ptr = &loaded_kernel;
 #endif  // GOOGLE_CUDA

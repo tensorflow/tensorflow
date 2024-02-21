@@ -278,22 +278,6 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
 
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
-  // PTX (and optional CUBIN), such that the types of the arguments provided for
-  // launch would have to match types of the arguments provided at creation
-  // time. The canonical storage for both ptx and cubin_data should outlive the
-  // lifetime of the kernel.
-  template <typename... Args>
-  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
-      absl::string_view kernel_name, absl::string_view ptx,
-      absl::Span<const uint8_t> cubin_data);
-
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
-  // an in-process symbol pointer.
-  template <typename... Args>
-  absl::StatusOr<TypedKernel<Args...>> CreateTypedKernel(
-      absl::string_view kernel_name, void* symbol);
-
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
   // the type signature is only known at runtime; say, if an application
@@ -372,8 +356,6 @@ class StreamExecutor {
  private:
   friend class Event;
   friend class Stream;
-  template <typename... Params>
-  friend class TypedKernel;
   friend class HostMemoryAllocation;
 
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
@@ -550,30 +532,6 @@ class ScopedModuleHandle {
 
 ////////////
 // Inlines
-
-template <typename... Args>
-inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
-    absl::string_view kernel_name, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data) {
-  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
-  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
-
-  if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(
-        reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
-  }
-
-  return TypedKernel<Args...>::Create(this, loader_spec);
-}
-
-template <typename... Args>
-inline absl::StatusOr<TypedKernel<Args...>> StreamExecutor::CreateTypedKernel(
-    absl::string_view kernel_name, void* symbol) {
-  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
-  loader_spec.AddInProcessSymbol(symbol, kernel_name);
-
-  return TypedKernel<Args...>::Create(this, loader_spec);
-}
 
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64_t element_count,

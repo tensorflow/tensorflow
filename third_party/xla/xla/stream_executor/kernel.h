@@ -301,6 +301,21 @@ class TypedKernel {
     return TypedKernel(std::move(kernel));
   }
 
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
+  // PTX (and optional CUBIN), such that the types of the arguments provided for
+  // launch would have to match types of the arguments provided at creation
+  // time. The canonical storage for both ptx and cubin_data should outlive the
+  // lifetime of the kernel.
+  static absl::StatusOr<TypedKernel> Create(
+      StreamExecutor *executor, absl::string_view kernel_name,
+      absl::string_view ptx, absl::Span<const uint8_t> cubin_data);
+
+  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
+  // an in-process symbol pointer.
+  static absl::StatusOr<TypedKernel> Create(StreamExecutor *executor,
+                                            absl::string_view kernel_name,
+                                            void *symbol);
+
   TypedKernel() = default;
 
   Kernel &operator*() { return *kernel_; }
@@ -721,6 +736,30 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
 
   int64_t shmem_bytes = kernel->metadata().shared_memory_bytes().value_or(0);
   return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
+}
+
+template <typename... Args>
+inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
+    StreamExecutor *executor, absl::string_view kernel_name,
+    absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
+  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
+
+  if (!cubin_data.empty()) {
+    loader_spec.AddCudaCubinInMemory(
+        reinterpret_cast<const char *>(cubin_data.data()), kernel_name);
+  }
+
+  return TypedKernel<Args...>::Create(executor, loader_spec);
+}
+
+template <typename... Args>
+inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
+    StreamExecutor *executor, absl::string_view kernel_name, void *symbol) {
+  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
+  loader_spec.AddInProcessSymbol(symbol, kernel_name);
+
+  return TypedKernel<Args...>::Create(executor, loader_spec);
 }
 
 }  // namespace stream_executor

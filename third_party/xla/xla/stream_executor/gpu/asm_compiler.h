@@ -135,7 +135,7 @@ absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
   if (it == kernel_ptr_cache.end()) {
     TF_ASSIGN_OR_RETURN(
         TypedKernel<Args...> loaded,
-        executor->CreateTypedKernel<Args...>(kernel_name, ptx, cubin_data));
+        (TypedKernel<Args...>::Create(executor, kernel_name, ptx, cubin_data)));
     it =
         kernel_ptr_cache.emplace(kernel_ptr_cache_key, std::move(loaded)).first;
   }
