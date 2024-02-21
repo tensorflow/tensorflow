@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/model/tile_analysis.h"
 
 #include <optional>
+#include <sstream>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -33,6 +35,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ExplainMatchResult;
+using ::testing::HasSubstr;
 using ::testing::Optional;
 using ::testing::StrEq;
 
@@ -280,6 +283,50 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
           MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s0 - 2, s3 - 1)",
                             "()[s0, s1, s2, s3, s4, s5] -> (s1, s4)",
                             "()[s0, s1, s2, s3, s4, s5] -> (s2, s5)")));
+}
+
+TEST_F(SymbolicTileTest, CanPrintSymbolicTileWithNamedTriplets) {
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[17, 19] parameter(0)
+      p1 = f32[19, 23] parameter(1)
+      ROOT dot = f32[17, 23] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )");
+
+  std::string s;
+  std::stringstream ss(s);
+
+  SymbolicTile first_operand_tile =
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin())
+          .value();
+  SymbolicTile second_operand_tile =
+      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin())
+          .value();
+
+  ss << first_operand_tile;
+  EXPECT_THAT(
+      ss.str(),
+      AllOf(HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (offset0, 0)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (size0, 19)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (stride0, 1)")));
+
+  // Clear the stream and load the second map.
+  ss.str("");
+  ss << second_operand_tile;
+  EXPECT_THAT(
+      ss.str(),
+      AllOf(HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (0, offset1)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (19, size1)"),
+            HasSubstr("()[offset0, size0, stride0, offset1, size1, stride1] "
+                      "-> (1, stride1)")));
 }
 
 }  // namespace

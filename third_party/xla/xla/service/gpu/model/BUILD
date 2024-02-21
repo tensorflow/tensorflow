@@ -513,6 +513,7 @@ cc_library(
         ":affine_map_printer",
         ":indexing_map",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
