@@ -164,8 +164,18 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
       new se::DeviceHostAllocator(executor, /*numa_node=*/0,
                                   /*alloc_visitors=*/{},
                                   /*free_visitors=*/{}));
-  // TODO(phawkins): allow the user to tune this.
-  const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+
+  int64_t xla_pjrt_gpu_host_memory_limit_gb;
+  Status status =
+      tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB", 64,
+                               &xla_pjrt_gpu_host_memory_limit_gb);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
+               << status.message();
+  }
+
+  const int64_t kGpuHostMemoryLimitBytes =
+      xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);
 
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = true;
