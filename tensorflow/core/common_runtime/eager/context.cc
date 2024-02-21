@@ -147,7 +147,9 @@ EagerContext::EagerContext(
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
       run_eager_op_as_function_(run_eager_op_as_function),
-      jit_compile_rewrite_(jit_compile_rewrite) {
+      jit_compile_rewrite_(jit_compile_rewrite),
+      register_abstract_functions_local_only_(ReadBoolFromEnvVar(
+          "TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY", false)) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
@@ -708,7 +710,8 @@ Status EagerContext::RegisterFunction(AbstractFunction* f) {
   if (!fdef) {
     return errors::InvalidArgument("GetFunctionDef returned nullptr.");
   }
-  return AddFunctionDef(*fdef);
+  return AddFunctionDef(*fdef, FunctionDefLibrary(),
+                        register_abstract_functions_local_only_);
 }
 
 bool EagerContext::UsesTFRT() { return false; }

@@ -896,6 +896,32 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<void()> resource_deallocator_ = nullptr;
   bool run_eager_op_as_function_;
   bool jit_compile_rewrite_;
+
+  // Controls the behavior of
+  // `EagerContext::RegisterFunction(AbstractFunction*)` in distributed
+  // settings.
+  //
+  // By default, each abstract function will be registered on all workers in
+  // a cluster. If the environment variable
+  // `TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY=1` is set, each abstract
+  // function will be registered on the local worker only.
+  //
+  // In the common case that all functions are initially dispatched to
+  // a local device, the `ProcessFunctionLibraryRuntime`
+  // will ensure that the precise dependencies of that function are shipped to
+  // the remote device. Since PFLR instantiation often involves optimization,
+  // passes such as lowering control flow and inlining function calls, this will
+  // result in (1) sending a substantially smaller set of functions to each
+  // worker, and (2) the unoptimized functions never being called.
+  //
+  // Therefore setting `TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY=1` can
+  // significantly reduce both the startup time and the memory footprint on
+  // remote workers by avoiding the shipping of unneeded functions.
+  //
+  // TODO(b/326251557): Infer automatically when it is necessary to register a
+  // function or its dependencies on remote hosts; then remove the environment
+  // variable.
+  bool register_abstract_functions_local_only_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {
