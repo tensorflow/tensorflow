@@ -299,7 +299,7 @@ class ResourceHandleWithLayout
   // Updates the element layouts for the tensors.
   absl::Status UpdateElementLayouts(const std::vector<Layout>& layouts) {
     dereferenced_element_layouts_.emplace(layouts);
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   // Updates the local shape and dtype of the tensors.
@@ -307,7 +307,7 @@ class ResourceHandleWithLayout
                                    const DataType& dtype) {
     set_dereferenced_shape(shape);
     set_dereferenced_dtype(dtype);
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   ConstValueNode* const_value_node() const override { return nullptr; }
