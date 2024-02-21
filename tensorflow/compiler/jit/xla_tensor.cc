@@ -83,7 +83,7 @@ void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(definition_event_.get());
+  stream->WaitFor(definition_event_.get()).IgnoreError();
   streams_defined_on_.push_back(stream);
 }
 
