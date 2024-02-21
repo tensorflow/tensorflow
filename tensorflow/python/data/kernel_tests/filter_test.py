@@ -162,6 +162,17 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
         lambda x: True, name="filter")
     self.assertDatasetProduces(dataset, [42])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testPredicateFailWithErrorContext(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).filter(
+        lambda x: (x // 0) > 0, name="filter")
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
+
 
 class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                            parameterized.TestCase):

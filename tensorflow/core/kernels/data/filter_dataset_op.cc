@@ -152,8 +152,11 @@ class FilterDatasetOp::Dataset : public DatasetBase {
         }
 
         std::vector<Tensor> result;
-        TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
-            ctx, *out_tensors, &result, model_node()));
+        auto status = instantiated_captured_func_->RunWithBorrowedArgs(
+            ctx, *out_tensors, &result, model_node());
+        if (!status.ok()) {
+          return AddErrorContext(status);
+        }
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {

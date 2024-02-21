@@ -1466,6 +1466,16 @@ class DatasetBaseIterator : public IteratorBase {
     return IteratorBase::Save(ctx, writer);
   }
 
+  // Returns a copy of the `status` where the error message is prepended with
+  // dataset name and the iterator prefix.
+  Status AddErrorContext(const Status& status) const {
+    return Status(status.code(),
+                  strings::StrCat("Error in user-defined function passed to ",
+                                  dataset()->metadata().name(),
+                                  " transformation with iterator: ", prefix(),
+                                  ": ", status.message()));
+  }
+
  protected:
   Status Restore(IteratorContext* ctx, IteratorStateReader* reader) final {
     VLOG(2) << "Attempting to restore checkpoints on iterator (prefix: "
@@ -1570,16 +1580,6 @@ class DatasetBaseIterator : public IteratorBase {
   // currently between a `RecordStart` and a `RecordStop`.
   bool IsRecording(IteratorContext* ctx) {
     return node_ && node_->is_recording();
-  }
-
-  // Returns a copy of the `status` where the error message is prepended with
-  // dataset name and the iterator prefix.
-  Status AddErrorContext(const Status& status) {
-    return Status(status.code(),
-                  strings::StrCat("Error in user-defined function passed to ",
-                                  dataset()->metadata().name(),
-                                  " transformation with iterator: ", prefix(),
-                                  ": ", status.message()));
   }
 
  private:

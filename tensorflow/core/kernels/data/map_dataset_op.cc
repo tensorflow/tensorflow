@@ -187,9 +187,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
           *end_of_sequence = true;
           return absl::OkStatus();
         }
-      } else {
-        return s;
       }
+      if (!s.ok()) {
+        return AddErrorContext(s);
+      }
+      return s;
     }
 
    protected:
