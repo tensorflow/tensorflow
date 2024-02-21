@@ -422,17 +422,17 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         Status status;
         {
           mutex_lock l(result->mu);
-          auto allocation_callback =
-              [this, ctx, result]()
-                  TF_EXCLUSIVE_LOCKS_REQUIRED(&BatchResult::mu) {
-                    result->output_allocated = true;
-                    RecordBufferEnqueue(ctx.get(), result->output);
-                    return absl::OkStatus();
-                  };
           status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
-                             dataset()->parallel_copy_,
-                             std::move(allocation_callback), &result->output);
+                             dataset()->parallel_copy_, &result->output);
           result->status.Update(status);
+
+          if (result->status.ok()) {
+            result->output_allocated = true;
+            RecordBufferEnqueue(ctx.get(), result->output);
+          } else {
+            result->output.clear();
+            result->output_allocated = false;
+          }
         }
         CallCompleted(ctx, result);
         return status;

@@ -790,7 +790,6 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
 Status CopyBatch(CopyBatchParams params,
                  const std::vector<std::vector<Tensor>>& batch_elements,
                  bool parallel_copy,
-                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors) {
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
@@ -808,9 +807,6 @@ Status CopyBatch(CopyBatchParams params,
           "Failed to allocate memory for the batch of component ",
           component_index);
     }
-  }
-  if (allocation_callback) {
-    TF_RETURN_IF_ERROR(allocation_callback());
   }
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {

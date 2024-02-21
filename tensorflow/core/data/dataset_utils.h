@@ -302,14 +302,12 @@ struct CopyBatchParams {
 //
 // The `batch_elements` argument contains the individual elements to copy into a
 // batch. The `parallel_copy` argument indicates whether to parallelize the
-// copy. The `allocation_callback` argument can be used to pass a callback to
-// invoke upon successful allocation of the memory for the batch. The
-// `out_tensors` argument will be used to store the resulting batch (one for
+// copy.
+// The `out_tensors` argument will be used to store the resulting batch (one for
 // each component of the input).
 Status CopyBatch(CopyBatchParams params,
                  const std::vector<std::vector<Tensor>>& batch_elements,
                  bool parallel_copy,
-                 std::function<Status()> allocation_callback,
                  std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, task id,
