@@ -278,6 +278,38 @@ TEST_F(CoalescingTest, ColumnReduction) {
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
 }
 
+TEST_F(CoalescingTest, VariadicReduce) {
+  absl::string_view ir = R"(
+    HloModule module
+    max {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      max01 = s32[] maximum(p0, p1)
+      max23 = s32[] maximum(p2, p3)
+      ROOT max = (s32[], s32[]) tuple(max01, max23)
+    }
+    fusion {
+      p0 = s32 [5696,10,4] parameter(0)
+      p1 = s32 [5696,10,4] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT reduce = (s32[5696,4], s32[5696,4]) reduce(s32[5696,10,4] p0,
+        s32[5696,10,4] p1, s32[] p2, s32[] p3), dimensions={1}, to_apply=max
+    }
+    ENTRY entry {
+      p0 = s32 [5696,10,4] parameter(0)
+      p1 = s32 [5696,10,4] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT f = (s32[5696,4], s32[5696,4]) fusion(p0, p1, p2, p3),
+          kind=kInput, calls=fusion
+    })";
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir),
+              ElementsAre(true, true, true, true));
+}
+
 TEST_F(CoalescingTest, UnusedParameter) {
   Shape shape = ShapeUtil::MakeShape(F32, {100000});
 
