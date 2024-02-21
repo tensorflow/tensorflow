@@ -564,8 +564,8 @@ cc_library(
         "@triton//:TritonDialects",
         "@triton//:TritonTransforms",
     ] + if_cuda_is_configured([
-        "@triton//:NVGPUToLLVM",
-        "@triton//:TritonGPUToLLVM",
+        "@triton//third_party/nvidia:NVGPUToLLVM",
+        "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
         "@triton//:TritonGPUTransforms",
         "@triton//:TritonNvidiaGPUTransforms",
         "@triton//:TritonLLVMIR",
