@@ -178,6 +178,33 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(5):
       self.assertEqual(10, counts[i])
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[100],
+              buffer_size=[None, 10, 200],
+              seed=[None, 42],
+              use_tensor_input=[True, False])))
+  def testTensorInput(self, dataset_range, buffer_size, seed, use_tensor_input):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    unshuffled_output = self.getDatasetOutput(dataset)
+
+    if buffer_size:
+      buffer_size = (
+          constant_op.constant(buffer_size, dtype=dtypes.int64)
+          if use_tensor_input else buffer_size)
+    else:
+      buffer_size = dataset.cardinality()
+    seed = (constant_op.constant(seed, dtype=dtypes.int64)
+            if seed and use_tensor_input else seed)
+
+    shuffled_dataset = dataset.shuffle(buffer_size, seed=seed)
+    shuffled_output = self.getDatasetOutput(shuffled_dataset)
+    self.assertEqual(unshuffled_output, list(range(dataset_range)))
+    self.assertCountEqual(shuffled_output, unshuffled_output)
+    self.assertNotEqual(shuffled_output, unshuffled_output)
+
   @combinations.generate(test_base.default_test_combinations())
   def testUnknownCardinality(self):
     components = [0, 1, 2, 3, 4]
