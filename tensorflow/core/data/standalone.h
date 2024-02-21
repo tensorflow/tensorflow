@@ -88,7 +88,7 @@ class Iterator {
 
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
-  StatusOr<std::vector<Tensor>> Save();
+  absl::StatusOr<std::vector<Tensor>> Save();
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
