@@ -106,11 +106,6 @@ namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
 
-auto* saved_model_mla_check_time_milli_seconds =
-    tensorflow::monitoring::Gauge<int64_t, 1>::New(
-        "/tensorflow/tfrt/saved_model/mla_check_time",
-        "Record the MLA check time for the savedmodel.", "model_name");
-
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/import_time",
