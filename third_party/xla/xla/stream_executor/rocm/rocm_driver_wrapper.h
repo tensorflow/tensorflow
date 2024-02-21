@@ -53,7 +53,7 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                            \
       static const char *kName = TO_STR(hipSymbolName);                    \
       void *f;                                                             \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
           stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
               .value(),                                                    \
           kName, &f);                                                      \
@@ -106,7 +106,6 @@ namespace wrap {
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
   __macro(hipGraphAddMemAllocNode)                  \
-  __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddMemcpyNode1D)                  \
   __macro(hipGraphAddMemsetNode)                    \
   __macro(hipGraphAddMemFreeNode)                   \
@@ -116,7 +115,7 @@ namespace wrap {
   __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphExecDestroy)                      \
   __macro(hipGraphExecKernelNodeSetParams)          \
-  __macro(hipGraphExecMemcpyNodeSetParams)          \
+  __macro(hipGraphExecMemcpyNodeSetParams1D)        \
   __macro(hipGraphExecMemsetNodeSetParams)          \
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \

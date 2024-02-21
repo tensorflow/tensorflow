@@ -182,7 +182,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
   if (tls->depth == 0) {
     VLOG(3) << "ScopedActivateContext switching to "
             << hip_context->device_ordinal();
-    FAIL_IF_ROCM_ERROR(hipCtxSetCurrent(hip_context->context()),
+    FAIL_IF_ROCM_ERROR(wrap::hipCtxSetCurrent(hip_context->context()),
                        "Failed setting context");
     tls->depth = 1;
     tls->current_device_ordinal = hip_context->device_ordinal();
@@ -205,7 +205,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
 
   to_restore_ = tls->context;
   // Set the device and update thread local.
-  FAIL_IF_ROCM_ERROR(hipCtxSetCurrent(hip_context->context()),
+  FAIL_IF_ROCM_ERROR(wrap::hipCtxSetCurrent(hip_context->context()),
                      "Failed setting context");
   tls->current_device_ordinal = hip_context->device_ordinal();
   tls->context = hip_context;
@@ -229,7 +229,7 @@ ScopedActivateContext::~ScopedActivateContext() {
   }
 
   // Set context and update thread local.
-  FAIL_IF_ROCM_ERROR(hipCtxSetCurrent(to_restore_->context()),
+  FAIL_IF_ROCM_ERROR(wrap::hipCtxSetCurrent(to_restore_->context()),
                      "Failed setting context");
   tls->current_device_ordinal = to_restore_->device_ordinal();
   tls->context = to_restore_;
@@ -959,18 +959,9 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
           << "; context: " << context->context() << "; deps: " << deps.size();
 
-  hipMemcpy3DParms params{
-      .srcArray = {},
-      .srcPos = {},
-      .srcPtr = {.ptr = gpu_src, .pitch = size, .xsize = size, .ysize = 1},
-      .dstArray = {},
-      .dstPos = {},
-      .dstPtr = {.ptr = gpu_dst, .pitch = size, .xsize = size, .ysize = 1},
-      .extent = hipExtent{.width = size, .height = 1, .depth = 1},
-      .kind = hipMemcpyDeviceToDevice};
-
-  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemcpyNode(node, graph, deps.data(),
-                                                   deps.size(), &params),
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemcpyNode1D(
+                           node, graph, deps.data(), deps.size(), gpu_dst,
+                           gpu_src, size, hipMemcpyDeviceToDevice),
                        "Failed to add memcpy d2d node to a HIP graph");
 
   return absl::OkStatus();
@@ -984,18 +975,9 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
           << "; context: " << context->context();
 
-  hipMemcpy3DParms params{
-      .srcArray = {},
-      .srcPos = {},
-      .srcPtr = {.ptr = gpu_src, .pitch = size, .xsize = size, .ysize = 1},
-      .dstArray = {},
-      .dstPos = {},
-      .dstPtr = {.ptr = gpu_dst, .pitch = size, .xsize = size, .ysize = 1},
-      .extent = hipExtent{.width = size, .height = 1, .depth = 1},
-      .kind = hipMemcpyDeviceToDevice};
-
   RETURN_IF_ROCM_ERROR(
-      wrap::hipGraphExecMemcpyNodeSetParams(exec, node, &params),
+      wrap::hipGraphExecMemcpyNodeSetParams1D(exec, node, gpu_dst, gpu_src,
+                                              size, hipMemcpyDeviceToDevice),
       "Failed to set memcpy d2d node params");
 
   return absl::OkStatus();
