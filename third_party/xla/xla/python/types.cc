@@ -71,7 +71,7 @@ const CustomDtypes& GetCustomDtypes() {
 
 }  // namespace
 
-xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
+absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
   static auto& builtin_dtypes =
       *new absl::flat_hash_map<std::tuple<char, char, int>, PrimitiveType>({
           {{'?', 'b', 1}, PRED},
@@ -131,7 +131,7 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
                          np_type.char_(), np_type.kind(), np_type.itemsize());
 }
 
-xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+absl::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
   switch (type) {
     case PRED:
@@ -184,7 +184,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
   }
 }
 
-StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
+absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
   const CustomDtypes& custom_dtypes = GetCustomDtypes();
   switch (dtype.kind()) {
     case ifrt::DType::kPred:
@@ -318,7 +318,7 @@ const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type) {
   }
 }
 
-StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
+absl::StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define ENDIAN_PREFIX "<"
 #else
@@ -414,7 +414,8 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
                                /*innermost_stride_size=*/1);
 }
 
-StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
+absl::StatusOr<py::object> LiteralToPython(
+    std::shared_ptr<xla::Literal> literal) {
   xla::Literal& m = *literal;
   if (m.shape().IsTuple()) {
     std::vector<Literal> elems = m.DecomposeTuple();
@@ -440,7 +441,8 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
                    literal_object);
 }
 
-StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
+absl::StatusOr<PythonBufferTree> GetPythonBufferTree(
+    const py::object& argument) {
   PythonBufferTree tree;
   if (py::isinstance<py::tuple>(argument)) {
     py::tuple tuple = py::reinterpret_borrow<py::tuple>(argument);
