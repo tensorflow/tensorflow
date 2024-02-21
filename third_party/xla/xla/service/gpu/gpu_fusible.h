@@ -64,11 +64,6 @@ struct FusionInfoCache {
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
 
-// Returns projected shared memory usage of a reduction fusion.
-int64_t ReductionProjectedShmemUsageBytes(
-    const ReductionDimensions& reduction_dimensions,
-    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups);
-
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
 // Whether the op transposes the physical data layout. Fusing such ops may lead
