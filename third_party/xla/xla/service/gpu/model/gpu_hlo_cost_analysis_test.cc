@@ -537,5 +537,82 @@ TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseParameterAndRoot) {
             0.f);
 }
 
+TEST_F(GpuHloCostAnalysisTest, Reduce) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[32]{0} reduce(param_0.3, constant), dimensions={1}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+
+  int64_t input_bytes_accessed = 4 * 32 * 40;
+  int64_t init_bytes_accessed = 4 * 32;
+  int64_t output_bytes_accessed = 4 * 32;
+
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 0), input_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 1), init_bytes_accessed);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce), output_bytes_accessed);
+  EXPECT_EQ(analysis_.bytes_accessed(*reduce),
+            input_bytes_accessed + init_bytes_accessed + output_bytes_accessed);
+  EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 3);
+}
+
+TEST_F(GpuHloCostAnalysisTest, VariadicReduce) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[] parameter(3)
+  add.0 = f32[] add(param_0, param_2)
+  add.1 = f32[] add(param_1, param_3)
+  ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  param_1.3 = f32[32,40]{1,0} parameter(1)
+  param_2.2 = f32[] parameter(2)
+  constant = f32[] constant(0)
+  ROOT reduce = (f32[32]{0}, f32[32]{0}) reduce(param_0.3, param_1.3, param_2.2, constant), dimensions={1}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+
+  int64_t input_bytes_accessed = 4 * 32 * 40;
+  int64_t init_bytes_accessed = 4 * 32;
+  int64_t output_bytes_accessed = 2 * 4 * 32;
+
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 0), input_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 1), input_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 2), init_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 3), init_bytes_accessed);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce), output_bytes_accessed);
+  EXPECT_EQ(analysis_.bytes_accessed(*reduce), 2 * input_bytes_accessed +
+                                                   2 * init_bytes_accessed +
+                                                   output_bytes_accessed);
+  EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 6);
+}
+
 }  // namespace gpu
 }  // namespace xla

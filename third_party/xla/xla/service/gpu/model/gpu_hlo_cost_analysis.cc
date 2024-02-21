@@ -431,6 +431,51 @@ absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
+  // HloCostAnalysis::HandleReduce computes FLOPs for the computation correctly,
+  // but `bytes_accessed` estimates are different for GPU.
+  TF_RETURN_IF_ERROR(HloCostAnalysis::HandleReduce(hlo));
+
+  const HloReduceInstruction* reduce = DynCast<HloReduceInstruction>(hlo);
+  auto output_shape = reduce->shape().IsArray()
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      reduce->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        output_bytes_accessed += GetShapeSize(sub_shape);
+      });
+
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+
+  int64_t bytes_accessed = output_bytes_accessed;
+  for (int64_t input_operand_id = 0; input_operand_id < reduce->input_count();
+       ++input_operand_id) {
+    bytes_accessed +=
+        current_properties_.operand_bytes_accessed(input_operand_id);
+  }
+
+  int64_t output_shape_size = ShapeUtil::ElementsIn(output_shape);
+  for (int64_t init_operand_id = reduce->input_count();
+       init_operand_id < reduce->operand_count(); ++init_operand_id) {
+    auto init_operand = reduce->operand(init_operand_id);
+
+    int64_t operand_bytes_accessed =
+        output_shape_size * GetShapeSize(init_operand->shape());
+    current_properties_.set_operand_bytes_accessed(init_operand_id,
+                                                   operand_bytes_accessed);
+    current_properties_.set_operand_utilization(init_operand_id,
+                                                output_shape_size);
+
+    bytes_accessed += operand_bytes_accessed;
+  }
+
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  return absl::OkStatus();
+}
+
 absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
     const HloInstruction* hlo) {
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(device_info_, hlo);

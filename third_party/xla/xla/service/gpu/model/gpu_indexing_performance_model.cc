@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/status.h"
@@ -53,8 +54,28 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
   TF_CHECK_OK(
       cost_analysis.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
-  int64_t num_elements = ShapeUtil::ElementsInRecursive(instr->shape());
+  int64_t num_elements = [&] {
+    if (instr->opcode() == HloOpcode::kReduce && instr->shape().IsTuple()) {
+      return ShapeUtil::ElementsInRecursive(instr->shape().tuple_shapes(0));
+    }
+    return ShapeUtil::ElementsInRecursive(instr->shape());
+  }();
+
   return cost_analysis.flop_count(*instr) / num_elements;
+}
+
+int64_t GpuPerformanceModelWithIndexingAnalysis::GetShapeSizeRecursive(
+    const Shape& shape) const {
+  CHECK(shape.IsArray() || shape.IsTuple());
+  if (shape.IsArray()) {
+    return shape_size_(shape);
+  }
+
+  int64_t total_size = 0;
+  for (const auto& element_shape : shape.tuple_shapes()) {
+    total_size += GetShapeSizeRecursive(element_shape);
+  }
+  return total_size;
 }
 
 int64_t GetIterationSpaceSize(const IndexingMap& indexing_map,
@@ -145,7 +166,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     }
   }
 
-  int64_t bytes_written = shape_size_(root_shape);
+  int64_t bytes_written = GetShapeSizeRecursive(root_shape);
 
   absl::Duration compute_time = ComputeTime(*device_info_, flops, num_threads);
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);

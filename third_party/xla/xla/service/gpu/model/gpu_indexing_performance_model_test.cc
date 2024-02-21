@@ -105,6 +105,68 @@ ENTRY entry_computation {
   EXPECT_EQ(runtime_data.exec_time, absl::ZeroDuration());
 }
 
+TEST_F(GpuIndexingPerformanceModelTest, Reduce) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[32]{0} reduce(param_0.3, constant), dimensions={1}, to_apply=add
+}
+)"));
+
+  auto instruction = module->entry_computation()->root_instruction();
+
+  auto runtime_data =
+      indexing_cost_model_.EstimateRunTimeForInstruction(instruction);
+  EXPECT_EQ(runtime_data.flops, 3744);
+  EXPECT_EQ(runtime_data.bytes_written, 128);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.write_time), 0, 1);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.exec_time), 29, 1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest, VariadicReduce) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[] parameter(3)
+  add.0 = f32[] add(param_0, param_2)
+  add.1 = f32[] add(param_1, param_3)
+  ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  param_1.3 = f32[32,40]{1,0} parameter(1)
+  param_2.2 = f32[] parameter(2)
+  constant = f32[] constant(0)
+  ROOT reduce = (f32[32]{0}, f32[32]{0}) reduce(param_0.3, param_1.3, param_2.2, constant), dimensions={1}, to_apply=add
+}
+)"));
+
+  auto instruction = module->entry_computation()->root_instruction();
+
+  auto runtime_data =
+      indexing_cost_model_.EstimateRunTimeForInstruction(instruction);
+  EXPECT_EQ(runtime_data.flops, 7488);
+  EXPECT_EQ(runtime_data.bytes_written, 256);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.write_time), 0, 1);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.exec_time), 58, 1);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

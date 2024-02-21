@@ -61,6 +61,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   // the output.
   int64_t FlopsPerElement(const HloInstruction* instr) const;
 
+  int64_t GetShapeSizeRecursive(const Shape& shape) const;
+
   const HloOpProfiles::HloOpProfile* hlo_op_profile_;
   const se::DeviceDescription* device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
