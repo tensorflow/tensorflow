@@ -33,7 +33,7 @@ EventPool::Handle::~Handle() {
 EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
-StatusOr<EventPool::Handle> EventPool::AllocateEvent(
+absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     se::StreamExecutor* executor) {
   Handle event;
 
@@ -58,7 +58,7 @@ void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
   handle.sequence_number_ = next_sequence_number_++;
 }
 
-StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
+absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
                       AllocateEvent(stream->parent()));
