@@ -178,8 +178,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
   VLogResult(flops, bytes_read, bytes_written, num_threads, compute_time,
              read_time, write_time, exec_time);
 
-  return EstimateRunTimeData{flops, bytes_written, num_threads, write_time,
-                             exec_time};
+  return EstimateRunTimeData{flops,      bytes_written, num_threads, read_time,
+                             write_time, compute_time,  exec_time};
 }
 
 EstimateRunTimeData

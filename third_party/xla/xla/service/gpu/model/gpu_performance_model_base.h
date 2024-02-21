@@ -37,7 +37,9 @@ struct EstimateRunTimeData {
   int64_t flops;
   int64_t bytes_written;
   int64_t num_threads;
+  absl::Duration read_time;
   absl::Duration write_time;
+  absl::Duration compute_time;
   absl::Duration exec_time;
 };
 

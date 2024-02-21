@@ -144,11 +144,11 @@ ENTRY e {
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, &analysis_, GpuPerformanceModelOptions::Default());
-  double recorded_cycles = root->backend_config<GpuBackendConfig>()
-                               ->fusion_backend_config()
-                               .reification_cost()
-                               .end_to_end_cycles();
-  EXPECT_NEAR(recorded_cycles, 257.7, 0.1);
+  auto reification_cost = root->backend_config<GpuBackendConfig>()
+                              ->fusion_backend_config()
+                              .reification_cost();
+  EXPECT_NEAR(reification_cost.end_to_end_cycles(), 257.7, 0.1);
+  EXPECT_NEAR(reification_cost.exec_time_us(), 0, 1);
 
   auto indexing_t = indexing_cost_model_.EstimateRunTimes(root);
   EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 1, 1);
@@ -181,11 +181,13 @@ ENTRY e {
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, &analysis_, GpuPerformanceModelOptions::Default());
-  double recorded_cycles = root->backend_config<GpuBackendConfig>()
-                               ->fusion_backend_config()
-                               .reification_cost()
-                               .end_to_end_cycles();
-  EXPECT_NEAR(recorded_cycles, 220284, 100);
+  auto reification_cost = root->backend_config<GpuBackendConfig>()
+                              ->fusion_backend_config()
+                              .reification_cost();
+  EXPECT_NEAR(reification_cost.end_to_end_cycles(), 220284, 100);
+  EXPECT_NEAR(reification_cost.exec_time_us(), 156, 10);
+  EXPECT_NEAR(reification_cost.compute_time_us(), 1, 1);
+  EXPECT_NEAR(reification_cost.memory_access_time_us(), 156, 10);
 }
 
 TEST_F(GpuPerformanceModelTest, L1CacheEffect) {
