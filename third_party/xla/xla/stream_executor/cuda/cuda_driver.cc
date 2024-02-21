@@ -1396,6 +1396,7 @@ struct BitPatternToValue {
             "Failed to load PTX text as a module: %s", ToString(res)));
       }
       notification.Notify();
+      return;
     }
 
     VLOG(3) << "PTX compilation info log (" << info_log_buffer_bytes
