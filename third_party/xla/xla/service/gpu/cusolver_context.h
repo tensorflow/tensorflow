@@ -19,6 +19,8 @@ limitations under the License.
 #include <complex>
 #include <memory>
 
+#include "absl/status/status.h"
+
 #define TENSORFLOW_USE_HIPSOLVER \
   (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION >= 40500))
 #define TENSORFLOW_USE_ROCSOLVER \
@@ -75,6 +77,23 @@ class GpuSolverContext {
   absl::Status PotrfBatched(se::blas::UpperLower uplo, int n,
                             se::DeviceMemory<std::complex<double>*> as, int lda,
                             se::DeviceMemory<int> lapack_info, int batch_size);
+
+  absl::Status Potrf(se::blas::UpperLower uplo, int n,
+                     se::DeviceMemory<float> a, int lda,
+                     se::DeviceMemory<int> lapack_info,
+                     se::DeviceMemory<float> workspace);
+  absl::Status Potrf(se::blas::UpperLower uplo, int n,
+                     se::DeviceMemory<double> a, int lda,
+                     se::DeviceMemory<int> lapack_info,
+                     se::DeviceMemory<double> workspace);
+  absl::Status Potrf(se::blas::UpperLower uplo, int n,
+                     se::DeviceMemory<std::complex<float>> a, int lda,
+                     se::DeviceMemory<int> lapack_info,
+                     se::DeviceMemory<std::complex<float>> workspace);
+  absl::Status Potrf(se::blas::UpperLower uplo, int n,
+                     se::DeviceMemory<std::complex<double>> a, int lda,
+                     se::DeviceMemory<int> lapack_info,
+                     se::DeviceMemory<std::complex<double>> workspace);
 
   // Returns the max size of the `workspace` required by Potrf and PotrfBatched,
   // in number of elements of `type`.
