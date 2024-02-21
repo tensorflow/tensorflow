@@ -147,3 +147,4 @@ tsl/mkl/BUILD:
 tsl/mkl/LICENSE:
 tsl/mkl/MKL_LICENSE:
 tsl/mkl/build_defs.bzl:
+tsl/profiler/BUILD:
