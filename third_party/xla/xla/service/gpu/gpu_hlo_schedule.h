@@ -29,7 +29,7 @@ struct ScheduleMetadata {
 };
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
-StatusOr<ScheduleMetadata> ScheduleGpuModule(
+absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info);
 

@@ -190,7 +190,7 @@ struct TritonGemmConfig {
  public:
   // Creates a TritonGemmConfig from the supplied proto, doing a simple sanity
   // check.
-  static StatusOr<TritonGemmConfig> FromProto(
+  static absl::StatusOr<TritonGemmConfig> FromProto(
       const AutotuneResult::TritonGemmKey& proto);
   AutotuneResult::TritonGemmKey ToProto() const;
 

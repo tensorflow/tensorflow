@@ -753,7 +753,7 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
 }  // namespace gpublas_lt
 
-/*static*/ StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
+/*static*/ absl::StatusOr<TritonGemmConfig> TritonGemmConfig::FromProto(
     const AutotuneResult::TritonGemmKey& proto) {
   // Sanity check to avoid loading incomplete data.
   TF_RET_CHECK(proto.block_m() > 0);

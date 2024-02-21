@@ -1561,8 +1561,8 @@ Value RoundToBF16(ImplicitLocOpBuilder& b, Value input) {
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
-                                     Value rhs, Value acc) {
+absl::StatusOr<Value> Emit6xBfloat16MatMul(ImplicitLocOpBuilder& b, Value lhs,
+                                           Value rhs, Value acc) {
   Type f32 = b.getF32Type();
   TF_RET_CHECK(lhs.getType().cast<ShapedType>().getElementType() == f32);
   TF_RET_CHECK(rhs.getType().cast<ShapedType>().getElementType() == f32);
@@ -1810,7 +1810,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
         dot_input_rhs.getType().cast<ShapedType>().getElementType() == f32;
     Value accumulator_next;
     if (use_bf16_6x) {
-      StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
+      absl::StatusOr<Value> accumulator_next_or = Emit6xBfloat16MatMul(
           b, dot_input_lhs, dot_input_rhs, iter_args.back());
       TF_CHECK_OK(accumulator_next_or.status());
       accumulator_next = accumulator_next_or.value();

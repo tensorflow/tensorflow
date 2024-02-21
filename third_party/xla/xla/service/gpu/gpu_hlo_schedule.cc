@@ -657,7 +657,7 @@ static int64_t GetSchedulerMemoryLimit(
     const HloModule* module, const se::DeviceDescription& gpu_device_info,
     int pointer_size);
 
-StatusOr<ScheduleMetadata> ScheduleGpuModule(
+absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info) {
   int64_t memory_limit =
