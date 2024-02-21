@@ -56,7 +56,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
   ResetIrHook();
   TF_ASSERT_OK(status);
 
-  StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
@@ -82,7 +82,7 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
   ResetIrHook();
   TF_ASSERT_OK(status);
 
-  StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
+  absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }

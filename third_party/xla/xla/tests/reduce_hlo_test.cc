@@ -51,7 +51,7 @@ class ReduceWithLayoutTest
     : public HloTestBase,
       public ::testing::WithParamInterface<ReduceLayout> {
  public:
-  StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
+  absl::StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
     const char* const hlo_string = R"(
 HloModule BadReduce
 

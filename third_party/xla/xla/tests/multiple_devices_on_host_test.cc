@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-StatusOr<XlaComputation> BuildComputation() {
+absl::StatusOr<XlaComputation> BuildComputation() {
   XlaBuilder b("computation");
   Shape scalar_s32 = ShapeUtil::MakeShape(S32, {});
   XlaOp infeed = InfeedWithToken(CreateToken(&b), scalar_s32);
@@ -46,7 +46,7 @@ void CompileAndExecute(
       xla::ClientLibrary::GetXlaService(client->platform())
           ->backend()
           .memory_allocator());
-  StatusOr<ScopedShapedBuffer> result =
+  absl::StatusOr<ScopedShapedBuffer> result =
       executable->Run(absl::Span<const ShapedBuffer* const>(), execute_options);
   {
     absl::MutexLock lock(results_mutex);

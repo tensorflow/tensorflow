@@ -56,8 +56,9 @@ class PseudorandomGenerator {
 // Generates fake data in a literal of the given shape, or returns an error
 // status if the element type is currently unhandled for fake data
 // generation. See below for documentation of pseudo_random and use_large_range.
-StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
-                                  bool use_large_range = false);
+absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
+                                        bool pseudo_random = true,
+                                        bool use_large_range = false);
 
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
@@ -93,7 +94,7 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt);
@@ -101,7 +102,7 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt);
