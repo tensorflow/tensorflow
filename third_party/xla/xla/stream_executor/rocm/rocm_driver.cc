@@ -895,7 +895,7 @@ static hipMemAllocationType ToHipAllocationType(
 
 /*static*/ absl::Status GpuDriver::GraphAddMemFreeNode(
     GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst) {
+    absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst) {
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemFreeNode(node, graph, deps.data(),
                                                     deps.size(), gpu_dst),
                        "Failed to add memory free node to a HIP graph");
@@ -904,7 +904,7 @@ static hipMemAllocationType ToHipAllocationType(
 
 /*static*/ absl::Status GpuDriver::GraphAddMemAllocNode(
     GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
+    absl::Span<const GpuGraphNodeHandle> deps, MemAccessFlags access_flags,
     MemLocationType location_type, int device_id,
     MemAllocationType allocation_type, uint64_t size, GpuDevicePtr* d_ptr,
     uint64_t max_pool_size) {
@@ -952,7 +952,7 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
 
 /* static */ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
     GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
+    absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
     GpuDevicePtr gpu_src, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(gpu_dst)
@@ -1035,7 +1035,7 @@ struct BitPatternToValue {
 
 /* static */ absl::Status GpuDriver::GraphAddMemsetNode(
     GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr dst,
+    absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr dst,
     std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph
