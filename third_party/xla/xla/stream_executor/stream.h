@@ -244,15 +244,6 @@ class Stream {
                      uint64_t size);
   absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
                       const DeviceMemoryBase &gpu_src, uint64_t size);
-
-  // Calls to the device-to-device copy overload of ThenMemcpy -- useful for
-  // ensuring that the host pointer isn't getting confused accidentally with a
-  // device pointer if you're not doing metaprogramming against the API.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemcpyD2D(DeviceMemoryBase *gpu_dst,
-                        const DeviceMemoryBase &gpu_src, uint64_t size) {
-    return ThenMemcpy(gpu_dst, gpu_src, size);
-  }
   absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
                          const DeviceMemoryBase &gpu_src, uint64_t size) {
     return Memcpy(gpu_dst, gpu_src, size);

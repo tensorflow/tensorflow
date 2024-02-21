@@ -608,8 +608,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       if (!info.content.span().empty()) {
         // This means the constant did not have an initializer in the PTX and
         // therefore must be initialized by XLA here.
-        stream->ThenMemcpy(&global, info.content.span().data(),
-                           info.content.span().size());
+        TF_RETURN_IF_ERROR(stream->Memcpy(&global, info.content.span().data(),
+                                          info.content.span().size()));
         submitted_mem_copies = true;
       }
     } else {
@@ -907,8 +907,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);
         CHECK_EQ(aliased_buffer.size(), result_buffer.size());
-        run_options->stream()->ThenMemcpyD2D(&result_buffer, aliased_buffer,
-                                             aliased_buffer.size());
+        TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(
+            &result_buffer, aliased_buffer, aliased_buffer.size()));
         aliased_buffer = result_buffer;
       }
     }

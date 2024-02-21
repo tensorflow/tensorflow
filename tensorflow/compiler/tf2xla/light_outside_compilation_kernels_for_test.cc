@@ -49,10 +49,11 @@ class TestStaticTfOp : public OpKernel {
     se::DeviceMemoryBase gpu_dst{out_tensor->data(), size};
     se::Stream* stream = ctx->op_device_context()->stream();
 
-    stream->ThenMemcpyD2D(
-        /*gpu_dst=*/&gpu_dst,
-        /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
-        /*size=*/input.AllocatedBytes());
+    OP_REQUIRES_OK(ctx,
+                   stream->MemcpyD2D(
+                       /*gpu_dst=*/&gpu_dst,
+                       /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
+                       /*size=*/input.AllocatedBytes()));
   }
 };
 
@@ -91,14 +92,16 @@ class TestStaticMultipleOutputTfOp : public OpKernel {
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
 
-    stream->ThenMemcpyD2D(
-        /*gpu_dst=*/&gpu_dst1,
-        /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
-        /*size=*/input.AllocatedBytes());
-    stream->ThenMemcpyD2D(
-        /*gpu_dst=*/&gpu_dst2,
-        /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
-        /*size=*/input.AllocatedBytes());
+    OP_REQUIRES_OK(ctx,
+                   stream->MemcpyD2D(
+                       /*gpu_dst=*/&gpu_dst1,
+                       /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
+                       /*size=*/input.AllocatedBytes()));
+    OP_REQUIRES_OK(ctx,
+                   stream->MemcpyD2D(
+                       /*gpu_dst=*/&gpu_dst2,
+                       /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
+                       /*size=*/input.AllocatedBytes()));
   }
 };
 
@@ -145,11 +148,12 @@ class TestDynamicTfOp : public OpKernel {
         ctx->device()->tensorflow_accelerator_device_info()->stream;
 
     se::DeviceMemoryBase gpu_dst{out_tensor->data(), size_to_cpy};
-    stream->ThenMemcpyD2D(
-        /*gpu_dst=*/&gpu_dst,
-        /*gpu_src=*/
-        se::DeviceMemoryBase{input.data(), static_cast<uint64_t>(size)},
-        /*size=*/size_to_cpy);
+    OP_REQUIRES_OK(ctx, stream->MemcpyD2D(
+                            /*gpu_dst=*/&gpu_dst,
+                            /*gpu_src=*/
+                            se::DeviceMemoryBase{input.data(),
+                                                 static_cast<uint64_t>(size)},
+                            /*size=*/size_to_cpy));
   }
 
  private:
@@ -208,9 +212,9 @@ class DynamicMultidimOp : public OpKernel {
 
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
-    stream->ThenMemcpy(
-        /*gpu_dst=*/&gpu_dst, /*host_src=*/host_data.data(),
-        /*size=*/num_elements * sizeof(float));
+    OP_REQUIRES_OK(ctx, stream->Memcpy(
+                            /*gpu_dst=*/&gpu_dst, /*host_src=*/host_data.data(),
+                            /*size=*/num_elements * sizeof(float)));
   }
 };
 
@@ -280,9 +284,10 @@ class TestTfMustBeConstantOp : public OpKernel {
     TF_CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
                                    pinned_alloc_attrs));
 
-    stream->ThenMemcpy(tmp.data(),
-                       se::DeviceMemoryBase{input.data(), allocated_size},
-                       allocated_size);
+    OP_REQUIRES_OK(
+        ctx, stream->Memcpy(tmp.data(),
+                            se::DeviceMemoryBase{input.data(), allocated_size},
+                            allocated_size));
 
     OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
 
@@ -295,7 +300,7 @@ class TestTfMustBeConstantOp : public OpKernel {
                                              &out_tensor));
     se::DeviceMemoryBase gpu_dst{out_tensor->data(),
                                  static_cast<uint64_t>(allocated_size)};
-    stream->ThenMemcpy(&gpu_dst, tmp.data(), allocated_size);
+    OP_REQUIRES_OK(ctx, stream->Memcpy(&gpu_dst, tmp.data(), allocated_size));
   }
 };
 
@@ -339,10 +344,11 @@ class TestDynamicTfWithBoundOp : public OpKernel {
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
     se::DeviceMemoryBase gpu_dst{out_tensor->data(), size_to_cpy};
-    stream->ThenMemcpyD2D(
-        /*gpu_dst=*/&gpu_dst,
-        /*gpu_src=*/se::DeviceMemoryBase{input.data(), size_to_cpy},
-        /*size=*/size_to_cpy);
+    OP_REQUIRES_OK(
+        ctx, stream->MemcpyD2D(
+                 /*gpu_dst=*/&gpu_dst,
+                 /*gpu_src=*/se::DeviceMemoryBase{input.data(), size_to_cpy},
+                 /*size=*/size_to_cpy));
   }
 
  private:

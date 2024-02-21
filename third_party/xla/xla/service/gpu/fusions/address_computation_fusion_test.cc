@@ -846,11 +846,10 @@ TEST_F(AddressComputationFusionTest, SlicedOperandAliasingOutput) {
 
 static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
                            ffi::BufferBase src, ffi::BufferBase dst) {
-  run_options->stream()->ThenMemcpyD2D(
+  return run_options->stream()->MemcpyD2D(
       &dst.data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
-  return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
@@ -913,16 +912,16 @@ static absl::Status SubBuffers(const ServiceExecutableRunOptions* run_options,
   //  dst3:  result at tuple index {2}, shape f32[1024]
   //  dst4:  result at tuple index {3}, shape f32[4,8]
 
-  run_options->stream()->ThenMemcpyD2D(&dst0.data, src3.data,
-                                       8 * sizeof(float));
-  run_options->stream()->ThenMemcpyD2D(&dst1.data, src0.data,
-                                       128 * sizeof(float));
-  run_options->stream()->ThenMemcpyD2D(&dst2.data, src1.data,
-                                       256 * sizeof(float));
-  run_options->stream()->ThenMemcpyD2D(&dst3.data, src2.data,
-                                       1024 * sizeof(float));
-  run_options->stream()->ThenMemcpyD2D(&dst4.data, src4.data,
-                                       4 * 8 * sizeof(float));
+  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst0.data, src3.data,
+                                                      8 * sizeof(float)));
+  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst1.data, src0.data,
+                                                      128 * sizeof(float)));
+  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst2.data, src1.data,
+                                                      256 * sizeof(float)));
+  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst3.data, src2.data,
+                                                      1024 * sizeof(float)));
+  TF_RETURN_IF_ERROR(run_options->stream()->MemcpyD2D(&dst4.data, src4.data,
+                                                      4 * 8 * sizeof(float)));
   return absl::OkStatus();
 }
 

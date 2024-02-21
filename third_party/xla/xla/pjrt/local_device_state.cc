@@ -139,11 +139,10 @@ Status LocalDeviceState::SynchronizeAllActivity() {
 Status LocalDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
     se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
-  // The default implementation simply calls ThenMemcpyD2D, and assumes that
+  // The default implementation simply calls MemcpyD2D, and assumes that
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
-  transfer_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return OkStatus();
+  return transfer_stream->MemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
 }
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,

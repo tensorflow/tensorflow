@@ -871,11 +871,10 @@ TEST_F(AddressComputationFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
 
 static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
                            ffi::BufferBase src, ffi::BufferBase dst) {
-  run_options->stream()->ThenMemcpyD2D(
+  return run_options->stream()->MemcpyD2D(
       &dst.data, src.data,
       absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
           sizeof(float));
-  return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
