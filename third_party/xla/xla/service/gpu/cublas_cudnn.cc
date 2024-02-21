@@ -75,43 +75,43 @@ const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
 const absl::string_view kCudnnNormCallTarget = "__cudnn$norm";
 
 // fMHA forward call targets.
-const absl::string_view kCudnnfMHABmmBmmCallTarget = "__cudnn$fhmaBmmBmm";
-const absl::string_view kCudnnfMHASoftmaxCallTarget = "__cudnn$fhmaSoftmax";
+const absl::string_view kCudnnfMHABmmBmmCallTarget = "__cudnn$fmhaBmmBmm";
+const absl::string_view kCudnnfMHASoftmaxCallTarget = "__cudnn$fmhaSoftmax";
 const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget =
-    "__cudnn$fhmaScaleBiasMaskSoftmax";
+    "__cudnn$fmhaScaleBiasMaskSoftmax";
 const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget =
-    "__cudnn$fhmaScaleBiasMaskSoftmaxDropout";
+    "__cudnn$fmhaScaleBiasMaskSoftmaxDropout";
 const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget =
-    "__cudnn$fhmaScaleBiasSoftmaxDropout";
+    "__cudnn$fmhaScaleBiasSoftmaxDropout";
 const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget =
-    "__cudnn$fhmaScaleBiasSoftmax";
+    "__cudnn$fmhaScaleBiasSoftmax";
 const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget =
-    "__cudnn$fhmaScaleMaskSoftmax";
+    "__cudnn$fmhaScaleMaskSoftmax";
 const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget =
-    "__cudnn$fhmaScaleMaskSoftmaxDropout";
+    "__cudnn$fmhaScaleMaskSoftmaxDropout";
 const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget =
-    "__cudnn$fhmaSoftmaxDropout";
+    "__cudnn$fmhaSoftmaxDropout";
 
 // fMHA backward call targets.
 const absl::string_view kCudnnfMHABmmBmmBackwardCallTarget =
-    "__cudnn$fhmaBmmBmmBackward";
+    "__cudnn$fmhaBmmBmmBackward";
 const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget =
-    "__cudnn$fhmaSoftmaxBackward";
+    "__cudnn$fmhaSoftmaxBackward";
 const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget =
-    "__cudnn$fhmaScaleBiasMaskSoftmaxBackward";
+    "__cudnn$fmhaScaleBiasMaskSoftmaxBackward";
 const absl::string_view
     kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget =
-        "__cudnn$fhmaScaleBiasMaskSoftmaxDropoutBackward";
+        "__cudnn$fmhaScaleBiasMaskSoftmaxDropoutBackward";
 const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget =
-    "__cudnn$fhmaScaleBiasSoftmaxDropoutBackward";
+    "__cudnn$fmhaScaleBiasSoftmaxDropoutBackward";
 const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget =
-    "__cudnn$fhmaScaleBiasSoftmaxBackward";
+    "__cudnn$fmhaScaleBiasSoftmaxBackward";
 const absl::string_view kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget =
-    "__cudnn$fhmaScaleMaskSoftmaxBackward";
+    "__cudnn$fmhaScaleMaskSoftmaxBackward";
 const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutBackwardCallTarget =
-    "__cudnn$fhmaScaleMaskSoftmaxDropoutBackward";
+    "__cudnn$fmhaScaleMaskSoftmaxDropoutBackward";
 const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget =
-    "__cudnn$fhmaSoftmaxDropoutBackward";
+    "__cudnn$fmhaSoftmaxDropoutBackward";
 
 const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
 

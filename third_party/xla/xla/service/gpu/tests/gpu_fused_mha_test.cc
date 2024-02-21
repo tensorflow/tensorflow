@@ -134,7 +134,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     EXPECT_TRUE(
         LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
 
-    std::string prefix = "__cudnn$fhma";
+    std::string prefix = "__cudnn$fmha";
     IsFMHACalled(hlo_string, config_with_fmha, prefix, is_training);
   }
 
