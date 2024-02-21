@@ -644,6 +644,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
