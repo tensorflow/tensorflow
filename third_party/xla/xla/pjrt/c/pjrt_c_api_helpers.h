@@ -138,7 +138,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 // The data of returned variable-length PJRT_NamedValue list is backed by
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
 // raise errors for unsupported PjRtValueType.
-xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
+absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
     int api_minor_version);
 
@@ -165,7 +165,7 @@ xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);
 
-xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
+absl::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
     PJRT_Client* client, const PJRT_Api* api);
 
 // Releases `chunk`.
@@ -245,12 +245,12 @@ struct BufferMemoryLayoutData {
   std::vector<int64_t> tile_dims;
   std::vector<size_t> tile_dim_sizes;
 };
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout);
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     absl::Span<int64_t const> byte_strides);
 
-xla::StatusOr<xla::Layout> ConvertToLayout(
+absl::StatusOr<xla::Layout> ConvertToLayout(
     const PJRT_Buffer_MemoryLayout_Tiled& c_tiled);
 
 PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer);
@@ -259,10 +259,10 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
 PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
                                          PJRT_Buffer* buffer);
 
-xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
-                                             const int64_t* dims,
-                                             size_t num_dims,
-                                             PJRT_Buffer_MemoryLayout* layout);
+absl::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                              const int64_t* dims,
+                                              size_t num_dims,
+                                              PJRT_Buffer_MemoryLayout* layout);
 
 absl::string_view PlatformName(const PJRT_Api* api,
                                const PJRT_TopologyDescription* topo_desc);

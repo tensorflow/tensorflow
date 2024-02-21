@@ -516,7 +516,7 @@ static void PopulatePjrtExecutableAddressableDevices(
 
 namespace {
 
-xla::StatusOr<xla::CompileOptions> ParseCompileOptions(
+absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
     absl::string_view options_str) {
   xla::CompileOptionsProto options_proto;
   // Open source ParseFromString doesn't support string_view.
@@ -529,7 +529,7 @@ xla::StatusOr<xla::CompileOptions> ParseCompileOptions(
 
 using ProgramVariant =
     std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>;
-xla::StatusOr<
+absl::StatusOr<
     std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>>
 ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
                  const PJRT_Program* program) {
@@ -1075,8 +1075,8 @@ static xla::Status VerifyOptimizedProgramArgs(
   return xla::OkStatus();
 }
 
-static xla::StatusOr<std::shared_ptr<xla::HloModule>> GetOptimizedProgramModule(
-    const PJRT_Executable_OptimizedProgram_Args* args) {
+static absl::StatusOr<std::shared_ptr<xla::HloModule>>
+GetOptimizedProgramModule(const PJRT_Executable_OptimizedProgram_Args* args) {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
                       args->executable->get()->GetHloModules());
   if (hlo_modules.empty()) {
@@ -2173,9 +2173,9 @@ static void AttachDevicesAndMemories(PJRT_Client* c_client) {
   }
 }
 
-static xla::StatusOr<std::unique_ptr<PJRT_TopologyDescription>>
+static absl::StatusOr<std::unique_ptr<PJRT_TopologyDescription>>
 GetStatusOrTopologyDescription(const xla::PjRtClient& cpp_client) {
-  xla::StatusOr<const xla::PjRtTopologyDescription*> status_or_cpp_topo =
+  absl::StatusOr<const xla::PjRtTopologyDescription*> status_or_cpp_topo =
       cpp_client.GetTopologyDescription();
   if (!status_or_cpp_topo.ok()) {
     return status_or_cpp_topo.status();

@@ -419,7 +419,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
   return PjRtFuture<Status>(std::move(promise));
 }
 
-static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
+static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     const std::string& name, const xla::PjRtValueType& value,
     int api_minor_version) {
   PJRT_NamedValue c_value;
@@ -468,7 +468,7 @@ static xla::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
   return c_value;
 }
 
-xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
+absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
     int api_minor_version) {
   std::vector<PJRT_NamedValue> c_value_list;
@@ -524,7 +524,7 @@ ConvertFromPjRtNamedValueList(const PJRT_NamedValue* c_value_list,
   return cpp_value_map;
 }
 
-static xla::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
+static absl::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
     xla::PjRtValueType cpp_value) {
   if (std::holds_alternative<std::string>(cpp_value)) {
     return PJRT_NamedValue_Type::PJRT_NamedValue_kString;
@@ -616,7 +616,7 @@ absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
   return platform_name;
 }
 
-xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
+absl::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
     PJRT_Client* client, const PJRT_Api* api) {
   PJRT_Client_TopologyDescription_Args args;
   args.struct_size = PJRT_Client_TopologyDescription_Args_STRUCT_SIZE;
@@ -687,7 +687,7 @@ static void PjRtValueDeleterCallback(char* value) { delete[] value; }
 static PJRT_KeyValueGetCFunc ToKVGetCFunc(
     xla::KeyValueStoreInterface* kv_store) {
   return [kv_store](PJRT_KeyValueGetCallback_Args* args) -> PJRT_Error* {
-    xla::StatusOr<std::string> output =
+    absl::StatusOr<std::string> output =
         kv_store->Get(std::string_view(args->key, args->key_size),
                       absl::Milliseconds(args->timeout_in_ms));
     if (!output.ok()) {
@@ -807,7 +807,7 @@ PJRT_RecvCallbackInfo CppRecvCallbackToCRecvCallback(
       }};
 }
 
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout) {
   BufferMemoryLayoutData layout_data;
   layout_data.c_layout.type =
@@ -834,7 +834,7 @@ xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
   return layout_data;
 }
 
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     absl::Span<int64_t const> byte_strides) {
   BufferMemoryLayoutData layout_data;
   layout_data.c_layout.type =
@@ -844,7 +844,7 @@ xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
   return layout_data;
 }
 
-xla::StatusOr<xla::Layout> ConvertToLayout(
+absl::StatusOr<xla::Layout> ConvertToLayout(
     const PJRT_Buffer_MemoryLayout_Tiled& c_tiled) {
   absl::Span<const int64_t> minor_to_major(c_tiled.minor_to_major,
                                            c_tiled.minor_to_major_size);
@@ -890,10 +890,9 @@ PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
   return args.layout;
 }
 
-xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
-                                             const int64_t* dims,
-                                             size_t num_dims,
-                                             PJRT_Buffer_MemoryLayout* layout) {
+absl::StatusOr<xla::Shape> BuildXlaShapeFromC(
+    PJRT_Buffer_Type element_type, const int64_t* dims, size_t num_dims,
+    PJRT_Buffer_MemoryLayout* layout) {
   xla::Shape shape =
       xla::ShapeUtil::MakeShape(ConvertFromPjRtBufferType(element_type),
                                 absl::Span<const int64_t>(dims, num_dims));

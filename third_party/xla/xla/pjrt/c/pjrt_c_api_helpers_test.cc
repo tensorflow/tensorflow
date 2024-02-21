@@ -149,7 +149,7 @@ TEST(PjRtCApiHelperTest, Callback) {
 
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
   std::vector<int64_t> strides = {4, 8};
-  xla::StatusOr<BufferMemoryLayoutData> layout_data =
+  absl::StatusOr<BufferMemoryLayoutData> layout_data =
       ConvertToBufferMemoryLayoutData(strides);
 
   EXPECT_TRUE(layout_data.ok());
