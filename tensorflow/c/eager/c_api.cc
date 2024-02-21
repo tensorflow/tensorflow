@@ -170,16 +170,17 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    TF_Status* status) {
   TFE_ContextSetServerDefWithTimeoutAndRetries(
       ctx, keep_alive_secs, proto, proto_len, /*init_timeout_in_ms=*/0,
-      /*retries=*/0, status);
+      /*retries=*/0, status, /*clear_existing_contexts=*/false);
 }
 
 // Set server def with timeout.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
     TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
-    int64_t init_timeout_in_ms, TF_Status* status) {
-  TFE_ContextSetServerDefWithTimeoutAndRetries(ctx, keep_alive_secs, proto,
-                                               proto_len, init_timeout_in_ms,
-                                               /*retries=*/0, status);
+    int64_t init_timeout_in_ms, TF_Status* status,
+    bool clear_existing_contexts) {
+  TFE_ContextSetServerDefWithTimeoutAndRetries(
+      ctx, keep_alive_secs, proto, proto_len, init_timeout_in_ms,
+      /*retries=*/0, status, clear_existing_contexts);
 }
 
 // Set server_def on the context, possibly updating it.
@@ -190,7 +191,8 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
 // ParameterServerStrategy initialization to be robust to worker preemption.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeoutAndRetries(
     TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
-    int64_t init_timeout_in_ms, int retries, TF_Status* status) {
+    int64_t init_timeout_in_ms, int retries, TF_Status* status,
+    bool clear_existing_contexts) {
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::errors::Unimplemented(
       "TFE_ContextSetServerDef not supported on mobile");
@@ -204,7 +206,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeoutAndRetries(
   status->status =
       tensorflow::unwrap(ctx)->GetDistributedManager()->SetOrUpdateServerDef(
           server_def, /*reset_context=*/true, keep_alive_secs,
-          init_timeout_in_ms, retries);
+          init_timeout_in_ms, retries, clear_existing_contexts);
 #endif  // !IS_MOBILE_PLATFORM
 }
 

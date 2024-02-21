@@ -154,11 +154,18 @@ class GrpcEagerClient : public EagerClient {
   void method##Async(const method##Request* request,                         \
                      method##Response* response, StatusCallback done,        \
                      int64_t init_timeout_in_ms, int retries) override {     \
-    StatusCallback done_wrapped = callback_wrapper(std::move(done));         \
     CallOptions* call_ops = nullptr;                                         \
+    StatusCallback done_wrapped;                                             \
     if (init_timeout_in_ms > 0) {                                            \
       call_ops = new CallOptions;                                            \
       call_ops->SetTimeout(init_timeout_in_ms);                              \
+      auto new_done = [call_ops, done = std::move(done)](const Status& s) {  \
+        done(s);                                                             \
+        delete call_ops;                                                     \
+      };                                                                     \
+      done_wrapped = callback_wrapper(new_done);                             \
+    } else {                                                                 \
+      done_wrapped = callback_wrapper(std::move(done));                      \
     }                                                                        \
     new RPCState<protobuf::Message>(                                         \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request,    \
