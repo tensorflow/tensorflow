@@ -1453,7 +1453,7 @@ std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToInputIndexing(
     mlir::MLIRContext* ctx) const {
   const auto& groups = reduction_codegen_info_.GetIndexGroups();
 
-  auto* hero = analysis_.fusion_heroes()[hero_operand_index];
+  auto* hero = analysis_.fusion_heroes()[root_index];
   if (groups.is_reduction_root[root_index] &&
       hero_operand_index >= hero->operand_count() / 2) {
     // We don't have indexing for the init values.
