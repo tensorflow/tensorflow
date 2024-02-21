@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_TOOLS_PROTO_SPLITTER_CC_UTIL_H_
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
@@ -31,6 +33,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tools::proto_splitter {
+
+using MessageBytes = std::variant<std::shared_ptr<tsl::protobuf::Message>,
+                                  tsl::protobuf::Message*, std::string>;
+
+struct ChunkedProto {
+  std::vector<MessageBytes>* chunks = nullptr;
+  ::tensorflow::proto_splitter::ChunkedMessage* chunked_message = nullptr;
+};
 
 // TODO(b/282796592): Consider switching to `tsl::protobuf::FieldPath` in the
 // future.

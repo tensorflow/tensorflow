@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -56,9 +55,7 @@ class ComposableSplitterBase : public Splitter {
   //   ChunkedMessage: Metadata about the chunked fields.)
   // If the message is not split, `chunks` should only contain the original
   // message.
-  absl::StatusOr<std::pair<std::vector<MessageBytes>*,
-                           ::tensorflow::proto_splitter::ChunkedMessage*>>
-  Split() override;
+  absl::StatusOr<ChunkedProto> Split() override;
 
   // Serializes a proto to disk.
   // The writer writes all chunks into a Riegeli file. The chunk metadata
