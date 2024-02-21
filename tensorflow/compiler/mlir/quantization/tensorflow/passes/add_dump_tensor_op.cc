@@ -60,41 +60,23 @@ constexpr StringRef kOriginalEntryFuncAttrName = "_original_entry_function";
 constexpr StringRef kCompositeFuncPrefix = "composite_";
 constexpr StringRef kEmptyNodeName = "_empty_node";
 
-template <typename LiftedOp>
-std::pair<std::string, std::string> GetFuncNameAndNodeName(
-    LiftedOp op, const FlatSymbolRefAttr &f_attr) {
-  static_assert(false,
-                "GetFuncNameAndNodeName for call_op is not implemented.");
-}
-
 // Returns a pair: `func_name` and `node_name` for the lifted function. In TF
 // quantizer, both are filled. For StableHLO quantizer, the func_name is only
 // filled and node_name is always set to "_empty_node".
-template <>
-std::pair<std::string, std::string>
-GetFuncNameAndNodeName<TF::PartitionedCallOp>(TF::PartitionedCallOp call_op,
-                                              const FlatSymbolRefAttr &f_attr) {
+std::pair<std::string, std::string> GetFuncNameAndNodeName(
+    TF::PartitionedCallOp call_op, const FlatSymbolRefAttr &f_attr) {
   std::optional<QuantizationUnitLoc::QuantizationUnit> quant_unit =
       FindQuantizationUnitFromLoc(call_op->getLoc());
   return std::make_pair(quant_unit->func_name(), quant_unit->node_name());
 }
 
-template <>
-std::pair<std::string, std::string> GetFuncNameAndNodeName<TF::XlaCallModuleOp>(
+std::pair<std::string, std::string> GetFuncNameAndNodeName(
     TF::XlaCallModuleOp call_op, const FlatSymbolRefAttr &f_attr) {
   return std::make_pair(f_attr.getValue().str(), kEmptyNodeName.str());
 }
 
-template <typename LiftedOp>
-Operation *DuplicateOp(LiftedOp op, PatternRewriter &rewriter,
+Operation *DuplicateOp(TF::PartitionedCallOp call_op, PatternRewriter &rewriter,
                        const StringAttr &new_ref_func_name) {
-  static_assert(false, "DuplicateOp for call_op is not implemented.");
-}
-
-template <>
-Operation *DuplicateOp<TF::PartitionedCallOp>(
-    TF::PartitionedCallOp call_op, PatternRewriter &rewriter,
-    const StringAttr &new_ref_func_name) {
   // Create PartitionedCallOp to the copied composite function. This
   // PartitionedCallOp does not have kQuantTraitAttrName, and therefore won't
   // get quantized.
@@ -104,10 +86,8 @@ Operation *DuplicateOp<TF::PartitionedCallOp>(
   return new_call_op;
 }
 
-template <>
-Operation *DuplicateOp<TF::XlaCallModuleOp>(
-    TF::XlaCallModuleOp call_op, PatternRewriter &rewriter,
-    const StringAttr &new_ref_func_name) {
+Operation *DuplicateOp(TF::XlaCallModuleOp call_op, PatternRewriter &rewriter,
+                       const StringAttr &new_ref_func_name) {
   // Create XlaCallModuleOp to the copied composite function. This
   // XlaCallModuleOp does not have kQuantTraitAttrName, and therefore won't get
   // quantized.
