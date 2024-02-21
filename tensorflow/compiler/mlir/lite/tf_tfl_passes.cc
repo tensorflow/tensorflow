@@ -197,8 +197,9 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createFlattenTuplePass());
 
-  mlir::odml::AddMhloOptimizationPasses(pass_manager,
-                                        pass_config.enable_stablehlo_quantizer);
+  mlir::odml::AddMhloOptimizationPasses(
+      pass_manager,
+      /*add_fold_broadcast_pass=*/pass_config.enable_stablehlo_quantizer);
 
   // Undo the MHLO::BroadcastInDimOp folding pattern on splat constants. This
   // pass must be added right before the legalization because pattern rewriter

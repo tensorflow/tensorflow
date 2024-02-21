@@ -86,7 +86,7 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 }
 
 void AddMhloOptimizationPasses(OpPassManager& pm,
-                               const bool enable_stablehlo_quantizer) {
+                               const bool add_fold_broadcast_pass) {
   // Rewrites some patterns for better performance.
   pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
@@ -94,7 +94,7 @@ void AddMhloOptimizationPasses(OpPassManager& pm,
   // Conditionally enable below pass because this causes unfused convolutions
   // described in b/293149194. This problem is not replicated in
   // StableHLO Quantizer.
-  if (enable_stablehlo_quantizer) {
+  if (add_fold_broadcast_pass) {
     pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
   }
 
