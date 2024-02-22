@@ -1807,7 +1807,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
                                      indices_sharding.metadata());
 }
 
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter) {
   auto computation = scatter.to_apply();
