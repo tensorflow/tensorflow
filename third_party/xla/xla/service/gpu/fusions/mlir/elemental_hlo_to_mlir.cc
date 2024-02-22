@@ -142,16 +142,11 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kCall};
 
 static auto& kUnimplementedOps = *new absl::flat_hash_set<HloOpcode>{
-    HloOpcode::kConvolution,
-    HloOpcode::kDot,
-    HloOpcode::kDynamicUpdateSlice,
-    HloOpcode::kMap,
-    HloOpcode::kReduceWindow,
-    // Has a custom approximation in XLA:
-    HloOpcode::kErf,
-};
-
-static auto& kF32SupportedOps = *new absl::flat_hash_set<HloOpcode>{
+    HloOpcode::kConvolution, HloOpcode::kDot, HloOpcode::kDynamicUpdateSlice,
+    HloOpcode::kMap, HloOpcode::kReduceWindow,
+    // Custom approximations in XLA:
+    HloOpcode::kErf, HloOpcode::kTanh,
+    // Incorrect NaN handling:
     HloOpcode::kMaximum, HloOpcode::kMinimum, HloOpcode::kClamp};
 
 bool IsUnsupportedConstant(const HloInstruction* instr) {
@@ -773,12 +768,6 @@ bool IsHloOpSupported(const HloInstruction* instr,
   };
   if (is_unsupported_type(instr) ||
       absl::c_any_of(instr->operands(), is_unsupported_type)) {
-    return false;
-  }
-
-  // TODO(jreiffers): Fix the F64 lowering for these ops.
-  if (kF32SupportedOps.contains(instr->opcode()) &&
-      instr->shape().element_type() == F64) {
     return false;
   }
 
