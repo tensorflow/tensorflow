@@ -397,6 +397,8 @@ FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
   build_options.set_use_auto_spmd_partitioning(
       execution_options.use_auto_spmd_partitioning());
   build_options.set_deduplicate_hlo(execution_options.deduplicate_hlo());
+  build_options.set_allow_spmd_sharding_propagation_to_parameters(
+      execution_options.allow_spmd_sharding_propagation_to_parameters());
   build_options.set_allow_spmd_sharding_propagation_to_output(
       execution_options.allow_spmd_sharding_propagation_to_output());
   if (execution_options.has_device_assignment()) {

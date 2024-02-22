@@ -1083,6 +1083,17 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           &ExecutableBuildOptions::auto_spmd_partitioning_mesh_ids,
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
       .def_property(
+          "allow_spmd_sharding_propagation_to_parameters",
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_parameters().begin(),
+                options.allow_spmd_sharding_propagation_to_parameters().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_parameters(v);
+          })
+      .def_property(
           "allow_spmd_sharding_propagation_to_output",
           [](const ExecutableBuildOptions& options) -> std::vector<bool> {
             return std::vector<bool>(

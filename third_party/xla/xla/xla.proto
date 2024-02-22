@@ -733,7 +733,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 23.
+// Next id: 24.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -795,6 +795,18 @@ message ExecutionOptions {
 
   reserved 13;  // Was broadcast_replicated_parameters_via_collectives
 
+  // Allows sharding propagation to propagate to the parameters. This changes
+  // the input shape of the computation (which is undesirable), but it can be
+  // used to allow to run partial compilation to determine what would be the
+  // input sharding of a computation if XLA would be allowed to propagate the
+  // sharding which can be used by higher level framework as a way to query
+  // intermediate sharding of operations when multiple computation would be
+  // chained and merged together.
+  // This is a vector of bool, because the user can control which parameters can
+  // have the sharding substituted. If only one boolean value is passed in the
+  // vector that is interpreted as the value to be applied for every parameter.
+  repeated bool allow_spmd_sharding_propagation_to_parameters = 23;
+
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
   // to allow to run partial compilation to determine what would be the output
@@ -833,7 +845,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 33.
+// Next id: 34.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -881,6 +893,7 @@ message HloModuleConfigProto {
   repeated BoolList phase_ordering_config = 24;
   int32 phase_index = 25;
   reserved 26;  // Was flag_config
+  repeated bool allow_spmd_sharding_propagation_to_parameters = 33;
   repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;

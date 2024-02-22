@@ -4529,6 +4529,50 @@ ENTRY TestComputation {
             "attr_value");
 }
 
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToParameters) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_parameters=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ((*result)
+                ->config()
+                .allow_spmd_sharding_propagation_to_parameters()
+                .size(),
+            1);
+  EXPECT_TRUE(
+      (*result)->config().allow_spmd_sharding_propagation_to_parameters()[0]);
+}
+
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToParametersVec) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_parameters={true,false}
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ((*result)
+                ->config()
+                .allow_spmd_sharding_propagation_to_parameters()
+                .size(),
+            2);
+  EXPECT_TRUE(
+      (*result)->config().allow_spmd_sharding_propagation_to_parameters()[0]);
+  EXPECT_FALSE(
+      (*result)->config().allow_spmd_sharding_propagation_to_parameters()[1]);
+}
+
 TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutput) {
   const char* const hlo_string = R"(
 HloModule TestModule, allow_spmd_sharding_propagation_to_output=true

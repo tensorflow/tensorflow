@@ -153,12 +153,33 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters() const {
+    return allow_spmd_sharding_propagation_to_parameters_;
+  }
   absl::Span<const bool> allow_spmd_sharding_propagation_to_output() const {
     return allow_spmd_sharding_propagation_to_output_;
+  }
+  bool any_allow_spmd_sharding_propagation_to_parameters() const {
+    return absl::c_linear_search(allow_spmd_sharding_propagation_to_parameters_,
+                                 true);
   }
   bool any_allow_spmd_sharding_propagation_to_output() const {
     return absl::c_linear_search(allow_spmd_sharding_propagation_to_output_,
                                  true);
+  }
+  // Allows sharding propagation to propagate to the inputs. This changes the
+  // input shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the input
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  ExecutableBuildOptions& set_allow_spmd_sharding_propagation_to_parameters(
+      absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters) {
+    allow_spmd_sharding_propagation_to_parameters_.assign(
+        allow_spmd_sharding_propagation_to_parameters.begin(),
+        allow_spmd_sharding_propagation_to_parameters.end());
+    return *this;
   }
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
@@ -233,6 +254,8 @@ class ExecutableBuildOptions {
   std::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
+  absl::InlinedVector<bool, 1> allow_spmd_sharding_propagation_to_parameters_ =
+      {false};
   absl::InlinedVector<bool, 1> allow_spmd_sharding_propagation_to_output_ = {
       false};
   tsl::thread::ThreadPool* compile_thread_pool_ = nullptr;

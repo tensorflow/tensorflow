@@ -3766,8 +3766,7 @@ absl::StatusOr<bool> AutoSharding::Run(
         /*is_spmd */ true, /*propagate_metadata */ false,
         /*allow_spmd_sharding_propagation_to_output*/
         module->config().allow_spmd_sharding_propagation_to_output(),
-        /*allow_spmd_sharding_propagation_to_parameters */
-        absl::InlinedVector<bool, 1>{false},
+        module->config().allow_spmd_sharding_propagation_to_parameters(),
         /*cse_prevention_only */ false,
         /*sharding_helper*/ nullptr);
 

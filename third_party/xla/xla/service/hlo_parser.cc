@@ -1016,6 +1016,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
   std::optional<FrontendAttributes> frontend_attributes;
+  BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
@@ -1033,6 +1034,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
                                        &entry_computation_layout};
   attrs["frontend_attributes"] = {
       /*required=*/false, AttrTy::kFrontendAttributes, &frontend_attributes};
+  attrs["allow_spmd_sharding_propagation_to_parameters"] = {
+      /*required=*/false, AttrTy::kBracedBoolListOrBool,
+      &allow_spmd_sharding_propagation_to_parameters};
   attrs["allow_spmd_sharding_propagation_to_output"] = {
       /*required=*/false, AttrTy::kBracedBoolListOrBool,
       &allow_spmd_sharding_propagation_to_output};
@@ -1090,6 +1094,11 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
+  }
+  if (!allow_spmd_sharding_propagation_to_parameters.empty()) {
+    config.set_allow_spmd_sharding_propagation_to_parameters(
+        allow_spmd_sharding_propagation_to_parameters);
+    default_config = false;
   }
   if (!allow_spmd_sharding_propagation_to_output.empty()) {
     config.set_allow_spmd_sharding_propagation_to_output(
