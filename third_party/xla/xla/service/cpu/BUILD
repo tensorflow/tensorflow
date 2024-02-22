@@ -178,6 +178,7 @@ cc_library(
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
+        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",

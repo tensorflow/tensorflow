@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
@@ -108,7 +109,7 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.mlir_module = mlir_module_str;
 
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
@@ -273,7 +274,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                                          {&guaranteed_constants}};
 
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
 

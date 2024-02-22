@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/client_library.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
@@ -140,7 +141,7 @@ class CompileTFGraphTest : public ::testing::Test {
     XlaCompilationResult compilation_result;
 
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithName(kPlatformName).value();
+        se::PlatformManager::PlatformWithName(kPlatformName).value();
     auto client =
         xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 

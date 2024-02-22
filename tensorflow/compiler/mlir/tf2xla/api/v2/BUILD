@@ -91,6 +91,7 @@ tf_cc_test(
         "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 

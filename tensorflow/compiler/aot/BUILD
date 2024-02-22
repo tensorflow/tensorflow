@@ -84,6 +84,7 @@ cc_library(
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service/cpu:buffer_info_util",
         "@local_xla//xla/service/cpu:cpu_compiler",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 

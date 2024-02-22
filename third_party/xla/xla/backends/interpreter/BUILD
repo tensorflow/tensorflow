@@ -138,7 +138,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
-    alwayslink = True,  # Registers itself with the MultiPlatformManager.
+    alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
 cc_library(

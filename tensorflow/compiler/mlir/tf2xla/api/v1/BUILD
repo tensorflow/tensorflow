@@ -177,6 +177,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
     ],
 )
