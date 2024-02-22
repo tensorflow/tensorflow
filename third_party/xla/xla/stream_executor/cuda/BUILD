@@ -563,6 +563,30 @@ cuda_only_cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "cuda_asm_compiler_test",
+    srcs = ["cuda_asm_compiler_test.cc"],
+    local_defines = select({
+        ":libnvptxcompiler_support_enabled": [
+            "ENABLE_LIBNVPTXCOMPILER_SUPPORT=1",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":cuda_asm_compiler",  # buildcleaner: keep
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:asm_compiler",  # buildcleaner: keep
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cuda_only_cc_library(
     name = "cuda_executor",
     srcs = ["cuda_executor.cc"],
