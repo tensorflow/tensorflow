@@ -56,8 +56,8 @@ namespace xla::gpu {
 // CommandBufferCmd
 //===----------------------------------------------------------------------===//
 
-// CommandBufferCmd is an abstract command that creates or updates command
-// buffer by recording commands into it.
+// Command is a Thunk counterpart that instead of launching operations directly
+// on the underlying device records them into command buffers.
 //
 // Commands have the same execution stages as thunks as they are executed by a
 // command buffer thunk: Prepare, Initialize and Record (Execute). See Thunk
@@ -194,7 +194,32 @@ class CommandBufferCmd {
 // purpose is to manipulate command buffers at run time.
 class CommandBufferCmdSequence {
  public:
-  explicit CommandBufferCmdSequence(bool force_barriers = false);
+  // Synchronization mode defines how execution streams gets converted to
+  // command buffer execution scopes and barriers.
+  //
+  // Each individual Thunk assigned an execution stream id, and we have explicit
+  // inter-stream synchronization (`Thunk::Kind::kWaitForStreams`) between
+  // streams. Thunks assigned to the same stream are implicitly synchronized.
+  //
+  // Command buffers on the other hand by default can execute commands
+  // concurrently and require barriers to enforce execution order.
+  //
+  // WARNING: We do not have implicit synchronization between execution scopes
+  // corresponding to different execution streams and rely on explicit barriers
+  // emitted from thunks. Synchronization mode controls only barriers within
+  // a single exection scope (corresponds to execution stream).
+  enum class SynchronizationMode {
+    // Adds barriers between all commands recorded into the same execution scope
+    // (thunks sharing execution stream) and enforces completely serialized
+    // execution order that matches what would happen in a ThunkSequence.
+    kSerialize,
+
+    // Relies on buffer use analysis to insert barriers only between commands
+    // that have read-write conflicts into the same buffers. Conflicts are
+    // detected only between commands using the same stream id, and inter-stream
+    // synchronization is a user responsibility.
+    kAutomatic
+  };
 
   enum class RecordMode {
     // In exclusive mode no one else is recording commands into the command
@@ -210,6 +235,9 @@ class CommandBufferCmdSequence {
     // owned by the parent command buffer.
     kConditional
   };
+
+  explicit CommandBufferCmdSequence(SynchronizationMode synchronization_mode =
+                                        SynchronizationMode::kAutomatic);
 
   void Append(std::unique_ptr<CommandBufferCmd> cmd);
 
@@ -257,7 +285,7 @@ class CommandBufferCmdSequence {
   void TrackBuffers(const CommandBufferCmd::BufferUsageVector& buffers);
   void ClearTrackedBuffers();
 
-  bool force_barriers_;
+  SynchronizationMode synchronization_mode_;
   std::vector<CommandInfo> commands_;
 
   // Buffers referenced by commands in this sequence.

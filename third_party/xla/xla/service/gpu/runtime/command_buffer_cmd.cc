@@ -135,8 +135,9 @@ CommandBufferCmd::State* CommandBufferCmd::StateManager::GetOrCreate(
 // CommandBufferCmdSequence
 //===----------------------------------------------------------------------===//
 
-CommandBufferCmdSequence::CommandBufferCmdSequence(bool force_barriers)
-    : force_barriers_(force_barriers) {}
+CommandBufferCmdSequence::CommandBufferCmdSequence(
+    SynchronizationMode synchronization_mode)
+    : synchronization_mode_(synchronization_mode) {}
 
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
   for (const CommandBufferCmd::BufferUsage& buffer : cmd->buffers()) {
@@ -147,8 +148,9 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
   CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
   bool requires_barrier = HasConflicts(buffers);
 
-  // Always add barriers between commands if we want to linearize execution.
-  if (force_barriers_ && !commands_.empty()) {
+  // Always add barriers between commands if we want to serialize execution.
+  if (synchronization_mode_ == SynchronizationMode::kSerialize &&
+      !commands_.empty()) {
     requires_barrier = true;
   }
 

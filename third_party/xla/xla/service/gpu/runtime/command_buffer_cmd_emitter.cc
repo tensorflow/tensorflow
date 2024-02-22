@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/replica_id_thunk.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/service/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/util.h"
@@ -44,13 +43,14 @@ limitations under the License.
 namespace xla::gpu {
 
 // Appends command(s) converted from `thunk` to `cmd_sequence`.
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                                   const Thunk& thunk, bool force_barriers);
+static absl::Status AppendCommands(
+    CommandBufferCmdSequence& cmd_sequence, const Thunk& thunk,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode);
 
 // Appends command(s) converted from `sequence` to `cmd_sequence`.
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                                   const ThunkSequence& sequence,
-                                   bool force_barriers);
+static absl::Status AppendCommands(
+    CommandBufferCmdSequence& cmd_sequence, const ThunkSequence& sequence,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode);
 
 //===----------------------------------------------------------------------===//
 // Conversions from Thunk to Command
@@ -92,15 +92,16 @@ static absl::StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
   return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value());
 }
 
-static absl::StatusOr<Command> Convert(const WhileThunk& thunk,
-                                       bool force_barriers) {
+static absl::StatusOr<Command> Convert(
+    const WhileThunk& thunk,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdSequence cond_cmds,
       ConvertToCommands(thunk.condition_thunk_sequence()->thunks(),
-                        force_barriers));
-  TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdSequence body_cmds,
-      ConvertToCommands(thunk.body_thunk_sequence()->thunks(), force_barriers));
+                        synchronization_mode));
+  TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence body_cmds,
+                      ConvertToCommands(thunk.body_thunk_sequence()->thunks(),
+                                        synchronization_mode));
   return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
                                     std::move(cond_cmds), std::move(body_cmds));
 }
@@ -115,14 +116,15 @@ static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
       thunk.output_buffer(), thunk.workspace().value(), thunk.deterministic());
 }
 
-static absl::StatusOr<Command> Convert(const ConditionalThunk& thunk,
-                                       bool force_barriers) {
+static absl::StatusOr<Command> Convert(
+    const ConditionalThunk& thunk,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
   std::vector<CommandBufferCmdSequence> branch_cmds;
   branch_cmds.reserve(thunk.branch_thunks().size());
   for (auto& branch_thunk : thunk.branch_thunks()) {
     TF_ASSIGN_OR_RETURN(
         CommandBufferCmdSequence cmds,
-        ConvertToCommands(branch_thunk->thunks(), force_barriers));
+        ConvertToCommands(branch_thunk->thunks(), synchronization_mode));
     branch_cmds.emplace_back(std::move(cmds));
   }
   return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
@@ -178,14 +180,15 @@ static absl::StatusOr<Command> Convert(const Thunk& thunk) {
 }
 
 template <typename ThunkType>
-static absl::StatusOr<Command> Convert(const Thunk& thunk,
-                                       bool force_barriers) {
-  return CopyMetadata(
-      Convert(static_cast<const ThunkType&>(thunk), force_barriers), thunk);
+static absl::StatusOr<Command> Convert(
+    const Thunk& thunk,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
+  return Convert(static_cast<const ThunkType&>(thunk), synchronization_mode);
 }
 
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                                   const Thunk& thunk, bool force_barriers) {
+static absl::Status AppendCommands(
+    CommandBufferCmdSequence& cmd_sequence, const Thunk& thunk,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
   auto append = [&](absl::StatusOr<Command> command) -> absl::Status {
     if (command.ok()) {
       cmd_sequence.Append(std::move(*command));
@@ -196,7 +199,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
 
   switch (thunk.kind()) {
     case Thunk::Kind::kConditional:
-      return append(Convert<ConditionalThunk>(thunk, force_barriers));
+      return append(Convert<ConditionalThunk>(thunk, synchronization_mode));
     case Thunk::Kind::kCopy:
       return append(Convert<DeviceToDeviceCopyThunk>(thunk));
     case Thunk::Kind::kCustomCall:
@@ -222,14 +225,14 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
     case Thunk::Kind::kReplicaId:
       return append(Convert<ReplicaIdThunk>(thunk));
     case Thunk::Kind::kWhile:
-      return append(Convert<WhileThunk>(thunk, force_barriers));
+      return append(Convert<WhileThunk>(thunk, synchronization_mode));
 
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.
     case Thunk::Kind::kSequential:
       return AppendCommands(cmd_sequence,
                             static_cast<const SequentialThunk&>(thunk).thunks(),
-                            force_barriers);
+                            synchronization_mode);
 
     // Currently all collective operations recorded on the tracing stream and do
     // not need to have a separate done command.
@@ -245,19 +248,22 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   }
 }
 
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                                   const ThunkSequence& sequence,
-                                   bool force_barriers) {
+static absl::Status AppendCommands(
+    CommandBufferCmdSequence& cmd_sequence, const ThunkSequence& sequence,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
   for (const std::unique_ptr<Thunk>& thunk : sequence)
-    TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, force_barriers));
+    TF_RETURN_IF_ERROR(
+        AppendCommands(cmd_sequence, *thunk, synchronization_mode));
   return absl::OkStatus();
 }
 
 // TODO(vuson): Add unit tests.
 absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
-    const ThunkSequence& sequence, bool force_barriers) {
-  CommandBufferCmdSequence cmd_sequence(force_barriers);
-  TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, force_barriers));
+    const ThunkSequence& sequence,
+    CommandBufferCmdSequence::SynchronizationMode synchronization_mode) {
+  CommandBufferCmdSequence cmd_sequence(synchronization_mode);
+  TF_RETURN_IF_ERROR(
+      AppendCommands(cmd_sequence, sequence, synchronization_mode));
   return cmd_sequence;
 }
 

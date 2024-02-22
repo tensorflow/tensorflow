@@ -72,7 +72,7 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   BufferUsageVector buffer_usage;
 };
 
-TEST(CommandBufferCmdTest, ForceBarriers) {
+TEST(CommandBufferCmdTest, SerializeExecution) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
@@ -82,7 +82,8 @@ TEST(CommandBufferCmdTest, ForceBarriers) {
   auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
   auto use1 = BufferUsage(slice1, MemoryAccess::kRead);
 
-  CommandBufferCmdSequence commands(/*force_barriers=*/true);
+  CommandBufferCmdSequence commands(
+      CommandBufferCmdSequence::SynchronizationMode::kSerialize);
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
   commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
 
