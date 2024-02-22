@@ -176,6 +176,13 @@ void AddDynamicUpdateSliceNode(Subgraph* subgraph, int input0, int input1,
 }
 }  // namespace
 
+void Setup1DTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
+  int dim = 1;
+  ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 1,
+                                                   &dim, {}, false),
+            kTfLiteOk);
+}
+
 void SetupTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
   ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 0,
                                                    nullptr, {}, false),
@@ -275,7 +282,7 @@ void SubgraphBuilder::BuildOutputNotConsumedSubgraph(Subgraph& subgraph) {
   ASSERT_EQ(subgraph.SetInputs({kInput0, kInput1, kInput2}), kTfLiteOk);
   ASSERT_EQ(subgraph.SetOutputs({kOutput0, kOutput1, kConstRhs}), kTfLiteOk);
   for (int i = 0; i < kTensorCount; ++i) {
-    SetupTensor(&subgraph, i, kTfLiteInt32);
+    Setup1DTensor(&subgraph, i, kTfLiteInt32);
   }
 
   // kInput0 --> +---+
