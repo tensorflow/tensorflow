@@ -1307,7 +1307,10 @@ tf_cc_test(
 tf_cc_test(
     name = "vmodule_test",
     srcs = ["vmodule_test.cc"],
-    tags = ["optonly"],
+    tags = [
+        "nomsan",  # b/326299699
+        "optonly",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
