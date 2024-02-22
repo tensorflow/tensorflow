@@ -89,7 +89,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
@@ -103,9 +103,11 @@ TEST_P(TopKKernelTest, TopKFloat) {
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVec<T>(n * batch_size);
-  stream.ThenMemcpy(&input_buffer, source.data(), n * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_values, k * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_indices, k * batch_size * sizeof(uint32_t));
+  TF_ASSERT_OK(
+      stream.Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
+  TF_ASSERT_OK(stream.MemZero(&output_values, k * batch_size * sizeof(T)));
+  TF_ASSERT_OK(
+      stream.MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
@@ -124,8 +126,8 @@ TEST_P(TopKKernelTest, TopKFloat) {
   std::vector<T> got(k);
   ASSERT_TRUE(stream.BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    stream.ThenMemcpy(got.data(), output_values.GetSlice(k * i, k),
-                      k * sizeof(T));
+    TF_ASSERT_OK(stream.Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                               k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
@@ -143,7 +145,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
@@ -157,9 +159,11 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVecNegative<T>(n * batch_size);
-  stream.ThenMemcpy(&input_buffer, source.data(), n * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_values, k * batch_size * sizeof(T));
-  stream.ThenMemZero(&output_indices, k * batch_size * sizeof(uint32_t));
+  TF_ASSERT_OK(
+      stream.Memcpy(&input_buffer, source.data(), n * batch_size * sizeof(T)));
+  TF_ASSERT_OK(stream.MemZero(&output_values, k * batch_size * sizeof(T)));
+  TF_ASSERT_OK(
+      stream.MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
@@ -178,8 +182,8 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   std::vector<T> got(k);
   ASSERT_TRUE(stream.BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    stream.ThenMemcpy(got.data(), output_values.GetSlice(k * i, k),
-                      k * sizeof(T));
+    TF_ASSERT_OK(stream.Memcpy(got.data(), output_values.GetSlice(k * i, k),
+                               k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
