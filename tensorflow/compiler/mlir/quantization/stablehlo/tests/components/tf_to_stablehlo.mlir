@@ -9,10 +9,10 @@ func.func @fused_batchnorm_no_training(%arg0: tensor<8x8x8x8xf32>) -> (tensor<8x
 // CHECK: func.func @main(%[[ARG_0:.+]]: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
 // CHECK-DAG: %[[CONST_0:.*]] = stablehlo.constant dense<{{.*}}> : tensor<8xf32>
 // CHECK-DAG: %[[CONST_1:.*]] = stablehlo.constant dense<{{.*}}> : tensor<8xf32>
-// CHECK: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[CONST_0]], dims = [3] : (tensor<8xf32>) -> tensor<8x8x8x8xf32>
-// CHECK: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[CONST_1]], dims = [3] : (tensor<8xf32>) -> tensor<8x8x8x8xf32>
-// CHECK: %[[MUL:.*]] = stablehlo.multiply %arg0, %[[BROADCAST_0]] : tensor<8x8x8x8xf32>
-// CHECK: %[[ADD:.*]] = stablehlo.add %[[MUL]], %[[BROADCAST_1]] : tensor<8x8x8x8xf32>
+// CHECK-DAG: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[CONST_0]], dims = [3] : (tensor<8xf32>) -> tensor<8x8x8x8xf32>
+// CHECK-DAG: %[[MUL:.*]] = stablehlo.multiply %arg0, %[[BROADCAST_0]] : tensor<8x8x8x8xf32>
+// CHECK-DAG: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[CONST_1]], dims = [3] : (tensor<8xf32>) -> tensor<8x8x8x8xf32>
+// CHECK-DAG: %[[ADD:.*]] = stablehlo.add %[[MUL]], %[[BROADCAST_1]] : tensor<8x8x8x8xf32>
 // CHECK: return %[[ADD]] : tensor<8x8x8x8xf32>
 
 // -----
@@ -28,10 +28,10 @@ func.func @fuse_conv_batchnorm(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x2x2xf3
 // CHECK: func.func @main(%[[ARG:.+]]: tensor<1x3x4x3xf32>) -> tensor<1x3x2x2xf32> {
 // CHECK-DAG: %[[CONST_0:.*]] = stablehlo.constant dense<[{{.*}}]> : tensor<2xf32>
 // CHECK-DAG: %[[CONST_1:.*]] = stablehlo.constant dense<[{{.*}}]> : tensor<2xf32>
-// CHECK: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[CONST_0]], dims = [3] : (tensor<2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[CONST_1]], dims = [3] : (tensor<2xf32>) -> tensor<2x3x3x2xf32>
-// CHECK: %[[CONV:.*]] = stablehlo.convolution(%[[ARG]], %[[BROADCAST_1]]) {{.*}} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %[[ADD:.*]] = stablehlo.add %[[CONV]], %[[BROADCAST_0]] : tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[CONST_1]], dims = [3] : (tensor<2xf32>) -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[CONV:.*]] = stablehlo.convolution(%[[ARG]], %[[BROADCAST_0]]) {{.*}} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[CONST_0]], dims = [3] : (tensor<2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[ADD:.*]] = stablehlo.add %[[CONV]], %[[BROADCAST_1]] : tensor<1x3x2x2xf32>
 // CHECK: return %[[ADD]] : tensor<1x3x2x2xf32>
 
 // -----
@@ -50,10 +50,10 @@ func.func @func_conv_batchnorm_relu6(%arg0: tensor<1x3x4x3xf32>) -> (tensor<1x3x
 // CHECK-DAG: %[[CONST_1:.*]] = stablehlo.constant dense<[{{.*}}]> : tensor<2xf32>
 // CHECK-DAG: %[[CONST_2:.*]] = stablehlo.constant dense<6.000000e+00> : tensor<f32>
 // CHECK-DAG: %[[CONST_3:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-// CHECK: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[CONST_0]], dims = [3] : (tensor<2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[CONST_1]], dims = [3] : (tensor<2xf32>) -> tensor<2x3x3x2xf32>
-// CHECK: %[[CONV:.*]] = stablehlo.convolution(%[[ARG]], %[[BROADCAST_1]]) {{.*}} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
-// CHECK: %[[ADD:.*]] = stablehlo.add %[[CONV]], %[[BROADCAST_0]] : tensor<1x3x2x2xf32>
-// CHECK: %[[RELU6:.*]] = stablehlo.clamp %[[CONST_3]], %[[ADD]], %[[CONST_2]] : (tensor<f32>, tensor<1x3x2x2xf32>, tensor<f32>) -> tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[CONST_1]], dims = [3] : (tensor<2xf32>) -> tensor<2x3x3x2xf32>
+// CHECK-DAG: %[[CONV:.*]] = stablehlo.convolution(%[[ARG]], %[[BROADCAST_0]]) {{.*}} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[CONST_0]], dims = [3] : (tensor<2xf32>) -> tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[ADD:.*]] = stablehlo.add %[[CONV]], %[[BROADCAST_1]] : tensor<1x3x2x2xf32>
+// CHECK-DAG: %[[RELU6:.*]] = stablehlo.clamp %[[CONST_3]], %[[ADD]], %[[CONST_2]] : (tensor<f32>, tensor<1x3x2x2xf32>, tensor<f32>) -> tensor<1x3x2x2xf32>
 // CHECK: return %[[RELU6]] : tensor<1x3x2x2xf32>
 
