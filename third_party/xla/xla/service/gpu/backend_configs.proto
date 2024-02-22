@@ -149,6 +149,11 @@ message CustomFusionConfig {
   string name = 1;
 }
 
+message CuDnnFusionConfig {
+  int64 plan_id = 1;
+  optional string serialized_graph = 2;
+}
+
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -170,6 +175,8 @@ message FusionBackendConfig {
 
   // Cost model prediction.
   ReificationCost reification_cost = 3;
+
+  CuDnnFusionConfig cudnn_fusion_config = 5;
 }
 
 // Backed config for norm executed by cuDNN.

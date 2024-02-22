@@ -69,6 +69,8 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 inline constexpr absl::string_view kTritonSoftmaxFusionKind =
     "__triton_softmax";
 
+inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
+
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 

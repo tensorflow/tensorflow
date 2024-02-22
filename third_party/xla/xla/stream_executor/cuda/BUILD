@@ -419,6 +419,7 @@ cuda_only_cc_library(
         ":cuda_executor",
         ":cuda_platform_id",
         ":cuda_stream",
+        ":cudnn_frontend_helpers",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
@@ -675,4 +676,10 @@ cc_library(
             "//conditions:default": [],
         }),
     ),
+)
+
+cc_library(
+    name = "cudnn_frontend_helpers",
+    srcs = ["cudnn_frontend_helpers.cc"],
+    hdrs = ["cudnn_frontend_helpers.h"],
 )

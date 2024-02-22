@@ -169,6 +169,7 @@ cc_library(
     deps = [
         ":concatenate",
         ":copy",
+        ":cudnn",
         ":custom",
         ":fusion_emitter",
         ":in_place_dynamic_update_slice",
@@ -416,6 +417,37 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn",
+    srcs = ["cudnn.cc"],
+    hdrs = ["cudnn.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        ":fusion_emitter",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/runtime:cudnn_thunk",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "cudnn_test",
+    srcs = if_cuda_is_configured(["cudnn_test.cc"]),
+    backend_tags = {"gpu": [
+        "requires-gpu-sm80",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

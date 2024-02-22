@@ -70,6 +70,7 @@ cc_library(
     ]),
     deps = [
         ":annotation",
+        ":cudnn_thunk",
         ":custom_call_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
@@ -738,5 +739,24 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn_thunk",
+    srcs = if_cuda_is_configured(["cudnn_thunk.cc"]),
+    hdrs = if_cuda_is_configured(["cudnn_thunk.h"]),
+    deps = if_cuda_is_configured([
+        "//xla:status",
+        "//xla/service/gpu:kernel_arguments",
+        "//xla/service/gpu:thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:logging",
+    ]) + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )

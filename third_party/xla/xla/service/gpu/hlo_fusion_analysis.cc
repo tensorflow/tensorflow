@@ -209,6 +209,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
       fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
     return EmitterFusionKind::kTriton;
   }
+
+  if (fusion_backend_config_.kind() == kCuDnnFusionKind) {
+    return EmitterFusionKind::kCuDnn;
+  }
 #endif
 
   if (input_output_info_.has_4_bit_input ||

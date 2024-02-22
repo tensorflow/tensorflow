@@ -690,6 +690,7 @@ cc_library(
         ":matmul_utils",
         ":split_k_gemm_rewriter",
         ":stream_executor_util",
+        ":cudnn_fusion_compiler",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3030,6 +3031,34 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "cudnn_fusion_compiler",
+    srcs = if_cuda_is_configured(["cudnn_fusion_compiler.cc"]),
+    hdrs = if_cuda_is_configured(["cudnn_fusion_compiler.h"]),
+    deps = if_cuda_is_configured([
+        ":autotuner_util",
+        ":ir_emission_utils",
+        ":kernel_reuse_cache",
+        "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service:hlo_pass",
+        "//xla/stream_executor/cuda:cudnn_frontend_helpers",
+        "//xla/stream_executor/cuda:cudnn_plugin",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]) + [
+        ":backend_configs_cc",
+        ":matmul_utils",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_proto_library(
     name = "executable_proto",
     srcs = ["executable.proto"],
@@ -3718,6 +3747,7 @@ cc_library(
         ":target_constants",
         ":triangular_solve_rewriter",
         ":triton_autotuner",
+        ":cudnn_fusion_compiler",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",

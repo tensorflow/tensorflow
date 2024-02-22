@@ -130,7 +130,8 @@ class Thunk {
     kTriangularSolve,
     kWhile,
     kFusedMHA,
-    kWaitForStreams
+    kWaitForStreams,
+    kCuDnn
   };
 
   // TODO(ezhulenev): This should become a part of StreamExecutor library, but

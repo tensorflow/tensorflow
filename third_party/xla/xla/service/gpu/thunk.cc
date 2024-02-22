@@ -252,6 +252,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kWhile);
     CASE(kFusedMHA);
     CASE(kWaitForStreams);
+    CASE(kCuDnn);
   }
 }
 
