@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -365,16 +366,15 @@ class GpuCommandBuffer : public CommandBuffer {
 // empty nodes are not supported within conditional CUDA graphs (in CUDA 12.3).
 void* GetNoOpKernel();
 
-// See `cuda_conditional_kernels.cu.cc` for CUDA implementations. These are
+// See `cuda_conditional_kernels.cc` for CUDA implementation. These are
 // various kernels that update Gpu conditionals based on the device memory
 // values, and allow implementing on-device control flow via conditional command
 // buffers.
-
-void* GetSetIfConditionKernel();
-void* GetSetIfElseConditionKernel();
-void* GetSetCaseConditionKernel();
-void* GetSetForConditionKernel();
-void* GetSetWhileConditionKernel();
+std::string_view GetSetIfConditionKernel();
+std::string_view GetSetIfElseConditionKernel();
+std::string_view GetSetCaseConditionKernel();
+std::string_view GetSetForConditionKernel();
+std::string_view GetSetWhileConditionKernel();
 
 }  // namespace stream_executor::gpu
 

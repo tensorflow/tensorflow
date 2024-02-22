@@ -201,7 +201,7 @@ absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
 GpuCommandBuffer::GetSetIfConditionKernel(StreamExecutor* executor) {
   if (!set_if_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
-    spec.AddInProcessSymbol(gpu::GetSetIfConditionKernel(), "set_if_condition");
+    spec.AddCudaPtxInMemory(gpu::GetSetIfConditionKernel(), "set_if_condition");
     TF_ASSIGN_OR_RETURN(set_if_condition_kernel_,
                         SetIfConditionKernel::Create(executor, spec));
   }
@@ -212,7 +212,7 @@ absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
 GpuCommandBuffer::GetSetIfElseConditionKernel(StreamExecutor* executor) {
   if (!set_if_else_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(gpu::GetSetIfElseConditionKernel(),
+    spec.AddCudaPtxInMemory(gpu::GetSetIfElseConditionKernel(),
                             "set_if_else_condition");
     TF_ASSIGN_OR_RETURN(set_if_else_condition_kernel_,
                         SetIfElseConditionKernel::Create(executor, spec));
@@ -224,7 +224,7 @@ absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
 GpuCommandBuffer::GetSetCaseConditionKernel(StreamExecutor* executor) {
   if (!set_case_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/10);
-    spec.AddInProcessSymbol(gpu::GetSetCaseConditionKernel(),
+    spec.AddCudaPtxInMemory(gpu::GetSetCaseConditionKernel(),
                             "set_case_condition");
     TF_ASSIGN_OR_RETURN(set_case_condition_kernel_,
                         SetCaseConditionKernel::Create(executor, spec));
@@ -236,7 +236,7 @@ absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
 GpuCommandBuffer::GetSetForConditionKernel(StreamExecutor* executor) {
   if (!set_for_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(gpu::GetSetForConditionKernel(),
+    spec.AddCudaPtxInMemory(gpu::GetSetForConditionKernel(),
                             "set_for_condition");
     TF_ASSIGN_OR_RETURN(set_for_condition_kernel_,
                         SetForConditionKernel::Create(executor, spec));
@@ -248,7 +248,7 @@ absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
 GpuCommandBuffer::GetSetWhileConditionKernel(StreamExecutor* executor) {
   if (!set_while_condition_kernel_) {
     MultiKernelLoaderSpec spec(/*arity=*/2);
-    spec.AddInProcessSymbol(gpu::GetSetWhileConditionKernel(),
+    spec.AddCudaPtxInMemory(gpu::GetSetWhileConditionKernel(),
                             "set_while_condition");
     TF_ASSIGN_OR_RETURN(set_while_condition_kernel_,
                         SetWhileConditionKernel::Create(executor, spec));

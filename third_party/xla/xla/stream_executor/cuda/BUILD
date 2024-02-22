@@ -1,5 +1,4 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
@@ -492,20 +491,13 @@ cuda_only_cc_library(
     ],
 )
 
-cuda_library(
+cc_library(
     name = "cuda_conditional_kernels",
-    srcs = if_cuda(
-        ["cuda_conditional_kernels.cu.cc"],
-        ["cuda_conditional_kernels.cc"],
-    ),
+    srcs = ["cuda_conditional_kernels.cc"],
     local_defines = select({
         ":graph_conditional_enabled": ["STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1"],
         "//conditions:default": [],
     }),
-    deps = [
-        "@com_google_absl//absl/log",
-        "@local_config_cuda//cuda:cuda_headers",
-    ],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
