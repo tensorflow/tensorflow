@@ -35,7 +35,7 @@ module {
 // CHECK:        func.func @tensorarg(%[[ARG0:.*]]: !llvm.ptr
 // CHECK-SAME:        {xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2.000000e+00
-// CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i64
+// CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i32
 // CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[IDX]]]
 // CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] invariant
 // CHECK:           %[[RET:.*]] = call @add(%[[C2]], %[[V2]])
@@ -72,7 +72,7 @@ module {
 // CHECK:      @layout(%[[ARG0:.*]]: !llvm.ptr,
 // CHECK-SAME:     %[[X:.*]]: index, %[[Y:.*]]: index
 // CHECK:        %[[IDX:.*]] = affine.apply #[[MAP]](%[[X]], %[[Y]])
-// CHECK:        %[[IDX_CAST:.*]] = arith.index_castui %[[IDX]]
+// CHECK:        %[[IDX_CAST:.*]] = arith.index_castui %[[IDX]] : index to i32
 // CHECK:        %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[IDX_CAST]]]
 // CHECK:        llvm.load %[[PTR]]
 
@@ -110,7 +110,7 @@ module {
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C2]] step %[[C1]] {
-// CHECK:         %[[CAST:.*]] = arith.index_castui %[[I]]
+// CHECK:         %[[CAST:.*]] = arith.index_castui %[[I]] : index to i32
 // CHECK:         %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[CAST]]]
 // CHECK:         llvm.store {{.*}}, %[[PTR]]
 // CHECK:       %[[INBOUNDS:.*]] = arith.cmpi
@@ -118,3 +118,17 @@ module {
 // CHECK:         llvm.store
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
+
+// -----
+
+module {
+  func.func @large_tensor(
+      %arg0: tensor<1024x1024x1024x6xf32>,
+      %arg1: index) -> f32 {
+    %v = tensor.extract %arg0[%arg1, %arg1, %arg1, %arg1] : tensor<1024x1024x1024x6xf32>
+    func.return %v : f32
+  }
+}
+
+// CHECK: @large_tensor
+// CHECK: arith.index_castui {{.*}} : index to i64

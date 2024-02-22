@@ -811,10 +811,6 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
   }
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(compute_capability);
-  if (!cuda_compute_capability.IsAtLeastAmpere()) {
-    // Not all lowerings work with pre-ampere yet.
-    return false;
-  }
 
   if (fusion.GetRoots().size() > 1) {
     auto first_shape = fusion.GetRoots()[0].instruction().shape();

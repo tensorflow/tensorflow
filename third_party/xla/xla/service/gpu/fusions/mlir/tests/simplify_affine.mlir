@@ -28,18 +28,17 @@ module {
 // CHECK-DAG: %[[TID_X:.*]] = gpu.thread_id x
 // CHECK-DAG: %[[BID_X:.*]] = gpu.block_id x
 // CHECK:     scf.for %[[I:.*]] =
-// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]]
-// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]]
+// CHECK:       %[[BID_32:.*]] = arith.index_castui %[[BID_X]] : index to i32
+// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_32]], %[[C512]]
+// CHECK:       %[[TID_32:.*]] = arith.index_castui %[[TID_X]] : index to i32
+// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_32]], %[[C4]]
 // CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]]
-// CHECK:       %[[UNROLL_OFFSET:.*]] = arith.addi %[[OFFSET]], %[[I]]
-// CHECK:       arith.index_castui %[[UNROLL_OFFSET]] : index to i64
+// CHECK:       %[[I_32:.*]] = arith.index_castui %[[I]] : index to i32
+// CHECK:       %[[UNROLL_OFFSET:.*]] = arith.addi %[[OFFSET]], %[[I_32]]
+// CHECK:       %[[UNROLL_INDEX:.*]] = arith.index_castui %[[UNROLL_OFFSET]] : i32 to index
+// CHECK:       arith.index_castui %[[UNROLL_INDEX]] : index to i64
 
 // -----
-
-// CHECK: @arg_ranges
-// CHECK-NEXT:  %[[C100:.*]] = arith.constant 100
-// CHECK-NEXT:  %[[RET:.*]] = arith.divui %{{.*}}, %[[C100]]
-// CHECK-NEXT:  return %[[RET]]
 
 module {
   func.func @arg_ranges(%arg0: index {xla.range = [0 : index, 42 : index]}, %arg1: index {xla.range = [0 : index, 1000 : index]}) -> index {
@@ -48,10 +47,29 @@ module {
   }
 }
 
+// CHECK: @arg_ranges
+// CHECK-NEXT:  %[[C100:.*]] = arith.constant 100
+// CHECK-NEXT:  %[[ARG0_32:.*]] = arith.index_castui {{.*}} : index to i32
+// CHECK-NEXT:  %[[RET_32:.*]] = arith.divui %[[ARG0_32]], %[[C100]]
+// CHECK-NEXT:  %[[RET:.*]] = arith.index_castui %[[RET_32]] : i32 to index
+// CHECK-NEXT:  return %[[RET]]
+
+
 // -----
 
-// CHECK: @cant_lower
-// CHECK: affine.apply
+module {
+  func.func @needs_i64(%arg0: index {xla.range = [0 : index, 1000000000000 : index]}, %arg1: index {xla.range = [0 : index, 10 : index]}) -> index {
+    %0 = affine.apply affine_map<()[s0, s1] -> (s0 + s1)>()[%arg0, %arg1]
+    return %0 : index
+  }
+}
+
+// CHECK: @needs_i64
+// CHECK:   arith.index_castui {{.*}} : index to i64
+// CHECK:   arith.index_castui {{.*}} : index to i64
+// CHECK:   arith.index_castui {{.*}} : i64 to index
+
+// -----
 
 module {
   func.func @cant_lower(%arg0: index {xla.range = [-10 : index, 42 : index]}, %arg1: index {xla.range = [0 : index, 1000 : index]}) -> index {
@@ -59,3 +77,6 @@ module {
     return %0 : index
   }
 }
+
+// CHECK: @cant_lower
+// CHECK: affine.apply

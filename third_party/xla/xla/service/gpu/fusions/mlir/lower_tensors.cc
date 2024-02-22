@@ -11,6 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -121,9 +122,12 @@ mlir::Value CreateGep(mlir::Operation* op,
   rewriter.setInsertionPoint(op);
   mlir::Value index = rewriter.create<mlir::affine::AffineApplyOp>(
       tensor.getLoc(), linearize_map, indices);
-  // TODO(jreiffers): Use i32 if the index is sufficiently small.
-  index = rewriter.create<mlir::arith::IndexCastUIOp>(
-      tensor.getLoc(), rewriter.getI64Type(), index);
+  auto index_ty =
+      ShapeUtil::ElementsIn(byte_shape) < std::numeric_limits<int32_t>::max()
+          ? rewriter.getI32Type()
+          : rewriter.getI64Type();
+  index = rewriter.create<mlir::arith::IndexCastUIOp>(tensor.getLoc(), index_ty,
+                                                      index);
 
   auto tensor_ptr = rewriter
                         .create<mlir::UnrealizedConversionCastOp>(

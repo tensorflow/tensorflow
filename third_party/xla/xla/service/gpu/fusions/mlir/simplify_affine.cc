@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -118,7 +120,11 @@ struct RewriteAffineApply
 
     RangeEvaluator range_evaluator(dim_ranges, symbol_ranges, op->getContext());
     std::function<bool(mlir::AffineExpr)> can_be_lowered;
+    bool fits_32_bits = true;
     can_be_lowered = [&](mlir::AffineExpr expr) {
+      auto range = range_evaluator.ComputeExpressionRange(expr);
+      fits_32_bits &= range.upper_bound < std::numeric_limits<int32_t>::max();
+
       auto bin_op = llvm::dyn_cast<mlir::AffineBinaryOpExpr>(expr);
       if (!bin_op) {
         return true;
@@ -145,9 +151,11 @@ struct RewriteAffineApply
       return rewriter.notifyMatchFailure(op,
                                          "unable to lower the affine apply");
     }
+
     std::function<mlir::Value(mlir::AffineExpr)> lower;
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto int_ty = fits_32_bits ? b.getI32Type() : b.getI64Type();
     b.setInsertionPoint(op);
     lower = [&](mlir::AffineExpr expr) -> mlir::Value {
       if (auto bin_op = mlir::dyn_cast<mlir::AffineBinaryOpExpr>(expr)) {
@@ -169,20 +177,25 @@ struct RewriteAffineApply
 
       switch (expr.getKind()) {
         case mlir::AffineExprKind::Constant:
-          return b.create<mlir::arith::ConstantIndexOp>(
-              mlir::cast<mlir::AffineConstantExpr>(expr).getValue());
+          return b.create<mlir::arith::ConstantIntOp>(
+              mlir::cast<mlir::AffineConstantExpr>(expr).getValue(), int_ty);
         case mlir::AffineExprKind::DimId:
-          return op.getDimOperands()[mlir::cast<mlir::AffineDimExpr>(expr)
-                                         .getPosition()];
+          return b.create<mlir::arith::IndexCastUIOp>(
+              int_ty, op.getDimOperands()[mlir::cast<mlir::AffineDimExpr>(expr)
+                                              .getPosition()]);
         case mlir::AffineExprKind::SymbolId:
-          return op.getSymbolOperands()[mlir::cast<mlir::AffineSymbolExpr>(expr)
-                                            .getPosition()];
+          return b.create<mlir::arith::IndexCastUIOp>(
+              int_ty,
+              op.getSymbolOperands()[mlir::cast<mlir::AffineSymbolExpr>(expr)
+                                         .getPosition()]);
         default:
           ABSL_UNREACHABLE();
       }
     };
 
-    rewriter.replaceOp(op, lower(map.GetAffineMap().getResult(0)));
+    auto result = lower(map.GetAffineMap().getResult(0));
+    rewriter.replaceOp(
+        op, b.create<mlir::arith::IndexCastUIOp>(b.getIndexType(), result));
     return mlir::success();
   }
 };
