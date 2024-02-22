@@ -408,6 +408,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
@@ -541,7 +542,10 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/core:protos_all"],
+    protodeps = [
+        "//tensorflow/core:protos_all",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
