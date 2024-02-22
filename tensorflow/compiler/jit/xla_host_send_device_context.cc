@@ -33,7 +33,7 @@ void XlaHostSendDeviceContext::CopyCPUTensorToDevice(
   }
 
   done_event_.SetStateConcrete();
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 }  // namespace tensorflow

@@ -86,7 +86,7 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
@@ -660,7 +660,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::MemoryTypeVector GetInputMemoryTypes(

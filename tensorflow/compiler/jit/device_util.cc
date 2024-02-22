@@ -93,7 +93,7 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
     return errors::Internal("Malformed assigned device '", device, "'");
   }
   *device_type = DeviceType(parsed.type);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
