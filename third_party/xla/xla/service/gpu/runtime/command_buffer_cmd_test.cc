@@ -67,7 +67,7 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
                            BufferUsageVector buffer_usage)
       : CommandBufferCmd(execution_stream_id), buffer_usage(buffer_usage) {}
 
-  absl::Status Record(const Thunk::ExecuteParams&, StateManager&,
+  absl::Status Record(const Thunk::ExecuteParams&, const RecordParams&,
                       se::CommandBuffer*) override {
     return absl::OkStatus();
   }
@@ -207,13 +207,15 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
+  CommandBufferCmd::StateManager state;
+
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::StateManager state;
+  CommandBufferCmd::RecordParams record_params = {state};
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record(params, state, command_buffer.get()));
+  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
@@ -277,8 +279,10 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
+  CommandBufferCmd::RecordParams record_params = {state};
+
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record(params, state, command_buffer.get()));
+  TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
