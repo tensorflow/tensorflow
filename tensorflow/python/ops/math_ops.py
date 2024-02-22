@@ -4902,12 +4902,12 @@ def sampled_addmm(indices,
   >>> dense_shape = tf.constant([2, 2])
   >>> dense_shape
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
-  >>> mat1 = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+  >>> mat1 = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=tf.float32)
   >>> mat1
   <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
   array([[1, 2, 3],
          [4, 5, 6]], dtype=int32)>
-  >>> mat2 = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2])
+  >>> mat2 = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=tf.float32)
   >>> mat2
   <tf.Tensor: shape=(3, 2), dtype=int32, numpy=
   array([[ 7,  8],
@@ -4931,7 +4931,7 @@ def sampled_addmm(indices,
           [1, 0]],
          [[0, 0],
           [1, 0]]], dtype=int32)>
-  >>> values = tf.constant([3, 5, 2, 7], shape=[2, 2])
+  >>> values = tf.constant([3, 5, 2, 7], shape=[2, 2], dtype=tf.float32)
   >>> values
   <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[3, 5],
@@ -4939,14 +4939,14 @@ def sampled_addmm(indices,
   >>> dense_shape = tf.constant([2, 2])
   >>> dense_shape
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
-  >>> mat1 = tf.constant(np.arange(1, 13), shape=[2, 2, 3])
+  >>> mat1 = tf.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=tf.float32)
   >>> mat1
   <tf.Tensor: shape=(2, 2, 3), dtype=int64, numpy=
   array([[[ 1,  2,  3],
           [ 4,  5,  6]],
          [[ 7,  8,  9],
           [10, 11, 12]]])>
-  >>> mat2 = tf.constant(np.arange(13, 25), shape=[2, 3, 2])
+  >>> mat2 = tf.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=tf.float32)
   >>> mat2
   <tf.Tensor: shape=(2, 3, 2), dtype=int64, numpy=
   array([[[13, 14],
