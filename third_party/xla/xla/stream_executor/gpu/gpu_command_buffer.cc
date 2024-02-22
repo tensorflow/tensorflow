@@ -490,7 +490,8 @@ absl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor,
 absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
            packed_args.number_of_arguments());
@@ -503,7 +504,7 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
 
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddKernelNode(
         &node_info.handle, graph_, barrier, kernel.name(), gpu_func, blocks.x,
@@ -553,7 +554,8 @@ absl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
 
 absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
     const CommandBuffer& nested) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
@@ -561,7 +563,7 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
 
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddChildNode(&node_info.handle, graph_, barrier,
                                         child_graph);
@@ -580,12 +582,13 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
 absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                     const DeviceMemoryBase& src,
                                                     uint64_t size) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddMemcpyD2DNode(
         parent_->gpu_context(), &node_info.handle, graph_, barrier,
@@ -631,13 +634,14 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
 }
 
 absl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   // Adds a new memory allocation node to the graph under construction.
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
 
     GpuDevicePtr ptr;
@@ -671,13 +675,14 @@ absl::StatusOr<DeviceMemoryBase> GpuCommandBuffer::Allocate(size_t bytes) {
 }
 
 absl::Status GpuCommandBuffer::Free(DeviceMemoryBase dst) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   // Adds a new memfree node to the graph under construction.
   if (state_ == State::kCreate) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     GpuDevicePtr gpu_dptr = AsDevicePtr(dst);
     TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemFreeNode(&node_info.handle, graph_,
@@ -721,7 +726,8 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
 absl::StatusOr<std::vector<GpuGraphHandle>>
 GpuCommandBuffer::CreateConditionalNodes(
     ConditionType type, absl::Span<const GpuGraphConditionalHandle> handles) {
-  ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
+  ExecutionScopeId execution_scope_id = kDefaulExecutionScope;
+  ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   std::vector<GpuGraphHandle> conditional_graphs;
 
@@ -729,7 +735,7 @@ GpuCommandBuffer::CreateConditionalNodes(
   using ConditionalResult = GpuDriver::GpuGraphConditionalNodeParams::Result;
 
   for (GpuGraphConditionalHandle handle : handles) {
-    Dependencies barrier = GetBarrier();
+    Dependencies barrier = GetBarrier(execution_scope_id);
     GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
 
     ConditionalParams params;

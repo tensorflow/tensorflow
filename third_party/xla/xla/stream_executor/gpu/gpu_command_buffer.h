@@ -247,8 +247,6 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const ConditionBuilder> builders);
 
   Dependencies GetBarrier(ExecutionScopeId execution_scope_id);
-  // TODO(ezhulenev): Remove this once all commands migrated to scopes.
-  Dependencies GetBarrier() { return GetBarrier(kDefaulExecutionScope); }
 
   // Returns loaded auxiliary kernels, or loads them on a given stream executor.
   // Loaded kernels owned by a current command buffer.
