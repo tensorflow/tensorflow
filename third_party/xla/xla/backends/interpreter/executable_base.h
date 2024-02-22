@@ -37,19 +37,19 @@ class InterpreterExecutableBase : public Executable {
  public:
   explicit InterpreterExecutableBase(std::unique_ptr<HloModule> hlo_module);
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
  protected:
-  virtual StatusOr<Literal> Evaluate(
+  virtual absl::StatusOr<Literal> Evaluate(
       const ServiceExecutableRunOptions* run_options,
       const HloComputation& computation,
       absl::Span<const Literal> arg_literals) = 0;
 
  private:
-  StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
+  absl::StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
       const Shape& shape, const HloInputOutputAliasConfig& alias_config,
       se::DeviceMemoryAllocator* allocator,
       std::vector<ExecutionInput>* arguments, stream_executor::Stream* stream);

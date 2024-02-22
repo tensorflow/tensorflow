@@ -41,12 +41,12 @@ int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
 const std::string& XlaInterpreterPlatform::Name() const { return name_; }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {
   return XlaInterpreterExecutor::CreateDeviceDescription(ordinal);
 }
 
-tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
@@ -54,13 +54,13 @@ tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-tsl::StatusOr<std::unique_ptr<StreamExecutor>>
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(

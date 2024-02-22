@@ -150,12 +150,12 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(0);
   }
 
-  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+  static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
   absl::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
@@ -184,7 +184,8 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
-  tsl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape &shape);
+  absl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
+      const xla::Shape &shape);
 };
 
 }  // namespace interpreter

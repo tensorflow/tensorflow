@@ -110,7 +110,7 @@ absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
   return AsExecutorStream(stream)->BlockUntilDone();
 }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 

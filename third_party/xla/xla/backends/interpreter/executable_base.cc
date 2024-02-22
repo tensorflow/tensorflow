@@ -38,7 +38,7 @@ InterpreterExecutableBase::InterpreterExecutableBase(
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr) {}
 
-StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -150,7 +150,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-StatusOr<ExecutionOutput>
+absl::StatusOr<ExecutionOutput>
 InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
     se::DeviceMemoryAllocator* allocator,
