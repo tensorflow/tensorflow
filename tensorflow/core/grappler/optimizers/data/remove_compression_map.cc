@@ -33,7 +33,7 @@ namespace grappler {
 
 namespace {
 
-StatusOr<std::string> GetCompressionFunctionName(const GraphDef& graph) {
+absl::StatusOr<std::string> GetCompressionFunctionName(const GraphDef& graph) {
   for (const auto& function : graph.library().function()) {
     for (const auto& node : function.node_def()) {
       if (node.op() == "CompressElement") {
@@ -44,7 +44,7 @@ StatusOr<std::string> GetCompressionFunctionName(const GraphDef& graph) {
   return errors::Internal("Compression function not found.");
 }
 
-StatusOr<NodeDef> GetCompressionMapNode(const GraphDef& graph) {
+absl::StatusOr<NodeDef> GetCompressionMapNode(const GraphDef& graph) {
   TF_ASSIGN_OR_RETURN(std::string compression_function_name,
                       GetCompressionFunctionName(graph));
   for (const auto& node : graph.node()) {
