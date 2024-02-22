@@ -27,7 +27,7 @@ namespace xla {
 // op if `deduplicate_modules` is true. The modules are considered duplicate if
 // if their computation graphs are isomorphic (i.e. computations and
 // instructions are sorted, names are ignored etc).
-StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
+absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     const HloModule& module, bool deduplicate_modules);
 
 // Extracts an HLO instruction into a new HLO module replacing its operands

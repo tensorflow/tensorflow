@@ -48,7 +48,7 @@ bool ShouldIsolateOpcode(HloOpcode opcode) {
   }
 }
 
-StatusOr<std::vector<std::unique_ptr<HloModule>>> Decompose(
+absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> Decompose(
     const HloModule& module) {
   std::vector<std::unique_ptr<HloModule>> modules;
 
@@ -87,7 +87,7 @@ StatusOr<std::vector<std::unique_ptr<HloModule>>> Decompose(
 
 }  // namespace
 
-StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
+absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> DecomposeHloModule(
     const HloModule& module, bool deduplicate_modules) {
   std::vector<std::unique_ptr<HloModule>> modules;
   absl::flat_hash_set<std::string> module_fingerprints;
