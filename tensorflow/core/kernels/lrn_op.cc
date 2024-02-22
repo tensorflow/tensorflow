@@ -623,7 +623,7 @@ struct LaunchLRNGrad<GPUDevice, T> {
     bool status = dnn->DoNormalizeBackwardWithDimensions(
         stream, normalize_desc, dimensions_desc, input_image_data,
         output_image_data, input_grads_data, &output_grads_data,
-        /*workspace_allocator=*/nullptr, &scratch_allocator);
+        &scratch_allocator);
     OP_REQUIRES(
         context, status,
         errors::Internal("NormalizeBackwardWithDimensions launch failed"));
