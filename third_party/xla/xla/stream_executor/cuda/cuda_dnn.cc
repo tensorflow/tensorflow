@@ -128,6 +128,25 @@ namespace {
 
 static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
 
+// If 'expr' returns an error, then this returns from the current
+// function with a non-successful absl::Status.
+#define RETURN_IF_CUDNN_FRONTEND_ERROR(expr)                                \
+  do {                                                                      \
+    if (ABSL_PREDICT_TRUE((expr).is_bad())) {                               \
+      std::ostringstream oss;                                               \
+      oss << (expr).get_message() << "\nin " << __FILE__ << "(" << __LINE__ \
+          << "): '" << #expr << "' ";                                       \
+      return absl::UnknownError(oss.str());                                 \
+    }                                                                       \
+  } while (false)
+
+#define RETURN_FALSE_IF_CUDNN_FRONTEND_ERROR(expr) \
+  do {                                             \
+    if (ABSL_PREDICT_TRUE((expr).is_bad())) {      \
+      return false;                                \
+    }                                              \
+  } while (false)
+
 // Exits the program if 'expr' doesn't return CUDNN_STATUS_SUCCESS.
 #define CHECK_CUDNN_OK(expr) CHECK_EQ(expr, CUDNN_STATUS_SUCCESS)
 
@@ -1185,62 +1204,91 @@ class CudnnActivationDescriptor {
   ActivationDescriptor handle_;  // Owned.
 };
 
-cudnnDataType_t ToCudnnDataType(
+cudnn_frontend::DataType_t ToCudnnFrontendDataType(
     dnn::DataType data_type,
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   switch (data_type) {
     case dnn::DataType::kFloat:
-      return CUDNN_DATA_FLOAT;
+      return cudnn_frontend::DataType_t::FLOAT;
     case dnn::DataType::kDouble:
-      return CUDNN_DATA_DOUBLE;
+      return cudnn_frontend::DataType_t::DOUBLE;
     case dnn::DataType::kHalf:
-      return CUDNN_DATA_HALF;
+      return cudnn_frontend::DataType_t::HALF;
     case dnn::DataType::kInt8:
       switch (data_layout) {
         case dnn::DataLayout::kBatchDepthYX4:
-          return CUDNN_DATA_INT8x4;
+          return cudnn_frontend::DataType_t::INT8x4;
         case dnn::DataLayout::kBatchDepthYX32:
-          return CUDNN_DATA_INT8x32;
+          return cudnn_frontend::DataType_t::INT8x32;
         default:
-          return CUDNN_DATA_INT8;
+          return cudnn_frontend::DataType_t::INT8;
       }
     case dnn::DataType::kInt32:
-      return CUDNN_DATA_INT32;
+      return cudnn_frontend::DataType_t::INT32;
     case dnn::DataType::kInt64:
-      return CUDNN_DATA_INT64;
+      return cudnn_frontend::DataType_t::INT64;
 #if CUDNN_VERSION >= 8200
     case dnn::DataType::kBF16:
-      return CUDNN_DATA_BFLOAT16;
+      return cudnn_frontend::DataType_t::BFLOAT16;
 #endif
 #if CUDNN_VERSION >= 8900
     case dnn::DataType::kF8E4M3FN:
-      return CUDNN_DATA_FP8_E4M3;
+      return cudnn_frontend::DataType_t::FP8_E4M3;
     case dnn::DataType::kF8E5M2:
-      return CUDNN_DATA_FP8_E5M2;
+      return cudnn_frontend::DataType_t::FP8_E5M2;
 #endif
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
 }
 
-cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
-                                dnn::FilterLayout filter_layout) {
+cudnnDataType_t ToCudnnDataType(
+    dnn::DataType data_type,
+    dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
+  cudnnDataType_t type;
+  CHECK_CUDNN_OK(cudnn_frontend::detail::convert_to_cudnn_type(
+      ToCudnnFrontendDataType(data_type, data_layout), type));
+  return type;
+}
+
+cudnn_frontend::DataType_t ToCudnnFrontendDataType(
+    dnn::DataType data_type, dnn::FilterLayout filter_layout) {
   if (data_type == dnn::DataType::kInt8 &&
       filter_layout == dnn::FilterLayout::kOutputInputYX4) {
-    return CUDNN_DATA_INT8x4;
+    return cudnn_frontend::DataType_t::INT8x4;
   }
   if (data_type == dnn::DataType::kInt8 &&
       (filter_layout == dnn::FilterLayout::kOutputInputYX32 ||
        filter_layout == dnn::FilterLayout::kOutputInputYX32_CudnnReordered)) {
-    return CUDNN_DATA_INT8x32;
+    return cudnn_frontend::DataType_t::INT8x32;
   }
-  return ToCudnnDataType(data_type);
+  return ToCudnnFrontendDataType(data_type);
+}
+
+cudnnDataType_t ToCudnnDataType(dnn::DataType data_type,
+                                dnn::FilterLayout filter_layout) {
+  cudnnDataType_t type;
+  CHECK_CUDNN_OK(cudnn_frontend::detail::convert_to_cudnn_type(
+      ToCudnnFrontendDataType(data_type, filter_layout), type));
+  return type;
+}
+
+template <typename T>
+cudnn_frontend::DataType_t GetCudnnFrontendDataType(
+    dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
+  return ToCudnnFrontendDataType(dnn::ToDataType<T>::value, data_layout);
 }
 
 template <typename T>
 cudnnDataType_t GetCudnnDataType(
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   return ToCudnnDataType(dnn::ToDataType<T>::value, data_layout);
+}
+
+template <typename T>
+cudnn_frontend::DataType_t GetCudnnFrontendDataType(
+    dnn::FilterLayout filter_layout) {
+  return ToCudnnFrontendDataType(dnn::ToDataType<T>::value, filter_layout);
 }
 
 template <typename T>
