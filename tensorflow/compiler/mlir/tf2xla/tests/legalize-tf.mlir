@@ -894,32 +894,23 @@ func.func @floordiv_unsigned(%arg0: tensor<?x?xui32>, %arg1: tensor<?xui32>) -> 
 
 // -----
 
-// CHECK-LABEL: func @floordiv_unranked
-func.func @floordiv_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK-NOT: tf.FloorDiv
-  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  func.return %0: tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @floordiv_int
-func.func @floordiv_int(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
-  // CHECK-DAG: [[DIV:%.+]] = chlo.broadcast_divide %arg0, %arg1 : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  // CHECK-DAG: [[MUL:%.+]] = chlo.broadcast_multiply [[DIV]], %arg1 : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  // CHECK-DAG: [[CMP1:%.+]] = chlo.broadcast_compare [[MUL]], %arg0 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi1>
+func.func @floordiv_int(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
+  // CHECK-DAG: [[DIV:%.+]] = chlo.broadcast_divide %arg0, %arg1 : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+  // CHECK-DAG: [[MUL:%.+]] = chlo.broadcast_multiply [[DIV]], %arg1 : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+  // CHECK-DAG: [[CMP1:%.+]] = chlo.broadcast_compare [[MUL]], %arg0 {comparison_direction = #chlo<comparison_direction NE>} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
   // CHECK-DAG: [[ZEROS1:%.+]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK-DAG: [[CMP2:%.+]] = chlo.broadcast_compare %arg0, [[ZEROS1]] {comparison_direction = #chlo<comparison_direction LT>} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+  // CHECK-DAG: [[CMP2:%.+]] = chlo.broadcast_compare %arg0, [[ZEROS1]] {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
   // CHECK-DAG: [[ZEROS2:%.+]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK-DAG: [[CMP3:%.+]] = chlo.broadcast_compare %arg1, [[ZEROS2]] {comparison_direction = #chlo<comparison_direction LT>} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+  // CHECK-DAG: [[CMP3:%.+]] = chlo.broadcast_compare %arg1, [[ZEROS2]] {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
   // CHECK-DAG: [[CMP4:%.+]] = chlo.broadcast_compare [[CMP2]], [[CMP3]] {comparison_direction = #chlo<comparison_direction NE>}
   // CHECK-DAG: [[AND:%.+]] = chlo.broadcast_and [[CMP1]], [[CMP4]]
   // CHECK-DAG: [[ONES:%.+]] = mhlo.constant dense<1> : tensor<i32>
   // CHECK-DAG: [[SUB:%.+]] = chlo.broadcast_subtract [[DIV]], [[ONES]]
   // CHECK-DAG: [[SELECT:%.+]] = mhlo.select [[AND]], [[SUB]], [[DIV]]
   // CHECK: return [[SELECT]]
-  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  func.return %0: tensor<*xi32>
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
+  func.return %0: tensor<?xi32>
 }
 
 // -----
@@ -1009,15 +1000,6 @@ func.func @floormod_dynamic_broadcast_denominator_(%arg0: tensor<?x?xf32>, %arg1
   func.return %0: tensor<?x?x?xf32>
 }
 
-// -----
-
-// CHECK-LABEL: func @floormod_unranked
-func.func @floormod_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> {
-  // CHECK-NOT: tf.FloorMod
-  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  func.return %0: tensor<*xi32>
-}
-
 //===----------------------------------------------------------------------===//
 // OnesLike
 //===----------------------------------------------------------------------===//
@@ -1063,17 +1045,6 @@ func.func @broadcast_to(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {
   // CHECK-SAME: {broadcast_dimensions = dense<3> : tensor<1xi64>}
   %0 = "tf.BroadcastTo"(%arg0, %cst) : (tensor<16xf32>, tensor<4xi32>) -> tensor<16x16x16x16xf32>
   func.return %0 : tensor<16x16x16x16xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @broadcast_scalar_to_unranked
-// CHECK: (%[[ARG0:.*]]: tensor<f32>, %[[SHAPE:.*]]: tensor<?xi32>)
-func.func @broadcast_scalar_to_unranked(%arg0: tensor<f32>, %shape: tensor<?xi32>) -> tensor<*xf32> {
-  // CHECK: "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
-  // CHECK-SAME: {broadcast_dimensions = dense<> : tensor<0xi64>}
-  %0 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<f32>, tensor<?xi32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -1150,16 +1121,6 @@ func.func @concat_v2_non_const_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf3
   // CHECK: "tf.ConcatV2"
   %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<3x3xf32>, tensor<3x3xf32>, tensor<i64>) -> tensor<3x6xf32>
   func.return %1 : tensor<3x6xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @concat_v2_unranked
-func.func @concat_v2_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
-  // CHECK: "tf.ConcatV2"
-  %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<*xf32>, tensor<*xf32>, tensor<i64>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -1404,15 +1365,6 @@ func.func @matmul_ranked(%a: tensor<?x7xf32>, %b: tensor<7x?xf32>) -> tensor<?x?
   %0 = "tf.MatMul"(%a, %b) {transpose_a = false, transpose_b = false} : (tensor<?x7xf32>, tensor<7x?xf32>) -> tensor<?x?xf32>
 
   func.return %0 : tensor<?x?xf32>
-}
-
-// Verify that MatMul with unranked inputs are lowered to HLO.
-// CHECK-LABEL: matmul_unranked
-func.func @matmul_unranked(%a: tensor<*xf32>, %b: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "mhlo.dot"
-  %0 = "tf.MatMul"(%a, %b) {transpose_a = false, transpose_b = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-
-  func.return %0 : tensor<*xf32>
 }
 
 // Verify SparseMatMul is legalized to dot.
@@ -1821,19 +1773,6 @@ func.func @elu(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 
 // -----
 
-// CHECK-LABEL: func @elu_unranked
-func.func @elu_unranked(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  // CHECK-DAG: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<?xf32>) -> tensor<?xf32>
-  // CHECK-DAG: %[[PRED:.*]] = mhlo.compare GT, %arg0, %[[ZERO]]
-  // CHECK-DAG: %[[EXP:.*]] = mhlo.exponential_minus_one %arg0
-  // CHECK: %[[RESULT:.*]] = mhlo.select %[[PRED]], %arg0, %[[EXP]]
-  // CHECK: return %[[RESULT]]
-  %0 = "tf.Elu"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  func.return %0: tensor<?xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @elu_grad
 // CHECK-SAME: (%[[GRADIENTS:.*]]: tensor<4x8xf32>, %[[FEATURES:.*]]: tensor<?x?xf32>)
 func.func @elu_grad(%gradients: tensor<4x8xf32>, %features: tensor<?x?xf32>) -> tensor<4x8xf32> {
@@ -1864,16 +1803,6 @@ func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // -----
 
-// CHECK-LABEL: func @relu_unranked
-func.func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: chlo.broadcast_maximum %[[ZERO]], %arg0 {broadcast_dimensions = array<i64>} : (tensor<i32>, tensor<?xi32>) -> tensor<?xi32>
-  %0 = "tf.Relu"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-  func.return %0: tensor<?xi32>
-}
-
-// -----
-
 // CHECK-LABEL: func @relu_unsigned
 func.func @relu_unsigned(%arg0: tensor<?xui32>) -> tensor<?xui32> {
   // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<ui32>
@@ -1895,17 +1824,6 @@ func.func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // -----
 
-// CHECK-LABEL: func @relu6_unranked
-func.func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK-DAG: %[[SIX:.*]] = mhlo.constant dense<6> : tensor<i32>
-  // CHECK: mhlo.clamp %[[ZERO]], %arg0, %[[SIX]] : (tensor<i32>, tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
-  %0 = "tf.Relu6"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-  func.return %0: tensor<?xi32>
-}
-
-// -----
-
 // CHECK-LABEL: func @relu6_unsigned
 func.func @relu6_unsigned(%arg0: tensor<?xui32>) -> tensor<?xui32> {
   // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<ui32>
@@ -1913,19 +1831,6 @@ func.func @relu6_unsigned(%arg0: tensor<?xui32>) -> tensor<?xui32> {
   // CHECK: mhlo.clamp %[[ZERO]], %arg0, %[[SIX]] : (tensor<ui32>, tensor<?xui32>, tensor<ui32>) -> tensor<?xui32>
   %0 = "tf.Relu6"(%arg0) : (tensor<?xui32>) -> tensor<?xui32>
   func.return %0: tensor<?xui32>
-}
-
-// -----
-
-// CHECK-LABEL: func @relu_grad_unranked
-// CHECK-SAME: (%[[GRADIENTS:.*]]: tensor<?x?xf32>, %[[FEATURES:.*]]: tensor<?x?xf32>)
-func.func @relu_grad_unranked(%gradients: tensor<?x?xf32>, %features: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  // CHECK-DAG: %[[ZERO:.*]] = "chlo.constant_like"(%arg1) {value = 0.000000e+00 : f32} : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  // CHECK-DAG: %[[PRED:.*]] = mhlo.compare GT, %arg1, %0 : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
-  // CHECK-DAG: %[[RESULT:.*]] = mhlo.select %[[PRED]], %[[GRADIENTS]], %[[ZERO]] : tensor<?x?xi1>, tensor<?x?xf32>
-  // CHECK-DAG: return %[[RESULT]] : tensor<?x?xf32>
-  %2 = "tf.ReluGrad"(%gradients, %features) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  func.return %2 : tensor<?x?xf32>
 }
 
 // -----
@@ -1944,20 +1849,6 @@ func.func @leaky_relu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> attribu
 
 // -----
 
-// CHECK-LABEL: func @leaky_relu_unranked
-func.func @leaky_relu_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {}} {
-    // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg0) {value = 2.000000e-01 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-    // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-    // CHECK-NEXT: %[[LEAKY:.*]] = mhlo.multiply %[[INP:.*]], %[[ALPHA]] : tensor<*xf32>
-    // CHECK-NEXT: %[[CMP:.*]] = mhlo.compare GT, %[[INP]], %[[ZERO]], NOTYPE : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
-    // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[CMP]], %[[INP]], %[[LEAKY]] : tensor<*xi1>, tensor<*xf32>
-    // CHECK-NEXT: return %[[RES]] : tensor<*xf32>
-    %0 = "tf.LeakyRelu"(%arg0) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @leaky_relu_grad
 func.func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -> tensor<1x4x4xf32> attributes {tf.entry_function = {}} {
     // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg1) {value = 2.000000e-01 : f32} : (tensor<1x4x4xf32>) -> tensor<1x4x4xf32>
@@ -1972,20 +1863,6 @@ func.func @leaky_relu_grad(%arg0: tensor<1x4x4xf32>, %arg1: tensor<1x4x4xf32>) -
 
 // -----
 
-// CHECK-LABEL: func @leaky_relu_grad_unranked
-func.func @leaky_relu_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {}} {
-    // CHECK-NEXT: %[[ALPHA:.*]] = "chlo.constant_like"(%arg1) {value = 2.000000e-01 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-    // CHECK-NEXT: %[[ZERO:.*]] = "chlo.constant_like"(%arg1) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-    // CHECK-NEXT: %[[LEAKYGRAD:.*]] = mhlo.multiply %[[GRADIENT:.*]], %[[ALPHA]] : tensor<*xf32>
-    // CHECK-NEXT: %[[CMP:.*]] = mhlo.compare GT, %[[INP:.*]], %[[ZERO]], NOTYPE : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
-    // CHECK-NEXT: %[[RES:.*]] = mhlo.select %[[CMP]], %[[GRADIENT]], %[[LEAKYGRAD]] : tensor<*xi1>, tensor<*xf32>
-    // CHECK-NEXT: return %[[RES]] : tensor<*xf32>
-    %0 = "tf.LeakyReluGrad"(%arg0, %arg1) {alpha = 2.000000e-01 : f32, device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @softsign
 func.func @softsign(%arg0: tensor<4x10xf32>) -> tensor<4x10xf32> {
     // CHECK-NEXT: %[[ONE:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32} : (tensor<4x10xf32>) -> tensor<4x10xf32>
@@ -1995,19 +1872,6 @@ func.func @softsign(%arg0: tensor<4x10xf32>) -> tensor<4x10xf32> {
     // CHECK-NEXT: return %[[DIV]] : tensor<4x10xf32>
     %0 = "tf.Softsign"(%arg0) : (tensor<4x10xf32>) -> tensor<4x10xf32>
     func.return %0 : tensor<4x10xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @softsign_unranked
-func.func @softsign_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-    // CHECK-NEXT: %[[ONE:.*]] = "chlo.constant_like"(%arg0) {value = 1.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-    // CHECK-NEXT: %[[ABS:.*]] = mhlo.abs %{{.*}} : tensor<*xf32>
-    // CHECK-NEXT: %[[ADD:.*]] = mhlo.add %[[ONE]], %[[ABS]] : tensor<*xf32>
-    // CHECK-NEXT: %[[DIV:.*]] = mhlo.divide %{{.*}}, %[[ADD]] : tensor<*xf32>
-    // CHECK-NEXT: return %[[DIV]] : tensor<*xf32>
-    %0 = "tf.Softsign"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2152,15 +2016,6 @@ func.func @selectv2_dynamic_ranked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>
   // CHECK: chlo.broadcast_select
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x?x8xi32>, tensor<2x8x8xi32>) -> tensor<2x?x8xi32>
   func.return %0: tensor<2x?x8xi32>
-}
-
-// -----
-
-// CHECK-LABEL: func @selectv2_unranked
-func.func @selectv2_unranked(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %arg2: tensor<*xi32>) -> tensor<*xi32> {
-  // CHECK: chlo.broadcast_select
-  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<*xi32>) -> tensor<*xi32>
-  func.return %0: tensor<*xi32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -2341,17 +2196,6 @@ func.func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
   func.return %0 : tensor<4x?xf32>
 }
 
-// -----
-
-// CHECK-LABEL: @transpose_unranked_2d
-func.func @transpose_unranked_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %permutation = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
-  // CHECK: "mhlo.transpose"
-  %0 = "tf.Transpose"(%arg0, %permutation) : (tensor<*xf32>, tensor<2xi64>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-
 //===----------------------------------------------------------------------===//
 // Unary op legalizations.
 //===----------------------------------------------------------------------===//
@@ -2372,15 +2216,6 @@ func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  mhlo.abs %arg0 : tensor<?xf32>
   %0 = "tf.Abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @abs_unranked
-func.func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.abs %arg0 : tensor<*xf32>
-  %0 = "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2477,15 +2312,6 @@ func.func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @ceil_unranked
-func.func @ceil_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.ceil %arg0 : tensor<*xf32>
-  %0 = "tf.Ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: @complex_abs
 func.func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
   // CHECK:  mhlo.abs %arg0 : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
@@ -2522,15 +2348,6 @@ func.func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @cos_unranked
-func.func @cos_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.cosine %arg0 : tensor<*xf32>
-  %0 = "tf.Cos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: @exp
 func.func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.exponential %arg0 : tensor<2xf32>
@@ -2558,15 +2375,6 @@ func.func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @exp_unranked
-func.func @exp_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.exponential %arg0 : tensor<*xf32>
-  %0 = "tf.Exp"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: @floor
 func.func @floor(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.floor %arg0 : tensor<2xf32>
@@ -2581,24 +2389,6 @@ func.func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  mhlo.floor %arg0 : tensor<?xf32>
   %0 = "tf.Floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @floor_unranked
-func.func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.floor %arg0 : tensor<*xf32>
-  %0 = "tf.Floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @invert_op_unranked
-func.func @invert_op_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  // CHECK:  mhlo.not %arg0 : tensor<*xi32>
-  %0 = "tf.Invert"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
 }
 
 // -----
@@ -2621,15 +2411,6 @@ func.func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
 
 // -----
 
-// CHECK-LABEL: func @is_finite_unranked
-func.func @is_finite_unranked(%arg0: tensor<*xf32>) -> tensor<*xi1> {
-  // CHECK:  mhlo.is_finite %arg0 : (tensor<*xf32>) -> tensor<*xi1>
-  %0 = "tf.IsFinite"(%arg0) : (tensor<*xf32>) -> tensor<*xi1>
-  func.return %0 : tensor<*xi1>
-}
-
-// -----
-
 // CHECK-LABEL: @log
 func.func @log(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.log %arg0 : tensor<2xf32>
@@ -2644,15 +2425,6 @@ func.func @log_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  mhlo.log %arg0 : tensor<?xf32>
   %0 = "tf.Log"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @log_unranked
-func.func @log_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.log %arg0 : tensor<*xf32>
-  %0 = "tf.Log"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2675,24 +2447,6 @@ func.func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @log1p_unranked
-func.func @log1p_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.log_plus_one %arg0 : tensor<*xf32>
-  %0 = "tf.Log1p"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @not_op_unranked
-func.func @not_op_unranked(%arg0: tensor<*xi1>) -> tensor<*xi1> {
-  // CHECK:  mhlo.not %arg0 : tensor<*xi1>
-  %0 = "tf.LogicalNot"(%arg0) : (tensor<*xi1>) -> tensor<*xi1>
-  func.return %0 : tensor<*xi1>
-}
-
-// -----
-
 // CHECK-LABEL: @neg
 func.func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.negate %arg0 : tensor<2xf32>
@@ -2707,15 +2461,6 @@ func.func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  mhlo.negate %arg0 : tensor<?xf32>
   %0 = "tf.Neg"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @neg_unranked
-func.func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.negate %arg0 : tensor<*xf32>
-  %0 = "tf.Neg"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2737,14 +2482,6 @@ func.func @sigmoid_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f3
 }
 
 // -----
-
-// CHECK-LABEL: @sigmoid_unranked
-func.func @sigmoid_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: mhlo.logistic
-  %0 = "tf.Sigmoid"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 
 // CHECK-LABEL: @sigmoid_grad
 func.func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
@@ -2801,15 +2538,6 @@ func.func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @sin_unranked
-func.func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.sine %arg0 : tensor<*xf32>
-  %0 = "tf.Sin"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @rsqrt
 func.func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.rsqrt %arg0 : tensor<2xf32>
@@ -2824,15 +2552,6 @@ func.func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  mhlo.rsqrt %arg0 : tensor<?xf32>
   %0 = "tf.Rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @rsqrt_unranked
-func.func @rsqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.rsqrt %arg0 : tensor<*xf32>
-  %0 = "tf.Rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2855,15 +2574,6 @@ func.func @sqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @sqrt_unranked
-func.func @sqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.sqrt %arg0 : tensor<*xf32>
-  %0 = "tf.Sqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @tanh
 func.func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.tanh %arg0 : tensor<2xf32>
@@ -2882,15 +2592,6 @@ func.func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // -----
 
-// CHECK-LABEL: func @tanh_unranked
-func.func @tanh_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.tanh %arg0 : tensor<*xf32>
-  %0 = "tf.Tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @bitcast
 func.func @bitcast(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  mhlo.bitcast_convert %arg0 : (tensor<2xf32>) -> tensor<2xf32>
@@ -2905,15 +2606,6 @@ func.func @bitcast_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:  mhlo.bitcast_convert %arg0 : (tensor<?xf32>) -> tensor<?xf32>
   %0 = "tf.Bitcast"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: func @bitcast_unranked
-func.func @bitcast_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK:  mhlo.bitcast_convert %arg0 : (tensor<*xf32>) -> tensor<*xf32>
-  %0 = "tf.Bitcast"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -2969,24 +2661,6 @@ func.func @reshape_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor
   // CHLO:  mhlo.compute_reshape_shape
   // CHLO:  mhlo.dynamic_reshape
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-  func.return %0 : tensor<?x?xf32>
-}
-
-// -----
-
-// CHECK-LABEL: reshape_unranked
-// CHECK-SAME: %[[INPUT:.*]]: tensor<*xf32>
-// CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
-func.func @reshape_unranked(%arg0: tensor<*xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK:  "chlo.dynamic_reshape"
-  // CHLO:  shape.shape_of
-  // CHLO:  shape.num_elements
-  // CHLO:  mhlo.cstr_reshapable
-  // CHLO:  assuming{{.*}}{
-  // CHLO:   mhlo.compute_reshape_shape
-  // CHLO:   mhlo.dynamic_reshape
-  // CHLO:  }
-  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
 
@@ -3224,7 +2898,7 @@ func.func @slice_variable_start_negative_one_size(%arg0: tensor<3x4xi32>, %arg1:
 // -----
 
 // CHECK-LABEL: slice_real_dynamic_slice
-func.func @slice_real_dynamic_slice(%arg0: tensor<4xi32>, %arg1: tensor<1xi64>, %arg2: tensor<1xi64>) -> tensor<*xi32> {
+func.func @slice_real_dynamic_slice(%arg0: tensor<4xi32>, %arg1: tensor<1xi64>, %arg2: tensor<1xi64>) -> tensor<?xi32> {
   // CHECK: tensor.extract {{.*}} : tensor<1xi64>
   // CHECK: tensor.extract {{.*}} : tensor<1xi64>
   // CHECK: arith.index_cast {{.*}} : index to i64
@@ -3238,8 +2912,8 @@ func.func @slice_real_dynamic_slice(%arg0: tensor<4xi32>, %arg1: tensor<1xi64>, 
   // CHECK: tensor.from_elements {{.*}} : tensor<1xindex>
   // CHECK: tensor.from_elements {{.*}} : tensor<1xindex>
   // CHECK: tensor.from_elements {{.*}} : tensor<1xindex>
-  %0 = "tf.Slice"(%arg0, %arg1, %arg2) : (tensor<4xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
+  %0 = "tf.Slice"(%arg0, %arg1, %arg2) : (tensor<4xi32>, tensor<1xi64>, tensor<1xi64>) -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -4719,16 +4393,6 @@ func.func @unpack_dynamic(%arg0: tensor<?x?x2xf32>) -> (tensor<?x?xf32>, tensor<
   func.return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
 }
 
-// -----
-
-// CHECK-LABEL: @unpack_unranked
-func.func @unpack_unranked(%input: tensor<*xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
-
-  // CHECK: tf.Unpack
-  %0:2 = "tf.Unpack"(%input) {axis = -1} : (tensor<*xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>)
-  func.return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xf32>
-}
-
 //===----------------------------------------------------------------------===//
 // tf.UnsortedSegment{Max|Min|Prod|Sum} legalization
 //===----------------------------------------------------------------------===//
@@ -4869,14 +4533,14 @@ func.func @gather_v2(%params: tensor<16x2x3xf32>, %indices: tensor<16x5xi32>) ->
 // CHECK-LABEL: @gather_v2_dynamic
 //  CHECK-SAME: %[[PARAMS:[a-zA-Z0-9_]+]]
 //  CHECK-SAME: %[[INDICES:[a-zA-Z0-9_]+]]
-func.func @gather_v2_dynamic(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi32>) -> tensor<*xf32> {
+func.func @gather_v2_dynamic(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi32>) -> tensor<?x?x?xf32> {
   //      CHECK: mhlo.torch_index_select
   // CHECK-SAME:   %[[PARAMS]], %[[INDICES]]
   // CHECK-SAME:   batch_dims = 1
   // CHECK-SAME:   dim = 2
   %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<1xi32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi32>, tensor<1xi32>) -> tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -4884,24 +4548,14 @@ func.func @gather_v2_dynamic(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi3
 // CHECK-LABEL: @gather_v2_dynamic_index_i64
 //  CHECK-SAME: %[[PARAMS:[a-zA-Z0-9_]+]]
 //  CHECK-SAME: %[[INDICES:[a-zA-Z0-9_]+]]
-func.func @gather_v2_dynamic_index_i64(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi64>) -> tensor<*xf32> {
+func.func @gather_v2_dynamic_index_i64(%params: tensor<?x?x?xf32>, %indices: tensor<?x?xi64>) -> tensor<?x?x?xf32> {
   //      CHECK: mhlo.torch_index_select
   // CHECK-SAME:   %[[PARAMS]], %[[INDICES]]
   // CHECK-SAME:   batch_dims = 1
   // CHECK-SAME:   dim = 2
   %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<1xi32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
-}
-
-// -----
-
-// CHECK-LABEL: @gather_v2_unranked
-func.func @gather_v2_unranked(%params: tensor<*xf32>, %indices: tensor<*xi32>) -> tensor<*xf32> {
-  // CHECK: tf.GatherV2
-  %axis = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
-  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<*xf32>, tensor<*xi32>, tensor<1xi32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  %1 = "tf.GatherV2"(%params, %indices, %axis) {batch_dims = -1 : i64} : (tensor<?x?x?xf32>, tensor<?x?xi64>, tensor<1xi32>) -> tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -6343,18 +5997,18 @@ func.func @test_xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> t
   %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK: %[[REDUCE:.*]] = "mhlo.reduce_window"(%arg0, %arg1) ({
-  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
+  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>)
   // CHECK-NEXT:   %[[SUM:.*]] = func.call @sum_reducer3(%[[ARG0]], %[[ARG1]]){{.*}}
-  // CHECK-NEXT:   mhlo.return %[[SUM]] : tensor<*xf32>
+  // CHECK-NEXT:   mhlo.return %[[SUM]] : tensor<f32>
   // CHECK-NEXT: }) {base_dilations = dense<3> : tensor<1xi64>, padding = dense<0> : tensor<1x2xi64>, window_dilations = dense<4> : tensor<1xi64>, window_dimensions = dense<1> : tensor<1xi64>, window_strides = dense<2> : tensor<1xi64>} : (tensor<7xf32>, tensor<f32>) -> tensor<10xf32>
   // CHECK-NEXT: return %[[REDUCE]]
   %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @sum_reducer3} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
 
-func.func private @sum_reducer3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+func.func private @sum_reducer3(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -6444,15 +6098,15 @@ func.func private @sum_reducer(%arg0: tensor<complex<f64>>, %arg1: tensor<comple
 // -----
 
 // CHECK-LABEL: @xla_variadic_reduce_v2_dynamic
-func.func @xla_variadic_reduce_v2_dynamic(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1", outputs = "_retval0"}} {
+func.func @xla_variadic_reduce_v2_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1", outputs = "_retval0"}} {
   // CHECK: %[[REDUCE:.*]] = mhlo.reduce(%arg0 init: %arg1)
   // CHECK-SAME: dimensions = [0]
   // CHECK-NEXT: (%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<i32>)
   // CHECK-NEXT:   %[[SUM:.*]] = func.call @sum_reducer2(%[[ARG0]], %[[ARG1]]){{.*}}
   // CHECK-NEXT:   mhlo.return %[[SUM]] : tensor<i32>
   // CHECK: return %[[REDUCE]]
-  %0 = "tf.XlaVariadicReduceV2"(%arg0, %arg1) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_GPU:0", dimensions_to_reduce = [0], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum_reducer2} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
+  %0 = "tf.XlaVariadicReduceV2"(%arg0, %arg1) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_GPU:0", dimensions_to_reduce = [0], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum_reducer2} : (tensor<?x?xi32>, tensor<i32>) -> tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 func.func private @sum_reducer2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
@@ -6519,27 +6173,27 @@ func.func @test_xla_select_and_scatter(%arg0: tensor<4x5x1x1xbf16>, %arg1: tenso
   %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
   %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
   // CHECK: %[[SELECT_AND_SCATTER:.*]] = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
-  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<*xbf16>, %[[ARG1:.*]]: tensor<*xbf16>)
+  // CHECK-NEXT: ^{{.*}}(%[[ARG0:.*]]: tensor<bf16>, %[[ARG1:.*]]: tensor<bf16>)
   // CHECK-NEXT:   %[[RES:.*]] = func.call @ge_select(%[[ARG0]], %[[ARG1]]){{.*}}
-  // CHECK-NEXT:   mhlo.return %[[RES]] : tensor<*xi1>
+  // CHECK-NEXT:   mhlo.return %[[RES]] : tensor<i1>
   // CHECK-NEXT: },  {
-  // CHECK-NEXT: ^{{.*}}(%[[ARG2:.*]]: tensor<*xbf16>, %[[ARG3:.*]]: tensor<*xbf16>)
+  // CHECK-NEXT: ^{{.*}}(%[[ARG2:.*]]: tensor<bf16>, %[[ARG3:.*]]: tensor<bf16>)
   // CHECK-NEXT:   %[[RES:.*]] = func.call @add_scatter(%[[ARG2]], %[[ARG3]]){{.*}}
-  // CHECK-NEXT:   mhlo.return %[[RES]] : tensor<*xbf16>
+  // CHECK-NEXT:   mhlo.return %[[RES]] : tensor<bf16>
   // CHECK-NEXT: }) {padding = dense<0> : tensor<4x2xi64>, window_dimensions = dense<[2, 3, 1, 1]> : tensor<4xi64>, window_strides = dense<[2, 2, 1, 1]> : tensor<4xi64>} : (tensor<4x5x1x1xbf16>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
   // CHECK-NEXT: return %[[SELECT_AND_SCATTER]]
   %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @add_scatter, select = @ge_select} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
   func.return %0 : tensor<?x?x?x?xbf16>
 }
 
-func.func private @add_scatter(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
-  func.return %0 : tensor<*xbf16>
+func.func private @add_scatter(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<bf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<bf16>, tensor<bf16>) -> tensor<bf16>
+  func.return %0 : tensor<bf16>
 }
 
-func.func private @ge_select(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xi1> {
-  %0 = "tf.GreaterEqual"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
-  func.return %0 : tensor<*xi1>
+func.func private @ge_select(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<i1> {
+  %0 = "tf.GreaterEqual"(%arg0, %arg1) {device = ""} : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 //===----------------------------------------------------------------------===//
