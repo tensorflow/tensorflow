@@ -196,6 +196,7 @@ tf_py_strict_test(
     srcs = ["global_shuffle_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:global_shuffle_op",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:combinations",

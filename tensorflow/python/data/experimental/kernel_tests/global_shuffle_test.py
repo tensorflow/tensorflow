@@ -14,11 +14,12 @@
 # ==============================================================================
 """Tests for global shuffling of tf.data datasets."""
 
-from typing import Optional
+from typing import Callable, Optional
 
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import global_shuffle_op
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -143,6 +144,32 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
         "with random access."):
       dataset = global_shuffle_op._global_shuffle(dataset)
       self.getDatasetOutput(dataset, requires_initialization=True)
+
+
+class GlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                  parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(reshuffle_each_iteration=[True, False])))
+  def testRange(
+      self,
+      verify_fn: Callable[..., None],
+      reshuffle_each_iteration: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(10)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      return dataset
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=10,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":
