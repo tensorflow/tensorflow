@@ -330,22 +330,19 @@ for path in so_lib_paths:
 # $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
 # libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  # For tensorflow-tpu releases, use a set libtpu version;
+  # For tensorflow-tpu releases, use a set libtpu-nightly version;
   # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '2.16.0rc0',
+      '0.1.dev20231018',
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
           - datetime.timedelta(hours=8)
       ).strftime('%Y%m%d'),
   )
-  if _libtpu_version.startswith('0.1'):
-    REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
-  else:
-    REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
+  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '
