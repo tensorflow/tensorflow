@@ -138,6 +138,25 @@ func.func @conv_with_bias_dynamic_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x2
 
 // -----
 
+// Because the operand of shape_of is other than the target conv,
+// should not match conv bias pattern.
+
+// CHECK-LABEL: @conv_with_bias_dynamic_shape_not_same_op_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x28x28x1xf32>
+func.func @conv_with_bias_dynamic_shape_not_same_op_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x28x28x16xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x1x16xf32>
+  %1 = stablehlo.constant dense<2.000000e+00> : tensor<16xf32>
+  %2 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %3 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %4 = shape.shape_of %3 : tensor<?x28x28x16xf32> -> tensor<4xindex>
+  %5 = stablehlo.dynamic_broadcast_in_dim %1, %4, dims = [3] : (tensor<16xf32>, tensor<4xindex>) -> tensor<?x28x28x16xf32>
+  %6 = stablehlo.add %2, %5 : tensor<?x28x28x16xf32>
+  func.return %6: tensor<?x28x28x16xf32>
+}
+// CHECK-NOT: @composite_conv_with_bias_dynamic_fn_1
+
+// -----
+
 // CHECK-LABEL: @dot_general_with_bias_dynamic_fn(
 // CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x12544xf32>
 func.func @dot_general_with_bias_dynamic_fn(%arg0: tensor<?x12544xf32>) -> tensor<?x10xf32> {
@@ -235,6 +254,25 @@ func.func @conv_with_relu_dynamic_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x2
 // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[CONV]], %[[DYNAMIC_BROADCAST_IN_DIM]]
 // CHECK: return %[[MAX]] : tensor<?x28x28x16xf32>
 // CHECK: }
+
+// -----
+
+// Because the operand of shape_of is other than the target conv,
+// should not match conv relu dynamic pattern.
+
+// CHECK-LABEL: @conv_with_relu_dynamic_shape_not_same_op_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x28x28x1xf32>
+func.func @conv_with_relu_dynamic_shape_not_same_op_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x28x28x16xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x1x16xf32>
+  %1 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %2 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %3 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %4 = shape.shape_of %3 : tensor<?x28x28x16xf32> -> tensor<4xindex>
+  %5 = stablehlo.dynamic_broadcast_in_dim %1, %4, dims = [] : (tensor<f32>, tensor<4xindex>) -> tensor<?x28x28x16xf32>
+  %6 = stablehlo.maximum %2, %5 : tensor<?x28x28x16xf32>
+  func.return %6: tensor<?x28x28x16xf32>
+}
+// CHECK-NOT: private @composite_conv_with_relu_dynamic_fn_1
 
 // -----
 
@@ -508,6 +546,29 @@ func.func @conv_with_bias_and_relu_dynamic_fn(%arg0: tensor<?x28x28x1xf32>) -> t
 
 // -----
 
+// Because the operand of shape_of is other than the target conv,
+// should not match conv bias relu dynamic pattern.
+
+// CHECK-LABEL: @conv_with_bias_and_relu_dynamic_shape_not_same_op_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x28x28x1xf32>
+func.func @conv_with_bias_and_relu_dynamic_shape_not_same_op_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x28x28x16xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x1x16xf32>
+  %1 = stablehlo.constant dense<2.000000e+00> : tensor<16xf32>
+  %2 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %4 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[1, 1], [1, 1]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %5 = shape.shape_of %4 : tensor<?x28x28x16xf32> -> tensor<4xindex>
+  %6 = stablehlo.dynamic_broadcast_in_dim %1, %5, dims = [3] : (tensor<16xf32>, tensor<4xindex>) -> tensor<?x28x28x16xf32>
+  %7 = stablehlo.add %3, %6 : tensor<?x28x28x16xf32>
+  %8 = shape.shape_of %7 : tensor<?x28x28x16xf32> -> tensor<4xindex>
+  %9 = stablehlo.dynamic_broadcast_in_dim %2, %8, dims = [] : (tensor<f32>, tensor<4xindex>) -> tensor<?x28x28x16xf32>
+  %10 = stablehlo.maximum %7, %9 : tensor<?x28x28x16xf32>
+  func.return %10: tensor<?x28x28x16xf32>
+}
+// CHECK-NOT: private @composite_conv_with_bias_and_relu_dynamic_fn_1
+
+// -----
+
 // CHECK-LABEL: @dot_general_with_bias_and_relu_dynamic_fn(
 // CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x12544xf32>
 func.func @dot_general_with_bias_and_relu_dynamic_fn(%arg0: tensor<?x12544xf32>) -> tensor<?x10xf32> {
@@ -664,6 +725,28 @@ func.func @conv_with_bias_and_relu6_dynamic_fn(%arg0: tensor<?x28x28x1xf32>) -> 
 // CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[ADD]], %[[CONST_1]]
 // CHECK: return %[[CLAMP]] : tensor<?x28x28x16xf32>
 // CHECK: }
+
+// -----
+
+// Because the operand of shape_of is other than the target conv,
+// should not match conv bias relu6 dynamic pattern.
+
+// CHECK-LABEL: @conv_with_bias_and_relu6_dynamic_shape_not_same_op_fn(
+// CHECK-SAME:                    %[[ARG_0:.*]]: tensor<?x28x28x1xf32>
+func.func @conv_with_bias_and_relu6_dynamic_shape_not_same_op_fn(%arg0: tensor<?x28x28x1xf32>) -> tensor<?x28x28x16xf32> {
+  %0 = stablehlo.constant dense<2.000000e+00> : tensor<3x3x1x16xf32>
+  %1 = stablehlo.constant dense<2.000000e+00> : tensor<16xf32>
+  %2 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %3 = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  %4 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %5 = stablehlo.convolution(%arg0, %0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<?x28x28x1xf32>, tensor<3x3x1x16xf32>) -> tensor<?x28x28x16xf32>
+  %6 = shape.shape_of %5 : tensor<?x28x28x16xf32> -> tensor<4xindex>
+  %7 = stablehlo.dynamic_broadcast_in_dim %1, %6, dims = [3] : (tensor<16xf32>, tensor<4xindex>) -> tensor<?x28x28x16xf32>
+  %8 = stablehlo.add %4, %7 : tensor<?x28x28x16xf32>
+  %9 = stablehlo.clamp %2, %8, %3 : (tensor<f32>, tensor<?x28x28x16xf32>, tensor<f32>) -> tensor<?x28x28x16xf32>
+  func.return %9: tensor<?x28x28x16xf32>
+}
+// CHECK-NOT: private @composite_conv_with_bias_and_relu6_dynamic_fn_1
 
 // -----
 
