@@ -90,20 +90,20 @@ func.func @reshape_same_scale_propagate(%arg0: tensor<2x3xf32>) -> tensor<6xf32>
 // -----
 
 // CHECK-LABEL: func @merge_consecutive_qcast
-// CHECK-SAME: (%[[ARG_0:.*]]: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*xf32>, %[[ARG_2:.*]]: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
-func.func @merge_consecutive_qcast(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<?xf32>, %[[ARG_1:.*]]: tensor<?xf32>, %[[ARG_2:.*]]: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+func.func @merge_consecutive_qcast(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %arg2: tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
   // CHECK: "quantfork.qcast"(%[[ARG_1]])
-  // CHECK-SAME: -> tensor<*x!quant.uniform<i8:f32, 0.02454993117089365:-64>>
+  // CHECK-SAME: -> tensor<?x!quant.uniform<i8:f32, 0.02454993117089365:-64>>
   // CHECK: "quantfork.qcast"(%[[ARG_1]])
-  // CHECK-SAME: -> tensor<*x!quant.uniform<i8:f32, 0.013075299590241675:-64>>
-  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[-0.83811146, 2.4960899]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  %1 = "quantfork.stats"(%arg1) {layerStats = dense<[-0.835039615, 1.000000e+00]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  %2 = "stablehlo.concatenate"(%0, %1) {dimension = 0 : i64} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  %3 = "quantfork.stats"(%2) {layerStats = dense<[-0.83811146, 2.4960899]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  %4 = "quantfork.stats"(%arg2) {layerStats = dense<[-1.5726943, 1.07351148]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  %5 = "stablehlo.concatenate"(%4, %1) {dimension = 0 : i64} : (tensor<*xf32>,  tensor<*xf32>) -> tensor<*xf32>
-  %6 = "quantfork.stats"(%5) {layerStats = dense<[-1.5726943, 4.6875381]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  func.return  %3, %6 : tensor<*xf32>, tensor<*xf32>
+  // CHECK-SAME: -> tensor<?x!quant.uniform<i8:f32, 0.013075299590241675:-64>>
+  %0 = "quantfork.stats"(%arg0) {layerStats = dense<[-0.83811146, 2.4960899]> : tensor<2xf32>} : (tensor<?xf32>) -> tensor<?xf32>
+  %1 = "quantfork.stats"(%arg1) {layerStats = dense<[-0.835039615, 1.000000e+00]> : tensor<2xf32>} : (tensor<?xf32>) -> tensor<?xf32>
+  %2 = "stablehlo.concatenate"(%0, %1) {dimension = 0 : i64} : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %3 = "quantfork.stats"(%2) {layerStats = dense<[-0.83811146, 2.4960899]> : tensor<2xf32>} : (tensor<?xf32>) -> tensor<?xf32>
+  %4 = "quantfork.stats"(%arg2) {layerStats = dense<[-1.5726943, 1.07351148]> : tensor<2xf32>} : (tensor<?xf32>) -> tensor<?xf32>
+  %5 = "stablehlo.concatenate"(%4, %1) {dimension = 0 : i64} : (tensor<?xf32>,  tensor<?xf32>) -> tensor<?xf32>
+  %6 = "quantfork.stats"(%5) {layerStats = dense<[-1.5726943, 4.6875381]> : tensor<2xf32>} : (tensor<?xf32>) -> tensor<?xf32>
+  func.return  %3, %6 : tensor<?xf32>, tensor<?xf32>
 }
 
 // -----
