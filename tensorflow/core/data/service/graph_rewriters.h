@@ -37,7 +37,7 @@ namespace data {
 class RemoveCompressionMapRewriter {
  public:
   // Returns `graph_def` with the compression map removed.
-  StatusOr<GraphDef> ApplyRemoveCompressionMapRewrite(
+  absl::StatusOr<GraphDef> ApplyRemoveCompressionMapRewrite(
       const GraphDef& graph_def);
 
  private:
@@ -49,11 +49,11 @@ class AutoShardRewriter {
  public:
   // Creates an `AutoShardRewriter` according to `task_def`. Returns an error if
   // the sharding policy is not a valid auto-shard policy.
-  static StatusOr<AutoShardRewriter> Create(const TaskDef& task_def);
+  static absl::StatusOr<AutoShardRewriter> Create(const TaskDef& task_def);
 
   // Applies auto-sharding to `graph_def`. If auto-shard policy is OFF, returns
   // the same graph as `graph_def`. Otherwise, returns the re-written graph.
-  StatusOr<GraphDef> ApplyAutoShardRewrite(const GraphDef& graph_def);
+  absl::StatusOr<GraphDef> ApplyAutoShardRewrite(const GraphDef& graph_def);
 
  private:
   AutoShardRewriter(AutoShardPolicy auto_shard_policy, int64_t num_workers,
@@ -97,7 +97,8 @@ class WorkerIndexResolver {
 
   // Returns the worker index for the worker at `worker_address`. Returns a
   // NotFound error if the worker is not registered.
-  StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
+  absl::StatusOr<int64_t> GetWorkerIndex(
+      absl::string_view worker_address) const;
 
  private:
   std::vector<std::string> worker_addresses_;

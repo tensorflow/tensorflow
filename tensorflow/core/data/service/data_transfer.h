@@ -91,7 +91,7 @@ class DataTransferClient {
 
   // Returns a string describing properties of the client relevant for checking
   // compatibility with a server for a given protocol.
-  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+  virtual absl::StatusOr<std::string> GetCompatibilityInfo() const {
     return std::string();
   }
 
@@ -130,7 +130,7 @@ class DataTransferServer {
 
   // Returns a string describing properties of the server relevant for checking
   // compatibility with a client for a given protocol.
-  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+  virtual absl::StatusOr<std::string> GetCompatibilityInfo() const {
     return std::string();
   }
 };

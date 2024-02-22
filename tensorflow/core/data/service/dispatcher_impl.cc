@@ -622,7 +622,8 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   return absl::OkStatus();
 }
 
-StatusOr<std::optional<std::string>> DataServiceDispatcherImpl::FindDataset(
+absl::StatusOr<std::optional<std::string>>
+DataServiceDispatcherImpl::FindDataset(
     const GetOrRegisterDatasetRequest& request)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::shared_ptr<const Dataset> existing_dataset;

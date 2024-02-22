@@ -467,7 +467,7 @@ Status DispatcherState::ValidateWorker(absl::string_view worker_address) const {
   return worker_index_resolver_.ValidateWorker(worker_address);
 }
 
-StatusOr<int64_t> DispatcherState::GetWorkerIndex(
+absl::StatusOr<int64_t> DispatcherState::GetWorkerIndex(
     absl::string_view worker_address) const {
   return worker_index_resolver_.GetWorkerIndex(worker_address);
 }
