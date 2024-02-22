@@ -517,7 +517,7 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     HloInstruction* instr, int64_t loop_iter, const HloComputation* while_body,
     int64_t level_to_operate_on,
     const absl::flat_hash_set<const HloInstruction*>& loop_invariant_params) {
-  if (instr->user_count() != 1 || instr->HasControlDependencies()) {
+  if (instr->HasControlDependencies()) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(instr, loop_iter,
