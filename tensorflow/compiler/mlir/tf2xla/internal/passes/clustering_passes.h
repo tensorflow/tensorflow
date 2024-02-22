@@ -61,6 +61,12 @@ CreateMarkOpsForOutsideCompilationPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateHoistBroadcastReadPass();
 
+// Creates a pass that moves broadcasts from TF host ops to XLA code, encoded as
+// XlaAllReduces. This enables use of the device network for broadcasts, which
+// is faster.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateXlaBroadcastPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
