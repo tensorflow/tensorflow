@@ -4995,8 +4995,8 @@ def sampled_addmm(indices,
   mat1 = ops.convert_to_tensor(mat1, dtype=output_type)
   mat2 = ops.convert_to_tensor(mat2, dtype=output_type)
 
-  mat1_shape = array_ops.shape(mat1)
-  mat2_shape = array_ops.shape(mat2)
+  mat1_shape = tensor_util.constant_value(array_ops.shape(mat1))
+  mat2_shape = tensor_util.constant_value(array_ops.shape(mat2))
 
   dense_rows = mat1_shape[-2]
   dense_cols = mat2_shape[-1]
@@ -5037,7 +5037,7 @@ def sampled_addmm(indices,
                                   indices[..., -1:]], axis=-1)
 
   # Calculate batch dimensions.
-  rank = array_ops.rank(mat1)
+  rank = tensor_util.constant_value(array_ops.rank(mat1))
   batch_dims = rank - 2
 
   # Extract rows and columns.
