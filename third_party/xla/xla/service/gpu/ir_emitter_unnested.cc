@@ -2837,7 +2837,6 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
 
 absl::Status IrEmitterUnnested::EmitHloInstruction(
     const HloInstruction* instr) {
-  // TODO(anlunx): Support other instruction opcodes.
   switch (instr->opcode()) {
     case HloOpcode::kAllGatherDone:
       return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);

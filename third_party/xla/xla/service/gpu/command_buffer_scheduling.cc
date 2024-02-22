@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -287,7 +288,65 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   };
 
   auto& instructions = schedule.instructions();
-  for (size_t i = 0; i < instructions.size(); ++i) {
+
+  // Collect the sequence of instructions that contains the async start and its
+  // corresponding done instruction. If there is another start instruction
+  // between the original start and done, we may potentially extend the sequence
+  // to include its corresponding done instruction. For example, if we call this
+  // function on async-start_a in the following sequence:
+  //
+  // async_start_a
+  // async_start_b
+  // async_done_a
+  // async_done_b
+  //
+  // The returned sequence will contain async_done_b. So that all async pairs
+  // are captured by the same command buffer.
+  auto collect_async_region = [&](const HloInstruction* start) {
+    auto get_index = [&](const HloInstruction* inst) -> size_t {
+      auto it = std::find(instructions.begin(), instructions.end(), inst);
+      return std::distance(instructions.begin(), it);
+    };
+
+    HloInstructionSequence seq;
+    size_t done_index = get_index(FindAsyncDoneCommand(start));
+    for (size_t i = get_index(start); i <= done_index; i++) {
+      HloInstruction* inst = instructions.at(i);
+      if (IsAsyncStartCommand(inst, config)) {
+        const HloInstruction* done = FindAsyncDoneCommand(inst);
+        done_index = std::max(done_index, get_index(done));
+      }
+      seq.push_back(inst);
+    }
+    return seq;
+  };
+
+  // Check that instructions are safe to be captured by command buffer, and that
+  // we do not capture unmatched async done instruction.
+  auto check_async_region = [&](const HloInstructionSequence& seq) {
+    if (!absl::c_all_of(seq.instructions(), [&](HloInstruction* inst) {
+          return IsNoOp(inst) || IsCommand(inst, config) ||
+                 IsAsyncStartCommand(inst, config) ||
+                 IsAsyncDoneCommand(inst, config);
+        })) {
+      return false;
+    }
+
+    absl::flat_hash_set<HloInstruction*> done_instructions;
+    for (const HloInstruction* inst : seq.instructions()) {
+      if (IsAsyncStartCommand(inst, config)) {
+        done_instructions.insert(FindAsyncDoneCommand(inst));
+      }
+      if (IsAsyncDoneCommand(inst, config)) {
+        if (!done_instructions.contains(inst)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  for (size_t i = 0; i < instructions.size(); i++) {
     HloInstruction* inst = instructions.at(i);
 
     // We add no-op instructions to current sequence only if they act as a glue
@@ -306,17 +365,16 @@ CommandBufferScheduling::CollectCommandBufferSequences(
       continue;
     }
 
-    // We currently support only async start commands that are immediately
-    // followed by a corresponding done command. We should fully support
-    // capturing async commands if all instruction between start and done can
+    // We capture async commands if all instruction between start and done can
     // be outlined into a command buffer.
     if (IsAsyncStartCommand(inst, config)) {
-      HloInstruction* done = FindAsyncDoneCommand(inst);
-      if (instructions.at(i + 1) == done) {
-        num_commands_in_current_seq += 2;
-        current_seq.push_back(inst);
-        current_seq.push_back(done);
-        ++i;
+      HloInstructionSequence seq = collect_async_region(inst);
+      if (check_async_region(seq)) {
+        num_commands_in_current_seq += seq.instructions().size();
+        for (HloInstruction* inst : seq.instructions()) {
+          current_seq.push_back(inst);
+        }
+        i += seq.instructions().size() - 1;
         continue;
       }
     }
