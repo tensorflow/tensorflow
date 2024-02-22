@@ -1756,6 +1756,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/292104274): Sometimes times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
