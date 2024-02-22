@@ -238,10 +238,7 @@ class CommandBufferCmdSequence {
   size_t size() const { return commands_.size(); }
 
  private:
-  struct Command {
-    Command(std::unique_ptr<CommandBufferCmd> cmd, bool requires_barrier)
-        : cmd(std::move(cmd)), requires_barrier(requires_barrier) {}
-
+  struct CommandInfo {
     std::unique_ptr<CommandBufferCmd> cmd;
     bool requires_barrier;
   };
@@ -253,7 +250,7 @@ class CommandBufferCmdSequence {
   void ClearTrackedBuffers();
 
   bool force_barriers_;
-  std::vector<Command> commands_;
+  std::vector<CommandInfo> commands_;
 
   // Buffers referenced by commands in this sequence.
   absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers_;

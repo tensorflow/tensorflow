@@ -152,7 +152,7 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
   }
 
   // If the first recorded command is implemented as a nested command buffer we
-  // force a barrier before recording the next command as a workaround for CUDAF
+  // force a barrier before recording the next command as a workaround for CUDA
   // graph bug, where child CUDA graph must be a single CUDA graph root node.
   if (commands_.size() == 1 && commands_.front().cmd->IsNestedCommandBuffer()) {
     requires_barrier = true;
@@ -160,7 +160,7 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
 
   if (requires_barrier) ClearTrackedBuffers();
 
-  commands_.emplace_back(std::move(cmd), requires_barrier);
+  commands_.push_back({std::move(cmd), requires_barrier});
   TrackBuffers(buffers);
 }
 
