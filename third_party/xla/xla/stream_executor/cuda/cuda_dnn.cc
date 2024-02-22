@@ -2511,7 +2511,8 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
 
     if (params_backprop_data != nullptr) {
       // Clear the dw to zeros.
-      stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
+      TF_RETURN_IF_ERROR(
+          stream->MemZero(params_backprop_data, params_backprop_data->size()));
 #if CUDNN_VERSION >= 8100
       RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardWeights_v8(
           /*handle=*/cudnn.handle(),
@@ -2576,7 +2577,8 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
 
     if (params_backprop_data != nullptr) {
       // Clear the dw to zeros.
-      stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
+      TF_RETURN_IF_ERROR(
+          stream->MemZero(params_backprop_data, params_backprop_data->size()));
       // make the backward weight call
       RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardWeights(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -8289,7 +8291,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
         // should memset dq_accum because it is being atomic added
         std::vector<DeviceMemoryBase> dev_mem{inputs...};
         DeviceMemoryBase* dev_dq_accum = &(dev_mem[10]);
-        stream->ThenMemZero(dev_dq_accum, dev_dq_accum->size());
+        TF_RETURN_IF_ERROR(stream->MemZero(dev_dq_accum, dev_dq_accum->size()));
       }
     }
 
@@ -9880,8 +9882,8 @@ absl::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     void* batch_var_opaque;
     if (!batch_mean->is_null() && !batch_var->is_null()) {
       if (exponential_average_factor == 1.0) {
-        stream->ThenMemZero(batch_mean, batch_mean->size());
-        stream->ThenMemZero(batch_var, batch_var->size());
+        TF_RETURN_IF_ERROR(stream->MemZero(batch_mean, batch_mean->size()));
+        TF_RETURN_IF_ERROR(stream->MemZero(batch_var, batch_var->size()));
       }
       batch_mean_opaque = batch_mean->opaque();
       batch_var_opaque = batch_var->opaque();

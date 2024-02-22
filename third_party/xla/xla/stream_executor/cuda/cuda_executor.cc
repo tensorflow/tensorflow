@@ -407,9 +407,9 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
-    absl::Status status =
-        stream->ThenMemcpy(new_constant, content.data(), content.size())
-            .BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(new_constant, content.data(), content.size()));
+    absl::Status status = stream->BlockHostUntilDone();
     if (!status.ok()) {
       Deallocate(new_constant);
       status.Update(absl::InternalError(absl::StrFormat(

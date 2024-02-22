@@ -472,7 +472,7 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   auto transfer_buffers = [&]() -> std::vector<int32_t> {
     std::vector<int32_t> dst(buffers.size(), 0);
     for (size_t i = 0; i < buffers.size(); ++i) {
-      stream.ThenMemcpy(dst.data() + i, buffers[i], sizeof(int32_t));
+      TF_CHECK_OK(stream.Memcpy(dst.data() + i, buffers[i], sizeof(int32_t)));
     }
     return dst;
   };
@@ -544,7 +544,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   auto transfer_buffers = [&]() -> std::vector<int32_t> {
     std::vector<int32_t> dst(buffers.size(), 0);
     for (size_t i = 0; i < buffers.size(); ++i) {
-      stream.ThenMemcpy(dst.data() + i, buffers[i], sizeof(int32_t));
+      TF_CHECK_OK(stream.Memcpy(dst.data() + i, buffers[i], sizeof(int32_t)));
     }
     return dst;
   };
