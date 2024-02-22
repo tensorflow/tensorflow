@@ -1609,6 +1609,76 @@ TEST(XlaBuilderTest, TopKDimensions) {
 }
 
 //============================================================================//
+// Experimental Test
+//============================================================================//
+
+TEST(XlaBuilderTest, DynamicBroadcastInDimExportSuccess) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& operand, ParseShape("f32[1, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_dimensions, ParseShape("s32[3]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_shape,
+                          ParseShape("f32[1, 2, 3]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& expected, ParseShape("f32[1, 2, 3]"));
+  DynamicBroadcastInDim(
+      Parameter(&b, 0, operand, "operand"),
+      Parameter(&b, 1, output_dimensions, "output_dimensions"),
+      /*broadcast_dimensions=*/{1, 2}, output_shape);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(module->ToString(), HasSubstr("mhlo.dynamic_broadcast_in_dim"));
+  EXPECT_THAT(module->ToString(), HasSubstr("broadcast_dimensions=[1,2]"));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, DynamicBroadcastInDimNonBroadcastDimSizeGreaterThanOne) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& operand, ParseShape("f32[2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_dimensions, ParseShape("s32[3]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_shape,
+                          ParseShape("f32[2, 2, 3]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& expected, ParseShape("f32[2, 2, 3]"));
+  DynamicBroadcastInDim(
+      Parameter(&b, 0, operand, "operand"),
+      Parameter(&b, 1, output_dimensions, "output_dimensions"),
+      /*broadcast_dimensions=*/{1, 2}, output_shape);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(module->ToString(), HasSubstr("mhlo.dynamic_broadcast_in_dim"));
+  EXPECT_THAT(module->ToString(), HasSubstr("broadcast_dimensions=[1,2]"));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
+TEST(XlaBuilderTest, DynamicBroadcastInDimIncompatibleBroadcastSize) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& operand, ParseShape("f32[2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_dimensions, ParseShape("s32[3]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_shape,
+                          ParseShape("f32[2, 3, 3]"));
+  DynamicBroadcastInDim(
+      Parameter(&b, 0, operand, "operand"),
+      Parameter(&b, 1, output_dimensions, "output_dimensions"),
+      /*broadcast_dimensions=*/{1, 2}, output_shape);
+  EXPECT_THAT(
+      BuildHloModule(b),
+      StatusIs(_, HasSubstr("size of operand dimension 0 (2) is not compatible "
+                            "with size of result dimension 1 (3)")));
+}
+
+TEST(XlaBuilderTest, DynamicBroadcastInDimUnsupportedDynamicResultSize) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& operand, ParseShape("f32[1, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_dimensions, ParseShape("s32[3]"));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape& output_shape,
+                          ParseShape("f32[1, 2, ?]"));
+  DynamicBroadcastInDim(
+      Parameter(&b, 0, operand, "operand"),
+      Parameter(&b, 1, output_dimensions, "output_dimensions"),
+      /*broadcast_dimensions=*/{1, 2}, output_shape);
+  EXPECT_THAT(BuildHloModule(b),
+              StatusIs(_, HasSubstr("!output_shape.is_dynamic()")));
+}
+
+//============================================================================//
 // Unbounded Dynamism Test
 //============================================================================//
 

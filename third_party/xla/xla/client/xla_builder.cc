@@ -837,6 +837,58 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
   return OkStatus();
 }
 
+XlaOp XlaBuilder::DynamicBroadcastInDim(
+    const XlaOp operand, const XlaOp output_dimensions,
+    absl::Span<const int64_t> broadcast_dimensions, const Shape& output_shape) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_RET_CHECK(!output_shape.is_dynamic());
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+
+    int64_t operand_rank = operand_shape->rank();
+    int64_t result_rank = output_shape.rank();
+    int64_t broadcast_dimensions_size = broadcast_dimensions.size();
+    if (broadcast_dimensions_size != operand_rank) {
+      return InvalidArgument(
+          "broadcast_dimensions size (%d) does not match operand rank (%d)",
+          broadcast_dimensions_size, operand_rank);
+    }
+
+    if (result_rank < operand_rank) {
+      return InvalidArgument("result rank (%d) is less than operand rank (%d)",
+                             result_rank, operand_rank);
+    }
+
+    for (int64_t i = 0; i != broadcast_dimensions_size; ++i) {
+      int64_t dim_index = broadcast_dimensions[i];
+      if (dim_index < 0 || dim_index >= result_rank) {
+        return InvalidArgument(
+            "broadcast_dimensions contains invalid value %d for result with "
+            "rank %d",
+            dim_index, result_rank);
+      }
+
+      int64_t dim_size = operand_shape->dimensions(i);
+      int64_t result_dim_size = output_shape.dimensions(dim_index);
+
+      if (dim_size != 1 && dim_size != result_dim_size &&
+          dim_size != Shape::kUnboundedSize) {
+        return InvalidArgument(
+            "size of operand dimension %d (%d) is not compatible with size of "
+            "result dimension %d (%d)",
+            i, dim_size, dim_index, result_dim_size);
+      }
+    }
+
+    return xla::CustomCall(
+        operand.builder(), "mhlo.dynamic_broadcast_in_dim",
+        /*operands=*/{operand, output_dimensions},
+        /*shape=*/output_shape,
+        /*opaque=*/
+        absl::StrCat("{broadcast_dimensions=[",
+                     absl::StrJoin(broadcast_dimensions, ","), "]}"));
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
     const Shape& shape, XlaOp operand,
     absl::Span<const int64_t> broadcast_dimensions) {
@@ -4432,6 +4484,13 @@ XlaOp BroadcastInDim(const XlaOp operand,
                      const absl::Span<const int64_t> broadcast_dimensions) {
   return operand.builder()->BroadcastInDim(operand, out_dim_size,
                                            broadcast_dimensions);
+}
+
+XlaOp DynamicBroadcastInDim(const XlaOp operand, const XlaOp output_dimensions,
+                            absl::Span<const int64_t> broadcast_dimensions,
+                            const Shape& output_shape) {
+  return operand.builder()->DynamicBroadcastInDim(
+      operand, output_dimensions, broadcast_dimensions, output_shape);
 }
 
 XlaOp Copy(const XlaOp operand) {
