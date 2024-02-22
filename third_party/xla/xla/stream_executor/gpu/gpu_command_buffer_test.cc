@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -76,17 +77,17 @@ using AddI32Ptrs3 = TypedKernel<internal::Ptrs3<int32_t>>;
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
-static std::vector<GpuGraphNodeHandle> Deps(GpuGraphNodeHandle node) {
-  if (auto deps = GpuDriver::GraphNodeGetDependencies(node); deps.ok()) {
+template <typename Info>
+static std::vector<GpuGraphNodeHandle> Deps(Info info) {
+  if (auto deps = GpuDriver::GraphNodeGetDependencies(info.handle); deps.ok()) {
     return *deps;
   }
   return {GpuGraphNodeHandle(0xDEADBEEF)};
 }
 
-template <typename... GpuGraphNodeHandles>
-static std::vector<GpuGraphNodeHandle> ExpectedDeps(
-    GpuGraphNodeHandles... handle) {
-  return {handle...};
+template <typename... Infos>
+static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
+  return {info.handle...};
 }
 
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
@@ -94,8 +95,7 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
   spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
@@ -155,8 +155,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   // Register a kernel with a custom arguments packing function that packs
   // device memory arguments into a struct with pointers.
@@ -213,8 +212,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   MultiKernelLoaderSpec spec = GetAddI32KernelSpec();
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
@@ -272,8 +270,7 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -319,8 +316,7 @@ TEST(GpuCommandBufferTest, Memset) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
@@ -417,7 +413,7 @@ TEST(GpuCommandBufferTest, Barriers) {
 
   // First barrier does not have any dependencies.
   EXPECT_TRUE(barriers[0].is_barrier_node);
-  EXPECT_TRUE(Deps(barriers[0].handle).empty());
+  EXPECT_TRUE(Deps(barriers[0]).empty());
 
   // Second barrier reuses first memset node.
   EXPECT_FALSE(barriers[1].is_barrier_node);
@@ -433,11 +429,8 @@ TEST(GpuCommandBufferTest, Barriers) {
   EXPECT_TRUE(barriers[4].is_barrier_node);
   EXPECT_TRUE(barriers[5].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers[4].handle),
-            ExpectedDeps(nodes[2].handle, nodes[3].handle));
-
-  EXPECT_EQ(Deps(barriers[5].handle),
-            ExpectedDeps(nodes[4].handle, nodes[5].handle));
+  EXPECT_EQ(Deps(barriers[4]), ExpectedDeps(nodes[2], nodes[3]));
+  EXPECT_EQ(Deps(barriers[5]), ExpectedDeps(nodes[4], nodes[5]));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -507,11 +500,8 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   EXPECT_TRUE(barriers0[0].is_barrier_node);
   EXPECT_TRUE(barriers1[0].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers0[0].handle),
-            ExpectedDeps(nodes0[0].handle, nodes0[1].handle));
-
-  EXPECT_EQ(Deps(barriers1[0].handle),
-            ExpectedDeps(nodes1[0].handle, nodes1[1].handle));
+  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
+  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -595,21 +585,16 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   EXPECT_TRUE(barriers0[1].handle == barriers1[1].handle);
   EXPECT_TRUE(barriers1[1].handle == barriers2[1].handle);
 
-  EXPECT_EQ(Deps(barriers0[0].handle),
-            ExpectedDeps(nodes0[0].handle, nodes0[1].handle));
+  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
+  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
 
-  EXPECT_EQ(Deps(barriers1[0].handle),
-            ExpectedDeps(nodes1[0].handle, nodes1[1].handle));
+  EXPECT_TRUE(Deps(barriers2[0]).empty());
+  EXPECT_EQ(Deps(barriers2[1]),
+            ExpectedDeps(barriers0[0], barriers1[0], barriers2[0]));
 
-  EXPECT_TRUE(Deps(barriers2[0].handle).empty());
-
-  EXPECT_EQ(Deps(barriers2[1].handle),
-            ExpectedDeps(barriers0[0].handle, barriers1[0].handle,
-                         barriers2[0].handle));
-
-  EXPECT_EQ(Deps(nodes0[2].handle), ExpectedDeps(barriers0[1].handle));
-  EXPECT_EQ(Deps(nodes1[2].handle), ExpectedDeps(barriers1[1].handle));
-  EXPECT_EQ(Deps(nodes2[0].handle), ExpectedDeps(barriers2[1].handle));
+  EXPECT_EQ(Deps(nodes0[2]), ExpectedDeps(barriers0[1]));
+  EXPECT_EQ(Deps(nodes1[2]), ExpectedDeps(barriers1[1]));
+  EXPECT_EQ(Deps(nodes2[0]), ExpectedDeps(barriers2[1]));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -682,17 +667,11 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   EXPECT_TRUE(barriers0[0].is_barrier_node);
   EXPECT_TRUE(barriers1[0].is_barrier_node && barriers1[1].is_barrier_node);
 
-  EXPECT_EQ(Deps(barriers0[0].handle),
-            ExpectedDeps(nodes0[0].handle, nodes0[1].handle));
-
-  EXPECT_EQ(Deps(barriers1[0].handle),
-            ExpectedDeps(nodes1[0].handle, nodes1[1].handle));
-
-  EXPECT_EQ(Deps(barriers1[1].handle),
-            ExpectedDeps(barriers0[0].handle, barriers1[0].handle));
-
-  EXPECT_EQ(Deps(nodes0[2].handle), ExpectedDeps(barriers0[0].handle));
-  EXPECT_EQ(Deps(nodes1[2].handle), ExpectedDeps(barriers1[1].handle));
+  EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
+  EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
+  EXPECT_EQ(Deps(barriers1[1]), ExpectedDeps(barriers0[0], barriers1[0]));
+  EXPECT_EQ(Deps(nodes0[2]), ExpectedDeps(barriers0[0]));
+  EXPECT_EQ(Deps(nodes1[2]), ExpectedDeps(barriers1[1]));
 
   // Update command buffer to use a new bit pattern.
   TF_ASSERT_OK(cmd_buffer->Update());
@@ -712,8 +691,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
   spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
@@ -800,8 +778,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
@@ -898,8 +875,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
@@ -989,8 +965,7 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
   spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
@@ -1041,8 +1016,7 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK(stream.Initialize());
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
@@ -1135,8 +1109,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
-  stream.Init();
-  CHECK(stream.ok());
+  TF_CHECK_OK(stream.Initialize());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
   spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
