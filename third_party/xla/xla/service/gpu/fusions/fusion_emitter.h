@@ -134,6 +134,11 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder);
 
+absl::Status AnnotateKernelLaunchDimensions(
+    const se::DeviceDescription& device_info,
+    const LaunchDimensions& launch_dims, const std::string& kernel_name,
+    llvm::Module* llvm_module);
+
 }  // namespace gpu
 }  // namespace xla
 

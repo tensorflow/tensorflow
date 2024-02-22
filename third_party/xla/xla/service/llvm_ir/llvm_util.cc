@@ -543,8 +543,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst,
-                                    llvm::IRBuilder<>* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
+                                    llvm::Module* module) {
   if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
     return inst;
   }
