@@ -1044,37 +1044,37 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
   int iteration = 0;
   for (uint32_t bm1 = 0;
        bm1 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm1++) {
+    const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
+    const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
+    const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
+    const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
+    const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
+    const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
+    const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
+    const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
+    const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
+    const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
+    const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
+    const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
+    std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
+                                        input1_dim4, input1_dim5, input1_dim6};
     for (uint32_t bm2 = 0;
          bm2 < (static_cast<uint32_t>(1) << kMaxMulBroadcastDim); bm2++) {
       if (iteration++ % subshard_count != selected_subshard) {
         continue;  // This iteration of the loop is not part of this subshard.
       }
-      const bool input1_broadcast_dim1 = bm1 & (static_cast<uint32_t>(1) << 0);
-      const bool input1_broadcast_dim2 = bm1 & (static_cast<uint32_t>(1) << 1);
-      const bool input1_broadcast_dim3 = bm1 & (static_cast<uint32_t>(1) << 2);
-      const bool input1_broadcast_dim4 = bm1 & (static_cast<uint32_t>(1) << 3);
-      const bool input1_broadcast_dim5 = bm1 & (static_cast<uint32_t>(1) << 4);
-      const bool input1_broadcast_dim6 = bm1 & (static_cast<uint32_t>(1) << 5);
       const bool input2_broadcast_dim1 = bm2 & (static_cast<uint32_t>(1) << 0);
       const bool input2_broadcast_dim2 = bm2 & (static_cast<uint32_t>(1) << 1);
       const bool input2_broadcast_dim3 = bm2 & (static_cast<uint32_t>(1) << 2);
       const bool input2_broadcast_dim4 = bm2 & (static_cast<uint32_t>(1) << 3);
       const bool input2_broadcast_dim5 = bm2 & (static_cast<uint32_t>(1) << 4);
       const bool input2_broadcast_dim6 = bm2 & (static_cast<uint32_t>(1) << 5);
-      const int input1_dim1 = input1_broadcast_dim1 ? 1 : kDim1;
-      const int input1_dim2 = input1_broadcast_dim2 ? 1 : kDim2;
-      const int input1_dim3 = input1_broadcast_dim3 ? 1 : kDim3;
-      const int input1_dim4 = input1_broadcast_dim4 ? 1 : kDim4;
-      const int input1_dim5 = input1_broadcast_dim5 ? 1 : kDim5;
-      const int input1_dim6 = input1_broadcast_dim6 ? 1 : kDim6;
       const int input2_dim1 = input2_broadcast_dim1 ? 1 : kDim1;
       const int input2_dim2 = input2_broadcast_dim2 ? 1 : kDim2;
       const int input2_dim3 = input2_broadcast_dim3 ? 1 : kDim3;
       const int input2_dim4 = input2_broadcast_dim4 ? 1 : kDim4;
       const int input2_dim5 = input2_broadcast_dim5 ? 1 : kDim5;
       const int input2_dim6 = input2_broadcast_dim6 ? 1 : kDim6;
-      std::vector<int> input1_full_shape{input1_dim1, input1_dim2, input1_dim3,
-                                         input1_dim4, input1_dim5, input1_dim6};
       std::vector<int> input2_full_shape{input2_dim1, input2_dim2, input2_dim3,
                                          input2_dim4, input2_dim5, input2_dim6};
       for (int input1_dims = 1; input1_dims <= kMaxMulBroadcastDim;
