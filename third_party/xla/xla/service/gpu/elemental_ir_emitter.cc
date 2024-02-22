@@ -295,8 +295,8 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
                 value->getType(), "tanh");
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(PrimitiveType prim_type,
-                                                      llvm::Value* value) {
+absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(
+    PrimitiveType prim_type, llvm::Value* value) {
   if (prim_type == F64) {
     return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
                               {prim_type}, prim_type);

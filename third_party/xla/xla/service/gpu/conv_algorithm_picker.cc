@@ -416,7 +416,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
 
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
-  StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
+  absl::StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine

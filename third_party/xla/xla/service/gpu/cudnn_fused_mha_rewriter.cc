@@ -438,7 +438,7 @@ absl::StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
   return true;
 }
 
-StatusOr<bool> IsFlashAttention(
+absl::StatusOr<bool> IsFlashAttention(
     HloInstruction* bmm_1, bool is_causal_mask,
     absl::string_view custom_call_name,
     stream_executor::CudaComputeCapability cc,
