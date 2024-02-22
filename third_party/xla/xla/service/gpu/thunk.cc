@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/thunk.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -259,7 +260,7 @@ Thunk::ExecuteParams::ExecuteParams(
 /*static*/
 absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
     ExecutionStreamId stream_id, const ExecuteParams& params) {
-  if (stream_id == GetMainComputeStreamId()) {
+  if (stream_id == kDefaultExecutionStreamId) {
     return params.stream;
   }
   auto iter = params.additional_compute_streams.find(stream_id);
@@ -323,7 +324,7 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {
     thunk_info.execution_stream_id =
-        std::max(Thunk::GetMainComputeStreamId().value(),
+        std::max(kDefaultExecutionStreamId.value(),
                  gpu_backend_config->operation_queue_id());
   }
   return thunk_info;

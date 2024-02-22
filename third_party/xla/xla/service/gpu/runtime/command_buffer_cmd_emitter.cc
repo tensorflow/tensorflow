@@ -70,26 +70,31 @@ static auto ArgsAccess(const std::vector<bool>& written) {
 
 static absl::StatusOr<Command> Convert(const KernelThunk& thunk) {
   return std::make_unique<LaunchCmd>(
-      thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
-      thunk.launch_dimensions(), thunk.shmem_bytes());
+      thunk.execution_stream_id(), thunk.kernel_name(), thunk.arguments(),
+      ArgsAccess(thunk.written()), thunk.launch_dimensions(),
+      thunk.shmem_bytes());
 }
 
 static absl::StatusOr<Command> Convert(const CustomKernelThunk& thunk) {
   return std::make_unique<CustomKernelLaunchCmd>(
-      thunk.arguments(), ArgsAccess(thunk.written()), thunk.custom_kernel());
+      thunk.execution_stream_id(), thunk.arguments(),
+      ArgsAccess(thunk.written()), thunk.custom_kernel());
 }
 
 static absl::StatusOr<Command> Convert(const DeviceToDeviceCopyThunk& thunk) {
   return std::make_unique<MemcpyDeviceToDeviceCmd>(
-      thunk.destination(), thunk.source(), thunk.size_bytes());
+      thunk.execution_stream_id(), thunk.destination(), thunk.source(),
+      thunk.size_bytes());
 }
 
 static absl::StatusOr<Command> Convert(const MemzeroThunk& thunk) {
-  return std::make_unique<MemzeroCmd>(thunk.destination());
+  return std::make_unique<MemzeroCmd>(thunk.execution_stream_id(),
+                                      thunk.destination());
 }
 
 static absl::StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
-  return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value());
+  return std::make_unique<Memset32Cmd>(thunk.execution_stream_id(),
+                                       thunk.destination(), thunk.value());
 }
 
 static absl::StatusOr<Command> Convert(
@@ -102,7 +107,8 @@ static absl::StatusOr<Command> Convert(
   TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence body_cmds,
                       ConvertToCommands(thunk.body_thunk_sequence()->thunks(),
                                         synchronization_mode));
-  return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
+  return std::make_unique<WhileCmd>(thunk.execution_stream_id(),
+                                    thunk.condition_result_buffer(),
                                     std::move(cond_cmds), std::move(body_cmds));
 }
 
@@ -112,8 +118,9 @@ static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
         "Gemm thunk does not contain a workspace buffer");
   }
   return std::make_unique<GemmCmd>(
-      thunk.config(), thunk.lhs_buffer(), thunk.rhs_buffer(),
-      thunk.output_buffer(), thunk.workspace().value(), thunk.deterministic());
+      thunk.execution_stream_id(), thunk.config(), thunk.lhs_buffer(),
+      thunk.rhs_buffer(), thunk.output_buffer(), thunk.workspace().value(),
+      thunk.deterministic());
 }
 
 static absl::StatusOr<Command> Convert(
@@ -127,40 +134,45 @@ static absl::StatusOr<Command> Convert(
         ConvertToCommands(branch_thunk->thunks(), synchronization_mode));
     branch_cmds.emplace_back(std::move(cmds));
   }
-  return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
+  return std::make_unique<CaseCmd>(thunk.execution_stream_id(),
+                                   thunk.branch_index_buffer(),
                                    std::move(branch_cmds));
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
-  return std::make_unique<AllReduceCmd>(thunk.nccl_api(), thunk.config(),
-                                        thunk.reduction_kind(),
-                                        thunk.buffers());
+  return std::make_unique<AllReduceCmd>(
+      thunk.execution_stream_id(), thunk.nccl_api(), thunk.config(),
+      thunk.reduction_kind(), thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(
     const NcclReduceScatterStartThunk& thunk) {
-  return std::make_unique<ReduceScatterCmd>(thunk.nccl_api(), thunk.config(),
-                                            thunk.reduction_kind(),
-                                            thunk.buffers());
+  return std::make_unique<ReduceScatterCmd>(
+      thunk.execution_stream_id(), thunk.nccl_api(), thunk.config(),
+      thunk.reduction_kind(), thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
-  return std::make_unique<AllGatherCmd>(thunk.nccl_api(), thunk.config(),
+  return std::make_unique<AllGatherCmd>(thunk.execution_stream_id(),
+                                        thunk.nccl_api(), thunk.config(),
                                         thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
-  return std::make_unique<ComputationIdCmd>(thunk.dest(),
+  return std::make_unique<ComputationIdCmd>(thunk.execution_stream_id(),
+                                            thunk.dest(),
                                             ComputationIdCmd::Kind::kPartition);
 }
 
 static absl::StatusOr<Command> Convert(const ReplicaIdThunk& thunk) {
-  return std::make_unique<ComputationIdCmd>(thunk.dest(),
+  return std::make_unique<ComputationIdCmd>(thunk.execution_stream_id(),
+                                            thunk.dest(),
                                             ComputationIdCmd::Kind::kReplica);
 }
 
 static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
-  return std::make_unique<CustomCallCmd>(thunk.call_target(), thunk.operands(),
+  return std::make_unique<CustomCallCmd>(thunk.execution_stream_id(),
+                                         thunk.call_target(), thunk.operands(),
                                          thunk.results(), thunk.opaque());
 }
 

@@ -2548,8 +2548,8 @@ absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
     const HloInstruction* inst, GpuBackendConfig& gpu_config,
     bool is_async_done) {
   std::vector<ExecutionStreamId> wait_on_streams;
-  ExecutionStreamId source_stream_id = Thunk::GetMainComputeStreamId();
-  // If it's for an async done, then we need to sychronize on the execution
+  ExecutionStreamId source_stream_id = Thunk::kDefaultExecutionStreamId;
+  // If it's for an async done, then we need to synchronize on the execution
   // stream of the instruction from main compute stream
   if (is_async_done) {
     wait_on_streams.push_back(
@@ -2557,7 +2557,7 @@ absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
   } else if (gpu_config.wait_on_operation_queues().size() == 0) {
     // If wait on queue is empty, we just synchronize on the main compute
     // stream from the execution stream.
-    wait_on_streams.push_back(Thunk::GetMainComputeStreamId());
+    wait_on_streams.push_back(Thunk::kDefaultExecutionStreamId);
     source_stream_id = gpu_config.operation_queue_id();
   } else {
     // Else, we synchronize on all specified

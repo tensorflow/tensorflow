@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -67,6 +68,8 @@ namespace xla::gpu {
 // buffers concurrently on different stream executors.
 class CommandBufferCmd {
  public:
+  explicit CommandBufferCmd(ExecutionStreamId execution_stream_id)
+      : execution_stream_id_(execution_stream_id) {}
   virtual ~CommandBufferCmd() = default;
 
   enum class MemoryAccess { kRead, kWrite };
@@ -181,8 +184,11 @@ class CommandBufferCmd {
     profile_annotation_ = profile_annotation;
   }
 
+  ExecutionStreamId execution_stream_id() const { return execution_stream_id_; }
+
  private:
   std::string profile_annotation_;
+  ExecutionStreamId execution_stream_id_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -339,6 +345,8 @@ class TracedCommandBuffer : public CommandBufferCmd::State {
 // A base class for commands implemented as tracing of stream activities.
 class TracedCommandBufferCmd : public CommandBufferCmd {
  protected:
+  explicit TracedCommandBufferCmd(ExecutionStreamId execution_stream_id);
+
   // Creates a command buffer by calling a user-provided `trace` function and
   // adds it as a nested command to `command_buffer`. Traced command buffers
   // cached and reused in an instance of `TracedCommandBuffer` kept in `state`.
@@ -356,7 +364,8 @@ class ComputationIdCmd : public CommandBufferCmd {
  public:
   enum class Kind { kReplica, kPartition };
 
-  ComputationIdCmd(BufferAllocation::Slice dest, Kind kind);
+  ComputationIdCmd(ExecutionStreamId execution_stream_id,
+                   BufferAllocation::Slice dest, Kind kind);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -389,7 +398,7 @@ class ComputationIdCmd : public CommandBufferCmd {
 
 class LaunchCmd : public CommandBufferCmd {
  public:
-  LaunchCmd(std::string kernel_name,
+  LaunchCmd(ExecutionStreamId execution_stream_id, std::string kernel_name,
             absl::Span<const BufferAllocation::Slice> args,
             absl::Span<const MemoryAccess> args_access, LaunchDimensions dims,
             int64_t shmem_bytes);
@@ -422,7 +431,8 @@ class LaunchCmd : public CommandBufferCmd {
 
 class CustomKernelLaunchCmd : public CommandBufferCmd {
  public:
-  CustomKernelLaunchCmd(absl::Span<const BufferAllocation::Slice> args,
+  CustomKernelLaunchCmd(ExecutionStreamId execution_stream_id,
+                        absl::Span<const BufferAllocation::Slice> args,
                         absl::Span<const MemoryAccess> args_access,
                         CustomKernel custom_kernel);
 
@@ -452,7 +462,8 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
 
 class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
  public:
-  MemcpyDeviceToDeviceCmd(BufferAllocation::Slice dst,
+  MemcpyDeviceToDeviceCmd(ExecutionStreamId execution_stream_id,
+                          BufferAllocation::Slice dst,
                           BufferAllocation::Slice src, int64_t num_bytes);
 
   absl::Status Record(const Thunk::ExecuteParams& params, StateManager& state,
@@ -472,7 +483,8 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
 
 class MemzeroCmd : public CommandBufferCmd {
  public:
-  explicit MemzeroCmd(BufferAllocation::Slice dst);
+  MemzeroCmd(ExecutionStreamId execution_stream_id,
+             BufferAllocation::Slice dst);
 
   absl::Status Record(const Thunk::ExecuteParams& params, StateManager& state,
                       se::CommandBuffer* command_buffer) override;
@@ -489,7 +501,8 @@ class MemzeroCmd : public CommandBufferCmd {
 
 class Memset32Cmd : public CommandBufferCmd {
  public:
-  explicit Memset32Cmd(BufferAllocation::Slice dst, uint32_t bit_pattern);
+  Memset32Cmd(ExecutionStreamId execution_stream_id,
+              BufferAllocation::Slice dst, uint32_t bit_pattern);
 
   absl::Status Record(const Thunk::ExecuteParams& params, StateManager& state,
                       se::CommandBuffer* command_buffer) override;
@@ -507,7 +520,8 @@ class Memset32Cmd : public CommandBufferCmd {
 
 class IfCmd : public CommandBufferCmd {
  public:
-  IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_commands);
+  IfCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice pred,
+        CommandBufferCmdSequence then_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -528,7 +542,7 @@ class IfCmd : public CommandBufferCmd {
 
 class IfElseCmd : public CommandBufferCmd {
  public:
-  IfElseCmd(BufferAllocation::Slice pred,
+  IfElseCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice pred,
             CommandBufferCmdSequence then_commands,
             CommandBufferCmdSequence else_commands);
 
@@ -552,7 +566,7 @@ class IfElseCmd : public CommandBufferCmd {
 
 class CaseCmd : public CommandBufferCmd {
  public:
-  CaseCmd(BufferAllocation::Slice index,
+  CaseCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice index,
           std::vector<CommandBufferCmdSequence> branches_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
@@ -574,7 +588,8 @@ class CaseCmd : public CommandBufferCmd {
 
 class ForCmd : public CommandBufferCmd {
  public:
-  ForCmd(int32_t num_iterations, BufferAllocation::Slice loop_counter,
+  ForCmd(ExecutionStreamId execution_stream_id, int32_t num_iterations,
+         BufferAllocation::Slice loop_counter,
          CommandBufferCmdSequence body_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
@@ -597,7 +612,8 @@ class ForCmd : public CommandBufferCmd {
 
 class WhileCmd : public CommandBufferCmd {
  public:
-  WhileCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence cond_commands,
+  WhileCmd(ExecutionStreamId execution_stream_id, BufferAllocation::Slice pred,
+           CommandBufferCmdSequence cond_commands,
            CommandBufferCmdSequence body_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
@@ -620,7 +636,8 @@ class WhileCmd : public CommandBufferCmd {
 
 class AllocateCmd : public CommandBufferCmd {
  public:
-  explicit AllocateCmd(BufferAllocation allocation);
+  AllocateCmd(ExecutionStreamId execution_stream_id,
+              BufferAllocation allocation);
 
   // After calling this function, the allocated memory is tracked in
   // CommandBuffer object.
@@ -639,7 +656,7 @@ class AllocateCmd : public CommandBufferCmd {
 
 class FreeCmd : public CommandBufferCmd {
  public:
-  explicit FreeCmd(BufferAllocation allocation);
+  FreeCmd(ExecutionStreamId execution_stream_id, BufferAllocation allocation);
 
   // After calling this function, the allocated memory address for dst
   // BufferAllocation is freed, no update is required.
@@ -658,7 +675,8 @@ class FreeCmd : public CommandBufferCmd {
 
 class GemmCmd : public TracedCommandBufferCmd {
  public:
-  GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
+  GemmCmd(ExecutionStreamId execution_stream_id, GemmConfig config,
+          const BufferAllocation::Slice& lhs_buffer,
           const BufferAllocation::Slice& rhs_buffer,
           const BufferAllocation::Slice& output_buffer,
           const BufferAllocation::Slice& workspace, bool deterministic);
@@ -695,12 +713,21 @@ class CustomCallCmd : public CommandBufferCmd {
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.
+  //
   // TODO(anlunx): Support XLA:FFI calls as commands.
-  CustomCallCmd(CustomCallTarget call_target,
+  //
+  // TODO(b/323534971): We have an ODR violation somewhere in Tensorflow/XLA and
+  // include this header with different set of defines and CustomCallTarget
+  // has different meaning in different translation units. We need to get rid of
+  // GOOGLE_CUDA defines all over XLA to fix this! As a workaround just keep
+  // constructor in a header file.
+  CustomCallCmd(ExecutionStreamId execution_stream_id,
+                CustomCallTarget call_target,
                 std::vector<std::optional<Slice>> operands,
                 std::vector<std::optional<Slice>> results,
                 absl::string_view opaque)
-      : call_target_(std::move(call_target)),
+      : CommandBufferCmd(execution_stream_id),
+        call_target_(std::move(call_target)),
         operands_(std::move(operands)),
         results_(std::move(results)),
         opaque_(opaque){};
@@ -724,7 +751,8 @@ class CustomCallCmd : public CommandBufferCmd {
 
 class CollectiveCmd : public TracedCommandBufferCmd {
  public:
-  CollectiveCmd(NcclApi* nccl_api, NcclCollectiveConfig config);
+  CollectiveCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+                NcclCollectiveConfig config);
 
   absl::Status Prepare(const Thunk::PrepareParams& params,
                        Thunk::ResourceRequests& resource_requests) final;
@@ -748,8 +776,8 @@ class CollectiveCmd : public TracedCommandBufferCmd {
 
 class AllReduceCmd : public CollectiveCmd {
  public:
-  AllReduceCmd(NcclApi* nccl_api, NcclCollectiveConfig config,
-               ReductionKind reduction_kind,
+  AllReduceCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+               NcclCollectiveConfig config, ReductionKind reduction_kind,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& params, StateManager& state,
@@ -772,8 +800,8 @@ class AllReduceCmd : public CollectiveCmd {
 
 class ReduceScatterCmd : public CollectiveCmd {
  public:
-  ReduceScatterCmd(NcclApi* nccl_api, NcclCollectiveConfig config,
-                   ReductionKind reduction_kind,
+  ReduceScatterCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+                   NcclCollectiveConfig config, ReductionKind reduction_kind,
                    absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& params, StateManager& state,
@@ -796,7 +824,8 @@ class ReduceScatterCmd : public CollectiveCmd {
 
 class AllGatherCmd : public CollectiveCmd {
  public:
-  AllGatherCmd(NcclApi* nccl_api, NcclCollectiveConfig config,
+  AllGatherCmd(ExecutionStreamId execution_stream_id, NcclApi* nccl_api,
+               NcclCollectiveConfig config,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const Thunk::ExecuteParams& params, StateManager& state,

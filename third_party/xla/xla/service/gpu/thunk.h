@@ -82,6 +82,10 @@ class Thunk {
   using ExecutionStreamIdMap =
       absl::flat_hash_map<ExecutionStreamId, se::Stream*>;
 
+  // When default execution stream id is used, operations launched by a thunk
+  // must be synchronized with a stream passed in ExecuteOptions.
+  static constexpr auto kDefaultExecutionStreamId = ExecutionStreamId(0);
+
   enum Kind {
     kCholesky,
     kConditional,
@@ -153,7 +157,7 @@ class Thunk {
     // LMHLO is removed from the runtime pipeline.
     mlir::Operation* op;
 
-    ExecutionStreamId execution_stream_id = Thunk::GetMainComputeStreamId();
+    ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
   };
 
   //===--------------------------------------------------------------------===//
@@ -409,10 +413,6 @@ class Thunk {
 
   static absl::StatusOr<se::Stream*> GetStreamForExecution(
       ExecutionStreamId stream_id, const ExecuteParams& params);
-
-  static ExecutionStreamId GetMainComputeStreamId() {
-    return ExecutionStreamId(0);
-  }
 
  private:
   Kind kind_;

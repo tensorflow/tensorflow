@@ -55,12 +55,16 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
+// Give a short alias to default execution thread.
+static constexpr auto s0 = Thunk::kDefaultExecutionStreamId;
+
 // A command buffer cmd for testing automatic barriers insertion by the command
 // buffer cmd sequence. We never execute this command, we need it only to pass
 // buffer usage vector to the command buffer cmd sequence.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
-  explicit TestOnlyCommandBufferCmd(BufferUsageVector buffer_usage)
-      : buffer_usage(buffer_usage) {}
+  TestOnlyCommandBufferCmd(ExecutionStreamId execution_stream_id,
+                           BufferUsageVector buffer_usage)
+      : CommandBufferCmd(execution_stream_id), buffer_usage(buffer_usage) {}
 
   absl::Status Record(const Thunk::ExecuteParams&, StateManager&,
                       se::CommandBuffer*) override {
@@ -84,8 +88,8 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
 
   CommandBufferCmdSequence commands(
       CommandBufferCmdSequence::SynchronizationMode::kSerialize);
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -103,8 +107,8 @@ TEST(CommandBufferCmdTest, NoReadBarrier) {
   auto use1 = BufferUsage(slice1, MemoryAccess::kRead);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -122,8 +126,8 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   auto use1 = BufferUsage(slice1, MemoryAccess::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
 
   ASSERT_EQ(commands.barriers().size(), 2);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -143,9 +147,9 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   auto use2 = BufferUsage(slice1, MemoryAccess::kWrite);
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
-  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use2});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use2});
 
   ASSERT_EQ(commands.barriers().size(), 3);
   EXPECT_EQ(commands.barriers().at(0), false);
@@ -177,7 +181,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(s0, slice_b, slice_a, byte_length);
 
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
@@ -228,7 +232,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>("add", args, args_access, LaunchDimensions(1, 4),
+  commands.Emplace<LaunchCmd>(s0, "add", args, args_access,
+                              LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
   // Initialize command sequence and load device kernels.
