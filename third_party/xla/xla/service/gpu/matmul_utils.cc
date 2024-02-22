@@ -630,8 +630,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   // graphs, so we are making sure we do not trigger it).
   if (config.alpha.real() == 0.0 && config.alpha.imag() == 0.0 &&
       config.beta == 0.0) {
-    stream->ThenMemZero(&output_buffer, output_buffer.size());
-    return absl::OkStatus();
+    return stream->MemZero(&output_buffer, output_buffer.size());
   }
 
 #define TYPED_GEMM(SCALENTYPE, ATYPE, BTYPE, CTYPE)                          \

@@ -437,13 +437,13 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     se::Stream& async_stream = *params.async_comms_streams[async_stream_idx];
 
     // Wait for main compute stream to make sure all buffers are ready.
-    async_stream.ThenWaitFor(params.stream);
+    TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
     TF_RETURN_IF_ERROR(RunNcclCollective(params, async_stream, comm));
 
     // Record collective operation completion.
     TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
-    async_stream.ThenRecordEvent(event);
+    TF_RETURN_IF_ERROR(async_stream.RecordEvent(event));
 
   } else {
     // Launch collective operation on a main stream.

@@ -64,9 +64,9 @@ absl::Status AssertOnGpu(void* stream_handle, void* buffer,
   int8_t expected = false;
   int64_t byte_size = sizeof(int8_t);
   CHECK_EQ(byte_size, ShapeUtil::ByteSizeOfPrimitiveType(PrimitiveType::PRED));
-  stream->ThenMemcpy(
+  TF_RETURN_IF_ERROR(stream->Memcpy(
       &expected, se::DeviceMemoryBase{buffer, static_cast<uint64_t>(byte_size)},
-      byte_size);
+      byte_size));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   if (!static_cast<bool>(expected)) {
     return Internal("%s", error_msg);

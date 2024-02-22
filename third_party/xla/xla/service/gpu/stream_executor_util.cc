@@ -431,8 +431,8 @@ static void InitializeTypedBuffer(se::Stream* stream,
     int64_t elements_copied =
         std::min<int64_t>(host_buffer->size() - host_index, elements_left);
     se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
+    TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data() + host_index,
+                               elements_copied * sizeof(T)));
     current_addr += elements_copied * sizeof(T);
     elements_left -= elements_copied;
     host_index += elements_copied;

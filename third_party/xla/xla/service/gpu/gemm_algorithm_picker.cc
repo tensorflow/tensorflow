@@ -124,8 +124,8 @@ absl::StatusOr<AutotuneResult> GetBestAlgorithm(
     }
 
     if (!reference_algorithm) {
-      stream->ThenMemcpy(&reference_buffer, output_buffer,
-                         output_buffer.size());
+      TF_RETURN_IF_ERROR(stream->Memcpy(&reference_buffer, output_buffer,
+                                        output_buffer.size()));
       reference_algorithm = profile_result.algorithm();
     } else {
       // Perform the comparison.

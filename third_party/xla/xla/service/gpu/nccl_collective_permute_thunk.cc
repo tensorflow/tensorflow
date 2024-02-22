@@ -302,7 +302,7 @@ absl::Status RunCollectivePermute(
     // buffer.
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
-    stream.ThenMemZero(&dest_addr, dest_addr.size());
+    TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
   return absl::OkStatus();
 }

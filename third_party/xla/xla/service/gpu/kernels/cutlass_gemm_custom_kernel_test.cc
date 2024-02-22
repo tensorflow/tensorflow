@@ -39,7 +39,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
@@ -91,7 +91,7 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   se::Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.

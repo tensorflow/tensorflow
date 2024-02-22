@@ -45,7 +45,7 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   const se::DeviceDescription& device = executor->GetDeviceDescription();
 
   se::Stream stream(executor);
-  stream.Init();
+  TF_CHECK_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   // GEMM: 8192x4096 * 4096x16384 -> 8192x16384

@@ -371,7 +371,7 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   CHECK(stream.ok());
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);

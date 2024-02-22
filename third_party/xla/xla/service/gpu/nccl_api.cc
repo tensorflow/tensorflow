@@ -253,7 +253,7 @@ PersistentPlanAllocator::AllocateAndInitialize(void* src, size_t size) {
   VLOG(5) << "Allocate and initialize NCCL persistent plan; mem="
           << owned_mem->opaque() << "; size=" << size;
   se::DeviceMemoryBase mem = owned_mem.Release();
-  stream_->ThenMemcpy(&mem, src, size);
+  TF_RETURN_IF_ERROR(stream_->Memcpy(&mem, src, size));
   return mem;
 }
 
