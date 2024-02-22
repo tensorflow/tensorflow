@@ -88,12 +88,15 @@ class GpuCommandBuffer : public CommandBuffer {
                        ExecutionScopeId from_execution_scope_id,
                        ExecutionScopeId to_execution_scope_id) override;
 
-  absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
+  absl::Status Launch(ExecutionScopeId execution_scope_id,
+                      const ThreadDim& threads, const BlockDim& blocks,
                       const Kernel& kernel, const KernelArgs& args) override;
 
-  absl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
+  absl::Status AddNestedCommandBuffer(ExecutionScopeId execution_scope_id,
+                                      const CommandBuffer& nested) override;
 
-  absl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+  absl::Status MemcpyDeviceToDevice(ExecutionScopeId execution_scope_id,
+                                    DeviceMemoryBase* dst,
                                     const DeviceMemoryBase& src,
                                     uint64_t size) override;
 
@@ -101,24 +104,30 @@ class GpuCommandBuffer : public CommandBuffer {
                       DeviceMemoryBase* dst, BitPattern bit_pattern,
                       size_t num_elements) override;
 
-  absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes) override;
+  absl::StatusOr<DeviceMemoryBase> Allocate(ExecutionScopeId execution_scope_id,
+                                            size_t bytes) override;
 
-  absl::Status Free(DeviceMemoryBase dst) override;
+  absl::Status Free(ExecutionScopeId execution_scope_id,
+                    DeviceMemoryBase dst) override;
 
-  absl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
-                  Builder then_builder) override;
+  absl::Status If(ExecutionScopeId execution_scope_id, StreamExecutor* executor,
+                  DeviceMemory<bool> predicate, Builder then_builder) override;
 
-  absl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> predicate,
+  absl::Status IfElse(ExecutionScopeId execution_scope_id,
+                      StreamExecutor* executor, DeviceMemory<bool> predicate,
                       Builder then_builder, Builder else_builder) override;
 
-  absl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
+  absl::Status Case(ExecutionScopeId execution_scope_id,
+                    StreamExecutor* executor, DeviceMemory<int32_t> index,
                     std::vector<Builder> branches) override;
 
-  absl::Status For(StreamExecutor* executor, int32_t num_iteration,
+  absl::Status For(ExecutionScopeId execution_scope_id,
+                   StreamExecutor* executor, int32_t num_iteration,
                    DeviceMemory<int32_t> loop_counter,
                    Builder body_builder) override;
 
-  absl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
+  absl::Status While(ExecutionScopeId execution_scope_id,
+                     StreamExecutor* executor, DeviceMemory<bool> pred,
                      Builder cond_builder, Builder body_builder) override;
 
   absl::Status Finalize() override;
@@ -188,8 +197,8 @@ class GpuCommandBuffer : public CommandBuffer {
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
 
   // A callback to launch a kernel that updates conditional handles state.
-  using SetConditionFn =
-      std::function<absl::Status(absl::Span<const GpuGraphConditionalHandle>)>;
+  using SetConditionFn = std::function<absl::Status(
+      ExecutionScopeId, absl::Span<const GpuGraphConditionalHandle>)>;
 
   // An extension of `Builder` for building conditional command buffers tied to
   // conditional handles.
@@ -227,9 +236,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::StatusOr<std::vector<GpuGraphConditionalHandle>>
   CreateConditionalHandles(size_t num_handles);
 
-  absl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
-      ConditionType type, absl::Span<const GpuGraphConditionalHandle> handles);
-
   absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
   CreateConditionalCommandBuffers(
       absl::Span<const GpuGraphConditionalHandle> handles,
@@ -241,9 +247,13 @@ class GpuCommandBuffer : public CommandBuffer {
       absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
       absl::Span<const ConditionBuilder> builders);
 
+  absl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
+      ExecutionScopeId execution_scope_id, ConditionType type,
+      absl::Span<const GpuGraphConditionalHandle> handles);
+
   absl::Status CreateConditionalCommand(
-      StreamExecutor* executor, ConditionType type,
-      SetConditionFn set_condition,
+      ExecutionScopeId execution_scope_id, StreamExecutor* executor,
+      ConditionType type, SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);
 
   Dependencies GetBarrier(ExecutionScopeId execution_scope_id);
@@ -270,7 +280,8 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Launches CUDA kernels with packed arguments.
   absl::Status LaunchWithPackedArgs(
-      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      ExecutionScopeId execution_scope_id, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& packed_args);
 
   // Returns OK status if command buffer is not finalized and it is still
