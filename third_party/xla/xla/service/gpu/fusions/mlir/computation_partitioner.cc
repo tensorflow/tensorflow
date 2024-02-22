@@ -148,9 +148,10 @@ PartitionedComputation::PartitionedComputation(
     std::vector<const HloInstruction*> roots;
     for (auto* instruction : instructions) {
       if (instruction->user_count() == 0 ||
-          absl::c_any_of(instruction->users(), [&](auto* user) {
-            return disjoint_sets[user].Get() != cluster_id;
-          })) {
+          absl::c_any_of(instruction->users(),
+                         [cluster_id = cluster_id, &disjoint_sets](auto* user) {
+                           return disjoint_sets[user].Get() != cluster_id;
+                         })) {
         roots.push_back(instruction);
       }
     }
