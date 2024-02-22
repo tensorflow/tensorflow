@@ -969,9 +969,8 @@ Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
   return absl::OkStatus();
 }
 
-StatusOr<Node*> FunctionalizeCond::AddIfNode(const NodeDef& def,
-                                             const Node* replacee,
-                                             const OutputTensor& predicate) {
+absl::StatusOr<Node*> FunctionalizeCond::AddIfNode(
+    const NodeDef& def, const Node* replacee, const OutputTensor& predicate) {
   TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(def));
   VLOG(1) << "Adding If for " << replacee->name();
   StateMap::CondId id = state_map_.LookupCondId(replacee);
@@ -1040,7 +1039,7 @@ BranchType StateMap::FindBranchOf(CondId id, OutputTensor predicate) const {
   return it->second;
 }
 
-StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesNonMerge(
+absl::StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesNonMerge(
     StateMap::CondId src, StateMap::CondId dst) {
   VLOG(5) << "Joining src=" << DebugString(src) << " [" << src
           << "] and dst=" << DebugString(dst) << " [" << dst << "]";
@@ -1076,7 +1075,7 @@ StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesNonMerge(
   return state_map_.GetCondId(both);
 }
 
-StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
+absl::StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesMerge(
     Node* merge, StateMap::CondId src, StateMap::CondId dst) {
   // Determine the flow state when joining two states for a merge
   // node. Combining the two states for a merge node is effectively performing a
