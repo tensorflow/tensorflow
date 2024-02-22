@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -246,6 +247,7 @@ absl::Status CommandBufferCmdSequence::Record(
   // Track the number of commands recorded between barriers.
   int64_t num_recorded_commands = 0;
 
+  const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
   for (auto& command : commands_) {
     if (command.requires_barrier) {
       VLOG(3) << "Add command buffer barrier after " << num_recorded_commands
@@ -253,7 +255,8 @@ absl::Status CommandBufferCmdSequence::Record(
       TF_RETURN_IF_ERROR(command_buffer->Barrier(params.stream->parent()));
       num_recorded_commands = 0;
     }
-
+    auto annotation =
+        GetKernelAnnotation(annotations, command.cmd->profile_annotation());
     TF_RETURN_IF_ERROR(command.cmd->Record(params, state, command_buffer));
     ++num_recorded_commands;
   }

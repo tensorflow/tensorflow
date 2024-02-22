@@ -310,16 +310,15 @@ bool IsReductionCollective(Thunk::Kind kind) {
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
   ThunkInfo thunk_info(op);
-  thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  thunk_info.profile_annotation =
+      mlir::mhlo::GetDebugNameFromLocation(op->getLoc());
   return thunk_info;
 }
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
     const HloInstruction* instr) {
   ThunkInfo thunk_info(nullptr);
-  thunk_info.profile_annotation =
-      absl::StrFormat("Thunk:#hlo_op=%s#", instr->name());
+  thunk_info.profile_annotation = instr->name();
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {
     thunk_info.execution_stream_id =

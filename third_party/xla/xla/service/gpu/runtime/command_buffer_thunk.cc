@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/runtime/annotation.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -37,13 +38,11 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::gpu {
 
-using tsl::profiler::ScopedAnnotation;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
@@ -197,8 +196,10 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_.has_value()) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
+    const ModuleAnnotations* annotations = GetCurrentModuleAnnotations();
     for (auto& thunk : *thunks_) {
-      ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
+      auto scoped_annotation =
+          GetKernelAnnotation(annotations, thunk->profile_annotation());
       TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
     }
     return absl::OkStatus();

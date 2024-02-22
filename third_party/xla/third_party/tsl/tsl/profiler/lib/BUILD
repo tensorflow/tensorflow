@@ -268,6 +268,7 @@ cc_library(
 cc_library(
     name = "nvtx_utils",
     hdrs = ["nvtx_utils.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:logging",

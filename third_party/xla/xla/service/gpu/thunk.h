@@ -365,7 +365,7 @@ class Thunk {
 
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
-  std::string profile_annotation() const { return profile_annotation_; }
+  std::string_view profile_annotation() const { return profile_annotation_; }
 
   // Only valid during compilation, i.e., lowering thunks to kernel-launch
   // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will

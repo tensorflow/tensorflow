@@ -1700,8 +1700,11 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(thunks)));
+    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+    // Don't repeat the annotation from inside thunks
+    thunk_info.profile_annotation = {};
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(thunk_info, std::move(thunks)));
   }
   return absl::OkStatus();
 }

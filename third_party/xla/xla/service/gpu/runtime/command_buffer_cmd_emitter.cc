@@ -163,16 +163,25 @@ static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
 }
 
 //===----------------------------------------------------------------------===//
+static absl::StatusOr<Command> CopyMetadata(absl::StatusOr<Command> cmd,
+                                            const Thunk& thunk) {
+  if (cmd.ok()) {
+    (*cmd)->set_profile_annotation(thunk.profile_annotation());
+    return cmd;
+  }
+  return cmd;
+}
 
 template <typename ThunkType>
 static absl::StatusOr<Command> Convert(const Thunk& thunk) {
-  return Convert(static_cast<const ThunkType&>(thunk));
+  return CopyMetadata(Convert(static_cast<const ThunkType&>(thunk)), thunk);
 }
 
 template <typename ThunkType>
 static absl::StatusOr<Command> Convert(const Thunk& thunk,
                                        bool force_barriers) {
-  return Convert(static_cast<const ThunkType&>(thunk), force_barriers);
+  return CopyMetadata(
+      Convert(static_cast<const ThunkType&>(thunk), force_barriers), thunk);
 }
 
 static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,

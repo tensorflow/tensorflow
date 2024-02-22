@@ -175,6 +175,14 @@ class CommandBufferCmd {
 
   // Returns true if command implemented as a nested command buffer.
   virtual bool IsNestedCommandBuffer() const { return false; }
+
+  std::string_view profile_annotation() const { return profile_annotation_; }
+  void set_profile_annotation(std::string_view profile_annotation) {
+    profile_annotation_ = profile_annotation;
+  }
+
+ private:
+  std::string profile_annotation_;
 };
 
 //===----------------------------------------------------------------------===//

@@ -25,6 +25,8 @@ cc_library(
     hdrs = ["annotation.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        "//xla:printer",
+        "//xla:status",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -67,6 +69,7 @@ cc_library(
         "GOOGLE_CUDA=1",
     ]),
     deps = [
+        ":annotation",
         ":custom_call_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
@@ -209,7 +212,9 @@ cc_library(
     name = "command_buffer_thunk",
     srcs = ["command_buffer_thunk.cc"],
     hdrs = ["command_buffer_thunk.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        ":annotation",
         ":command_buffer_allocations",
         ":command_buffer_cmd",
         "//xla:status",
@@ -636,6 +641,7 @@ cc_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
+        ":annotation",
         "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:buffer_allocations",
