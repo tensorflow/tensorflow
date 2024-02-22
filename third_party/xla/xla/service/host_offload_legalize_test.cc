@@ -117,9 +117,9 @@ ENTRY main.24 {
 
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
-  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.8");
-  EXPECT_EQ(custom_call->operand(0)->opcode(), HloOpcode::kCopy);
-  EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({1, 0}));
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
 }
 
 TEST_F(HostOffloadLegalizeTest, LlmActivationHostMemoryMultipleConsumers) {
@@ -198,7 +198,8 @@ ENTRY main {
   entry_param_0 = f32[] parameter(0)
   entry_param_1 = s32[] parameter(1)
   entry_param_2 = s32[] parameter(2)
-  broadcast_0 = f32[96,8,6,2048,2048]{0,1,2,3,4} broadcast(entry_param_0), dimensions={}
+  cs0 = f32[] constant(0)
+  broadcast_0 = f32[96,8,6,2048,2048]{0,1,2,3,4} broadcast(cs0), dimensions={}
   constant_s32_0 = s32[] constant(0)
   tuple_for_producing_while = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) tuple(constant_s32_0, broadcast_0)
   producing_while = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) while(tuple_for_producing_while), condition=producing_while_condition, body=producing_while_body
@@ -222,11 +223,124 @@ ENTRY main {
 
   EXPECT_TRUE(changed);
   HloInstruction* copy = FindInstruction(module.get(), HloOpcode::kCopy);
-  HloInstruction* producing_while =
-      FindInstruction(module.get(), "producing_while");
+  HloInstruction* consuming_while =
+      FindInstruction(module.get(), "consuming_while");
   EXPECT_NE(copy, nullptr);
-  EXPECT_NE(producing_while, nullptr);
-  EXPECT_EQ(copy->parent(), producing_while->while_body());
+  EXPECT_NE(consuming_while, nullptr);
+  EXPECT_EQ(copy->parent(), consuming_while->while_body());
+  XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(HostOffloadLegalizeTest, LlmActivationHostMemoryMultipleCopies) {
+  const std::string& hlo_string = R"(
+HloModule llm_while
+
+producing_while_condition {
+  producing_condition_param = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) parameter(0)
+  producing_condition_current_iteration_index = s32[] get-tuple-element(producing_condition_param), index=0
+  producing_condition_iteration_count = s32[] constant(96)
+  ROOT producing_condition_result = pred[] compare(producing_condition_current_iteration_index, producing_condition_iteration_count), direction=LT
+}
+
+consuming_while_condition {
+  consuming_condition_param = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) parameter(0)
+  consuming_condition_current_iteration_index = s32[] get-tuple-element(consuming_condition_param), index=0
+  consuming_condition_iteration_count = s32[] constant(96)
+  ROOT consuming_condition_result = pred[] compare(consuming_condition_current_iteration_index, consuming_condition_iteration_count), direction=LT
+}
+
+producing_while_body {
+  input_tuple.0 = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(input_tuple.0), index=0
+  data_0.0 = f32[96,8,6,2048,2048]{0,1,2,3,4} get-tuple-element(input_tuple.0), index=1
+  constant_0.0 = s32[] constant(0)
+  constant_1.0 = s32[] constant(1)
+  constant_96 = s32[] constant(96)
+
+  /* Create dummy data used in DUS */
+  slice_data_0 = f32[1,8,6,2048,2048]  constant({...})
+
+  /* Build DUS index */
+  compare_result.0 = pred[] compare(current_iteration_index.0, constant_0.0), direction=LT
+  add_result = s32[] add(current_iteration_index.0, constant_96)
+  select_result.0 = s32[] select(compare_result.0, add_result, current_iteration_index.0)
+
+  /* Annotate DUS for offload */
+  custom_call_0.0 = f32[1,8,6,2048,2048] custom-call(slice_data_0), custom_call_target="PipelineForward"
+
+  dynamic_update_slice_0 = f32[96,8,6,2048,2048]{0,1,2,3,4} dynamic-update-slice(data_0.0, custom_call_0.0, select_result.0, constant_0.0, constant_0.0, constant_0.0, constant_0.0)
+
+  /* Increment iteration index */
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1.0)
+  ROOT tuple_result.0 = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) tuple(incremented_index.0, dynamic_update_slice_0)
+}
+
+consuming_while_body {
+  input_tuple.1 = (s32[], f32[96,8,6,2048,2048]{0,1,3,2,4}) parameter(0)
+  current_iteration_index.1 = s32[] get-tuple-element(input_tuple.1), index=0
+  data_0.1 = f32[96,8,6,2048,2048]{0,1,3,2,4} get-tuple-element(input_tuple.1), index=1
+  constant_0.1 = s32[] constant(0)
+  constant_1.1 = s32[] constant(1)
+  constant_95 = s32[] constant(95)
+  constant_191 = s32[] constant(191)
+
+  /* Build DS index */
+  subtract_0 = s32[] subtract(constant_95, current_iteration_index.1)
+  compare_result.1 = pred[] compare(subtract_0, constant_0.1), direction=LT
+  subtract_1 = s32[] subtract(constant_191, current_iteration_index.1)
+  select_result.1 = s32[] select(compare_result.1, subtract_1, subtract_0)
+
+  dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(data_0.1, select_result.1, constant_0.1, constant_0.1, constant_0.1, constant_0.1), dynamic_slice_sizes={1,8,6,2048,2048}
+
+  /* Annotate DS for offload */
+  custom_call_0.1 = f32[1,8,6,2048,2048] custom-call(dynamic_slice_0), custom_call_target="PipelineBackward"
+
+  /* Do some work with the dynamic slice outputs. */
+  tanh_0 = f32[1,8,6,2048,2048] tanh(custom_call_0.1)
+
+  /* Increment iteration index */
+  incremented_index.1 = s32[] add(current_iteration_index.1, constant_1.1)
+  ROOT tuple_result.1 = (s32[], f32[96,8,6,2048,2048]{0,1,3,2,4}) tuple(incremented_index.1, data_0.1)
+}
+
+ENTRY main {
+  entry_param_0 = f32[] parameter(0)
+  entry_param_1 = s32[] parameter(1)
+  entry_param_2 = s32[] parameter(2)
+  cs0 = f32[] constant(0)
+  broadcast_0 = f32[96,8,6,2048,2048]{0,1,2,3,4} broadcast(cs0), dimensions={}
+  constant_s32_0 = s32[] constant(0)
+  tuple_for_producing_while = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) tuple(constant_s32_0, broadcast_0)
+  producing_while = (s32[], f32[96,8,6,2048,2048]{0,1,2,3,4}) while(tuple_for_producing_while), condition=producing_while_condition, body=producing_while_body
+  while_output_1 = f32[96,8,6,2048,2048]{0,1,2,3,4} get-tuple-element(producing_while), index=1
+  cp = f32[96,8,6,2048,2048]{0,1,3,2,4} copy(while_output_1)
+  cp1 = f32[96,8,6,2048,2048]{0,1,3,2,4} copy(cp)
+  tuple_for_consuming_while = (s32[], f32[96,8,6,2048,2048]{0,1,3,2,4}) tuple(constant_s32_0, cp1)
+  consuming_while = (s32[], f32[96,8,6,2048,2048]{0,1,3,2,4}) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  second_while_output = f32[96,8,6,2048,2048]{0,1,3,2,4} get-tuple-element(consuming_while), index=1
+  final_dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(second_while_output, entry_param_1, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,8,6,2048,2048}
+  final_host_to_device_custom_call_0 = f32[1,8,6,2048,2048] custom-call(final_dynamic_slice_0), custom_call_target="PipelineBackward"
+  final_slice_0 = f32[1,8,6,2048,2048] slice(second_while_output), slice={[41:42], [0:8], [0:6], [0:2048], [0:2048]}
+  final_host_to_device_custom_call_1 = f32[1,8,6,2048,2048] custom-call(final_slice_0), custom_call_target="PipelineBackward"
+  ROOT add = f32[1,8,6,2048,2048] add(final_host_to_device_custom_call_0, final_host_to_device_custom_call_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  HloInstruction* copy_0 = FindInstruction(module.get(), "cp.2");
+  HloInstruction* copy_1 = FindInstruction(module.get(), "cp1.2");
+  HloInstruction* consuming_while =
+      FindInstruction(module.get(), "consuming_while");
+  EXPECT_NE(copy_0, nullptr);
+  EXPECT_NE(copy_1, nullptr);
+  EXPECT_NE(consuming_while, nullptr);
+  EXPECT_EQ(copy_0->parent(), module->entry_computation());
+  EXPECT_EQ(copy_1->operand(0), copy_0);
   XLA_VLOG_LINES(1, module->ToString());
 }
 
