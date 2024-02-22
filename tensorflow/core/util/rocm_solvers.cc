@@ -65,7 +65,7 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
   auto stream = context->op_device_context()->stream();
   se::DeviceMemoryBase wrapped_dst(dst);
-  return stream->ThenMemcpy(&wrapped_dst, src, bytes).ok();
+  return stream->Memcpy(&wrapped_dst, src, bytes).ok();
 }
 
 struct GpuSolverHandles {
