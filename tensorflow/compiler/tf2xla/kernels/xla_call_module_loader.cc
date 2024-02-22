@@ -563,8 +563,8 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   mlir::PassManager pm(module_->getContext());
   applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
-      /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // In order to export to XLA, we must sink constants to control flow
   // regions, since XLA uses functional control flow.

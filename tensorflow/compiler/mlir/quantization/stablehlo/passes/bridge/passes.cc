@@ -26,8 +26,7 @@ namespace mlir::quant::stablehlo {
 void AddQuantizationLoweringPasses(mlir::OpPassManager& pm) {
   // These passes are grouped together and must run in this specific order.
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertTFQuantOpsToMHLOPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mhlo::createChloLegalizeToHloPass(
-      /*legalizeBroadcasts=*/true, /*expandCompositions=*/false));
+  pm.addNestedPass<mlir::func::FuncOp>(mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mhlo::createMhloQuantLegalizeToIntPass());

@@ -196,6 +196,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -293,13 +294,15 @@ cc_library(
         "@local_xla//xla/client:padding",
         "@local_xla//xla/client:sharding_builder",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:chlo_legalize_to_hlo",
         "@local_xla//xla/mlir_hlo:convert_op_folder",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/mlir_hlo:type_conversion",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
