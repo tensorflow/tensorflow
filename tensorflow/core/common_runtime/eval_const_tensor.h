@@ -47,7 +47,7 @@ struct EvaluateConstantTensorRunner {
 //
 // When the evaluation is successful, the function returns a tensor, otherwise
 // it returns std::nullopt.
-StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
+absl::StatusOr<std::optional<Tensor>> EvaluateConstantTensor(
     // The tensor to be evaluated.
     const Node& node, int node_output,
     // Used to fetch inference contexts for nodes in the graph.

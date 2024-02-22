@@ -33,10 +33,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -156,7 +158,8 @@ class GraphExecutor {
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context,
                       std::optional<StreamCallbackId> stream_callback_id,
-                      bool is_restore, FunctionLibraryDefinition flib_def);
+                      bool is_restore, FunctionLibraryDefinition flib_def,
+                      tensorflow::monitoring::SamplerCell* latency_sampler);
 
     // Returns this instance's CostRecorder if it is time to update costs,
     // else returns nullptr. Only allows one non-null return value at a time
@@ -191,6 +194,9 @@ class GraphExecutor {
     const ProcessFunctionLibraryRuntime& process_function_library_runtime()
         const {
       return pflr_;
+    }
+    tensorflow::monitoring::SamplerCell* latency_sampler() {
+      return latency_sampler_;
     }
 
    private:
@@ -230,6 +236,7 @@ class GraphExecutor {
     bool is_restore_;
     FunctionLibraryDefinition flib_def_;
     ProcessFunctionLibraryRuntime pflr_;
+    tensorflow::monitoring::SamplerCell* latency_sampler_;
   };
 
   // A subgraph constructed by specifying input/output tensors.
@@ -376,7 +383,8 @@ class GraphExecutor {
   int num_recompilations_ TF_GUARDED_BY(num_recompilations_mu_) = 0;
 };
 
-void RegisterMlirDialect(mlir::DialectRegistry& registry);
+void RegisterMlirDialect(mlir::DialectRegistry& registry,
+                         tensorflow::BackendCompiler* backend_compiler);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

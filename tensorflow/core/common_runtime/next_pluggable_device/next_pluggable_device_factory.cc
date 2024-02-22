@@ -67,7 +67,7 @@ Status NextPluggableDeviceFactory::ListPhysicalDevices(
     devices->push_back(device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NextPluggableDeviceFactory::CreateDevices(
@@ -84,7 +84,7 @@ Status NextPluggableDeviceFactory::CreateDevices(
   TF_DeleteStatus(c_status);
 
   if (visible_device_count <= 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   const absl::flat_hash_map<std::string, int64_t> device_count_map(
       session_options.config.device_count().begin(),
@@ -118,7 +118,7 @@ Status NextPluggableDeviceFactory::CreateDevices(
   LOG(INFO) << "Created " << num_tf_devices
             << " TensorFlow NextPluggableDevices. "
             << "Physical device type: " << device_type_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

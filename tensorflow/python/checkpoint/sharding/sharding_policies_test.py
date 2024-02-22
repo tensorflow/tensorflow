@@ -485,15 +485,8 @@ class ShardingPoliciesTest(test.TestCase):
         self.evaluate(shards[5][v1_name][slice_spec]), [[[10.0], [11.0]]])
 
     # max_shard_size: 12 bytes
-    # 12 bytes is enough to fit 3 elements per variable in each shard, BUT that
-    # would require concurrent multidimensional tensor partitioning, which is
-    # not currently implemented for MaxShardSizePolicy. (When partitioning a
-    # tensor into a shard, we choose an axis to partition along. This can
-    # happen multiple times for a given tensor (in the case that the tensor
-    # spans multiple shards). In that case, multiple dimensions can be
-    # partitioned along (each time the tensor is partitioned, a new axis can be
-    # chosen), but not within a single iteration of adding a tensor partition to
-    # the shard.) So, v0/v1 should be split into 3 shards each.
+    # 12 bytes is enough to fit 3 elements per variable in each shard.
+    # v0/v1 should be split into 2 shards each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=12)
     shards = []
     for tensors in shardable_tensors:
@@ -504,37 +497,29 @@ class ShardingPoliciesTest(test.TestCase):
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
-    slice_spec = V0SaveSliceInfo(var_offset=[0, 0], var_shape=[1, 2]).spec
+    slice_spec = V0SaveSliceInfo(var_offset=[0, 0], var_shape=[3, 1]).spec
     self.assertAllEqual(
-        self.evaluate(shards[0][v0_name][slice_spec]), [[0, 1]])
+        self.evaluate(shards[0][v0_name][slice_spec]), [[0], [2], [4]])
 
-    slice_spec = V0SaveSliceInfo(var_offset=[1, 0], var_shape=[1, 2]).spec
+    slice_spec = V0SaveSliceInfo(var_offset=[0, 1], var_shape=[3, 1]).spec
     self.assertAllEqual(
-        self.evaluate(shards[1][v0_name][slice_spec]), [[2, 3]])
-
-    slice_spec = V0SaveSliceInfo(var_offset=[2, 0], var_shape=[1, 2]).spec
-    self.assertAllEqual(
-        self.evaluate(shards[2][v0_name][slice_spec]), [[4, 5]])
+        self.evaluate(shards[1][v0_name][slice_spec]), [[1], [3], [5]])
 
     # V1
-    slice_spec = V1SaveSliceInfo(var_offset=[0, 0, 0], var_shape=[1, 2, 1]).spec
+    slice_spec = V1SaveSliceInfo(var_offset=[0, 0, 0], var_shape=[3, 1, 1]).spec
     self.assertAllEqual(
-        self.evaluate(shards[3][v1_name][slice_spec]), [[[6.0], [7.0]]])
+        self.evaluate(shards[2][v1_name][slice_spec]),
+        [[[6.0]], [[8.0]], [[10.0]]])
 
-    slice_spec = V1SaveSliceInfo(var_offset=[1, 0, 0], var_shape=[1, 2, 1]).spec
+    slice_spec = V1SaveSliceInfo(var_offset=[0, 1, 0], var_shape=[3, 1, 1]).spec
     self.assertAllEqual(
-        self.evaluate(shards[4][v1_name][slice_spec]), [[[8.0], [9.0]]])
-
-    slice_spec = V1SaveSliceInfo(var_offset=[2, 0, 0], var_shape=[1, 2, 1]).spec
-    self.assertAllEqual(
-        self.evaluate(shards[5][v1_name][slice_spec]), [[[10.0], [11.0]]])
+        self.evaluate(shards[3][v1_name][slice_spec]),
+        [[[7.0]], [[9.0]], [[11.0]]])
 
     # max_shard_size: 16 bytes
     # Each variable should be split into 1.5 shards. The middle shard will
@@ -688,6 +673,7 @@ class ShardingPoliciesTest(test.TestCase):
         tmp_dir, options=checkpoint_options.CheckpointOptions(
             experimental_sharding_callback=(
                 sharding_policies.MaxShardSizePolicy(max_shard_size=10))))
+    # 8 files = 3 shards for v0, 3 for v1, 1 for v2, and 1 for the object graph
     self.assertLen(gfile.Glob(save_path + ".data*"), 8)
     ckpt.restore(save_path)
 

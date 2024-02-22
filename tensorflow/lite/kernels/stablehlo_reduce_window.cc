@@ -687,7 +687,7 @@ struct StablehloData : public OpData {
     if (execution_plan.size() != 1) {
       TF_LITE_KERNEL_LOG(context,
                          "Only one kernel is allowed within "
-                         "stablehlo.reduce_window body. (%d) kernels found.\n",
+                         "stablehlo.reduce_window body. (%zu) kernels found.\n",
                          execution_plan.size());
       return TfLiteReduceWindowFunctionUnsupported;
     }

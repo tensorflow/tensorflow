@@ -357,7 +357,11 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     DnnScratchAllocator scratch_allocator(scratch_size_limit, ctx);
 
     std::vector<se::dnn::ProfileResult> algorithms;
-    if (!stream->parent()->GetMIOpenConvolveAlgorithms(
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InvalidArgumentError("No DNN in stream executor.");
+    }
+    if (!dnn->GetMIOpenConvolveAlgorithms(
             kind, se::dnn::ToDataType<T>::value, stream, input_desc, input_ptr,
             filter_desc, filter_ptr, output_desc, output_ptr, conv_desc,
             &scratch_allocator, &algorithms)) {
@@ -381,9 +385,9 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         se::dnn::ProfileResult profile_result;
-        auto miopen_launch_status = stream->ConvolveWithAlgorithm(
-            kind, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-            output_ptr, conv_desc, &scratch_allocator,
+        auto miopen_launch_status = dnn->ConvolveWithAlgorithm(
+            stream, kind, input_desc, input_ptr, filter_desc, filter_ptr,
+            output_desc, output_ptr, conv_desc, &scratch_allocator,
             se::dnn::AlgorithmConfig(profile_algorithm,
                                      miopen_algorithm.scratch_size()),
             &profile_result);

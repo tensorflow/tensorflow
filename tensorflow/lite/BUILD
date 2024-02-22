@@ -8,7 +8,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tfli
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -645,6 +645,7 @@ cc_library_with_tflite(
     copts = tflite_copts() + tflite_copts_warnings(),
     generate_opaque_delegate_target = True,
     visibility = [
+        "//research/drishti/benchmarking/async:__subpackages__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/lite/core/kernels:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
@@ -74,13 +75,12 @@ class IfrtModelContext {
 
   const Eigen::ThreadPoolDevice& GetThreadPoolDevice() const;
 
-  absl::Status RegisterLoadedVariable(
-      absl::string_view name,
-      tsl::RCReference<xla::ifrt::Array> loaded_variable)
-      ABSL_LOCKS_EXCLUDED(mutex_);
-
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetLoadedVariable(
-      absl::string_view name) const ABSL_LOCKS_EXCLUDED(mutex_);
+  const IfrtLoadedVariableRegistry& GetLoadedVariableRegistry() const {
+    return loaded_variable_registry_;
+  }
+  IfrtLoadedVariableRegistry& GetLoadedVariableRegistry() {
+    return loaded_variable_registry_;
+  }
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
@@ -90,9 +90,7 @@ class IfrtModelContext {
 
   std::vector<ServingExecutableRegistry::Handle> handles_;
 
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, tsl::RCReference<xla::ifrt::Array>>
-      loaded_variable_map_ ABSL_GUARDED_BY(mutex_);
+  IfrtLoadedVariableRegistry loaded_variable_registry_;
 };
 
 }  // namespace ifrt_serving

@@ -78,7 +78,7 @@ struct PJRT_Client {
   // `owned_memories`.
   absl::flat_hash_map<xla::PjRtMemorySpace*, PJRT_Memory*>
       c_memory_from_cpp_memory;
-  xla::StatusOr<std::unique_ptr<PJRT_TopologyDescription>> topology;
+  absl::StatusOr<std::unique_ptr<PJRT_TopologyDescription>> topology;
 
   explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
 };
@@ -112,7 +112,7 @@ struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
   std::shared_ptr<xla::PjRtExecutable> executable;
 
-  xla::StatusOr<std::string> fingerprint;
+  absl::StatusOr<std::string> fingerprint;
 
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mutex;

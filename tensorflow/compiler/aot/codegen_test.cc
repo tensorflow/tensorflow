@@ -230,7 +230,7 @@ TEST(CodegenTest, Golden) {
                                        /*result_param_number=*/1),
        BufferInfo::MakeResultParameter(/*size=*/5 * 4,
                                        /*result_param_number=*/2)},
-      0, {}));
+      0, nullptr, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {

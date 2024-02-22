@@ -232,6 +232,16 @@ struct AutotunerUtil {
   static absl::StatusOr<std::string> SerializeAutotuneResults(
       bool as_textproto = false);
 
+  // As above, but only performs serialization for instructions found in the
+  // module.
+  //
+  // Only serializes autotuning results for instructions found in the module:
+  // while this is more expensive than serializing all cache, this avoids
+  // quadratic blow-up when serializing cache for a large number of modules.
+  static absl::StatusOr<std::string> SerializeAutotuneResultsForModule(
+      const HloModule& module, const AutotuneConfig& autotune_config,
+      bool as_textproto = false);
+
   static absl::Status SerializeAutotuneResults(AutotuneResults* results);
   static absl::Status LoadAutotuneResults(absl::string_view data,
                                           bool as_textproto = false);
@@ -253,16 +263,6 @@ struct AutotunerUtil {
   static absl::Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
-
-  // Extracts an HLO instruction into a new HLO module replacing its operands
-  // with parameter instructions.
-  static std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
-      const HloInstruction& hlo);
-
-  // Extracts an HLO computation into a new HLO module, using its clone as the
-  // root computation.
-  static std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
-      const HloComputation& computation);
 };
 
 }  // namespace gpu

@@ -63,7 +63,7 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
       if (!port::kLittleEndian) {
         TF_RETURN_IF_ERROR(ByteSwapTensorContentInMetaGraphDef(meta_graph_def));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return Status(
@@ -137,7 +137,7 @@ Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
   TF_RETURN_IF_ERROR(
       FindMetaGraphDef(tags, &saved_model_proto, meta_graph_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadSavedModelDebugInfoIfPresent(
@@ -156,7 +156,7 @@ Status ReadSavedModelDebugInfoIfPresent(
         ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
     *debug_info_proto = std::make_unique<GraphDebugInfo>(std::move(debug_info));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

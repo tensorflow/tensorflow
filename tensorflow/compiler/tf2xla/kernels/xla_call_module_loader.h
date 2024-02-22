@@ -52,7 +52,7 @@ class XlaCallModuleLoader {
 
   // Sets the platform index argument, if the module is compiled for multiple
   // platforms, and then erases the argument.
-  tsl::Status SetPlatformIndex(absl::string_view compilation_platform);
+  absl::Status SetPlatformIndex(absl::string_view compilation_platform);
 
   // Refines the dynamic module arguments based on the static argument shapes.
   // This assumes that the module has a "main" function without dimension args,
@@ -71,10 +71,10 @@ class XlaCallModuleLoader {
   // cause lifetime issues.
   // The input_shapes includes only the non-token and the non-platform-index
   // arguments.
-  tsl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
+  absl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
   // Validates that the module only contains ops from valid dialects.
-  tsl::Status ValidateDialect();
+  absl::Status ValidateDialect();
 
   // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
@@ -97,16 +97,16 @@ class XlaCallModuleLoader {
   XlaCallModuleLoader() = default;
 
   // Initializes the loader with the given serialized module string.
-  tsl::Status LoadModule(mlir::MLIRContext* context, int version,
-                         std::string module_str,
-                         std::vector<std::string> disabled_checks,
-                         std::vector<std::string> platforms,
-                         int num_invocation_args,
-                         bool main_has_token_input_output);
+  absl::Status LoadModule(mlir::MLIRContext* context, int version,
+                          std::string module_str,
+                          std::vector<std::string> disabled_checks,
+                          std::vector<std::string> platforms,
+                          int num_invocation_args,
+                          bool main_has_token_input_output);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.
-  tsl::Status AddMainWrapper();
+  absl::Status AddMainWrapper();
 
   mlir::MLIRContext* context_;
   int version_;

@@ -55,7 +55,7 @@ class DummyAutoSharding : public HloModulePass {
   absl::string_view name() const override { return "dummy_auto_sharding"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
@@ -71,7 +71,7 @@ class AutoShardingImplementation {
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
-  StatusOr<AutoShardingResult> RunAutoSharding(
+  absl::StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -115,7 +115,7 @@ class AutoSharding : public HloModulePass {
   absl::string_view name() const override { return "auto_sharding"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -166,6 +166,8 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
 Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
                  StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                  const HloInstruction* ins, size_t instruction_id,
+                 const HloInstructionSequence& instruction_sequence,
+                 const HloCostAnalysis& hlo_cost_analysis,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
                  const AutoShardingOption& option, const CallGraph& call_graph);
@@ -173,6 +175,8 @@ Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
 Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                   StrategyGroups& strategy_groups, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
+                  const HloInstructionSequence& instruction_sequence,
+                  const HloCostAnalysis& hlo_cost_analysis,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
                   const AutoShardingOption& option,
@@ -254,7 +258,7 @@ void FillAllStrategiesForArray(
     bool create_replicated_strategies,
     bool create_partially_replicated_strategies);
 
-StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
+absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
@@ -269,7 +273,7 @@ std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const InstructionDepthMap& depth_map, const AliasMap& alias_map,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
+    const StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map,
     int64_t max_depth, StrategyGroups& strategy_groups,
     AssociativeDotPairs& associative_dot_pairs);
@@ -313,7 +317,7 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
                            int64_t partition_dimensions,
                            const std::vector<int64_t>& tensor_dims = {});
 
-StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
+absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
     const HloInstruction* operand, const HloInstruction* unit,
     size_t instruction_id, StrategyMap& strategy_map,
@@ -341,7 +345,7 @@ std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup* src_strategy_group, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
-    StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
+    const StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map);
 
 void RemoveInvalidShardingsWithShapes(const Shape& shape,
@@ -363,7 +367,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const CallGraph& call_graph, bool strict);
 
 // Build possible sharding strategies and their costs for all instructions.
-StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
+absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>
 BuildStrategyAndCost(const HloInstructionSequence& sequence,
                      const HloModule* module,
                      const absl::flat_hash_map<const HloInstruction*, int64_t>&

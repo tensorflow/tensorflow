@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
@@ -129,12 +130,6 @@ Status GpuTracer::DoStart() {
     // GENERIC
     CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
-
-  bool use_cupti_activity_api = true;
-  ReadBoolFromEnvVar("TF_GPU_CUPTI_USE_ACTIVITY_API", true,
-                     &use_cupti_activity_api)
-      .IgnoreError();
-  options_.enable_event_based_activity = !use_cupti_activity_api;
 
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,

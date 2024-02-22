@@ -1,9 +1,12 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tsl:internal",
+    ]),
     licenses = ["notice"],
 )
 
@@ -11,7 +14,6 @@ cc_library(
     name = "grpc_coordination_client",
     srcs = ["grpc_coordination_client.cc"],
     hdrs = ["grpc_coordination_client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/distributed_runtime:call_options",
         "//tsl/distributed_runtime/coordination:coordination_client",
@@ -31,7 +33,6 @@ cc_library(
     name = "grpc_coordination_service_impl",
     srcs = ["grpc_coordination_service_impl.cc"],
     hdrs = ["grpc_coordination_service_impl.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/distributed_runtime/coordination:coordination_service_agent",
         "//tsl/distributed_runtime/coordination:coordination_service_rpc_handler",

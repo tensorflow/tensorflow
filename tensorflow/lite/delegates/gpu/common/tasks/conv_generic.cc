@@ -1293,7 +1293,7 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {8, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.0f, dst_shape,
       params.block_size));
-  if (!apple_info.IsA7GenerationGpu()) {
+  if (!apple_info.IsFamilyApple1()) {
     options.push_back(CreateWorkGroupSizeOption(
         {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f,
         dst_shape, params.block_size));
@@ -1304,7 +1304,7 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.0f,
       dst_shape, params.block_size));
-  if (!apple_info.IsA7GenerationGpu()) {
+  if (!apple_info.IsFamilyApple1()) {
     options.push_back(CreateWorkGroupSizeOption(
         {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
         dst_shape, params.block_size));

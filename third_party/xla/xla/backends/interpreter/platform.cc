@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/backends/interpreter/executor.h"
 #include "xla/stream_executor/device_options.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor {
@@ -41,12 +41,12 @@ int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
 const std::string& XlaInterpreterPlatform::Name() const { return name_; }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {
   return XlaInterpreterExecutor::CreateDeviceDescription(ordinal);
 }
 
-tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
@@ -54,20 +54,20 @@ tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
+absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-tsl::StatusOr<std::unique_ptr<StreamExecutor>>
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<XlaInterpreterExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return tsl::Status{
+    return absl::Status{
         absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
@@ -79,12 +79,12 @@ XlaInterpreterPlatform::GetUncachedExecutor(
 
 static void InitializeXlaInterpreterPlatform() {
   std::unique_ptr<Platform> platform(new XlaInterpreterPlatform);
-  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace interpreter
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
     interpreter_platform,
     stream_executor::interpreter::InitializeXlaInterpreterPlatform());

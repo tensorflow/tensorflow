@@ -8,7 +8,7 @@
 // CHECK:           return %[[VAL_2]] : tensor<1x32x10x32xi32>
 // CHECK:         }
 func.func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
-  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = array<i64: 3>} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
   func.return %0 : tensor<1x32x10x32xi32>
 }
 
@@ -19,7 +19,7 @@ func.func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) ->
 // CHECK:           return %[[VAL_2]] : tensor<1x32x10x32xi32>
 // CHECK:         }
 func.func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
-  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = array<i64: 3>} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
   func.return %0 : tensor<1x32x10x32xi32>
 }
 
@@ -30,7 +30,7 @@ func.func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) ->
 // CHECK:           return %[[VAL_2]] : tensor<?x?x?x?xi32>
 // CHECK:         }
 func.func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?x?x?xi32> {
-  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<?x?x?x?xi32>, tensor<?xi32>) -> tensor<?x?x?x?xi32>
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = array<i64: 3>} : (tensor<?x?x?x?xi32>, tensor<?xi32>) -> tensor<?x?x?x?xi32>
   func.return %0 : tensor<?x?x?x?xi32>
 }
 
@@ -68,7 +68,7 @@ func.func @broadcast_add(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
 func.func @broadcast_add_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
 
@@ -79,14 +79,14 @@ func.func @broadcast_add_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> t
 // CHECK:           return %[[VAL_2]] : tensor<4x4x4x4xi32>
 // CHECK:         }
 func.func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
-  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1, 2, 3>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
   func.return %0 : tensor<4x4x4x4xi32>
 }
 
 // CHECK-LABEL:   func @unsupported_broadcast_add
 // CHECK: chlo.broadcast_add
 func.func @unsupported_broadcast_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
-  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
+  %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = array<i64: 0, 1, 2>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
   func.return %0 : tensor<4x4x4x4xi32>
 }
 
@@ -122,7 +122,7 @@ func.func @broadcast_div(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
 func.func @broadcast_div_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
 
@@ -159,7 +159,7 @@ func.func @broadcast_shift_left(%arg0: tensor<1xi32>, %arg1: tensor<4xi32>) -> (
 // CHECK:           return %[[VAL_2]] : tensor<?x?xi32>
 // CHECK:         }
 func.func @div_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
-  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   func.return %0 : tensor<?x?xi32>
 }
 
@@ -247,7 +247,7 @@ func.func @broadcast_mul(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
 func.func @broadcast_mul_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  %0 = "chlo.broadcast_multiply"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "chlo.broadcast_multiply"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
 
@@ -268,7 +268,7 @@ func.func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
 func.func @broadcast_real_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
 
@@ -304,7 +304,7 @@ func.func @broadcast_sub(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi32>
 // CHECK:         }
 func.func @broadcast_sub_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  %0 = "chlo.broadcast_subtract"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+  %0 = "chlo.broadcast_subtract"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
 
@@ -341,7 +341,7 @@ func.func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi
 // CHECK:           return %[[VAL_2]] : tensor<2x4xi32>
 // CHECK:         }
 func.func @broadcast_shift_right(%arg0: tensor<4xi32>, %arg1: tensor<2x4xi32>) -> tensor<2x4xi32> {
-  %0 = "chlo.broadcast_shift_right_arithmetic"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xi32>, tensor<2x4xi32>) -> tensor<2x4xi32>
+  %0 = "chlo.broadcast_shift_right_arithmetic"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<4xi32>, tensor<2x4xi32>) -> tensor<2x4xi32>
   func.return %0 : tensor<2x4xi32>
 }
 
@@ -363,7 +363,7 @@ func.func @and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @and_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -396,7 +396,7 @@ func.func @or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @or_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -441,7 +441,7 @@ func.func @bitwise_or_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> t
 // CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
 // CHECK:         }
 func.func @bitwise_or_broadcast_chlo(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
-  %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+  %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
   func.return %0 : tensor<1x4xi8>
 }
 
@@ -474,7 +474,7 @@ func.func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi
 // CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
 // CHECK:         }
 func.func @bitwise_xor_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
-  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1]> : tensor<1xi64>} : (tensor<1xi8>) -> tensor<1x4xi8>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>) -> tensor<1x4xi8>
   %1 = mhlo.xor %0, %arg1 : tensor<1x4xi8>
   func.return %1 : tensor<1x4xi8>
 }
@@ -509,7 +509,7 @@ func.func @bitwise_and_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> 
 // CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
 // CHECK:         }
 func.func @bitwise_and_broadcast_chlo(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
-  %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+  %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
   func.return %0 : tensor<1x4xi8>
 }
 
@@ -584,16 +584,16 @@ func.func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) 
   %1 = "chlo.broadcast_compare"(%arg0, %0) {comparison_direction = #chlo<comparison_direction LT>} : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi1>
   %2 = mhlo.constant dense<0> : tensor<3xi32>
   %3 = "chlo.broadcast_compare"(%arg1, %2) {comparison_direction = #chlo<comparison_direction LT>} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
-  %4 = "chlo.broadcast_compare"(%1, %3) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<2x3xi1>, tensor<3xi1>) -> tensor<2x3xi1>
-  %5 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
+  %4 = "chlo.broadcast_compare"(%1, %3) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<2x3xi1>, tensor<3xi1>) -> tensor<2x3xi1>
+  %5 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %6 = "mhlo.abs"(%arg0) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %7 = "mhlo.abs"(%arg1) : (tensor<3xi32>) -> tensor<3xi32>
   %8 = mhlo.constant dense<1> : tensor<3xi32>
   %9 = mhlo.subtract %7, %8 : tensor<3xi32>
-  %10 = "chlo.broadcast_add"(%6, %9) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
+  %10 = "chlo.broadcast_add"(%6, %9) {broadcast_dimensions = array<i64: 1>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %11 = "mhlo.negate"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %12 = "mhlo.abs"(%arg1) : (tensor<3xi32>) -> tensor<3xi32>
-  %13 = "chlo.broadcast_divide"(%11, %12) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
+  %13 = "chlo.broadcast_divide"(%11, %12) {broadcast_dimensions = array<i64: 1>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %14 = "mhlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   func.return %14 : tensor<2x3xi32>
 }
@@ -623,13 +623,13 @@ func.func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x
   %1 = "mhlo.compare"(%arg0, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
   %2 = mhlo.constant dense<0> : tensor<2x3xi32>
   %3 = "chlo.broadcast_compare"(%arg1, %2) {comparison_direction = #chlo<comparison_direction LT>} : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi1>
-  %4 = "chlo.broadcast_compare"(%1, %3) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
-  %5 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  %4 = "chlo.broadcast_compare"(%1, %3) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
+  %5 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   %6 = "mhlo.abs"(%arg0) : (tensor<3xi32>) -> tensor<3xi32>
   %7 = "mhlo.abs"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %8 = mhlo.constant dense<1> : tensor<2x3xi32>
   %9 = mhlo.subtract %7, %8 : tensor<2x3xi32>
-  %10 = "chlo.broadcast_add"(%6, %9) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  %10 = "chlo.broadcast_add"(%6, %9) {broadcast_dimensions = array<i64: 1>} : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   %11 = "mhlo.negate"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %12 = "mhlo.abs"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %13 = mhlo.divide %11, %12 : tensor<2x3xi32>
@@ -660,8 +660,8 @@ func.func @floordiv_f32(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           return %[[VAL_4]] : tensor<2x3xf16>
 // CHECK:         }
 func.func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> tensor<2x3xf16> {
-  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
-  %1 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
+  %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
+  %1 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>} : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
   %2 = "mhlo.floor"(%1) : (tensor<2x3xf16>) -> tensor<2x3xf16>
   func.return %2 : tensor<2x3xf16>
 }
@@ -707,7 +707,7 @@ func.func @equal_broadcast(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> te
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @equal_broadcast_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -718,7 +718,7 @@ func.func @equal_broadcast_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) ->
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @equal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -736,7 +736,7 @@ func.func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: t
 // CHECK-LABEL: func @equal_unsupported_compare_type
 func.func @equal_unsupported_compare_type(%arg0: tensor<1xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x2xi1> {
   // CHECK: chlo.broadcast_compare
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, compare_type = #chlo<comparison_type TOTALORDER>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<1xf32>, tensor<1x2xf32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, compare_type = #chlo<comparison_type TOTALORDER>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<1xf32>, tensor<1x2xf32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -770,7 +770,7 @@ func.func @notequal_broadcast(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) ->
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @notequal_broadcast_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction NE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction NE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -781,7 +781,7 @@ func.func @notequal_broadcast_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>)
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @notequal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction NE>} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction NE>} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -826,7 +826,7 @@ func.func @broadcast_greater(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> 
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @broadcast_greater_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction GT>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction GT>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -867,7 +867,7 @@ func.func @broadcast_greater_equal(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @broadcast_greater_equal_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction GE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction GE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -901,7 +901,7 @@ func.func @broadcast_less(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> ten
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @broadcast_less_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction LT>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction LT>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -935,7 +935,7 @@ func.func @broadcast_less_equal(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) 
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
 func.func @broadcast_less_equal_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction LE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = array<i64: 1>, comparison_direction = #chlo<comparison_direction LE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
 
@@ -980,7 +980,7 @@ func.func @const() -> tensor<2xi32> {
 // CHECK:         }
 func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
-  %1 = "chlo.broadcast_maximum"(%0, %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
+  %1 = "chlo.broadcast_maximum"(%0, %arg0) {broadcast_dimensions = array<i64>} : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
   func.return %1 : tensor<1xi32>
 }
 
@@ -992,7 +992,7 @@ func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK:         }
 func.func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
-  %1 = "chlo.broadcast_maximum"(%0, %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<?xi32>) -> tensor<?xi32>
+  %1 = "chlo.broadcast_maximum"(%0, %arg0) {broadcast_dimensions = array<i64>} : (tensor<i32>, tensor<?xi32>) -> tensor<?xi32>
   func.return %1 : tensor<?xi32>
 }
 
@@ -1007,8 +1007,8 @@ func.func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 func.func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<6> : tensor<i32>
-  %2 = "chlo.broadcast_minimum"(%arg0, %1) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
-  %3 = "chlo.broadcast_maximum"(%2, %0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %2 = "chlo.broadcast_minimum"(%arg0, %1) {broadcast_dimensions = array<i64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %3 = "chlo.broadcast_maximum"(%2, %0) {broadcast_dimensions = array<i64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
   func.return %3 : tensor<1xi32>
 }
 
@@ -1023,8 +1023,8 @@ func.func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 func.func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<6> : tensor<i32>
-  %2 = "chlo.broadcast_minimum"(%arg0, %1) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
-  %3 = "chlo.broadcast_maximum"(%2, %0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+  %2 = "chlo.broadcast_minimum"(%arg0, %1) {broadcast_dimensions = array<i64>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+  %3 = "chlo.broadcast_maximum"(%2, %0) {broadcast_dimensions = array<i64>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
   func.return %3 : tensor<?xi32>
 }
 
@@ -1039,7 +1039,7 @@ func.func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 // CHECK:         }
 func.func @relu_grad(%arg0: tensor<4x8xf32>, %arg1: tensor<?x?xf32>) -> tensor<4x8xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
-  %1 = "chlo.broadcast_compare"(%arg1, %0) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = #chlo<comparison_direction GT>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
+  %1 = "chlo.broadcast_compare"(%arg1, %0) {broadcast_dimensions = array<i64>, comparison_direction = #chlo<comparison_direction GT>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
   %2 = mhlo.constant dense<0.000000e+00> : tensor<4x8xf32>
   %3 = "mhlo.select"(%1, %arg0, %2) : (tensor<?x?xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
   func.return %3 : tensor<4x8xf32>
@@ -2140,6 +2140,8 @@ func.func @convert_dot_general_dynamic_contracting_dim(%arg0: tensor<4x4x?xf32>,
 func.return %0 : tensor<4x4x256xf32>
 }
 
+
+
 // CHECK-LABEL:   func.func @convert_conv1d(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
@@ -2204,7 +2206,29 @@ func.func @convert_conv1d_dynamic_batch(%arg0: tensor<?x32x256xbf16>, %arg1: ten
   func.return %0 : tensor<?x32x256xbf16>
 }
 
-
+// CHECK-LABEL: convert_dynamic_1d_group_conv
+func.func private @convert_dynamic_1d_group_conv(%arg1: tensor<?x768x2xf32>, %arg2: tensor<768x48x128xf32>) -> (tensor<?x768x3xf32>) {
+  %0 = mhlo.convolution(%arg1, %arg2) 
+    dim_numbers = [b, f, 0]x[o, i, 0]->[b, f, 0], 
+    window = {pad = [[64, 64]]} 
+      {batch_group_count = 1 : i64, feature_group_count = 16 : i64}
+        : (tensor<?x768x2xf32>, tensor<768x48x128xf32>) -> tensor<?x768x3xf32>
+  return %0 : tensor<?x768x3xf32>
+// CHECK:  %cst = arith.constant dense<[-9223372036854775808, 768, 2, 1]> : tensor<4xi64>
+// CHECK:  %0 = "tf.Reshape"(%arg0, %cst) : (tensor<?x768x2xf32>, tensor<4xi64>) -> tensor<?x768x2x1xf32>
+// CHECK:  %cst_0 = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:  %1 = "tf.Transpose"(%0, %cst_0) : (tensor<?x768x2x1xf32>, tensor<4xi64>) -> tensor<?x2x1x768xf32>
+// CHECK:  %cst_1 = arith.constant dense<[768, 48, 128, 1]> : tensor<4xi64>
+// CHECK:  %2 = "tf.Reshape"(%arg1, %cst_1) : (tensor<768x48x128xf32>, tensor<4xi64>) -> tensor<768x48x128x1xf32>
+// CHECK:  %cst_2 = "tf.Const"() <{value = dense<[2, 3, 1, 0]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:  %3 = "tf.Transpose"(%2, %cst_2) : (tensor<768x48x128x1xf32>, tensor<4xi64>) -> tensor<128x1x48x768xf32>
+// CHECK:  %4 = "tf.Conv2D"(%1, %3) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [0, 0, 64, 64, 0, 0, 0, 0], padding = "EXPLICIT", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}> : (tensor<?x2x1x768xf32>, tensor<128x1x48x768xf32>) -> tensor<?x3x1x768xf32>
+// CHECK:  %cst_3 = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:  %5 = "tf.Transpose"(%4, %cst_3) : (tensor<?x3x1x768xf32>, tensor<4xi64>) -> tensor<?x768x3x1xf32>
+// CHECK:  %cst_4 = arith.constant dense<[-9223372036854775808, 768, 3]> : tensor<3xi64>
+// CHECK:  %6 = "tf.Reshape"(%5, %cst_4) : (tensor<?x768x3x1xf32>, tensor<3xi64>) -> tensor<?x768x3xf32>
+// CHECK:  return %6 : tensor<?x768x3xf32>
+}
 
 // CHECK-LABEL:   func.func @convert_conv1d_no_lhs_dil_rhs_dil_precision_conf(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
@@ -2318,13 +2342,22 @@ func.func @no_convert_conv1d_dynamic(%arg0: tensor<16x?x256xbf16>, %arg1: tensor
   func.return %0 : tensor<16x?x256xbf16>
 }
 
-// CHECK-LABEL:   func.func @no_convert_conv1d_feature_group_gt_1(
-// CHECK-SAME:                                                    %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
-// CHECK-SAME:                                                    %[[VAL_1:.*]]: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
-// CHECK:           %[[VAL_2:.*]] = mhlo.convolution(%[[VAL_0]], %[[VAL_1]]) dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f], window = {stride = [1], pad = {{\[\[}}0, 0]], lhs_dilate = [1], rhs_dilate = [1]} {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<16x32x256xbf16>, tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16>
-// CHECK:           return %[[VAL_2]] : tensor<16x32x128xbf16>
-// CHECK:         }
-func.func @no_convert_conv1d_feature_group_gt_1(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
+// CHECK-LABEL:   func.func @convert_conv1d_feature_group_gt_1(
+// CHECK:    %cst = arith.constant dense<[16, 32, 256, 1]> : tensor<4xi64>
+// CHECK:    %0 = "tf.Reshape"(%arg0, %cst) : (tensor<16x32x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK:    %cst_0 = "tf.Const"() <{value = dense<[0, 1, 3, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:    %1 = "tf.Transpose"(%0, %cst_0) : (tensor<16x32x256x1xbf16>, tensor<4xi64>) -> tensor<16x32x1x256xbf16>
+// CHECK:    %cst_1 = arith.constant dense<[1, 128, 128, 1]> : tensor<4xi64>
+// CHECK:    %2 = "tf.Reshape"(%arg1, %cst_1) : (tensor<1x128x128xbf16>, tensor<4xi64>) -> tensor<1x128x128x1xbf16>
+// CHECK:    %cst_2 = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:    %3 = "tf.Transpose"(%2, %cst_2) : (tensor<1x128x128x1xbf16>, tensor<4xi64>) -> tensor<1x1x128x128xbf16>
+// CHECK:    %4 = "tf.Conv2D"(%1, %3) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}> : (tensor<16x32x1x256xbf16>, tensor<1x1x128x128xbf16>) -> tensor<16x32x1x128xbf16>
+// CHECK:    %cst_3 = "tf.Const"() <{value = dense<[0, 1, 3, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+// CHECK:    %5 = "tf.Transpose"(%4, %cst_3) : (tensor<16x32x1x128xbf16>, tensor<4xi64>) -> tensor<16x32x128x1xbf16>
+// CHECK:    %cst_4 = arith.constant dense<[16, 32, 128]> : tensor<3xi64>
+// CHECK:    %6 = "tf.Reshape"(%5, %cst_4) : (tensor<16x32x128x1xbf16>, tensor<3xi64>) -> tensor<16x32x128xbf16>
+// CHECK:    return %6 : tensor<16x32x128xbf16>
+func.func @convert_conv1d_feature_group_gt_1(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,

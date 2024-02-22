@@ -55,7 +55,7 @@ std::string StripLogHeaders(std::string_view hlo_string);
 // modifications before use. If the buffer assignment proto pointer is not null
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     const std::string& data, std::string_view format,
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
@@ -77,7 +77,7 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
 // modifications before use. If the buffer assignment proto pointer is not null
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::string& path, std::string format = "",
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
@@ -88,8 +88,8 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
 // The data format must be one of the following:
 // 1) A binary proto (format "pb")
 // 2) A text proto (format "pbtxt")
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
-    const std::string& data, std::string_view format);
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromData(const std::string& data, std::string_view format);
 
 // Loads an HLO snapshot from file, only for its inputs
 // The file must be one of the following:
@@ -97,8 +97,8 @@ StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
 // 2) A text proto (with a .pbtxt extension)
 // If the format is specified (not empty), it overrides the one guessed from the
 // file extension.
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromFile(
-    const std::string& path, std::string format = "");
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromFile(const std::string& path, std::string format = "");
 
 }  // namespace xla
 

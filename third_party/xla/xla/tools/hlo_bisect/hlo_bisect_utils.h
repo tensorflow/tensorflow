@@ -41,10 +41,10 @@ class MiscompareChecker : public BugCheckerInterface {
                     absl::string_view test_platform,
                     absl::string_view reference_platform,
                     ErrorSpec error_spec);
-  StatusOr<bool> Run(const HloModule& module) override;
+  absl::StatusOr<bool> Run(const HloModule& module) override;
   absl::flat_hash_map<std::string, Literal> GetResults() override;
 
-  virtual StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
+  virtual absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
       const HloModule& hlo_module, HloRunnerInterface* hlo_runner) const;
 
  private:
@@ -61,7 +61,7 @@ class ScriptChecker : public BugCheckerInterface {
  public:
   explicit ScriptChecker(std::string path_to_script)
       : path_to_script_(std::move(path_to_script)) {}
-  StatusOr<bool> Run(const HloModule& module) override;
+  absl::StatusOr<bool> Run(const HloModule& module) override;
   absl::flat_hash_map<std::string, Literal> GetResults() override;
 
  private:
@@ -75,8 +75,8 @@ class BisectRunner {
                std::unique_ptr<BugCheckerInterface> bug_checker)
       : module_(std::move(module)), bug_checker_(std::move(bug_checker)) {}
 
-  StatusOr<std::unique_ptr<HloModule>> RunEntry();
-  StatusOr<std::unique_ptr<HloModule>> RunAll();
+  absl::StatusOr<std::unique_ptr<HloModule>> RunEntry();
+  absl::StatusOr<std::unique_ptr<HloModule>> RunAll();
 
  protected:
   std::unique_ptr<HloModule> module_;
@@ -90,7 +90,7 @@ void RunBisect(std::unique_ptr<BisectRunner> runner, bool all_computations,
 // Utility function for getting the verified module and optional inputs.
 using ModuleWithInputs =
     std::pair<std::unique_ptr<HloModule>, std::vector<Literal>>;
-xla::StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
+absl::StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
     absl::string_view input_filename);
 
 }  // namespace bisect

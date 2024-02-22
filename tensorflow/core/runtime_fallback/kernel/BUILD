@@ -69,7 +69,9 @@ cc_library(
     hdrs = ["attr_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/runtime_fallback/util:attr_util",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",

@@ -175,6 +175,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                          llvm::Value* lhs, llvm::Value* rhs,
                                          absl::string_view name);
 
+  virtual StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
+                                         llvm::Value* value);
+
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);
 
@@ -232,9 +235,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitMulAdd(llvm::Value* lhs, llvm::Value* rhs,
                           llvm::Value* accumulator,
                           xla::PrimitiveType primitive_type);
-
-  // Identifier of the thread unique among all threads on the device
-  virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
 
   StatusOr<llvm::Value*> EmitElementalSelect(
       const HloInstruction* hlo,

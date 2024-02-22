@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_timer.h"
 
+#include <cmath>
 #include <optional>
 #include <random>
 #include <utility>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -29,6 +32,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {

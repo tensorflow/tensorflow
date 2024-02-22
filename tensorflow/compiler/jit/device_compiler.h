@@ -201,7 +201,7 @@ inline Status EligibleToPersist(DeviceCompileState compile_state,
     return errors::FailedPrecondition(
         "LocalExecutable not found for cache entry to serialize.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace device_compiler_internal
 
@@ -391,7 +391,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
                     std::nullopt);
     }
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ExecutableType, typename ClientType>
@@ -469,14 +469,14 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
     if (!profiler->ShouldCompileCluster(function, compile_mode,
                                         current_request_count)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
-      return OkStatus();
+      return absl::OkStatus();
     } else if (compile_mode == DeviceCompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
       TF_RETURN_IF_ERROR(CompileAsynchronous(signature, compile_options,
                                              options, args, function, scope,
                                              ctx, profiler));
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
       TF_ASSIGN_OR_RETURN(
@@ -487,7 +487,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   } else if (state == DeviceCompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (state == DeviceCompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
@@ -495,7 +495,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   TF_RETURN_IF_ERROR(cache_value.compilation_status);
   *out_compilation_result = cache_value.compilation_result;
   *out_executable = cache_value.executable;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

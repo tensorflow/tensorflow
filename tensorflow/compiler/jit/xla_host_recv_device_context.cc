@@ -43,7 +43,7 @@ void XlaHostRecvDeviceContext::CopyDeviceTensorToCPU(
   }
 
   done_event_.SetStateConcrete();
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 }  // namespace tensorflow

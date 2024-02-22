@@ -14,10 +14,15 @@
 
 #include "xla/service/cpu/runtime/convolution_ffi.h"
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/runtime/aot_ffi.h"
 #include "xla/runtime/aot_ffi_execution_context.h"
 #include "xla/runtime/ffi/ffi_api.h"
+#include "xla/runtime/ffi/ffi_c_api.h"
+#include "xla/runtime/memref_view.h"
 #include "xla/service/cpu/runtime/convolution.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 struct ExecutableRunOptions;

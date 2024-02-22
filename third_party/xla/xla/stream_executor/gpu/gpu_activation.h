@@ -23,7 +23,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 

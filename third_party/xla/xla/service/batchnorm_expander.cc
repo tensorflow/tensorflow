@@ -580,7 +580,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   return OkStatus();
 }
 
-StatusOr<bool> BatchNormExpander::Run(
+absl::StatusOr<bool> BatchNormExpander::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "BatchNormExpander::Run(), before:\n" + module->ToString());

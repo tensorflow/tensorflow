@@ -1601,9 +1601,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -3877,7 +3877,7 @@ tf_cuda_cc_test(
     name = "matmul_op_test",
     srcs = ["matmul_op_test.cc"],
     tags = [
-        "no_arm64",  # b/282068262
+        "no_aarch64",  # b/282068262
     ],
     deps = [
         ":matmul_op",

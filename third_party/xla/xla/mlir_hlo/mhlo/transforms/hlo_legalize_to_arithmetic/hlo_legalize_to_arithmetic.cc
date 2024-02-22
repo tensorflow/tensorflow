@@ -207,6 +207,7 @@ void populateScalarHloToArithmeticConversionPatterns(
       ScalarHloToArithmeticPattern<mhlo::CopyOp>,
       ScalarHloToArithmeticPattern<mhlo::CosineOp>,
       ScalarHloToArithmeticPattern<mhlo::DivOp>,
+      ScalarHloToArithmeticPattern<mhlo::ErfOp>,
       ScalarHloToArithmeticPattern<mhlo::ExpOp>,
       ScalarHloToArithmeticPattern<mhlo::Expm1Op>,
       ScalarHloToArithmeticPattern<mhlo::FloorOp>,

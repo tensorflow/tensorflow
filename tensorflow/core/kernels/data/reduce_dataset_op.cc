@@ -125,7 +125,7 @@ Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   for (size_t i = 0; i < state.size(); ++i) {
     ctx->set_output(i, state[i]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

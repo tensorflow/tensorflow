@@ -152,7 +152,7 @@ Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

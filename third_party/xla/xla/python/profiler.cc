@@ -60,10 +60,10 @@ tensorflow::ProfileOptions DefaultPythonProfileOptions() {
 }
 
 const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
-  const PJRT_Structure_Base* next =
-      reinterpret_cast<const PJRT_Structure_Base*>(pjrt_api->extension_start);
+  const PJRT_Extension_Base* next =
+      reinterpret_cast<const PJRT_Extension_Base*>(pjrt_api->extension_start);
   while (next != nullptr &&
-         next->type != PJRT_Structure_Type::PJRT_Structure_Type_Profiler) {
+         next->type != PJRT_Extension_Type::PJRT_Extension_Type_Profiler) {
     next = next->next;
   }
   if (next == nullptr) {

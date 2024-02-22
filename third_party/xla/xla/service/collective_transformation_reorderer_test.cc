@@ -26,7 +26,7 @@ namespace op = xla::testing::opcode_matchers;
 
 class CollectiveTransformationReordererTest : public HloTestBase {
  public:
-  StatusOr<bool> RunCollectiveTransformationReorderer(HloModule* module) {
+  absl::StatusOr<bool> RunCollectiveTransformationReorderer(HloModule* module) {
     CollectiveTransformationReorder reorderer;
     return reorderer.Run(module, {});
   }

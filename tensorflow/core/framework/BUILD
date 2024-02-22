@@ -715,6 +715,7 @@ cc_library(
         "//learning/brain/google/data/core/kernels:__pkg__",
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
+        "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -1384,6 +1385,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/profiler/utils:xplane_utils",
     ],
 )
 

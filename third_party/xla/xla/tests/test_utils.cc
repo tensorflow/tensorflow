@@ -230,7 +230,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 // floating point format. (floating point format only)
 // 'max_bits_of_precision' sets the data to have the given number of bits or
 // less (integer or floating point formats only).
-StatusOr<Literal> MakeFakeLiteralInternal(
+absl::StatusOr<Literal> MakeFakeLiteralInternal(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
@@ -469,7 +469,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // no constrained uses in the dataflow graph.  If such constraints exist,
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
-StatusOr<Literal> CreateLiteralForConstrainedUses(
+absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range,
@@ -579,7 +579,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
 
 // Given a module entry parameter, use the dataflow analysis to see if a
 // special case literal must be created, or if we can generate fake data.
-StatusOr<Literal> MakeConstrainedArgument(
+absl::StatusOr<Literal> MakeConstrainedArgument(
     const HloDataflowAnalysis& dataflow, const HloInstruction& param,
     const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
@@ -593,8 +593,8 @@ StatusOr<Literal> MakeConstrainedArgument(
 
 }  // namespace
 
-StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
-                                  bool use_large_range) {
+absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
+                                        bool use_large_range) {
   auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*limit=*/std::nullopt,
                                  /*is_sorted=*/false,
@@ -602,7 +602,7 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                                  /*max_bits_of_precision=*/std::nullopt);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision) {
@@ -611,7 +611,7 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(
                            treat_gte_as_data_formatting, max_bits_of_precision);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision) {

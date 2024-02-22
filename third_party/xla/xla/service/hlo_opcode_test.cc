@@ -58,6 +58,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kCollectivePermuteStart:
       case HloOpcode::kConcatenate:

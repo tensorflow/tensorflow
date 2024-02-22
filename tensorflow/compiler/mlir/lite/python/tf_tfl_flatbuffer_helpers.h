@@ -24,8 +24,10 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
@@ -55,7 +57,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
-    std::optional<tensorflow::Session*> session);
+    SavedModelBundle* saved_model_bundle,
+    const quantization::PyFunctionLibrary* quantization_py_function_lib);
 
 // Give a warning for any unused flags that have been specified.
 void WarningUnusedFlags(const toco::ModelFlags& model_flags,

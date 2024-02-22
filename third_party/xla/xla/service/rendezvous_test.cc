@@ -16,10 +16,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
@@ -28,6 +31,9 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+absl::Duration Timeout() { return absl::Seconds(10); }
+absl::Duration Terminate() { return absl::Seconds(10); }
 
 tsl::thread::ThreadPool CreateThreadPool(int32_t size) {
   return tsl::thread::ThreadPool(tsl::Env::Default(), "rendezvous_test", size);
@@ -126,6 +132,97 @@ TEST(RendezvousTest, ReturningStatusOr) {
   ASSERT_EQ(results.size(), 2);
   ASSERT_EQ(**results[0], 42);
   ASSERT_EQ(**results[1], 42);
+}
+
+TEST(RendezvousTest, RendezvousSingleFlag) {
+  RendezvousSingleFlag flag;
+
+  auto thread_pool = CreateThreadPool(2);
+  int32_t num_executed = 0;
+
+  absl::BlockingCounter round_0(2);
+  absl::BlockingCounter round_1(2);
+
+  auto task = [&](absl::BlockingCounter& counter) {
+    return [&] {
+      RendezvousSingle<int32_t>(
+          flag, "rendezvous_test", 0, 2, [&] { return ++num_executed; },
+          Timeout(), Terminate());
+      counter.DecrementCount();
+    };
+  };
+
+  // Execute rendezvous a first time.
+  thread_pool.Schedule(task(round_0));
+  thread_pool.Schedule(task(round_0));
+  round_0.Wait();
+
+  ASSERT_EQ(num_executed, 1);
+
+  // Execute rendezvous a second time.
+  thread_pool.Schedule(task(round_1));
+  thread_pool.Schedule(task(round_1));
+  round_1.Wait();
+
+  // Check that we did not execute it second time.
+  ASSERT_EQ(num_executed, 1);
+}
+
+TEST(RendezvousTest, RendezvousSingleFlagRace) {
+  RendezvousSingleFlag flag;
+
+  static constexpr int32_t kNumRendezvous = 16;
+  static constexpr int32_t kNumThreads = 8;
+
+  auto thread_pool = CreateThreadPool(kNumRendezvous * kNumThreads);
+
+  auto task = [&](int32_t key) {
+    return [&, key] {
+      RendezvousSingle(flag, "key: " + std::to_string(key), key, kNumThreads,
+                       Timeout(), Terminate());
+    };
+  };
+
+  for (int32_t key = 0; key < kNumRendezvous; ++key) {
+    for (int32_t thread = 0; thread < kNumThreads; ++thread) {
+      thread_pool.Schedule(task(key));
+    }
+  }
+}
+
+TEST(RendezvousTest, RendezvousSingleFlagRaceWithBarriers) {
+  RendezvousSingleFlag flag;
+
+  static constexpr int32_t kNumRendezvous = 16;
+  static constexpr int32_t kNumThreads = 8;
+
+  auto thread_pool = CreateThreadPool(kNumRendezvous * kNumThreads);
+
+  // We use barriers and notifications to make sure all 128 threads start
+  // rendezvous at the same time to detect potential deadlocks and data races.
+  absl::BlockingCounter participants_ready(kNumRendezvous * kNumThreads);
+  absl::Notification participants_notification;
+  absl::BlockingCounter participants_done(kNumRendezvous * kNumThreads);
+
+  auto task = [&](int32_t key) {
+    return [&, key] {
+      participants_ready.DecrementCount();
+      participants_notification.WaitForNotification();
+      RendezvousSingle(flag, "key: " + std::to_string(key), key, kNumThreads,
+                       Timeout(), Terminate());
+      participants_done.DecrementCount();
+    };
+  };
+
+  for (int32_t key = 0; key < kNumRendezvous; ++key) {
+    for (int32_t thread = 0; thread < kNumThreads; ++thread) {
+      thread_pool.Schedule(task(key));
+    }
+  }
+
+  participants_notification.Notify();
+  participants_ready.Wait();
+  participants_done.Wait();
 }
 
 //===----------------------------------------------------------------------===//

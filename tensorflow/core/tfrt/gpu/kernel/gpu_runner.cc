@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/common_runtime/serving_device_selector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/gpu_variables_table.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/framework/device_id_manager.h"
+#include "tsl/framework/serving_device_selector.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/statusor.h"
@@ -347,7 +347,7 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
   TF_ASSIGN_OR_RETURN(uint64_t fingerprint,
                       GenerateFingerprint(run_inputs.func_name,
                                           run_inputs.fallback_request_state));
-  DeviceReservation device_reservation =
+  tsl::DeviceReservation device_reservation =
       serving_device_selector_->ReserveDevice(absl::StrCat(fingerprint));
   const int device_idx = device_reservation.device_index();
 

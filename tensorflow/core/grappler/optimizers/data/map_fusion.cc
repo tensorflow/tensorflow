@@ -164,7 +164,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization map_fusion is not applied if "
                "autotune is off.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   MutableGraphView graph(output);
@@ -244,7 +244,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");

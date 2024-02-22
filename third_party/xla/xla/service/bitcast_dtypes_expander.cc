@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloInstruction* input = instruction->mutable_operand(0);
   const Shape& from_shape = input->shape();

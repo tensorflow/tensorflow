@@ -557,7 +557,7 @@ Status GetNodesRelatedToRefVariablesInDirection(
 
   VLOG(2) << "# iterations = " << iterations;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sorts control inputs of a graphdef so that they are deterministically

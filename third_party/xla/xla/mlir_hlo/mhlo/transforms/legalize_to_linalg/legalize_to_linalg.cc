@@ -3263,7 +3263,7 @@ struct ConvolutionOpGeneralConversion
 
     // Finally, create the computation
     auto inferredMaps =
-        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs}, ctx);
 
     Value emptyTensor = rewriter.create<tensor::EmptyOp>(
         loc, reshapedResultShape, resultType.getElementType());
@@ -3578,7 +3578,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
     SmallVector<AffineMap, 4> inferredMaps(3, AffineMap::get(ctx));
     if (rank > 0)
       inferredMaps =
-          AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+          AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs}, ctx);
 
     SmallVector<AffineMap, 4> indexingMaps;
 
@@ -4504,6 +4504,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::CopyOp>,
       PointwiseToLinalgMapConverter<mhlo::CosineOp>,
       PointwiseToLinalgMapConverter<mhlo::DivOp>,
+      PointwiseToLinalgMapConverter<mhlo::ErfOp>,
       PointwiseToLinalgMapConverter<mhlo::ExpOp>,
       PointwiseToLinalgMapConverter<mhlo::Expm1Op>,
       PointwiseToLinalgMapConverter<mhlo::FloorOp>,
@@ -4563,6 +4564,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::CopyOp>,
       PointwiseToLinalgConverter<mhlo::CosineOp>,
       PointwiseToLinalgConverter<mhlo::DivOp>,
+      PointwiseToLinalgConverter<mhlo::ErfOp>,
       PointwiseToLinalgConverter<mhlo::ExpOp>,
       PointwiseToLinalgConverter<mhlo::Expm1Op>,
       PointwiseToLinalgConverter<mhlo::FloorOp>,

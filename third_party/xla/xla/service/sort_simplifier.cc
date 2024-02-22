@@ -30,7 +30,7 @@ namespace {
 // If the sort instruction has a tuple shape then looks for unused output
 // values and removes them from the sort instruction. Returns true if the
 // graph has been modified.
-StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
+absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   if (!sort->shape().IsTuple()) {
     return false;
   }
@@ -135,7 +135,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
 }
 }  // namespace
 
-StatusOr<bool> SortSimplifier::Run(
+absl::StatusOr<bool> SortSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before SortSimplifier:";

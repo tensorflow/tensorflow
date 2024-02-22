@@ -164,7 +164,7 @@ std::unique_ptr<HloSharding> MaybeConvertToV1(const HloSharding& sharding) {
 
 }  // namespace
 
-StatusOr<bool> ShardingFormatPicker::Run(
+absl::StatusOr<bool> ShardingFormatPicker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

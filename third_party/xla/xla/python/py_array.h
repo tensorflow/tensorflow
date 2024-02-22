@@ -276,6 +276,9 @@ class PyArrayResultHandler {
   std::vector<int64_t> shape_;
 };
 
+StatusOr<pybind11::object> CudaArrayInterfaceToBuffer(
+    const pybind11::dict& cai, std::shared_ptr<PyClient> cuda_client);
+
 }  // namespace xla
 
 #endif  // XLA_PYTHON_PY_ARRAY_H_

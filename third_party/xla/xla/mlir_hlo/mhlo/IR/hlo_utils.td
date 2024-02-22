@@ -44,6 +44,8 @@ def MHLO_ConstantLikeNegInfValue : NativeCodeCall<
 
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
+def NullDenseI64ArrayAttr : NativeCodeCall<"DenseI64ArrayAttr()">;
+
 def BinBroadcastDimensions : NativeCodeCall<
     "hlo::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
 

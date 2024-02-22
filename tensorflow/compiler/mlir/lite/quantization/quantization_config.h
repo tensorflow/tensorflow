@@ -86,6 +86,11 @@ struct QuantizationSpecs {
   // weight FakeQuant).
   bool disable_per_channel = false;
 
+  // Disables per channel weights quantization for Dense layers and enables
+  // legacy per tensor quantization. The legacy quantization for Dense layers is
+  // inconsistent with Conv 1x1 which always performs per channel quantization.
+  bool disable_per_channel_for_dense_layers = false;
+
   // When set to true, the fixed output ranges of the activation ops (tanh,
   // sigmoid, etc.) and the weight constants are not inferred. Then, to quantize
   // these ops, quantization emulation ops should be placed after the ops in the

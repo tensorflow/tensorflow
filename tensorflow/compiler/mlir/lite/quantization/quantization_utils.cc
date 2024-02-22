@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -29,13 +30,20 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
@@ -43,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace mlir {
@@ -469,7 +477,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
 
 quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types,
-    bool legacy_float_scale) {
+    const int adjusted_quant_dim, const bool legacy_float_scale) {
   if (op_types.empty()) return {};
 
   size_t axis_size = 1;
@@ -531,13 +539,14 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         /*zeroPoint=*/0, storage_type_min, storage_type_max);
   } else {
     llvm::SmallVector<int64_t, 4> zero_points(axis_size, 0);
-    // Assume the bias is a 1-D tensor, and set the quantization dim to the last
-    // dimension, which is 0. If the bias rank is larger than 1, this returned
-    // quantized type couldn't be used to quantize the bias.
+    // If the bias is a 1-D tensor, set the `quantizedDimension` to 0.
+    // If the bias rank is larger than 1 because it was already broadcasted
+    // to match the output shape, use the last index.
     return quant::UniformQuantizedPerAxisType::getChecked(
         builder.getUnknownLoc(),
         /*flags=*/true, storage_type, expressed_type, scales, zero_points,
-        /*quantizedDimension=*/0, storage_type_min, storage_type_max);
+        /*quantizedDimension=*/std::max(adjusted_quant_dim, 0),
+        storage_type_min, storage_type_max);
   }
 }
 
@@ -598,7 +607,7 @@ ElementsAttr QuantizeLegacy(Attribute real_value, Type tensor_type) {
     return DenseElementsAttr::get(new_dense_type, quantized_attr);
   } else if (width == 8) {
     // This can be a state tensor, or an actual constant tensor with
-    // asymmetric range. For a state tensor, assigining correct quantization
+    // asymmetric range. For a state tensor, assigning correct quantization
     // parameters is sufficient, and for constants with asymmetric range it's
     // not correctly quantized by legacy quantizer so call the new Quantize.
     return Quantize(real_value, tensor_type);
@@ -643,7 +652,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type) {
           quant::QuantizedType::getQuantizedElementType(tensor_type)) {
     Type converted_type;
     return quantfork::quantizeAttr(real_value, q_type, converted_type)
-        .dyn_cast<ElementsAttr>();
+        .dyn_cast_or_null<ElementsAttr>();
   }
   return {};
 }
@@ -816,7 +825,7 @@ bool RemoveRedundantStatsOps(
     }
   }
 
-  // Step 2: backward pass: For the ops skiped in the forward pass, propagate
+  // Step 2: backward pass: For the ops skipped in the forward pass, propagate
   // its results scale backwards as far as possible.
   func.walk([&](quantfork::StatisticsOp stats_op) {
     if (redundant_stats_ops.find(stats_op) == redundant_stats_ops.end()) {

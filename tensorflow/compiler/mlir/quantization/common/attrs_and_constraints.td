@@ -69,6 +69,10 @@ def IsUniformQuantizedType : Constraint<
 def AreTheSameElementType : Constraint<
   CPred<"$0.getType() == $1.getType()">>;
 
+// Checks if the given two values are the same.
+def AreTheSameValue : Constraint<
+  CPred<"$0 == $1">>;
+
 // Checks if the value has rank.
 def HasRank : Constraint<
   CPred<"$0.getType().cast<ShapedType>().hasRank()">>;

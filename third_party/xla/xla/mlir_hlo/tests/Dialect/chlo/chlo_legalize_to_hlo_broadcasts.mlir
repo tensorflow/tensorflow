@@ -151,7 +151,7 @@ func.func @selectv2_dynamic_ranked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>
 // CHECK-LABEL: @dynamicNonScalarBroadcastDimensions
 func.func @dynamicNonScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK: mhlo.add
-  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = array<i64: 1>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
 }
 
@@ -160,7 +160,7 @@ func.func @dynamicNonScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: te
 // CHECK-LABEL: @dynamicNonScalarByScalarBroadcastDimensions
 func.func @dynamicNonScalarByScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<f32>) -> tensor<1x4xf32> {
   // CHECK: mhlo.add
-  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<1x4xf32>, tensor<f32>) -> tensor<1x4xf32>
+  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = array<i64>} : (tensor<1x4xf32>, tensor<f32>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
 }
 
@@ -169,7 +169,7 @@ func.func @dynamicNonScalarByScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %
 func.func @dynamicNonScalarBroadcastDimensionsSizeMismatch(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // expected-warning @+2 {{unsupported non prefix-padded dynamic rank broadcast_dimensions}}
   // expected-error @+1 {{failed to legalize operation}}
-  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = array<i64: 1, 2>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
 }
 
@@ -178,7 +178,7 @@ func.func @dynamicNonScalarBroadcastDimensionsSizeMismatch(%arg0: tensor<1x4xf32
 func.func @dynamicNonScalarBroadcastDimensionsMismatch(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // expected-warning @+2 {{unsupported non prefix-padded dynamic rank broadcast_dimensions}}
   // expected-error @+1 {{failed to legalize operation}}
-  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = array<i64: 2>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
 }
 

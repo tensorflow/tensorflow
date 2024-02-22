@@ -303,8 +303,10 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -1513,7 +1515,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
 // copy node for reshard.
 // `unspecified_dims` will be populated with the converted copies if the custom
 // call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
+absl::StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
@@ -2845,7 +2847,7 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   return OkStatus();
 }
 
-StatusOr<bool> ShardingPropagation::Run(
+absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>

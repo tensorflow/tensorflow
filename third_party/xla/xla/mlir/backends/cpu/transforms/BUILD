@@ -3,7 +3,8 @@ load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
     licenses = ["notice"],
 )
 
@@ -38,7 +39,6 @@ cc_library(
         "xla_rewrite_realloc_to_alloc.cc",
     ],
     hdrs = ["passes.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":passes_inc_gen",
         "//xla/mlir/runtime/transforms:type_converter",

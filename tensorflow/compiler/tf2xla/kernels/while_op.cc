@@ -77,7 +77,7 @@ Status VerifyResourceArgsGroupedAtEnd(XlaOpKernelContext* ctx,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
@@ -128,7 +128,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populates loop invariant indices to true in `loop_invariants`.
@@ -186,7 +186,7 @@ Status ConvertLoopInvariantsToConst(
     compile_time_const_arg_indices->at(arg_idx) = true;
     (*num_compile_time_const_args)++;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyBodyInputAndOutputShapeMatch(
@@ -213,7 +213,7 @@ Status VerifyBodyInputAndOutputShapeMatch(
         xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
         xla::ShapeUtil::HumanString(body_output_shape));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<xla::XlaComputation> BuildWrappedCond(

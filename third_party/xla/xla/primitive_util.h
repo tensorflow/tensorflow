@@ -68,6 +68,9 @@ int ExponentBias(PrimitiveType type);
 // Returns whether the type has a value for infinity.
 bool HasInfinity(PrimitiveType type);
 
+// Returns whether the type has a value for negative zero.
+bool HasNegativeZero(PrimitiveType type);
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>
@@ -705,7 +708,7 @@ const std::string& LowercasePrimitiveTypeName(PrimitiveType s);
 
 // Returns the PrimitiveType matching the given name. The given name is expected
 // to be lower-case.
-StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
 
 // Returns true if the given name is a primitive type string (lower-case).
 bool IsPrimitiveTypeName(absl::string_view name);

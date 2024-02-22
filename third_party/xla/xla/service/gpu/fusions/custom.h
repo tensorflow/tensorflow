@@ -16,7 +16,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_CUSTOM_H_
 
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -31,7 +30,7 @@ namespace gpu {
 class CustomFusion : public FusionInterface {
  public:
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 };
 
@@ -57,7 +56,7 @@ class AddressComputationFusion : public FusionInterface {
       : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
  private:

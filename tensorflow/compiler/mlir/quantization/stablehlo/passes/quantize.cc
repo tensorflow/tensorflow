@@ -44,7 +44,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 // Base struct for quantization.
-template <typename ConcreteT, typename RootOpT = quant::DequantizeCastOp>
+template <typename ConcreteT, typename RootOpT = quantfork::DequantizeCastOp>
 struct StableHloQuantizationBase
     : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                           quantfork::DequantizeCastOp,
@@ -105,15 +105,22 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
 
   explicit QuantizePass() = default;
 
-  explicit QuantizePass(const QuantizationSpecs& quant_specs)
-      : quant_specs_(quant_specs) {}
+  explicit QuantizePass(const QuantizationSpecs& quant_specs,
+                        bool enable_per_channel_quantized_weight)
+      : quant_specs_(quant_specs),
+        enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
-  QuantizePass(const QuantizePass& other) : quant_specs_(other.quant_specs_) {}
+  QuantizePass(const QuantizePass& other)
+      : quant_specs_(other.quant_specs_),
+        enable_per_channel_quantized_weight_(
+            other.enable_per_channel_quantized_weight_) {}
 
  private:
   void runOnOperation() override;
 
   QuantizationSpecs quant_specs_;
+  bool enable_per_channel_quantized_weight_;
 };
 
 void QuantizePass::runOnOperation() {
@@ -131,14 +138,14 @@ void QuantizePass::runOnOperation() {
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
   PopulateQuantizeOpWithRegionPattern(ctx, patterns);
-  PopulateFusedGemmStylePatterns(ctx, patterns);
+  PopulateFusedGemmStylePatterns(ctx, patterns,
+                                 enable_per_channel_quantized_weight_);
+  PopulateQuantizeSingularOpPatterns(ctx, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
-    // TODO: b/305469508 - Make QuantizationPattern converge if there are no
-    // patterns that are rewritable.
     module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }
@@ -146,8 +153,10 @@ void QuantizePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
-    const QuantizationSpecs& quantization_specs) {
-  return std::make_unique<QuantizePass>(quantization_specs);
+    const QuantizationSpecs& quantization_specs,
+    bool enable_per_channel_quantized_weight) {
+  return std::make_unique<QuantizePass>(quantization_specs,
+                                        enable_per_channel_quantized_weight);
 }
 
 }  // namespace mlir::quant::stablehlo

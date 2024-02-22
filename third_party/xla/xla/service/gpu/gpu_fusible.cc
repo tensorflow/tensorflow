@@ -602,25 +602,6 @@ int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
   return it->second;
 }
 
-int64_t ReductionProjectedShmemUsageBytes(
-    const ReductionDimensions& reduction_dimensions,
-    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups) {
-  int64_t out = 0;
-  // Different groups are computed in parallel on different blocks, so they are
-  // not sharing the shmem budget. The overall usage is given by the largest
-  // one.
-  for (const auto& group : instr_index_groups) {
-    int64_t sum = 0;
-    for (const HloInstruction* root : group) {
-      if (IsReductionFromOrToContiguousDimensions(*root)) {
-        sum += SharedMemoryUsage(*root);
-      }
-    }
-    out = std::max(out, sum);
-  }
-  return out;
-}
-
 // Codegen'ing unnested reductions requires a lot of registers, so a MOF
 // combining many of those runs a high risk of spilling.
 constexpr int64_t kMaxUnnestedReductionOutputsPerFusion = 8;

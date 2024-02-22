@@ -1479,12 +1479,12 @@ class DatasetV2(
     ```
 
     Args:
-      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        elements from this dataset from which the new dataset will sample. To
-        uniformly shuffle the entire dataset, use
+      buffer_size: An int or `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new dataset will
+        sample. To uniformly shuffle the entire dataset, use
         `buffer_size=dataset.cardinality()`.
-      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the random
-        seed that will be used to create the distribution. See
+      seed: (Optional.) An int or `tf.int64` scalar `tf.Tensor`, representing
+        the random seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is

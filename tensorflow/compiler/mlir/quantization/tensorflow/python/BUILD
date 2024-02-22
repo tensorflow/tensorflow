@@ -11,6 +11,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
+        "//tensorflow/lite:__subpackages__",
         "//tensorflow/python:__subpackages__",
         "//tensorflow/tools/pip_package/v2:__subpackages__",
     ],
@@ -345,6 +346,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/lib/io:file_io",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",

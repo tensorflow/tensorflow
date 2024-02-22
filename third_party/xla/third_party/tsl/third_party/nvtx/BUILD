@@ -2,10 +2,7 @@
 
 licenses(["notice"])
 
-exports_files(
-    ["LICENSE.txt"],
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE.txt"])
 
 cc_library(
     name = "headers",

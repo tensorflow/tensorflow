@@ -36,13 +36,13 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
@@ -169,16 +169,34 @@ class NcclCollectiveThunk : public Thunk {
     return AsyncStreamKind::kCollective;
   }
 
+  // A collective thunk is normally an independent operation in a sense that
+  // different instances of the same collective thunk communicate each other.
+  // The only exception are SendThunk and RecvThunk. Assume two devices are
+  // executing a program contains the following instructions, the Recv from
+  // device 1 will release the Send from device 0. Adding first call
+  // rendezvous on the SendThunk would cause a runtime deadlock.
+  //  Send(src_target={0,1})
+  //  Recv(src_target={0,1})
+  virtual bool NeedFirstCallRendzevous() const { return true; }
+
  private:
   bool IsAsync() const { return async_events_ != nullptr; }
   int64_t GetStreamId() const {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
-  bool first_call_to_execute_ = true;
-
   NcclApi* nccl_api_;
   std::shared_ptr<AsyncEvents> async_events_;
+
+  // After a first call to this particular instance of a NCCL collective thunk
+  // we do a round of rendezvous to make sure that all participants successfully
+  // allocated on-device state required for executing collective operation. This
+  // is required to avoid deadlocks when one device goes too far ahead and
+  // causes a deadlock in CUDA driver (root cause is mysterious).
+  //
+  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
+  // sure that all NCCL resources are allocated just once.
+  RendezvousSingleFlag first_call_rendezvous_flag_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -239,26 +257,18 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-absl::StatusOr<NcclComm::Lock> GetNcclComm(
+absl::StatusOr<NcclApi::NcclCommHandle> GetNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const Thunk::CollectiveCliques& collective_cliques,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t stream_id);
-
-// TODO(ezhulenev): This is a deprecated code path and should be removed after
-// all users in legacy XLA runtime are removed.
-absl::StatusOr<NcclComm::Lock> LockNcclComm(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization);
+    CollectiveOpGroupMode group_mode, int64_t stream_id,
+    AsyncStreamKind stream_kind);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
   int64_t element_count;
   se::DeviceMemoryBase source_buffer;
   se::DeviceMemoryBase destination_buffer;
-  // TODO(b/320767790): Remove once memory space added to DeviceMemoryBase.
   int64_t source_memory_space;
   int64_t destination_memory_space;
 };

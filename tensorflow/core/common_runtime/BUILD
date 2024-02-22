@@ -254,6 +254,7 @@ filegroup(
         "collective_param_resolver_local.h",
         "collective_rma_local.h",
         "collective_util.h",
+        "colocate_predecessor_trees_pass.h",
         "colocation_graph.h",
         "constant_folding.h",
         "copy_tensor.h",
@@ -1181,6 +1182,28 @@ cc_library(
 )
 
 cc_library(
+    name = "colocate_predecessor_trees_pass",
+    srcs = ["colocate_predecessor_trees_pass.cc"],
+    hdrs = ["colocate_predecessor_trees_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "local_device",
     srcs = ["local_device.cc"],
     hdrs = ["local_device.h"],
@@ -1945,6 +1968,7 @@ tf_cuda_library(
         ":collective_param_resolver_local",
         ":collective_rma_local",
         ":collective_util",
+        ":colocate_predecessor_trees_pass",
         ":composite_device",
         ":copy_tensor",
         ":costmodel_manager",
@@ -2340,6 +2364,7 @@ tf_cc_tests(
         "buf_rendezvous_test.cc",
         "collective_executor_mgr_test.cc",
         "collective_rma_local_test.cc",
+        "colocate_predecessor_trees_pass_test.cc",
         "device_mgr_test.cc",
         "device_resolver_local_test.cc",
         "device_set_test.cc",
@@ -3473,28 +3498,6 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
-    ],
-)
-
-cc_library(
-    name = "serving_device_selector",
-    srcs = ["serving_device_selector.cc"],
-    hdrs = ["serving_device_selector.h"],
-    copts = tf_copts(),
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "serving_device_selector_policies",
-    srcs = ["serving_device_selector_policies.cc"],
-    hdrs = ["serving_device_selector_policies.h"],
-    copts = tf_copts(),
-    features = ["-layering_check"],
-    deps = [
-        ":serving_device_selector",
     ],
 )
 

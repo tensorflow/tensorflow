@@ -19,11 +19,11 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <type_traits>
 
-#include "absl/strings/str_format.h"
-#include "Eigen/Core"  // from @eigen_archive            // IWYU pragma: export
-#include "ml_dtypes/include/int4.h"  // from @ml_dtypes  // IWYU pragma: export
+#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: export
+#include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
 namespace xla {
 
@@ -42,17 +42,25 @@ template <typename T>
 inline constexpr bool is_complex_v = is_complex<T>::value;
 
 template <typename T>
+struct is_specialized_floating_point
+    : std::bool_constant<std::numeric_limits<T>::is_specialized &&
+                         !std::numeric_limits<T>::is_integer> {};
+
+template <typename T>
 inline constexpr bool is_specialized_floating_point_v =
-    std::numeric_limits<T>::is_specialized &&
-    !std::numeric_limits<T>::is_integer;
+    is_specialized_floating_point<T>::value;
+
+template <typename T>
+struct is_specialized_integral
+    : std::bool_constant<std::numeric_limits<T>::is_specialized &&
+                         std::numeric_limits<T>::is_integer> {};
 
 template <typename T>
 inline constexpr bool is_specialized_integral_v =
-    std::numeric_limits<T>::is_specialized &&
-    std::numeric_limits<T>::is_integer;
+    is_specialized_integral<T>::value;
 
-using u4 = ml_dtypes::uint4;
-using s4 = ml_dtypes::int4;
+using u4 = tsl::uint4;
+using s4 = tsl::int4;
 
 }  // namespace xla
 
@@ -60,12 +68,12 @@ using s4 = ml_dtypes::int4;
 namespace ml_dtypes {
 template <typename Sink>
 void AbslStringify(Sink& sink, const xla::s4& i) {
-  absl::Format(&sink, "%d", static_cast<int32_t>(i));
+  sink.Append(std::to_string(static_cast<int32_t>(i)));
 }
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const xla::u4& i) {
-  absl::Format(&sink, "%d", static_cast<uint32_t>(i));
+  sink.Append(std::to_string(static_cast<uint32_t>(i)));
 }
 }  // namespace ml_dtypes
 
@@ -111,6 +119,16 @@ struct make_specialized_signed<xla::u4> {
 
 template <typename T>
 using make_specialized_signed_t = typename make_specialized_signed<T>::type;
+
+template <typename T>
+struct has_negative_zero
+    : std::bool_constant<std::numeric_limits<T>::is_iec559> {};
+
+template <>
+struct has_negative_zero<tsl::float8_e4m3fn> : std::bool_constant<true> {};
+
+template <typename T>
+inline constexpr bool has_negative_zero_v = has_negative_zero<T>::value;
 
 }  // namespace xla
 

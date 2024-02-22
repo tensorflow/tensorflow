@@ -336,10 +336,8 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
-        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
 )
 
@@ -499,7 +497,6 @@ cc_library(
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
             "//tensorflow/core/platform:mutex",
-            "@local_tsl//tsl/platform/default/build_config:minimal",
             "@local_tsl//tsl/framework:fixedpoint_types",
             "//tensorflow/core/platform:types",
         ],
@@ -647,7 +644,6 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_sparse_matrix_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
@@ -712,7 +708,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_opensource",
-        "@local_tsl//tsl/platform/default/build_config:tensorflow_platform_specific",
+        "//tensorflow/core/platform/default/build_config:tensorflow_platform_specific",
     ],
 )
 
@@ -1143,8 +1139,8 @@ cc_library(
     deps = [
         ":portable_tensorflow_lib",
         "//tensorflow/core/kernels:portable_tensorflow_kernels",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform/default/build_config:gtest",
     ],
 )
 

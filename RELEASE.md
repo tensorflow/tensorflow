@@ -1,4 +1,4 @@
-# Release 2.16.0
+# Release 2.17.0
 
 ## TensorFlow
 
@@ -8,12 +8,6 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-* `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be set
-  if `profiler` arg is set to `True`.
-    * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
-      the profiler now requires setting `profiler_outdir` in `trace_on`.
-
 
 ### Known Caveats
 
@@ -25,6 +19,127 @@
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+## Keras
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.lite`
+    * Quantization for `FullyConnected` layer is switched from per-tensor to
+      per-channel scales for dynamic range quantization use case (`float32`
+      inputs / outputs and `int8` weights). The change enables new quantization
+      schema globally in the converter and inference engine. The new behaviour
+      can be disabled via experimental
+      flag `converter._experimental_disable_per_channel_quantization_for_dense_layers = True`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.16.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+*   TensorFlow Windows Build:
+
+    *   Clang is now the default compiler to build TensorFlow CPU wheels on the
+        Windows Platform starting with this release. The currently supported
+        version is LLVM/clang 17. The official Wheels-published on PyPI will be
+        based on Clang; however, users retain the option to build wheels using
+        the MSVC compiler following the steps mentioned in
+        https://www.tensorflow.org/install/source_windows as has been the case
+        before
+
+### Breaking Changes
+
+*   <DOCUMENT BREAKING CHANGES HERE>
+*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+*   `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be
+    set if `profiler` arg is set to `True`.
+
+    *   `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op.
+        Enabling the profiler now requires setting `profiler_outdir` in
+        `trace_on`.
+
+*   `tf.estimator`
+
+    *   The tf.estimator API is removed.
+
+*   Keras 3.0 will be the default Keras version. You may need to update your
+    script to use Keras 3.0.
+
+*   Please refer to the new Keras documentation for Keras 3.0
+    (https://keras.io/keras_3).
+
+*   To continue using Keras 2.0, do the following.
+
+*   1.  Install tf-keras via pip install tf-keras~=2.16
+
+    1.  To switch tf.keras to use Keras 2 (tf-keras), set the environment
+        variable TF_USE_LEGACY_KERAS=1 directly or in your python program by
+        import os;os.environ["TF_USE_LEGACY_KERAS"]=1. Please note that this
+        will set it for all packages in your Python runtime program
+
+*   1.  Change import of keras from tensorflow as follows
+*   import tensorflow.keras as keras and import keras to import tf_keras as
+    keras
+* **Apple Silicon users:** If you previously installed TensorFlow using
+    `pip install tensorflow-macos`, please update your installation method. Use
+    `pip install tensorflow` from now on. Starting with TF 2.17, the
+    `tensorflow-macos` package will no longer receive updates.
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+*  Full aarch64 Linux and Arm64 macOS wheels are now published to the
+  `tensorflow` pypi repository and no longer redirect to a separate package.
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+*  Support for Python 3.12 has been added.
+*  [tensorflow-tpu](https://pypi.org/project/tensorflow-tpu/) package is now
+   available for easier TPU based installs.
+*  TensorFlow pip packages are now built with CUDA 12.3 and cuDNN 8.9.7
+
 
 ### Bug Fixes and Other Changes
 
@@ -53,6 +168,21 @@
 * `tf.train.CheckpointOptions`
     * Added `experimental_skip_slot_variables` (a boolean option) to skip
     restoring of optimizer slot variables in a checkpoint.
+
+*   `tf.saved_model.SaveOptions`
+
+    * `SaveOptions` now takes a new argument called
+      `experimental_debug_stripper`. When enabled, this strips the debug nodes
+      from both the node defs and the function defs of the graph. Note that
+      this currently only strips the `Assert` nodes from the graph and
+      converts them into `NoOp`s instead.
+
+*   `tf.data`
+
+    * `tf.data` now has an `autotune_options.initial_parallelism` option to
+      control the initial parallelism setting used by autotune before the data
+      pipeline has started running. The default is 16. A lower value reduces
+      initial memory usage, while a higher value improves startup time.
 
 ## Keras
 

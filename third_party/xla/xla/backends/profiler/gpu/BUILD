@@ -6,6 +6,7 @@ load(
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "@local_tsl//tsl:tsl.bzl",
+    "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
 )
@@ -17,7 +18,6 @@ load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -25,7 +25,8 @@ load(
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla:internal"]),
 )
 
 tsl_gpu_library(
@@ -38,7 +39,6 @@ tsl_gpu_library(
         ":cupti_wrapper",
         ":rocm_tracer",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":cupti_utils",
         "@com_google_absl//absl/container:fixed_array",
@@ -75,7 +75,6 @@ tsl_gpu_library(
     cuda_deps = [
         ":cupti_interface",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         "@local_tsl//tsl/platform:test",
     ],
@@ -139,7 +138,7 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudart",
+        "@local_config_cuda//cuda:cudart_static",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -152,7 +151,10 @@ cuda_library(
 # that the wrapper is about the only direct user.
 tsl_gpu_library(
     name = "cupti_wrapper",
-    srcs = if_cuda(["cupti_wrapper.cc"]),
+    srcs = if_cuda([
+        "cupti_wrapper.cc",
+        "cupti_wrapper_stub.cc",
+    ]),
     hdrs = if_cuda(["cupti_wrapper.h"]),
     copts = tf_profiler_copts() + tsl_copts(),
     linkstatic = 1,
@@ -246,7 +248,6 @@ tsl_gpu_library(
     srcs = if_cuda(["nvtx_utils.cc"]),
     hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tsl_copts(),
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",
@@ -257,7 +258,7 @@ tsl_gpu_library(
 tsl_gpu_library(
     name = "cupti_collector",
     srcs = if_cuda(["cupti_collector.cc"]),
-    hdrs = if_cuda(["cupti_collector.h"]),
+    hdrs = ["cupti_collector.h"],
     copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -282,20 +283,6 @@ tsl_gpu_library(
     ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
-cc_library(
-    name = "cupti_collector_header",
-    hdrs = ["cupti_collector.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ],
-)
-
 tsl_gpu_library(
     name = "cupti_utils",
     srcs = if_cuda(["cupti_utils.cc"]),
@@ -304,7 +291,11 @@ tsl_gpu_library(
         ":cupti_error_manager",
         ":cupti_interface",
         ":cupti_wrapper",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:stringpiece",
+        "@local_tsl//tsl/util:env_var",
     ],
     visibility = ["//visibility:public"],
     alwayslink = 1,

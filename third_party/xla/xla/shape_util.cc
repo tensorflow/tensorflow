@@ -688,8 +688,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
-  return shape.IsArray() &&
-         absl::c_any_of(shape.dimensions(), [](int64_t d) { return d == 0; });
+  return shape.IsArray() && absl::c_linear_search(shape.dimensions(), 0);
 }
 
 /* static */ bool ShapeUtil::IsScalarWithElementType(
@@ -966,6 +965,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     }
     bool overflow;
     std::tie(product, overflow) = OverflowSafeMultiply(product, dimension);
+    any_overflows |= overflow;
   }
   if (any_overflows) {
     return InvalidArgument("shape's dimensions overflow: %s",

@@ -102,7 +102,7 @@ class ColocationGraphToIOColocationGroups {
       const Member& member = colocation_graph_->members()[it.first];
       TF_RETURN_IF_ERROR(member.FillPossibleDevices(&possible_devices));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -156,7 +156,7 @@ Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
   converter.AssignGroups(fbody->arg_nodes, &groups->input_groups);
   converter.AssignGroups(fbody->ret_nodes, &groups->output_groups);
   TF_RETURN_IF_ERROR(converter.FillGroups(&groups->group_devices));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -517,7 +517,7 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     HloInstruction* instr, int64_t loop_iter, const HloComputation* while_body,
     int64_t level_to_operate_on,
     const absl::flat_hash_set<const HloInstruction*>& loop_invariant_params) {
-  if (instr->user_count() != 1 || instr->HasControlDependencies()) {
+  if (instr->HasControlDependencies()) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(instr, loop_iter,
@@ -607,11 +607,10 @@ void UpdateInstructionChannelId(HloInstruction* cloned_instr,
 
 // Clones a chain of instructions from a move_info for backward movement.
 template <typename Comp>
-StatusOr<HloInstruction*> CloneBackwardChain(Comp& target_computation,
-                                             const WhileMoveInfo& move_info,
-                                             InstructionMap& clone_map,
-                                             int64_t loop_iter_idx,
-                                             int64_t& next_channel_id) {
+absl::StatusOr<HloInstruction*> CloneBackwardChain(
+    Comp& target_computation, const WhileMoveInfo& move_info,
+    InstructionMap& clone_map, int64_t loop_iter_idx,
+    int64_t& next_channel_id) {
   std::vector<HloInstruction*> to_clone(move_info.formatting_ops.begin(),
                                         move_info.formatting_ops.end());
   to_clone.push_back(move_info.collective_to_move);
@@ -1361,7 +1360,7 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
       [&next_channel_id, insert_non_alias_custom_call, level_to_operate_on](
           HloInstruction* stacked_data,
           const InstructionMap& pipelined_values_map,
-          const WhileMoveInfo& move_info) -> StatusOr<HloInstruction*> {
+          const WhileMoveInfo& move_info) -> absl::StatusOr<HloInstruction*> {
     HloInstruction* processed = stacked_data->parent()->AddInstruction(
         move_info.collective_to_move->CloneWithNewOperands(
             move_info.collective_to_move->shape(), {stacked_data}));
@@ -1388,11 +1387,11 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
     return processed;
   };
   auto extract_and_process_slice =
-      [&process_slice](HloInstruction* stacked_data,
-                       HloInstruction* data_to_slice,
-                       const WhileMoveInfo& move_info,
-                       const InstructionMap& pipelined_values_map,
-                       HloInstruction* dus_index) -> StatusOr<HloInstruction*> {
+      [&process_slice](
+          HloInstruction* stacked_data, HloInstruction* data_to_slice,
+          const WhileMoveInfo& move_info,
+          const InstructionMap& pipelined_values_map,
+          HloInstruction* dus_index) -> absl::StatusOr<HloInstruction*> {
     HloComputation* computation = stacked_data->parent();
     const Shape& slice_target_shape =
         move_info.collective_to_move->operand(0)->shape();
@@ -2329,7 +2328,7 @@ static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   return OkStatus();
 }
 
-StatusOr<bool> CollectivePipeliner::Run(
+absl::StatusOr<bool> CollectivePipeliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   CHECK(config_.acceptable_formatting);

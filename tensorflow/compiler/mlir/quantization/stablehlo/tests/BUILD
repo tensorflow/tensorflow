@@ -46,24 +46,3 @@ tf_cc_test(
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
-
-tf_cc_test(
-    name = "stablehlo_op_quant_spec_test",
-    srcs = ["stablehlo_op_quant_spec_test.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common:test_base",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:QuantOps",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)

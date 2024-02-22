@@ -77,11 +77,11 @@ Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
 Status DataServiceWorkerClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (client_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(DataTransferClient::Build(
       GetDataTransferProtocol(), {protocol_, address_}, &client_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
@@ -153,7 +153,7 @@ class GrpcDataTransferClient : public DataTransferClient {
       case GetElementResponse::ELEMENT_NOT_SET:
         break;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void TryCancel() override {
@@ -188,7 +188,7 @@ class GrpcTransferClientRegistrar {
               config.protocol, &credentials));
           *out = std::make_unique<GrpcDataTransferClient>(credentials,
                                                           config.address);
-          return OkStatus();
+          return absl::OkStatus();
         });
   }
 };
@@ -234,7 +234,7 @@ class LocalDataTransferClient : public DataTransferClient {
       return errors::Cancelled(absl::Substitute(
           "Client for worker $0 has been cancelled.", worker_address_));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
@@ -263,7 +263,7 @@ class LocalTransferClientRegistrar {
         kLocalTransferProtocol, [](DataTransferClient::Config config,
                                    std::unique_ptr<DataTransferClient>* out) {
           *out = std::make_unique<LocalDataTransferClient>(config.address);
-          return OkStatus();
+          return absl::OkStatus();
         });
   }
 };

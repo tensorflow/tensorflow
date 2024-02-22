@@ -138,7 +138,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
         return errors::Internal("Unsupported dtype", t->dtype());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -432,7 +432,7 @@ class AssignVariableOp : public OpKernel {
                                   *ptr = new Var(dtype_);
                                   *(*ptr)->tensor() = value;
                                   (*ptr)->is_initialized = true;
-                                  return OkStatus();
+                                  return absl::OkStatus();
                                 }));
     mutex_lock ml(*variable->mu());
     // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
@@ -1096,7 +1096,7 @@ Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

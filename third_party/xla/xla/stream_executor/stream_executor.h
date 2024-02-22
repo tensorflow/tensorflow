@@ -22,16 +22,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 
-#include "xla/stream_executor/device_description.h"  // IWYU pragma: export
-#include "xla/stream_executor/device_memory.h"  // IWYU pragma: export
-#include "xla/stream_executor/device_options.h"  // IWYU pragma: export
-#include "xla/stream_executor/event.h"  // IWYU pragma: export
-#include "xla/stream_executor/kernel.h"  // IWYU pragma: export
-#include "xla/stream_executor/kernel_spec.h"  // IWYU pragma: export
-#include "xla/stream_executor/launch_dim.h"  // IWYU pragma: export
-#include "xla/stream_executor/multi_platform_manager.h"  // IWYU pragma: export
-#include "xla/stream_executor/platform.h"  // IWYU pragma: export
-#include "xla/stream_executor/stream.h"  // IWYU pragma: export
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"  // IWYU pragma: export
 
 #endif  // XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_

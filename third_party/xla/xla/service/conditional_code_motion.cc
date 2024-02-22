@@ -533,8 +533,8 @@ Status RestructureConditionalInstruction(HloComputation* computation,
   return OkStatus();
 }
 
-StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
-                                  bool is_layout_sensitive) {
+absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
+                                        bool is_layout_sensitive) {
   int branch_count = conditional->branch_count();
   if (branch_count <= 0) {
     return false;
@@ -673,7 +673,7 @@ StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
 // are the shape of the operands are identical and their properties are
 // identical. Will start from the root instruction of each branch and get
 // the identical ops to hoist.
-StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
+absl::StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
     HloInstruction* conditional, std::vector<Boundary>& to_move_out,
     std::vector<Boundary>& new_boundaries) {
   if (to_move_out.empty()) {
@@ -780,7 +780,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
 }
 
 // Hoist conditional users from outside to inside the branches.
-StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
+absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
     HloInstruction* conditional, std::vector<Boundary>& to_move_in) {
   if (to_move_in.empty()) {
     return false;
@@ -1235,7 +1235,7 @@ class MoveOperandIntoBranch {
 };
 
 // Hoist operands of a conditional from outside to inside the branches.
-StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
+absl::StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
     HloInstruction* conditional, std::vector<Boundary>& to_move_in) {
   // Mapping boundaries to be moved to their new representations.
   int64_t to_move_in_size = to_move_in.size();
@@ -1944,7 +1944,7 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
   return Decision(Decision::Direction::kNoChange, 0);
 }
 
-StatusOr<bool> ConditionalCodeMotion::Run(
+absl::StatusOr<bool> ConditionalCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Begin a new pass of conditional code motion optimization.\n";

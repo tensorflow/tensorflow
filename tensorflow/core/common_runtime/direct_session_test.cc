@@ -2757,7 +2757,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
       mutex_lock l(direct_session->collective_graph_key_lock_);
       *collective_graph_key = direct_session->collective_graph_key_;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

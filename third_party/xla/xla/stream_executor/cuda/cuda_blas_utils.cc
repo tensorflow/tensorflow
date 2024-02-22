@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/stream_executor/blas.h"
 
 namespace stream_executor {

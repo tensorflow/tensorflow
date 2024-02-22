@@ -102,7 +102,7 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const XlaPlatformInfo& platform_info,
     const PjRtDeviceCompiler* pjrt_device_compiler) {
   XlaCompiler::Options options;
-  StatusOr<int> platform_device_id =
+  absl::StatusOr<int> platform_device_id =
       tsl::GetPlatformDeviceIdFromDeviceParsedName(
           device_base->parsed_name(),
           DeviceType(tensorflow::down_cast<const Device*>(device_base)

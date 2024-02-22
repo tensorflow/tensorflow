@@ -41,6 +41,9 @@ class IfrtCallOp : public tensorflow::OpKernel {
   // Op attributes.
   int64_t program_id_;
 
+  std::vector<std::string> variable_names_;
+  std::vector<int> variable_arg_indices_;
+
   // Ifrt program to be called. Cached after the first call.
   absl::once_flag init_once_;
   std::shared_ptr<tensorflow::ifrt_serving::IfrtServingExecutable> executable_;

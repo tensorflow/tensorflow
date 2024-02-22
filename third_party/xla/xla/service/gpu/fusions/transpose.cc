@@ -22,18 +22,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -53,8 +55,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-TilingScheme ComputeTransposeTilingScheme(
-    const TransposeDescription& tiled_transpose) {
+Tiling ComputeTransposeTiling(const TransposeDescription& tiled_transpose) {
   constexpr int kNumRows = 4;
   static_assert(WarpSize() % kNumRows == 0);
 
@@ -66,52 +67,17 @@ TilingScheme ComputeTransposeTilingScheme(
   // always use the permutation, even when we want the inverse.
   CHECK((permutation == Vector3{0, 2, 1}) || (permutation == Vector3{2, 1, 0}));
 
-  Vector3 input_dims{transposed_dims[permutation[0]],
-                     transposed_dims[permutation[1]],
-                     transposed_dims[permutation[2]]};
-  // The tiling corresponds to the two minor dimensions before and after the
-  // transpose. The remaining dimension is the batch dimension.
-  // The order is {batch, minor post-transpose, minor pre-transpose}.
-  //
-  // Examples for transposed_dims {200, 300, 700}:
-  // order             {0, 2, 1}         {2, 1, 0}
-  // input_dims        {200, 700, 300}   {700, 300, 200}
-  // tiled_shape       {200, 700, 300}   {300, 700, 200}
-  // tile -> input     {0, 1, 2}         {1, 0, 2}
-  Vector3 tiled_shape{input_dims[1 - permutation[2]], transposed_dims[2],
-                      input_dims[2]};
+  absl::InlinedVector<int64_t, 4> input_dims{transposed_dims[permutation[0]],
+                                             transposed_dims[permutation[1]],
+                                             transposed_dims[permutation[2]]};
 
-  Vector3 tile_sizes{1, WarpSize() / kNumRows, 1};
-  Vector3 num_threads{1, kNumRows, WarpSize()};
+  // We tile along the minor dimensions pre- and post-transpose.
+  absl::InlinedVector<int64_t, 4> tile_sizes{1, 1, 1};
+  tile_sizes[permutation[2]] = WarpSize() / kNumRows;
+  absl::InlinedVector<int64_t, 4> num_threads{1, 1, WarpSize()};
+  num_threads[permutation[2]] = kNumRows;
 
-  return TilingScheme(
-      /*dims_in_elems=*/tiled_shape,
-      /*tile_sizes=*/tile_sizes,
-      /*num_threads=*/num_threads,
-      /*vector_size=*/1,
-      /*scaling_factor=*/1);
-}
-
-Vector3 TileToInoutPermutation(Vector3 permutation) {
-  // See ComputeTransposeTilingScheme.
-  // Note: this is also the tile to output permutation because we swap the
-  // last two components.
-  return permutation[2] == 1 ? Vector3{0, 1, 2} : Vector3{1, 0, 2};
-}
-
-llvm::GlobalVariable* AllocateShared(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* element_type,
-    absl::Span<int64_t const> dimensions_major_to_minor,
-    absl::string_view buffer_name) {
-  CHECK(!dimensions_major_to_minor.empty());
-  llvm::Type* ty = element_type;
-  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
-    ty = llvm::ArrayType::get(ty, dim);
-  }
-  ty = llvm::ArrayType::get(ty, tiling_scheme.GetThreadIdScalingFactor());
-  return llvm_ir::AllocateSharedMemoryTile(
-      builder->GetInsertBlock()->getModule(), ty, buffer_name);
+  return Tiling(input_dims, tile_sizes, num_threads);
 }
 
 void MaybeEmitFenceForAMDGPU(llvm::IRBuilder<>* builder,
@@ -142,7 +108,14 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      tiling_scheme_(ComputeTransposeTilingScheme(analysis.tiled_transpose())) {
+      tiling_(ComputeTransposeTiling(analysis.tiled_transpose())) {
+  for (auto [root, hero] :
+       llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
+    if (auto transpose = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
+      permutation_ = transpose->permutation;
+      break;
+    }
+  }
 }
 
 absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
@@ -174,7 +147,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   std::vector<std::pair<int64_t, const HloInstruction*>> extra_outputs;
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-    const auto& hero = FindNonTrivialHero(*root);
+    const auto& hero = *analysis_.fusion_heroes()[output_idx];
     auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
@@ -194,7 +167,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   Vector3 permutation;
   for (const auto& [tile_idx, tr] : llvm::enumerate(transposes)) {
     permutation = tr.permutation;
-    auto tile_size = tiling_scheme_.GetBlockTileSize();
+    auto tile_size = tiling_.GetBlockTileSize();
     ++tile_size.back();  // Prevent bank conflicts.
     auto* module = ir_emitter_context.llvm_module();
     tiles[tr.instr] = llvm_ir::AllocateSharedMemoryTile(
@@ -204,62 +177,56 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
         tile_size, absl::StrCat("tr_tile_", tile_idx));
   }
 
-  auto tile_to_inout = TileToInoutPermutation(permutation);
-  auto input_shape = Permute(tiling_scheme_.GetShape(), tile_to_inout);
   auto tile_generator = [&](const TilingThreadIdInfo& thread_id_info,
                             const llvm_ir::IrArray::Index& tile_start_index,
-                            std::array<llvm::Value*, 3> tile_dimensions) {
+                            absl::Span<llvm::Value* const> tile_dimensions) {
     // Copy input parameter values to shared memory buffers:
     // tile[thread_id_y, thread_id_x] = input[index]
-    EmitTile(
-        builder, tiling_scheme_, thread_id_info, tile_dimensions,
-        [&](std::array<llvm::Value*, 3> index_in_tile) {
-          auto index =
-              PermuteIndex(tile_start_index.AddOffset(index_in_tile, builder),
-                           tile_to_inout);
-          for (const auto& tr : transposes) {
-            auto input_gen = *fused_emitter.GetGenerator(*tr.instr->operand(0));
-            auto input_index = GetUnnormalizedIndex(
-                index, tr.instr->operand(0)->shape(), builder, input_shape);
-            llvm::Value* value = *input_gen(input_index);
-            tiles[tr.instr].Store(value, index_in_tile, builder);
-          }
+    EmitTile(builder, tiling_, thread_id_info, tile_dimensions,
+             [&](absl::Span<llvm::Value* const> index_in_tile) {
+               auto index = tile_start_index.AddOffset(index_in_tile, builder);
+               for (const auto& tr : transposes) {
+                 auto input_gen =
+                     *fused_emitter.GetGenerator(*tr.instr->operand(0));
+                 auto input_index = index.SourceIndexOfBitcast(
+                     tr.instr->operand(0)->shape(), builder);
+                 llvm::Value* value = *input_gen(input_index);
+                 tiles[tr.instr].Store(value, index_in_tile, builder);
+               }
 
-          // Compute all extra output values before writing them. This
-          // avoids overwriting aliased input/output values before all reads
-          // occurred.
-          std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
-                                 llvm::Value*>>
-              scheduled_writes;
-          for (const auto& [output_idx, root] : extra_outputs) {
-            llvm_ir::IrArray::Index extra_output_index = GetUnnormalizedIndex(
-                index, root->shape(), builder, input_shape);
-            auto output_gen = *fused_emitter.GetGenerator(*root);
-            llvm::Value* output_value = *output_gen(extra_output_index);
-            scheduled_writes.emplace_back(outputs[output_idx],
-                                          extra_output_index, output_value);
-          }
+               // Compute all extra output values before writing them. This
+               // avoids overwriting aliased input/output values before all
+               // reads occurred.
+               std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
+                                      llvm::Value*>>
+                   scheduled_writes;
+               for (const auto& [output_idx, root] : extra_outputs) {
+                 auto extra_output_index =
+                     index.SourceIndexOfBitcast(root->shape(), builder);
+                 auto output_gen = *fused_emitter.GetGenerator(*root);
+                 llvm::Value* output_value = *output_gen(extra_output_index);
+                 scheduled_writes.emplace_back(
+                     outputs[output_idx], extra_output_index, output_value);
+               }
 
-          for (const auto& [output, idx, value] : scheduled_writes) {
-            output.EmitWriteArrayElement(idx, value, builder);
-          }
-        });
+               for (const auto& [output, idx, value] : scheduled_writes) {
+                 output.EmitWriteArrayElement(idx, value, builder);
+               }
+             });
 
     EmitSyncThreads(builder, ir_emitter_context);
 
-    auto output_tile_index = PermuteIndex(tile_start_index, {0, 2, 1});
-    auto transposed_tile_dimensions = Permute(tile_dimensions, {0, 2, 1});
+    auto output_tile_index = PermuteIndex(tile_start_index, permutation);
+    auto transposed_tile_dimensions = Permute(tile_dimensions, permutation);
 
     EmitTile(
-        builder, tiling_scheme_, thread_id_info, transposed_tile_dimensions,
+        builder, tiling_, thread_id_info, transposed_tile_dimensions,
         /*emit_elem_function=*/
-        [&](std::array<llvm::Value*, 3> index_in_tile) {
-          auto index =
-              PermuteIndex(output_tile_index.AddOffset(index_in_tile, builder),
-                           tile_to_inout);
+        [&](absl::Span<llvm::Value* const> index_in_tile) {
+          auto index = output_tile_index.AddOffset(index_in_tile, builder);
           for (const auto& tr : transposes) {
             llvm::Value* loaded = tiles[tr.instr].Load(
-                Permute(index_in_tile, {0, 2, 1}), builder);
+                Permute(index_in_tile, permutation), builder);
 
             FusedIrEmitter fused_emitter(elemental_emitter);
             fused_emitter.BindGenerator(
@@ -291,9 +258,8 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
               // Both for emission and writing it should be
               // index-as-transformed by the computation.
-              llvm_ir::IrArray::Index untiled_index =
-                  GetUnnormalizedIndex(index, root->shape(), builder,
-                                       Permute(input_shape, permutation));
+              auto untiled_index =
+                  index.SourceIndexOfBitcast(root->shape(), builder);
               TF_ASSIGN_OR_RETURN(llvm::Value * generated, gen(untiled_index));
               scheduled_writes.emplace_back(outputs[output_idx], untiled_index,
                                             generated);
@@ -308,13 +274,45 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   llvm::Type* index_type =
       GetIndexTypeForKernel(&fusion, launch_dims.launch_bound(), builder);
-  return EmitTilingKernel(builder, tiling_scheme_, index_type, tile_generator)
+  return EmitTilingKernel(builder, tiling_, index_type, tile_generator)
       .status();
 }
 
 LaunchDimensions TransposeFusion::launch_dimensions() const {
-  return LaunchDimensions(tiling_scheme_.GetNumBlocksPhysical(),
-                          tiling_scheme_.GetNumThreadsPerBlockPhysical());
+  return LaunchDimensions(tiling_.GetNumBlocks(),
+                          tiling_.GetNumThreadsPerBlock());
+}
+
+std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToOutputIndexing(
+    int64_t root_index, mlir::MLIRContext* ctx) const {
+  const auto& hero = *analysis_.fusion_heroes()[root_index];
+  const auto& root = *analysis_.fusion_roots()[root_index];
+  if (!GetDescriptionForTiledTransposeEmitter(root, hero)) {
+    // Non-transpose roots are elementwise by definition.
+    return ComputeThreadIdToInputIndexing(root_index, 0, ctx);
+  }
+
+  // The block offsets are permuted, but the thread offsets remain the same.
+  auto block_offset = GetBlockOffsetsForTiling(tiling_, ctx)
+                          .getSubMap(std::vector<unsigned>{permutation_.begin(),
+                                                           permutation_.end()});
+  auto thread_offset = GetThreadOffsetsForTiling(tiling_, ctx);
+  auto permuted_tiled_shape =
+      ShapeUtil::MakeShape(U8, Permute(tiling_.GetShape(), permutation_));
+
+  return ComposeIndexingMaps(
+      GetIndexingMapForTiling(block_offset, thread_offset, tiling_),
+      GetBitcastMap(permuted_tiled_shape, hero.shape(), ctx));
+}
+
+std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
+    int64_t root_index, int64_t hero_operand_index,
+    mlir::MLIRContext* ctx) const {
+  const auto& hero = *analysis_.fusion_heroes()[root_index];
+
+  return ComposeIndexingMaps(
+      GetIndexingMapForTiling(tiling_, ctx),
+      GetBitcastMap(tiling_.GetXlaShape(), hero.operand(0)->shape(), ctx));
 }
 
 }  // namespace gpu

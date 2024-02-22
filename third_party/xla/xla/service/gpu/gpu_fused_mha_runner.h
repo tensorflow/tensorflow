@@ -23,10 +23,12 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/dnn.h"
@@ -53,7 +55,7 @@ struct GpufMHADescriptor {
   Shape rhs_bmm2_shape;
   Shape intermediate_lhs_bmm2_shape;
   // This will contain both output shape and activation shape
-  std::vector<Shape> output_shapes;
+  absl::InlinedVector<Shape, 2> output_shapes;
   DotDimensionNumbers bmm1_dnums;
   DotDimensionNumbers bmm2_dnums;
 

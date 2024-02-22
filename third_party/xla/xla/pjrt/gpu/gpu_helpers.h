@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 
 // Builds an xla::LocalClient for the GPU platform.
-StatusOr<LocalClient*> GetGpuXlaClient(
+absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices);
 
@@ -58,10 +58,11 @@ struct GpuAllocatorConfig {
   // allocator will allocate more memory as allocations are requested.
   bool preallocate = true;
 
-  // Amount of collective memory (ncclMemAlloc) to reserve. Must be set when
-  // using `xla_gpu_enable_nccl_user_buffers=true`. If this value is 0,
-  // collective memory will not be allocated. Should be set to a multiple of
-  // 512MB to avoid wasting memory due to granularity requirements.
+  // Amount of collective memory (ncclMemAlloc) to preallocate. If this value is
+  // 0, collective memory space will be grown as needed to fit the application's
+  // usage, with the drawback of potentially higher fragmentation. If set,
+  // should be set to a multiple of 512MB to avoid wasting memory due to
+  // granularity requirements.
   size_t collective_memory_size = 0;
 };
 
@@ -69,12 +70,13 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor);
 
 // Builds a BFCAllocator for all local GPUs.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate);
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
-    se::StreamExecutor* executor, size_t allocator_memory, bool preallocate);
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction,
+    size_t collective_memory_size);
 
 }  // namespace xla
 

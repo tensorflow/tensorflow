@@ -73,13 +73,23 @@ inline uint64_t GetStreamId(
 // executable.
 class NcclCliqueKey {
  public:
-  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                         int64_t stream_id = 0);
+  explicit NcclCliqueKey(
+      std::vector<GlobalDeviceId> devices, int64_t stream_id = 0,
+      AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
 
   absl::Span<const GlobalDeviceId> devices() const;
 
   // Returns the rank of the global device in the clique.
   std::optional<int64_t> rank(GlobalDeviceId id) const;
+
+  // Returns true if this clique is a subset of `other`: both cliques have the
+  // same `stream_id` and all clique devices are part of `other` clique.
+  bool IsSubsetOf(const NcclCliqueKey& other) const;
+
+  // Returns the stream kind for this clique key,
+  // stream kind will be used to specify what configuration
+  // to pass for each type of operation.
+  AsyncStreamKind stream_kind() const { return stream_kind_; }
 
   std::string ToString() const;
 
@@ -88,10 +98,12 @@ class NcclCliqueKey {
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
   friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
   const std::vector<GlobalDeviceId> devices_;
   const int64_t stream_id_;
+  AsyncStreamKind stream_kind_;
 };
 
 template <typename H>

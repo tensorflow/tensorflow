@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_executor_util.h"
 
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -37,8 +38,10 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/util/env_var.h"
 #include "tsl/util/proto/proto_utils.h"
 
@@ -334,12 +337,13 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = std::make_unique<se::Kernel>(stream_exec);
-  TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                      se::Kernel::Create(stream_exec, loader_spec));
+
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
-  kernel_base->set_metadata(m);
-  return std::move(kernel_base);
+  kernel->set_metadata(m);
+  return kernel;
 }
 
 absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
@@ -352,6 +356,20 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
 
   return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
                                   dims.block_counts(), kernel, *kernel_args);
+}
+
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   const se::ClusterDim& cluster_dim,
+                                   se::Stream* stream) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
+      se::PackKernelArgs(args, kernel.metadata()));
+
+  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
+                                  dims.block_counts(), cluster_dim, kernel,
+                                  *kernel_args);
 }
 
 // Unimplemented for integers yet.
@@ -413,8 +431,8 @@ static void InitializeTypedBuffer(se::Stream* stream,
     int64_t elements_copied =
         std::min<int64_t>(host_buffer->size() - host_index, elements_left);
     se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
+    TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data() + host_index,
+                               elements_copied * sizeof(T)));
     current_addr += elements_copied * sizeof(T);
     elements_left -= elements_copied;
     host_index += elements_copied;
@@ -468,6 +486,20 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
   return Internal("Unexpected convolution kind");
 }
 
+absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
+    CudnnNormKind kind) {
+  switch (kind) {
+    case CudnnNormKind::kLayerForwardInfer:
+      return se::dnn::LAYER_FWD_INFER;
+    case CudnnNormKind::kLayerForwardTrain:
+      return se::dnn::LAYER_FWD_TRAIN;
+    case CudnnNormKind::kLayerBackward:
+      return se::dnn::LAYER_BWD;
+    default:
+      return Internal("Unexpected norm kind");
+  }
+}
+
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind) {
   switch (kind) {
@@ -519,7 +551,7 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     default:
       break;
   }
-  return Internal("Unsupported convolution datatype");
+  return Internal("Unsupported datatype");
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {

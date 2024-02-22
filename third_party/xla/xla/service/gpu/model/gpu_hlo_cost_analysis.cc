@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -95,7 +94,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
   if (!options_.count_multiple_input_accesses) {
     utilization = fmin(utilization, 1.0);
   }
-  return GetShapeSize(hlo->shape()) * utilization;
+  return std::llround(GetShapeSize(hlo->shape()) * utilization);
 }
 
 absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
@@ -327,11 +326,7 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
 
 int64_t FlopsPerElement(const se::DeviceDescription* device_info,
                         const PrimitiveType type, const HloOpcode opcode) {
-  static const auto* hlo_op_profiles =
-      HloOpProfiles::Load(kDeviceHloOpProfiles,
-                          /*default_profile_name=*/"sm_86")
-          .release();
-  auto device_profile = hlo_op_profiles->GetProfile(device_info);
+  auto device_profile = HloOpProfiles::Singleton().GetProfile(device_info);
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
   return FindOrDefault(device_profile, std::make_pair(opcode, type),
@@ -433,6 +428,51 @@ absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   }
   current_properties_[kFlopsKey] =
       flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
+  // HloCostAnalysis::HandleReduce computes FLOPs for the computation correctly,
+  // but `bytes_accessed` estimates are different for GPU.
+  TF_RETURN_IF_ERROR(HloCostAnalysis::HandleReduce(hlo));
+
+  const HloReduceInstruction* reduce = DynCast<HloReduceInstruction>(hlo);
+  auto output_shape = reduce->shape().IsArray()
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      reduce->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        output_bytes_accessed += GetShapeSize(sub_shape);
+      });
+
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+
+  int64_t bytes_accessed = output_bytes_accessed;
+  for (int64_t input_operand_id = 0; input_operand_id < reduce->input_count();
+       ++input_operand_id) {
+    bytes_accessed +=
+        current_properties_.operand_bytes_accessed(input_operand_id);
+  }
+
+  int64_t output_shape_size = ShapeUtil::ElementsIn(output_shape);
+  for (int64_t init_operand_id = reduce->input_count();
+       init_operand_id < reduce->operand_count(); ++init_operand_id) {
+    auto init_operand = reduce->operand(init_operand_id);
+
+    int64_t operand_bytes_accessed =
+        output_shape_size * GetShapeSize(init_operand->shape());
+    current_properties_.set_operand_bytes_accessed(init_operand_id,
+                                                   operand_bytes_accessed);
+    current_properties_.set_operand_utilization(init_operand_id,
+                                                output_shape_size);
+
+    bytes_accessed += operand_bytes_accessed;
+  }
+
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
   return absl::OkStatus();
 }
 

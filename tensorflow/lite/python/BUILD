@@ -9,6 +9,7 @@ package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
+        "//third_party/odml/model_customization/quantization:__subpackages__",
         "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],
@@ -453,6 +454,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/python:_pywrap_toco_api",
         "//tensorflow/python:pywrap_tensorflow",
     ],

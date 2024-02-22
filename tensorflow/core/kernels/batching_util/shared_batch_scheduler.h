@@ -570,7 +570,7 @@ Status SharedBatchScheduler<TaskType>::Create(
                                    options.num_batch_threads);
   }
   scheduler->reset(new SharedBatchScheduler<TaskType>(options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -678,7 +678,7 @@ Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     }
   }
   *queue = std::move(handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -909,7 +909,7 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
     schedulable_batch_callback_();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/194294263):
@@ -984,7 +984,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     schedulable_batch_callback_();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -1041,7 +1041,7 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
           ", open_batch_size=", tail_batch_task_size(),
           ", max_execution_batch_size=", max_execution_batch_size(), ")");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // NOTE, the capacity checking below is loose and is retained
@@ -1062,7 +1062,7 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
           options_.max_enqueued_batches);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>

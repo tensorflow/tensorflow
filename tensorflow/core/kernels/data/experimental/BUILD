@@ -330,6 +330,26 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "global_shuffle_dataset_op",
+    srcs = ["global_shuffle_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/kernels:random_index_shuffle",
+        "//tensorflow/core/kernels/data:random_seed_ops",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_kernel_library(
     name = "group_by_reducer_dataset_op",
     srcs = ["group_by_reducer_dataset_op.cc"],
     deps = [
@@ -935,6 +955,7 @@ tf_kernel_library(
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":directed_interleave_dataset_op",
+        ":global_shuffle_dataset_op",
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",

@@ -27,7 +27,7 @@ class SimplifyFPConversionsTest : public HloTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_simplify_all_fp_conversions(
+    debug_options.set_xla_allow_excess_precision(
         enable_simplify_all_fp_conversions_);
     return debug_options;
   }

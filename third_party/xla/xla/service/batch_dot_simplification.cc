@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 
 namespace xla {
-StatusOr<bool>
+absl::StatusOr<bool>
 BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     HloInstruction* batch_dot) {
   // This pass assumes the lhs and rhs batch dimensions are equal and strictly
@@ -108,7 +108,7 @@ absl::string_view BatchDotSimplification::name() const {
   return "batch-dot-simplification";
 }
 
-StatusOr<bool> BatchDotSimplification::Run(
+absl::StatusOr<bool> BatchDotSimplification::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

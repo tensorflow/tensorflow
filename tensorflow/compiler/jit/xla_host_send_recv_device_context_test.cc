@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -65,7 +65,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
   Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
 
   stream_executor::Platform* platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+      stream_executor::PlatformManager::PlatformWithName("CUDA").value();
   stream_executor::StreamExecutor* executor =
       platform->ExecutorForDevice(0).value();
   stream_executor::Stream stream(executor);
@@ -100,7 +100,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
   Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
 
   stream_executor::Platform* platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+      stream_executor::PlatformManager::PlatformWithName("CUDA").value();
   stream_executor::StreamExecutor* executor =
       platform->ExecutorForDevice(0).value();
   stream_executor::Stream stream(executor);
@@ -135,7 +135,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, RoundTrip) {
   Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
 
   stream_executor::Platform* platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+      stream_executor::PlatformManager::PlatformWithName("CUDA").value();
   stream_executor::StreamExecutor* executor =
       platform->ExecutorForDevice(0).value();
   stream_executor::Stream stream(executor);

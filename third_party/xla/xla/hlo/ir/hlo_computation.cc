@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <list>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
+#include "xla/service/name_uniquer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -115,19 +115,9 @@ HloComputation::HloComputation(
     const std::string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
     HloInstruction* root_instruction)
-    : name_(NameUniquer::GetSanitizedName(name)),
-      unique_id_(-1),
+    : unique_id_(-1),
       root_instruction_(root_instruction),
-      fusion_instruction_(nullptr),
-      is_fusion_computation_(false),
-      custom_call_instruction_(nullptr),
-      is_custom_call_computation_(false),
-      collective_call_instruction_(nullptr),
-      is_collective_called_computation_(false),
-      while_call_instruction_(nullptr),
-      is_while_call_body_computation_(false),
-      conditional_call_instruction_(nullptr),
-      is_conditional_branch_computation_(false) {
+      name_(NameUniquer::GetSanitizedName(name)) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -149,10 +139,9 @@ HloComputation::HloComputation(
 }
 
 HloComputation::~HloComputation() {
-  if (fusion_instruction_ != nullptr) {
-    CHECK(fusion_instruction_->fused_instructions_computation() == this);
-    fusion_instruction_->ClearCalledComputations();
-    fusion_instruction_ = nullptr;
+  if (FusionInstruction() != nullptr) {
+    CHECK(FusionInstruction()->fused_instructions_computation() == this);
+    FusionInstruction()->ClearCalledComputations();
   }
   if (IsAsyncComputation()) {
     CHECK(async_start_->async_wrapped_computation() == this);
@@ -161,6 +150,29 @@ HloComputation::~HloComputation() {
   for (const auto& i : instructions_) {
     delete i.inst();
   }
+  Cleanup();
+}
+
+void HloComputation::SetInstruction(HloInstruction* instruction,
+                                    InstructionType type) {
+  static_assert(alignof(HloInstruction) == kInstructionTypeMask + 1,
+                "HloInstruction should be aligned as a QWORD");
+
+  DCHECK(type != InstructionType::kUnset)
+      << "Set instruction must be called with a valid type, not kUnset.";
+  DCHECK(instruction_type() == InstructionType::kUnset ||
+         instruction_type() == type)
+      << "Unexpected instruction type. Current type is "
+      << static_cast<int>(instruction_type()) << " and it cannot be reset to "
+      << static_cast<int>(type);
+
+  // If `instruction` is nullptr, we need to preserve the existing type.
+  if (instruction == nullptr) {
+    type = instruction_type();
+  }
+
+  instruction_and_type_ =
+      reinterpret_cast<uintptr_t>(instruction) | static_cast<uintptr_t>(type);
 }
 
 HloInstruction* HloComputation::AddInstruction(
@@ -206,7 +218,7 @@ HloInstruction* HloComputation::AddParameter(
     std::unique_ptr<HloInstruction> instruction) {
   CHECK(instruction->opcode() == HloOpcode::kParameter);
   CHECK(!IsFusionComputation() ||
-        fusion_instruction_->operand_count() == param_instructions_.size());
+        FusionInstruction()->operand_count() == param_instructions_.size());
   instruction->set_parent(this);
   param_instructions_.push_back(instruction.get());
   AddInstructionInternal(std::move(instruction));
@@ -280,7 +292,7 @@ HloInstruction* HloComputation::ReplaceParameter(
   CHECK_LT(param_no, param_instructions_.size());
   CHECK(instruction->opcode() == HloOpcode::kParameter);
   CHECK(!IsFusionComputation() ||
-        fusion_instruction_->operand_count() == param_instructions_.size());
+        FusionInstruction()->operand_count() == param_instructions_.size());
 
   instruction->set_parent(this);
   HloInstruction* new_instruction =
@@ -425,7 +437,7 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   TF_RET_CHECK(inst_it != instruction_indices_.end());
   HloInstructionInfo* info = &instructions_[inst_it->second];
   info->inst()->set_parent(nullptr);
-  to_be_deleted_.emplace_back(info->inst());  // Takes ownership
+  to_be_deleted_.push_back(info->inst());  // Takes ownership
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
   // Clear all operands to avoid Null operands.
   to_be_deleted_.back()->RemoveAllOperands();
@@ -878,7 +890,7 @@ HloComputationProto HloComputation::ToProto() const {
   }
   proto.set_root_id(root_instruction()->unique_id());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
-  proto.set_is_fusion_computation(is_fusion_computation_);
+  proto.set_is_fusion_computation(IsFusionComputation());
   proto.set_execution_thread(IsMainThread() ? ""
                                             : std::string(execution_thread()));
   return proto;
@@ -942,7 +954,10 @@ HloComputation::CreateFromProto(
   auto computation = absl::WrapUnique(
       new HloComputation(proto.name(), parameter_count, &instructions, root));
   computation->unique_id_ = proto.id();
-  computation->is_fusion_computation_ = proto.is_fusion_computation();
+  if (proto.is_fusion_computation()) {
+    computation->instruction_and_type_ =
+        static_cast<uintptr_t>(InstructionType::kFusion);
+  }
   if (!proto.execution_thread().empty()) {
     computation->SetExecutionThread(proto.execution_thread());
   }
@@ -1053,7 +1068,13 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
-  TF_RETURN_IF_ERROR(async_done->CopyAllControlDepsFrom(instruction));
+  for (HloInstruction* control_pred : instruction->control_predecessors()) {
+    TF_RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
+  }
+  for (HloInstruction* control_successor : instruction->control_successors()) {
+    TF_RETURN_IF_ERROR(async_done->AddControlDependencyTo(control_successor));
+  }
+
   if (replace) {
     TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
     TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
@@ -1284,11 +1305,7 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   // But still this seems to be better than nothing.
   bool overwrite_op_name = new_instruction->metadata().op_name().empty() &&
                            !old_instruction->metadata().op_name().empty();
-  bool overwrite_pass_id =
-      new_instruction->metadata().op_name().empty() &&
-      new_instruction->metadata().logical_creation_pass_id() == 0 &&
-      old_instruction->metadata().logical_creation_pass_id() != 0;
-  if (overwrite_op_name || overwrite_pass_id) {
+  if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
   if (new_instruction->frontend_attributes().map().empty()) {

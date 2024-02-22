@@ -73,6 +73,8 @@ class SymbolicTile {
       : offset_map_(offset_map), size_map_(size_map), stride_map_(stride_map) {}
 };
 
+// Prints symbolic_tile with triplet labels for each symbol.
+// i.e. a symbol si which corresponds to an offset will be labeled offseti.
 std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile);
 
 }  // namespace gpu

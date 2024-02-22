@@ -482,10 +482,15 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     const int64_t input_channels =
         conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
             input_feature_dimension);
+    const int kernel_input_feature_dimension =
+        dnums.getKernelInputFeatureDimension();
+    const int kernel_input_channels =
+        conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
+            kernel_input_feature_dimension);
     const int64_t feature_group_count = conv_op.getFeatureGroupCount();
-    if (feature_group_count != 1 && feature_group_count != input_channels)
-      return rewriter.notifyMatchFailure(conv_op,
-                                         "Group convolution is not supported,");
+    if (feature_group_count != input_channels / kernel_input_channels ||
+        input_channels % kernel_input_channels != 0)
+      return failure();
 
     //
     // Transpose and reshape the input and kernel
@@ -498,6 +503,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     image_2d_shape.push_back(1);
     auto image_2d_type =
         RankedTensorType::get(image_2d_shape, image_type.getElementType());
+    auto loc = conv_op.getLoc();
     auto image_2d_op = rewriter.create<mhlo::ReshapeOp>(
         conv_op.getLoc(), image_2d_type, conv_op.getLhs());
 
@@ -509,8 +515,8 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     auto image_permutation_and_shape = GetPermutationAndTransposedShape(
         image_permutation, image_2d_type, rewriter);
     auto transposed_image_2d_op = rewriter.create<mhlo::TransposeOp>(
-        conv_op.getLoc(), image_permutation_and_shape.shape,
-        image_2d_op->getResult(0), image_permutation_and_shape.permutation);
+        loc, image_permutation_and_shape.shape, image_2d_op->getResult(0),
+        image_permutation_and_shape.permutation);
 
     // Reshape kernel to add a new spatial dimension.
     auto kernel_type = conv_op.getRhs().getType().cast<ShapedType>();
@@ -521,8 +527,8 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     kernel_2d_shape.push_back(1);
     auto kernel_2d_type =
         RankedTensorType::get(kernel_2d_shape, kernel_type.getElementType());
-    auto kernel_2d_op = rewriter.create<mhlo::ReshapeOp>(
-        conv_op.getLoc(), kernel_2d_type, conv_op.getRhs());
+    auto kernel_2d_op =
+        rewriter.create<mhlo::ReshapeOp>(loc, kernel_2d_type, conv_op.getRhs());
 
     // Transpose kernel to get it into WHIO form (where H is the added dim).
     SmallVector<int64_t, 4> kernel_permutation = {
@@ -533,8 +539,8 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     auto kernel_permutation_and_shape = GetPermutationAndTransposedShape(
         kernel_permutation, kernel_2d_type, rewriter);
     auto transposed_kernel_2d_op = rewriter.create<mhlo::TransposeOp>(
-        conv_op.getLoc(), kernel_permutation_and_shape.shape,
-        kernel_2d_op->getResult(0), kernel_permutation_and_shape.permutation);
+        loc, kernel_permutation_and_shape.shape, kernel_2d_op->getResult(0),
+        kernel_permutation_and_shape.permutation);
 
     //
     // Create 2d equivalents for 1d convolution attributes.
@@ -624,11 +630,11 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
             .shape;
 
     auto conv2d_op = rewriter.create<mhlo::ConvolutionOp>(
-        conv_op.getLoc(), transposed_output_2d_shape,
-        transposed_image_2d_op.getResult(), transposed_kernel_2d_op.getResult(),
-        window_strides_2d, padding_2d, lhs_dilation_2d, rhs_dilation_2d,
-        window_reversal_2d, dnums_2d, conv_op.getFeatureGroupCount(),
-        conv_op.getBatchGroupCount(), conv_op.getPrecisionConfigAttr());
+        loc, transposed_output_2d_shape, transposed_image_2d_op.getResult(),
+        transposed_kernel_2d_op.getResult(), window_strides_2d, padding_2d,
+        lhs_dilation_2d, rhs_dilation_2d, window_reversal_2d, dnums_2d,
+        conv_op.getFeatureGroupCount(), conv_op.getBatchGroupCount(),
+        conv_op.getPrecisionConfigAttr());
 
     OpResult conv2d_output = conv2d_op->getResult(0);
     auto conv2d_output_type = conv2d_output.getType().cast<ShapedType>();
@@ -642,7 +648,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     auto output_permutation_and_shape = GetInversePermutationAndShape(
         output_permutation, conv2d_output_type, rewriter);
     auto transposed_output_2d_op = rewriter.create<mhlo::TransposeOp>(
-        conv_op.getLoc(), output_permutation_and_shape.shape, conv2d_output,
+        loc, output_permutation_and_shape.shape, conv2d_output,
         output_permutation_and_shape.permutation);
 
     // Drop the trailing spatial dimension from the output.

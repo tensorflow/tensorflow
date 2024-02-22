@@ -50,7 +50,7 @@ class FakeSessionFactory : public SessionFactory {
   Status NewSession(const SessionOptions& options,
                     Session** out_session) override {
     *out_session = nullptr;
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 class FakeSessionRegistrar {

@@ -71,12 +71,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
-#include "xla/mlir/backends/gpu/transforms/passes.h"
-#include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
-#include "xla/mlir/runtime/transforms/compilation_pipeline_options.h"
-#include "xla/runtime/compiler.h"
-#include "xla/runtime/executable.h"
-#include "xla/runtime/jit_executable.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/all_gather_broadcast_reorder.h"
 #include "xla/service/all_gather_combiner.h"
@@ -119,6 +113,7 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gather_simplifier.h"
+#include "xla/service/gpu/address_computation_fusion_rewriter.h"
 #include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/all_reduce_blueconnect.h"
 #include "xla/service/gpu/autotuner_util.h"
@@ -164,7 +159,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_layout_normalizer.h"
 #include "xla/service/gpu/reduction_splitter.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/service/gpu/runtime/executable.h"
+#include "xla/service/gpu/rename_fusions.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/scatter_slice_simplifier.h"
 #include "xla/service/gpu/softmax_rewriter_triton.h"
@@ -234,8 +229,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -302,6 +297,11 @@ class MaybeOwningThreadPool {
     int default_parallelism) {
   CHECK_GE(parallelism, 0);
   CHECK_GE(default_parallelism, 1);
+  // CurrentThreadId() returns -1 if the current thread does not belong to the
+  // thread pool. If the current thread belongs to the thread pool, we should
+  // not be using it, because it can potentially cause deadlocks.
+  CHECK(default_thread_pool == nullptr ||
+        default_thread_pool->CurrentThreadId() == -1);
 
   auto create_thread_pool = [&](int num_threads) {
     CHECK_GE(num_threads, 1);
@@ -357,10 +357,6 @@ MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
 
 bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
 
-bool ConvIsLowerable(HloInstruction* conv) {
-  return GpuConvRewriter::ConvIsLowerable(conv);
-}
-
 absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
     const GpuCompiler::CompileOptions& options,
@@ -379,63 +375,8 @@ se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
 
-// TODO(b/232263665): It should be shared between GPU and CPU.
-class GpuAotCompilationResult : public AotCompilationResult {
- public:
-  GpuAotCompilationResult(
-      HloModuleProto hlo, std::string_view obj_file,
-      std::string_view mlir_module, std::string_view gpu_asm_text,
-      absl::Span<const uint8_t> gpu_binary,
-      absl::Span<const GpuExecutable::ConstantInfo> constants = {}) {
-    XlaRuntimeExecutableProto xla_runtime_executable;
-    *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
-    xla_runtime_executable.set_obj_file(std::string(obj_file));
-    xla_runtime_executable.set_mlir_module(std::string(mlir_module));
-    *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
-        xla_runtime_executable;
-
-    xla_runtime_gpu_executable_.set_gpu_asm_text(std::string(gpu_asm_text));
-    xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
-                                               gpu_binary.size());
-
-    for (const GpuExecutable::ConstantInfo& cst : constants) {
-      auto* cst_proto = xla_runtime_gpu_executable_.add_constants();
-      cst_proto->set_symbol_name(cst.symbol_name);
-      cst_proto->set_allocation_index(cst.allocation_index);
-      cst_proto->set_content(cst.content.span().data(),
-                             cst.content.span().size());
-    }
-  }
-
-  explicit GpuAotCompilationResult(XlaRuntimeGpuExecutableProto executable)
-      : xla_runtime_gpu_executable_(executable) {}
-
-  absl::StatusOr<std::string> SerializeAsString() const override {
-    return xla_runtime_gpu_executable_.SerializeAsString();
-  }
-
-  static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromString(
-      const std::string& serialized) {
-    XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable;
-    if (!xla_runtime_gpu_executable.ParseFromString(serialized)) {
-      return Internal("Failed to parse serialized JitRtExecutableProto.");
-    }
-    return std::make_unique<GpuAotCompilationResult>(
-        xla_runtime_gpu_executable);
-  }
-
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) const override;
-
- private:
-  XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
-};
-
 class GpuThunkAotCompilationResult : public AotCompilationResult {
  public:
-  explicit GpuThunkAotCompilationResult(CompilationResultProto proto)
-      : proto_(std::move(proto)) {}
-
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
@@ -446,7 +387,9 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto.set_asm_text(std::string(asm_text));
     proto.set_binary(binary.data(), binary.size());
-    return std::make_unique<GpuThunkAotCompilationResult>(std::move(proto));
+    return std::unique_ptr<GpuThunkAotCompilationResult>(
+        new GpuThunkAotCompilationResult(hlo_module->Clone(),
+                                         std::move(proto)));
   }
 
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
@@ -457,7 +400,11 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
           "Failed to parse serialized GpuThunkAotCompilationResult.");
     }
 
-    return std::make_unique<GpuThunkAotCompilationResult>(std::move(proto));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
+    return std::unique_ptr<GpuThunkAotCompilationResult>(
+        new GpuThunkAotCompilationResult(std::move(module), std::move(proto)));
   }
 
   absl::StatusOr<std::string> SerializeAsString() const override {
@@ -467,42 +414,21 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
 
+  const HloModule* optimized_module() const override { return module_.get(); }
+  std::unique_ptr<HloModule> consume_optimized_module() override {
+    return std::move(module_);
+  }
+
  private:
+  GpuThunkAotCompilationResult(std::unique_ptr<HloModule> module,
+                               CompilationResultProto proto)
+      : module_(std::move(module)), proto_(std::move(proto)) {}
+
+  std::unique_ptr<HloModule> module_;
   CompilationResultProto proto_;
 };
 
 }  // end anonymous namespace
-
-absl::StatusOr<std::unique_ptr<Executable>>
-GpuAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* executor) const {
-  XlaRuntimeExecutableProto xla_runtime_executable =
-      xla_runtime_gpu_executable_.xla_runtime_executable();
-  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          xla_runtime_executable.hlo_module_proto(),
-                          GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
-                                 hlo_module_config));
-  std::vector<GpuExecutable::ConstantInfo> constants;
-  for (auto& cst : xla_runtime_gpu_executable_.constants()) {
-    GpuExecutable::ConstantInfo constant = {
-        cst.symbol_name(),
-        DenseDataIntermediate::Own(
-            std::vector<uint8_t>{cst.content().begin(), cst.content().end()}),
-        cst.allocation_index()};
-    constants.push_back(std::move(constant));
-  }
-
-  return GpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), xla_runtime_executable.obj_file(),
-      xla_runtime_executable.mlir_module(), GetDebugOptionsFromFlags(),
-      xla_runtime_gpu_executable_.gpu_asm_text(),
-      xla_runtime_gpu_executable_.gpu_binary(), std::move(constants),
-      GetGpuVersion(executor));
-}
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
@@ -524,7 +450,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
   // Build the executable, which should be a thunk sequence.
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
-      se::MultiPlatformManager::PlatformWithId(compiler->PlatformId()));
+      se::PlatformManager::PlatformWithId(compiler->PlatformId()));
   std::string platform_name = platform->Name();
   se::DeviceDescription gpu_device_info = stream_exec->GetDeviceDescription();
   mlir::DialectRegistry registry;
@@ -541,25 +467,10 @@ GpuThunkAotCompilationResult::LoadExecutable(
   IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
                                       platform_name, gpu_device_info,
                                       mlir_context.get(), llvm_module.get(),
-                                      /*emit_ir_from_hlo=*/true,
                                       /*emit_kernels=*/false);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = llvm_ir::CreateMlirModuleOp(
-      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
-  std::vector<const BufferAllocation*> ordered_allocations;
-  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
-      operation_map;
-  TF_RETURN_IF_ERROR(HloToLhloModule(*buffer_assignment, *hlo_module,
-                                     *mlir_module, &ordered_allocations,
-                                     &operation_map));
-  ir_emitter_context.set_allocations(ordered_allocations);
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
-  auto entry_function = mlir::cast<mlir::func::FuncOp>(
-      mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
-  // TODO(anlunx): EmitLmhloRegion emits fusion kernels. We need to make sure
-  // ptx and cubin already contain emission results and disable kernel emission
-  // here.
   TF_RETURN_IF_ERROR(
-      ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
+      ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
   std::unique_ptr<ThunkSequence> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
   ForAllThunks([](Thunk* thunk) { thunk->ClearCompileTimeInfo(); },
@@ -621,15 +532,6 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
                                                "hlo verifier");
   }
 }
-
-void SetInstructionMetadata(HloModule* module) {
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      instruction->set_creation_pass_id(-1);
-      instruction->set_logical_creation_pass_id(-1);
-    }
-  }
-}
 }  // namespace
 
 // Runs optimization passes on the given HLO module.
@@ -658,8 +560,14 @@ absl::Status GpuCompiler::OptimizeHloModule(
       /*default_thread_pool=*/options.thread_pool,
       /*default_parallelism=*/tsl::port::MaxParallelism());
 
-  AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
-                                                             ConvIsLowerable);
+  AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
+      GetAlgebraicSimplifierOptions(hlo_module->config());
+  layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
+      GpuConvRewriter::ConvIsLowerable);
+  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_dot_strength_reduction());
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
@@ -682,8 +590,6 @@ absl::Status GpuCompiler::OptimizeHloModule(
   layout_insensitive_algsimp_opts
       .set_enable_unconditional_reduce_of_concat_replacement(false);
 
-  SetInstructionMetadata(hlo_module);
-
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
@@ -691,6 +597,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
+  // The TopkDecomposer generates a compare op with type=TOTALORDER and must
+  // run before the ComparisonExpander which rewrites such comparisons.
   pre_spmd_pipeline.AddPass<TopkDecomposer>([&](const HloInstruction* instr) {
     return instr->opcode() == HloOpcode::kTopK;
   });
@@ -824,7 +732,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
     // Comparison total order expander
-    pipeline.AddPass<ComparisonExpander>();
+    pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
 
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
@@ -1137,6 +1045,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   {
     HloPassPipeline pipeline("post-fusion optimization");
+    pipeline.AddPass<RenameFusions>();
     pipeline.AddPass<AllGatherCombiner>(
         hlo_module->config()
             .debug_options()
@@ -1283,6 +1192,14 @@ absl::Status GpuCompiler::OptimizeHloModule(
   return absl::OkStatus();
 }
 
+AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
+    const HloModuleConfig& config) {
+  AlgebraicSimplifierOptions opts;
+  opts.set_enable_dot_strength_reduction(
+      config.debug_options().xla_gpu_enable_dot_strength_reduction());
+  return opts;
+}
+
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
 absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
@@ -1300,7 +1217,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   const se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
   const AlgebraicSimplifierOptions simplifier_options = [&] {
-    AlgebraicSimplifierOptions opts;
+    AlgebraicSimplifierOptions opts =
+        GetAlgebraicSimplifierOptions(hlo_module->config());
     opts.set_supports_non_canonical_dots(false);
     opts.set_is_layout_sensitive(true);
     opts.set_enable_conv_operand_swap(false);
@@ -1329,9 +1247,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
-    if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
-      sub_pipeline.AddPass<SimplifyFPConversions>(
-          SimplifyFPConversions::Scope::kSimplifyAllConversions);
+    if (debug_options.xla_allow_excess_precision() &&
+        debug_options.xla_gpu_simplify_all_fp_conversions()) {
+      sub_pipeline.AddPass<SimplifyFPConversions>();
     }
   };
 
@@ -1438,6 +1356,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<GemmRewriter>(gpu_version);
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
+  if (debug_options.xla_gpu_normalize_layouts()) {
+    pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
+  }
 
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
       &pipeline, hlo_module, autotune_config, thread_pool));
@@ -1453,14 +1375,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_options);
 
-  if (debug_options.xla_gpu_simplify_all_fp_conversions()) {
+  if (debug_options.xla_allow_excess_precision() &&
+      debug_options.xla_gpu_simplify_all_fp_conversions()) {
     // This pass cleans up chains of compiler-generated converts
     // (i.e. f32 -> bf16 -> f32) that have been produced by the algebraic
     // simplifier by rearranging ops (i.e. by pushing broadcasts towards the
     // root).
-    pipeline.AddPass<SimplifyFPConversions>(
-        SimplifyFPConversions::Scope::
-            kOnlySimplifyCompilerGeneratedConversions);
+    pipeline.AddPass<SimplifyFPConversions>();
   }
 
   // Since this CSE runs after collective schedule linearizer which inserts
@@ -1469,7 +1390,31 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/false,
                            /*ignore_control_dependencies=*/true);
+
+#ifdef NDEBUG
+  // Verify the module in non-debug builds. For debug builds, the verifier
+  // already runs after every pass.
+  pipeline.AddPass<HloVerifier>(
+      std::make_unique<DefaultVerifierMetadata>(
+          HloVerifierOpts{}
+              .MakeLayoutSensitive()
+              .WithInstructionCanChangeLayout(
+                  LayoutAssignment::InstructionCanChangeLayout)
+              .VerifyBroadcastDimensionsOrder()
+              .VerifyReshapeIsBitcast()),
+      "end-of-post-layout_assignment");
+#endif  // NDEBUG
+
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+
+  if (DumpingEnabledForHloModule(*hlo_module)) {
+    TF_ASSIGN_OR_RETURN(
+        std::string autotune_results,
+        AutotunerUtil::SerializeAutotuneResultsForModule(
+            *hlo_module, autotune_config, /*as_textproto=*/true));
+    DumpToFileInDirOrStdout(*hlo_module, "", "autotune_results.pbtxt",
+                            autotune_results);
+  }
 
   return absl::OkStatus();
 }
@@ -1880,7 +1825,7 @@ GpuCompiler::CompileToBackendResult(
       module, schedule_metadata.scheduler_mem_limit, gpu_device_info));
 
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      se::MultiPlatformManager::PlatformWithId(PlatformId()));
+                      se::PlatformManager::PlatformWithId(PlatformId()));
 
   // Compile the module
   TF_ASSIGN_OR_RETURN(
@@ -1902,14 +1847,9 @@ GpuCompiler::CompileToBackendResult(
           module->config(), compile_module_results.llvm_module.get(),
           gpu_device_info.gpu_compute_capability(), executor, options, module));
   RecordXlaDeviceBinarySize(backend_result.binary.size());
-  if (DumpingEnabledForHloModule(*module) &&
-      std::holds_alternative<GpuExecutable::OwnedThunkSequence>(
-          compile_module_results.executable)) {
-    const ThunkSequence& thunk_sequence =
-        *std::get<GpuExecutable::OwnedThunkSequence>(
-            compile_module_results.executable);
+  if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
-                            thunk_sequence.ToString());
+                            compile_module_results.executable->ToString());
   }
 
   return CompileResultWithMetadata{std::move(backend_result),
@@ -1973,11 +1913,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       CompileToBackendResult(module.get(), &llvm_context, stream_exec, options,
                              gpu_device_info));
 
-  if (auto thunk_sequence = std::get_if<GpuExecutable::OwnedThunkSequence>(
-          &res.compile_module_results.executable);
-      DumpingEnabledForHloModule(*module) && thunk_sequence) {
+  if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_sequence.txt",
-                            (*thunk_sequence)->ToString());
+                            res.compile_module_results.executable->ToString());
   }
 
   // The module is being moved into the GpuExecutable below and we need to
@@ -2062,73 +2000,14 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         CompileToBackendResult(module.get(), &llvm_context, options.executor(),
                                {options.device_allocator()}, gpu_device_info));
 
-    if (!IsXlaRuntimeExecutableEnabled(module->config())) {
-      // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
-      TF_ASSIGN_OR_RETURN(
-          results.emplace_back(),
-          GpuThunkAotCompilationResult::FromModule(
-              module.get(), res.compile_module_results.buffer_assignment.get(),
-              res.backend_result.asm_text, res.backend_result.binary));
-      continue;
-    }
-
-    const auto* program = std::get_if<GpuExecutable::OwnedGpuRuntimeProgram>(
-        &res.compile_module_results.executable);
-    if (!program) {
-      return Internal("Gpu runtime program was not provided");
-    }
-
-    // TODO(ezhulenev): Unify AOT compilation with GpuRuntimeExecutable::Create
-    // (see `gpu/runtime/executable.h`).
-
-    // Options for the default XLA runtime compilation pipeline.
-    runtime::CompilationPipelineOptions copts;
-
-    // Populate mapping from XLA (SE) enums/structs type id to symbol names.
-    copts.populate_type_id_names = RegisterXlaGpuTypeIdNames;
-
-    // For passing LMHLO attributes as XLA (SE) enums/structs to custom calls.
-    copts.populate_attr_encodings = RegisterXlaGpuAttrEncoding;
-
-    // Options for constructing XLA runtime JitExecutable.
-    runtime::JitExecutable::Options opts;
-    opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
-    opts.compiler.register_dialects =
-        runtime::RegisterDefaultXlaGpuRuntimeDialects;
-
-    // Register XLA Gpu runtime custom calls with the linker.
-    opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
-        RegisterXlaGpuRuntimeCustomCalls, RegisterXlaGpuTypeIdNames);
-
-    opts.compiler.create_compilation_pipeline =
-        [copts](xla::runtime::PassManager& passes) {
-          runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
-          return absl::OkStatus();
-        };
-
-    // Instantiate new JitExecutable from the MLIR source.
-    auto jit_executable = runtime::JitExecutable::Instantiate(
-        (*program)->module, (*program)->entry_point, opts);
-    if (!jit_executable.ok())
-      return Internal("Failed to compile XLA program: %s",
-                      jit_executable.status().message());
-
-    // For static shapes we can always serialize only the default executable.
-    runtime::Executable& executable = jit_executable->DefaultExecutable().get();
-
-    // Check if XLA runtime executable saved the compilation result.
-    std::unique_ptr<llvm::MemoryBuffer> obj_file = executable.obj_file();
-    if (!obj_file)
-      return Internal("XLA runtime executable didn't save the obj file");
-
-    std::string data(obj_file->getBuffer().data(),
-                     obj_file->getBuffer().size());
-
-    results.emplace_back(std::make_unique<GpuAotCompilationResult>(
-        module->ToProto(), data, (*program)->module,
-        res.backend_result.asm_text, res.backend_result.binary,
-        res.compile_module_results.constants));
+    // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
+    TF_ASSIGN_OR_RETURN(
+        results.emplace_back(),
+        GpuThunkAotCompilationResult::FromModule(
+            module.get(), res.compile_module_results.buffer_assignment.get(),
+            res.backend_result.asm_text, res.backend_result.binary));
   }
+
   return std::move(results);
 }
 
@@ -2143,11 +2022,6 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
     Executable* executable) const {
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) return Internal("GpuExecutable is null");
-
-  if (gpu_executable->IsXlaRuntimeEnabled()) {
-    return absl::InternalError(
-        "Exporting executables when XLA runtime is enabled is not supported");
-  }
 
   return GpuThunkAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment(),
@@ -2195,6 +2069,16 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     }
   }
 
+  if (module->config()
+          .debug_options()
+          .xla_gpu_enable_address_computation_fusion()) {
+    HloPassPipeline pipeline("address-computation");
+    TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                        se::PlatformManager::PlatformWithId(PlatformId()));
+    pipeline.AddPass<AddressComputationFusionRewriter>(platform->Name());
+    TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  }
+
   {
     HloPassPipeline pipeline("fusion-wrapper");
     pipeline.AddPass<FusionWrapper>();
@@ -2215,8 +2099,9 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     constexpr int toolkit_version = TF_ROCM_VERSION;
 #endif
     pipeline.AddPass<CommandBufferScheduling>(
-        gpu_device_info.gpu_compute_capability(), toolkit_version,
+        gpu_device_info, toolkit_version,
         driver_version.value_or(toolkit_version));
+    pipeline.AddPass<GpuSanitizeConstantNames>();
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 

@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -109,7 +110,7 @@ Status GetCompilationDeviceTypeAndPjRtClient(
     *compilation_device_type =
         platform_info.xla_device_metadata()->jit_device_type();
     TF_ASSIGN_OR_RETURN(*pjrt_client, GetOrCreatePjRtClient(device_type));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (platform_info.pjrt_device_metadata()) {
@@ -119,7 +120,7 @@ Status GetCompilationDeviceTypeAndPjRtClient(
     *compilation_device_type =
         platform_info.pjrt_device_metadata()->jit_device_type();
     TF_ASSIGN_OR_RETURN(*pjrt_client, GetOrCreatePjRtClient(device_type));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TFRT-TPU is used if device_type is `DEVICE_TPU` and platform_info does not
@@ -127,7 +128,7 @@ Status GetCompilationDeviceTypeAndPjRtClient(
   if (device_type == DEVICE_TPU) {
     *compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
     TF_ASSIGN_OR_RETURN(*pjrt_client, GetOrCreatePjRtClient(device_type));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "platform_info.xla_device_metadata not found and "
@@ -148,7 +149,7 @@ Status GetCompilationDeviceTypeAndPjRtClient(
   TF_ASSIGN_OR_RETURN(*pjrt_client,
                       GetOrCreatePjRtClient(device_type, allowed_gpus));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -214,7 +215,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     // cross platform lowering.
     *xla_device_compiler = new XlaDeviceCompiler(/*persistor=*/nullptr,
                                                  /*compiler_client=*/nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::string persistent_cache_directory =
       GetPersistentCacheDirectory(platform_info.device_type());
@@ -230,7 +231,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
         persistor_config,
         platform_info.xla_device_metadata()->jit_device_type(),
         platform_info.xla_device_metadata()->client());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TFRT-TPU is used if device type is `DEVICE_TPU` and platform_info does not
@@ -241,14 +242,14 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
   if (platform_info.device_type() == DEVICE_TPU) {
     *xla_device_compiler = CreateXlaDeviceCompiler(
         persistor_config, DeviceType(DEVICE_TPU_XLA_JIT), nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (platform_info.platform_id() == nullptr) {
     return errors::InvalidArgument("platform_id is null.");
   }
   auto platform =
-      se::MultiPlatformManager::PlatformWithId(platform_info.platform_id());
+      se::PlatformManager::PlatformWithId(platform_info.platform_id());
   if (!platform.ok()) {
     return platform.status();
   }
@@ -291,7 +292,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 
   *xla_device_compiler = CreateXlaDeviceCompiler(
       persistor_config, compilation_device_type, client);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetOrCreatePjRtDeviceCompilerAndProfiler(
@@ -337,7 +338,7 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
         [&](PjRtDeviceCompiler** pjrt_device_compiler) {
           *pjrt_device_compiler =
               CreatePjRtDeviceCompiler(compilation_device_type, pjrt_client);
-          return OkStatus();
+          return absl::OkStatus();
         }));
   }
 
@@ -345,10 +346,10 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
       rm->default_container(), profiler_name, profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GetOrCreatePjRtDeviceCompilerAndProfiler(
@@ -412,7 +413,7 @@ std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
   if (!stream) {
     // Stream is not set for the host platform.
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
+        se::PlatformManager::PlatformWithId(platform_info.platform_id())
             .value();
     return std::make_shared<se::TfAllocatorAdapter>(alloc, platform);
   }

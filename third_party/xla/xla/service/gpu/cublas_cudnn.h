@@ -48,6 +48,12 @@ enum class CudnnConvKind {
                        // => output
 };
 
+enum class CudnnNormKind {
+  kLayerForwardInfer,
+  kLayerForwardTrain,
+  kLayerBackward,
+};
+
 enum class CudnnfMHAKind {
   kBmmBmm,
   kScaleBiasMaskSoftmax,

@@ -23,7 +23,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -41,7 +42,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -50,12 +50,12 @@ cc_library(
     srcs = ["gpu_codegen_test.cc"],
     hdrs = ["gpu_codegen_test.h"],
     tags = tf_cuda_tests_tags(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla/service:gpu_plugin",
         "//xla/service/gpu:gpu_executable",
+        "//xla/stream_executor:platform_manager",
         "//xla/tests:filecheck",
         "//xla/tests:llvm_irgen_test_base",
         "//xla/tests:verified_hlo_module",
@@ -81,6 +81,20 @@ xla_cc_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:literal_util",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_test(
+    name = "float_conversions_test",
+    srcs = ["float_conversions_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_codegen_test",
+        "//xla:error_spec",
+        "//xla/tests:test_utils",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -658,20 +672,16 @@ lit_test_suite(
         [
             "add_preds.hlo",
             "calling_convention.hlo",
-            "concat.hlo",
-            "constant.hlo",
             "copy.hlo",
-            "copy_nested.hlo",
             "dynamic_update_slice_inplace.hlo",
             "element_wise_row_vectorization.hlo",
             "fused_scatter.hlo",
-            "fused_slice_different_operands.hlo",
             "fused_slice.hlo",
-            "fusion.hlo",
             "kernel_reuse.hlo",
             "launch_dimensions.hlo",
             "pad_to_static.hlo",
             "reduce_atomic_min.hlo",
+            "reduce_column_layout_change.hlo",
             "reduce_f64_column.hlo",
             "reduce_large_row_to_scalar.hlo",
             "reduce_row_vectorized.hlo",
@@ -731,7 +741,6 @@ filegroup(
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
         "@llvm-project//llvm:FileCheck",
     ],
-    visibility = ["//visibility:public"],
 )
 
 xla_cc_test(
@@ -775,6 +784,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_proto_cc",
+        "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -856,7 +866,6 @@ cc_library(
     testonly = True,
     srcs = ["simple_optimization_test.cc"],
     tags = tf_cuda_tests_tags(),
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

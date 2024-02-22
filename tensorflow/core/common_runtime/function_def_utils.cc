@@ -80,7 +80,7 @@ Status FunctionDefToBodyHelper(
 
   *fbody = std::make_unique<FunctionBody>(std::move(record), result.arg_types,
                                           result.ret_types, graph.release());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,

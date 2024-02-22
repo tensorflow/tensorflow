@@ -87,7 +87,7 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
     ConcatCPU<T>(context->device(), inputs_flat, &output_flat);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Same as 'Concat' above, but handles Tensor dtype deduction automatically.
@@ -135,7 +135,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
   if (sizes.size() == 1 && sizes.at(0) == input.shape().dim_size(0)) {
     outputs->push_back(input);
     *done = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Special case 1: input is aligned.
@@ -146,10 +146,10 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
       position += size;
     }
     *done = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Handles the general case, on CPU.
@@ -189,7 +189,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     position += size;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -215,7 +215,7 @@ Status Split(OpKernelContext* context, const Tensor& input,
   TF_RETURN_IF_ERROR(
       SplitEasyCases<T>(context, input, sizes, outputs, &easy_cases_done));
   if (easy_cases_done) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \

@@ -349,3 +349,42 @@ def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation
 
   let constructor = "tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass()";
 }
+
+def HoistBroadcastReadPass : Pass<"tf-hoist-broadcast-read", "mlir::func::FuncOp"> {
+  let summary = "Hoist reads out of a replicate that are on a resource that is broacast to all replicas.";
+
+  let description = [{
+    Some `ReadVariableOp`s that are within a `tf_device.replicate` read the same
+    value across all replicas. These reads can be hoisted out of the
+    `tf_device.replicate` so there's one read for all replicas, and each replica
+    depends on the result of the read. This transform enables the
+    xla-broadcast-pass to optimize the broadcast value.
+
+    For example, the following:
+
+    ```mlir
+    tf_device.replicate {n = 2 : i32} {
+      %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+      "tf.OpA"(%0) : (tensor<f32>) -> ()
+    }
+    ```
+
+    will be transformed into:
+
+    ``mlir
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+    tf_device.replicate {n = 2 : i32} {
+      "tf.OpA"(%0) : (tensor<f32>) -> ()
+    }
+    ```
+
+    We must ensure that there is a single underlying resource that not
+    distributed across replicas. There is a single underlying resource when the
+    resource device type is CPU, so we cautiously only apply in this case.
+
+    To be cautious we never hoist a read that comes after a write to the same
+    resource.
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateHoistBroadcastReadPass()";
+}

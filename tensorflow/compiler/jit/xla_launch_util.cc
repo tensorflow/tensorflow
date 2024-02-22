@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -315,7 +316,7 @@ Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static StatusOr<Var*> GetOrCreateResourceVar(
@@ -325,7 +326,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   TF_RETURN_IF_ERROR(
       LookupOrCreateResource<Var>(ctx, handle, &variable, [&write](Var** ptr) {
         *ptr = new Var(write.type);
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return variable;
 }
@@ -411,7 +412,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     } else {
       // Stream is not set for the host platform.
       TF_ASSIGN_OR_RETURN(platform,
-                          se::MultiPlatformManager::PlatformWithId(
+                          se::PlatformManager::PlatformWithId(
                               XlaPlatformInfoFromDevice(ctx->device())));
     }
     TF_ASSIGN_OR_RETURN(auto transfer_manager,
@@ -505,7 +506,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<XlaCompiler::Argument>>
@@ -673,7 +674,6 @@ Status PreparePjRtExecutableArguments(
       }
     } else {
       if (av_tensor->GetBuffer() == nullptr) {
-        // TODO(b/260799971): verify size 0 argument is supported.
         CHECK_EQ(tensor->NumElements(), 0);  // Crash OK
         continue;
       }
@@ -684,7 +684,7 @@ Status PreparePjRtExecutableArguments(
       non_donatable_input_indices->insert(args->size() - 1);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/289002708) Create a unit test to cover use_pjrt_tensor_buffer=true.
@@ -794,7 +794,7 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
     var->is_initialized |= write.modified;
     ++output_num;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 xla::ExecuteOptions GetPjRtExecuteOptions(
@@ -873,7 +873,7 @@ Status RunPjRtExecutable(
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
       num_missing_prefix_ctx_inputs, inputs, updated_variables,
       compilation_result, use_pjrt_tensor_buffer, execute_outputs, ctx));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(

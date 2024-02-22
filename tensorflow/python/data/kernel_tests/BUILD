@@ -1144,6 +1144,7 @@ tf_py_strict_test(
         "//tensorflow/python/data/ops:options",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",

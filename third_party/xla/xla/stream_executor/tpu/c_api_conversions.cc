@@ -534,6 +534,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
+  CreateVector(config.allow_spmd_sharding_propagation_to_parameters(),
+               &hlo_config.allow_spmd_sharding_propagation_to_parameters);
   CreateVector(config.allow_spmd_sharding_propagation_to_output(),
                &hlo_config.allow_spmd_sharding_propagation_to_output);
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
@@ -582,6 +584,8 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_num_partitions(c_config.num_partitions);
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
+  config.set_allow_spmd_sharding_propagation_to_parameters(
+      MakeSpan(c_config.allow_spmd_sharding_propagation_to_parameters));
   config.set_allow_spmd_sharding_propagation_to_output(
       MakeSpan(c_config.allow_spmd_sharding_propagation_to_output));
   absl::Span<const int64_t> mesh_shape_span =

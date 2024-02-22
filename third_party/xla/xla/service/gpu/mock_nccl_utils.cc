@@ -590,7 +590,7 @@ absl::Status RunMockCollectivePermute(
     // buffer.
     VLOG(3) << absl::StreamFormat(
         "%s : mock collective-Permute: Issuing MemZero", device_string);
-    stream.ThenMemZero(&dest_addr, dest_addr.size());
+    return stream.MemZero(&dest_addr, dest_addr.size());
   }
   return absl::OkStatus();
 }

@@ -45,7 +45,7 @@ bool AllToAllDecomposer::InstructionMatchesPattern(
   }
   return all_to_all->shape().rank() < min_array_rank_;
 }
-StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
+absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     HloInstruction* instruction) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
   int64_t split_dim = *all_to_all->split_dimension();

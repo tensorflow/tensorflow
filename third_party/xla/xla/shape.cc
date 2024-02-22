@@ -116,23 +116,17 @@ std::string Shape::ToString(bool print_layout) const {
 }
 
 bool Shape::IsInteger() const {
-  if (primitive_util::IsIntegralType(element_type())) {
-    return true;
-  }
   if (IsTuple()) {
-    return absl::c_any_of(tuple_shapes_,
+    return absl::c_all_of(tuple_shapes_,
                           [](const Shape& s) { return s.IsInteger(); });
   }
-  return false;
+  return primitive_util::IsIntegralType(element_type());
 }
 
 bool Shape::is_static() const {
   if (IsTuple()) {
-    for (const Shape& subshape : tuple_shapes_) {
-      if (!subshape.is_static()) {
-        return false;
-      }
-    }
+    return absl::c_all_of(tuple_shapes_,
+                          [](const Shape& s) { return s.is_static(); });
   }
   return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }

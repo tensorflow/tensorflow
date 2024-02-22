@@ -424,6 +424,47 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_stablehlo_to_vhlo_pass",
+    srcs = [
+        "transforms/legalize_stablehlo_to_vhlo.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:base",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_ops_inc_gen",
+        "@stablehlo//:stablehlo_pass_inc_gen",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_type_inference",
+        "@stablehlo//:version",
+        "@stablehlo//:vhlo_ops",
+        "@stablehlo//:vhlo_types",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "optimize",
     srcs = [
         "transforms/optimize.cc",
@@ -457,6 +498,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
@@ -602,8 +644,10 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/stablehlo/serializer:flatbuffer_export",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
@@ -634,6 +678,7 @@ tf_cc_binary(
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_stablehlo_to_vhlo_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":passes_inc_gen",

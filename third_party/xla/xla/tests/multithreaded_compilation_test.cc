@@ -76,7 +76,7 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
     absl::MutexLock lock(&mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   };
 
   {

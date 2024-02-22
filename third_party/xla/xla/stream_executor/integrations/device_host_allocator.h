@@ -16,13 +16,22 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_HOST_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_HOST_ALLOCATOR_H_
 
+#include <cstddef>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
+#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace stream_executor {
+
 // Allocator for pinned CPU RAM that is made known to a StreamExecutor-based
 // device for the purpose of efficient DMA with the device.
 class DeviceHostAllocator : public tsl::SubAllocator {
@@ -45,15 +54,22 @@ class DeviceHostAllocator : public tsl::SubAllocator {
 
     void* ptr = nullptr;
     *bytes_received = num_bytes;
+
     if (num_bytes > 0) {
-      ptr = stream_exec_->HostMemoryAllocate(num_bytes);
-      if (ptr == nullptr) {
+      auto allocation = stream_exec_->HostMemoryAllocate(num_bytes);
+      if (!allocation.ok()) {
         LOG(WARNING) << "could not allocate pinned host memory of size: "
                      << num_bytes;
-        return ptr;
+        return nullptr;
       }
+
+      ptr = (*allocation)->opaque();
       VisitAlloc(ptr, numa_node_, num_bytes);
+
+      absl::MutexLock lock(&mutex_);
+      allocs_[ptr] = std::move(*allocation);
     }
+
     return ptr;
   }
 
@@ -62,7 +78,8 @@ class DeviceHostAllocator : public tsl::SubAllocator {
 
     if (ptr != nullptr) {
       VisitFree(ptr, numa_node_, num_bytes);
-      stream_exec_->HostMemoryDeallocate(ptr);
+      absl::MutexLock lock(&mutex_);
+      allocs_.erase(ptr);
     }
   }
 
@@ -78,6 +95,10 @@ class DeviceHostAllocator : public tsl::SubAllocator {
 
   DeviceHostAllocator(const DeviceHostAllocator&) = delete;
   void operator=(const DeviceHostAllocator&) = delete;
+
+  absl::Mutex mutex_;
+  absl::flat_hash_map<void*, std::unique_ptr<MemoryAllocation>> allocs_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace stream_executor

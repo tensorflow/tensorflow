@@ -166,29 +166,6 @@ HloFusionAnalysis HloFusionAnalysis::Create(
 }
 
 // static
-absl::string_view HloFusionAnalysis::GetEmitterFusionKindString(
-    EmitterFusionKind kind) {
-  switch (kind) {
-    case EmitterFusionKind::kLoop:
-      return "loop";
-    case EmitterFusionKind::kCustomFusion:
-      return "custom";
-    case EmitterFusionKind::kTriton:
-      return "triton";
-    case EmitterFusionKind::kReduction:
-      return "reduction";
-    case EmitterFusionKind::kTranspose:
-      return "transpose";
-    case EmitterFusionKind::kConcatenate:
-      return "concatenate";
-    case EmitterFusionKind::kInputSlices:
-      return "input_slices";
-    case EmitterFusionKind::kScatter:
-      return "scatter";
-  }
-}
-
-// static
 HloFusionAnalysis HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {
@@ -262,10 +239,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
         continue;
       }
       if (!IsRealReductionHero(*root, *hero)) {
-        // Needs to have a compatible shape to the reduce operand.
-        if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-                root->shape(), hero_operand_shape,
-                /*ignore_element_type=*/true)) {
+        // Needs to have a compatible shape to the reduce operand (compatible
+        // meaning same number of elements).
+        if (ShapeUtil::ElementsIn(root->shape()) !=
+            ShapeUtil::ElementsIn(hero_operand_shape)) {
           valid_shapes = false;
           break;
         }

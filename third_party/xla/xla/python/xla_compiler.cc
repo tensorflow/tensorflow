@@ -23,7 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -39,6 +41,9 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -247,18 +252,32 @@ StatusOr<HloSharding> IotaTileHelper(
 // 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
 // with name "xla._CUSTOM_CALL_TARGET".
 // 'platform' is an XLA platform name, e.g., "Host" or "CUDA".
-Status PyRegisterCustomCallTarget(const std::string& fn_name,
-                                  py::capsule capsule,
-                                  const std::string& platform) {
+absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
+                                        py::capsule capsule,
+                                        const std::string& platform,
+                                        int api_version) {
   static const char* const kName = "xla._CUSTOM_CALL_TARGET";
   if (absl::string_view(capsule.name()) != kName) {
     return InvalidArgument(
-        "Argument to RegisterCustomCallTargetRegistry was not a "
+        "Argument to RegisterCustomCallTarget was not a "
         "xla._CUSTOM_CALL_TARGET capsule.");
   }
-  CustomCallTargetRegistry::Global()->Register(
-      fn_name, static_cast<void*>(capsule), platform);
-  return OkStatus();
+  switch (api_version) {
+    case 0:
+      CustomCallTargetRegistry::Global()->Register(
+          fn_name, static_cast<void*>(capsule), platform);
+      return absl::OkStatus();
+    case 1:
+      ffi::Ffi::RegisterStaticHandler(
+          xla::ffi::GetXlaFfiApi(), fn_name, platform,
+          reinterpret_cast<XLA_FFI_Handler*>(static_cast<void*>(capsule)));
+      return absl::OkStatus();
+    default:
+      return absl::UnimplementedError(absl::StrFormat(
+          "API version %d is not supported by RegisterCustomCallTarget. "
+          "Supported versions are 0 and 1.",
+          api_version));
+  }
 }
 
 template <typename T, typename Container>
@@ -865,12 +884,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           });
 
   // Custom-call targets.
-  m.def("register_custom_call_target",
-        [](const std::string& fn_name, py::capsule capsule,
-           const std::string& platform) {
-          xla::ThrowIfError(PyRegisterCustomCallTarget(
-              fn_name, std::move(capsule), platform));
-        });
+  m.def(
+      "register_custom_call_target",
+      [](const std::string& fn_name, py::capsule capsule,
+         const std::string& platform, const int api_version) {
+        xla::ThrowIfError(PyRegisterCustomCallTarget(
+            fn_name, std::move(capsule), platform, api_version));
+      },
+      py::arg("fn_name"), py::arg("capsule"), py::arg("platform"),
+      py::arg("api_version") = 0);
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
@@ -902,6 +924,16 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
+      .def_property("xla_gpu_dump_autotune_results_to",
+                    &DebugOptions::xla_gpu_dump_autotune_results_to,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_dump_autotune_results_to(value);
+                    })
+      .def_property("xla_gpu_load_autotune_results_from",
+                    &DebugOptions::xla_gpu_load_autotune_results_from,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_load_autotune_results_from(value);
+                    })
       .def_property("xla_gpu_cuda_data_dir",
                     &DebugOptions::xla_gpu_cuda_data_dir,
                     [](DebugOptions* self, std::string value) {
@@ -1050,6 +1082,17 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           "auto_spmd_partitioning_mesh_ids",
           &ExecutableBuildOptions::auto_spmd_partitioning_mesh_ids,
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
+      .def_property(
+          "allow_spmd_sharding_propagation_to_parameters",
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_parameters().begin(),
+                options.allow_spmd_sharding_propagation_to_parameters().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_parameters(v);
+          })
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           [](const ExecutableBuildOptions& options) -> std::vector<bool> {

@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/address_computation_fusion_rewriter.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -28,13 +30,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/status_macros.h"
+#include "xla/shape.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -48,16 +57,61 @@ bool IsNoOp(const HloInstruction* hlo) {
                           HloOpcode::kGetTupleElement>(hlo);
 }
 
+bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
+  auto* custom_call = DynCast<HloCustomCallInstruction>(hlo);
+  if (custom_call == nullptr) return false;
+
+  // TODO(vuson): properly handle token by following
+  // `LhloDialectEmitter::EmitCustomCallOp`'s `CreateOperands` logic for
+  // `LhloDialectEmitter::EmitFusionOp`'s `RewriteFusionOperand`
+  if (custom_call->shape().IsTuple() &&
+      absl::c_any_of(
+          custom_call->shape().tuple_shapes(),
+          [&](const Shape& sub_shape) { return sub_shape.IsToken(); }))
+    return false;
+
+  const std::string call_target_name = custom_call->custom_call_target();
+
+  bool is_ffi_custom_call =
+      custom_call->api_version() == CustomCallApiVersion::API_VERSION_TYPED_FFI;
+
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      call_target_name, std::string(platform_name));
+
+  absl::StatusOr<XLA_FFI_Handler*> handler =
+      ffi::FindHandler(call_target_name, platform_name);
+
+  // At least one implementation should be available at run time.
+  bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
+  bool found_ffi_handler = is_ffi_custom_call && handler.ok();
+
+  return found_custom_call || found_ffi_handler;
+}
+
 absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
     const HloInstruction* instr) {
   absl::InlinedVector<HloInstruction*, 8> sliced_operand_chains = {
       const_cast<HloInstruction*>(instr)};
   auto fusion = HloFusionAdaptor::ForComputation(instr->parent());
+  absl::flat_hash_set<HloInstruction*> processed_sliced_chain_set;
+
+  const auto& aliasing_pairs =
+      Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  absl::flat_hash_set<int64_t> aliased_operands;
+  for (const auto& pair : aliasing_pairs) {
+    aliased_operands.insert(pair.second.first);
+  }
+
   for (auto* operand : instr->operands()) {
+    // output_to_operand_aliasing means the operand is to be materialized, which
+    // is against the whole idea of address computation fusion. Skip this
+    // operand.
+    if (aliased_operands.contains(instr->operand_index(operand))) continue;
     absl::InlinedVector<HloInstruction*, 4> maybe_sliced_operand_chain;
     auto maybe_slice_adaptor =
         HloFindIf({HloInstructionAdaptor(*operand)}, *fusion, [&](auto node) {
           const HloInstruction* cur = &node.instruction();
+          if (processed_sliced_chain_set.contains(cur)) return true;
           maybe_sliced_operand_chain.push_back(
               const_cast<HloInstruction*>(cur));
           // TODO(vuson): lift the first restriction by considering fusing other
@@ -70,10 +124,13 @@ absl::InlinedVector<HloInstruction*, 8> GetSlicedOperandChains(
         });
     if (maybe_slice_adaptor == std::nullopt) continue;
     const auto& maybe_slice_instr = maybe_slice_adaptor->instruction();
-    if (IsContiguousSlice(maybe_slice_instr)) {
+    if (IsContiguousSlice(maybe_slice_instr) ||
+        processed_sliced_chain_set.contains(&maybe_slice_instr)) {
       sliced_operand_chains.insert(sliced_operand_chains.end(),
                                    maybe_sliced_operand_chain.begin(),
                                    maybe_sliced_operand_chain.end());
+      processed_sliced_chain_set.insert(maybe_sliced_operand_chain.begin(),
+                                        maybe_sliced_operand_chain.end());
     }
   }
   return sliced_operand_chains;
@@ -96,6 +153,48 @@ absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
   }
 
   return captures;
+}
+
+absl::InlinedVector<HloInstruction*, 8> GetSortedMatched(
+    absl::Span<HloInstruction* const> matched) {
+  absl::InlinedVector<HloInstruction*, 8> sorted_matched;
+  absl::flat_hash_set<HloInstruction*> instructions_set(matched.begin(),
+                                                        matched.end());
+  absl::flat_hash_set<HloInstruction*> processed_set;
+  // Topologically sort `matched`
+  for (auto it = matched.rbegin(); it != matched.rend(); ++it) {
+    if (processed_set.contains(*it)) continue;
+    for (auto* operand : (*it)->operands()) {
+      if (!instructions_set.contains(operand)) {
+        continue;
+      }
+      if (!processed_set.contains(operand)) {
+        sorted_matched.emplace_back(operand);
+        processed_set.insert(operand);
+      }
+    }
+    sorted_matched.emplace_back(*it);
+    processed_set.insert(*it);
+  }
+
+  return sorted_matched;
+}
+
+void CreateRootTuple(HloInstruction* root, HloComputation::Builder& builder) {
+  std::vector<HloInstruction*> elements;
+  elements.reserve(root->shape().tuple_shapes_size());
+  for (size_t i = 0; i < root->shape().tuple_shapes_size(); ++i) {
+    if (root->shape().tuple_shapes(i).IsTuple()) {
+      HloInstruction* gte = builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(root, i));
+      CreateRootTuple(gte, builder);
+      elements.push_back(builder.last_added_instruction());
+    } else {
+      elements.push_back(builder.AddInstruction(
+          HloInstruction::CreateGetTupleElement(root, i)));
+    }
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(elements));
 }
 
 absl::StatusOr<HloComputation*> CreateFusionBody(
@@ -131,16 +230,10 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
   }
 
   HloInstruction* root = builder.last_added_instruction();
-
-  // If the custom call requires a workspace we wrap the produced values with a
-  // root tuple of "real" result and a workspace.
-  if (root->shape().IsTuple()) {
-    TF_RET_CHECK(root->shape().tuple_shapes_size() == 2);
-    HloInstruction* result =
-        builder.AddInstruction(HloInstruction::CreateGetTupleElement(root, 0));
-    HloInstruction* workspace =
-        builder.AddInstruction(HloInstruction::CreateGetTupleElement(root, 1));
-    builder.AddInstruction(HloInstruction::CreateTuple({result, workspace}));
+  // Create a root tuple if the root is a tuple to make sure there's a buffer
+  // assigned for each of the elements. Make sure the tuple is not nil first.
+  if (root->shape().IsTuple() && root->shape().tuple_shapes_size() > 0) {
+    CreateRootTuple(root, builder);
   }
 
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
@@ -156,6 +249,9 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       body->root_instruction()->shape(), HloInstruction::FusionKind::kCustom,
       captures, body));
   module->SetAndUniquifyInstrName(fusion, "address_computation");
+
+  // We don't need to set/update output_to_operand_aliasing for the new fusion
+  // instruction because all buffers are already assigned at this point.
 
   // Set backends config to a matched custom fusion config.
   GpuBackendConfig gpu_config;
@@ -175,7 +271,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto instructions = module->entry_computation()->MakeInstructionPostOrder();
+  if (!module->has_schedule()) return Internal("module is not scheduled");
   bool changed = false;
 
   absl::flat_hash_map<HloInstruction*, absl::InlinedVector<HloInstruction*, 8>>
@@ -185,7 +281,7 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      if (IsLegacyCublasMatmul(*instr)) {
+      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         auto sliced_operand_chains = GetSlicedOperandChains(instr);
         if (!(sliced_operand_chains.size() == 1 &&
               sliced_operand_chains.front() == instr)) {
@@ -195,17 +291,34 @@ absl::StatusOr<bool> AddressComputationFusionRewriter::Run(
     }
   }
 
+  HloSchedule& schedule = module->schedule();
   for (auto& kv : matches) {
     auto captures = GetPatternCaptures(kv.second);
-    std::reverse(kv.second.begin(), kv.second.end());
+    auto sorted = GetSortedMatched(kv.second);
+
     TF_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                        CreateFusionBody(module, kv.second, captures));
+                        CreateFusionBody(module, sorted, captures));
     TF_ASSIGN_OR_RETURN(
         HloInstruction * fusion,
         CreateFusionInstruction(module, kv.first, captures, fusion_body));
+
+    // As we are running after scheduling we have to keep it valid.
     HloComputation* parent = kv.first->parent();
+
+    // Update schedule to replace the custom call instruction with the fusion
+    // instruction.
+    // Removal of the rest of the instructions in the sequence is handled by
+    // schedule update below.
+    HloInstructionSequence& sequence = schedule.GetOrCreateSequence(parent);
+    sequence.replace_instruction(kv.first, fusion);
+
+    // TODO(vuson): handle control dependencies
     TF_RETURN_IF_ERROR(parent->ReplaceInstruction(kv.first, fusion));
     changed = true;
+  }
+
+  if (changed) {
+    TF_RETURN_IF_ERROR(module->schedule().Update());
   }
 
   return changed;

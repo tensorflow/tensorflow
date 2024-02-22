@@ -23,12 +23,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/utils/test_metadata_config.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -49,10 +51,10 @@ using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 using tpu::TPUCompileMetadataProto;
-using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_time";
+static constexpr char kFullBridge[] = "full_bridge";
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status";
 static const char kMlirWithFallbackModeSuccess[] =
@@ -79,7 +81,7 @@ static constexpr char kMlirModuleStr[] = R"(
   }
 })";
 
-// MLIR which should legalize at all
+// MLIR which should not legalize at all
 static constexpr char kBadMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   func.func @main() -> () {
@@ -107,13 +109,18 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.mlir_module = mlir_module_str;
 
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;
-  metadata_proto.add_retvals();
+  // Configure metadata requires parsing the module and if we are testing a
+  // failure, we ignore this particular set up error assuming we'll not get
+  // far enough to need valid metadata.
+  tensorflow::tf2xla::internal::ConfigureMetadata(mlir_module_str, arg_shapes,
+                                                  metadata_proto)
+      .IgnoreError();
   bool use_tuple_args = true;
   std::vector<ShardingAndIndex> arg_core_mapping;
   std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
@@ -272,7 +279,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                                          {&guaranteed_constants}};
 
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
 
@@ -292,6 +299,39 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                         &arg_core_mapping, &per_core_arg_shapes, client);
 
   EXPECT_FALSE(compile_result.ok());
+}
+
+TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
+  CellReader<monitoring::testing::Histogram> compilation_time(
+      kCompilationTimeStreamzName);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          kMlirModuleStr,
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED));
+
+  // Compilation time should have been updated.
+  EXPECT_GT(compilation_time.Delta(kFullBridge).num(), 0);
+}
+
+TEST(LegalizeTFTest, SuccessfullyCompilesModulesWithReturnValues) {
+  static constexpr char kHasReturnValuesAndNoMetadataRetvals[] = R"(
+    module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+      func.func @main() -> (tensor<2xi32>) {
+        %cst = "tf.Const"() {value = dense<[524170, 523952]> : tensor<2xi32>} : () -> tensor<2xi32>
+        return %cst : tensor<2xi32>
+    }
+  })";
+
+  auto compilation_result = CompileMlirModule(
+      kHasReturnValuesAndNoMetadataRetvals,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+  EXPECT_TRUE(compilation_result.ok());
+
+  // Ensure that the compilation result contains a constant.
+  EXPECT_THAT(compilation_result,
+              ComputationProtoContains("opcode:.*constant"));
 }
 
 }  // namespace v2

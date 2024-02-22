@@ -5,7 +5,8 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -20,7 +21,6 @@ cc_library(
     name = "hlo_constant_splitter",
     srcs = ["hlo_constant_splitter.cc"],
     hdrs = ["hlo_constant_splitter.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",

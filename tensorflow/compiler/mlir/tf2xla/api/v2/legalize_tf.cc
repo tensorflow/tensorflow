@@ -25,9 +25,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -54,9 +57,17 @@ using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 
+auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
+    {"/tensorflow/core/tf2xla/api/v2/phase2_compilation_time",
+     "The wall-clock time spent on executing graphs in milliseconds.",
+     "configuration"},
+    // Power of 1.5 with bucket count 45 (> 23 hours)
+    {tsl::monitoring::Buckets::Exponential(1, 1.5, 45)});
+
 // Name of component for error logging. This name is fixed and required to
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
+constexpr char kFullBridge[] = "full_bridge";
 
 namespace {
 
@@ -134,6 +145,12 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client) {
+  CompilationTimer timer;
+  auto record_time = llvm::make_scope_exit([&timer] {
+    phase2_bridge_compilation_time->GetCell(kFullBridge)
+        ->Add(timer.ElapsedCyclesInMilliseconds());
+  });
+
   auto compilation_result = std::make_unique<XlaCompilationResult>();
 
   DumpComputationInput(computation);

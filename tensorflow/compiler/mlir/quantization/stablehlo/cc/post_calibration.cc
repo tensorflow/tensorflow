@@ -17,14 +17,11 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tsl/platform/errors.h"
 
@@ -32,6 +29,7 @@ namespace mlir::quant::stablehlo {
 
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationConfig;
+using ::stablehlo::quantization::StaticRangePtqPreset;
 using ::tensorflow::quantization::RunPasses;
 
 PostCalibrationComponent::PostCalibrationComponent(
@@ -43,21 +41,17 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config, this](PassManager& pm) {
-        AddPasses(pm, config.pipeline_config());
+        AddPostCalibrationPasses(pm, config.pipeline_config(),
+                                 config.static_range_ptq_preset());
       },
       *ctx_, module_op));
   return module_op;
 }
 
 void PostCalibrationComponent::AddPasses(
-    OpPassManager& pm, const PipelineConfig& pipeline_config) const {
-  pm.addNestedPass<func::FuncOp>(
-      CreateConvertCustomAggregationOpToQuantStatsPass());
-  pm.addPass(createQuantizeCompositeFunctionsPass());
-  if (pipeline_config.unpack_quantized_types()) {
-    AddStablehloQuantToIntPasses(pm);
-  }
-  AddCallModuleSerializationPasses(pm);
+    OpPassManager& pm, const StaticRangePtqPreset& static_range_ptq_preset,
+    const PipelineConfig& pipeline_config) const {
+  AddPostCalibrationPasses(pm, pipeline_config, static_range_ptq_preset);
 }
 
 }  // namespace mlir::quant::stablehlo

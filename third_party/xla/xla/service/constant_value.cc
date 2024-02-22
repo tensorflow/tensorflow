@@ -19,10 +19,11 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<ConstantValue> ConstantValue::FromLiteral(const Literal& literal) {
+absl::StatusOr<ConstantValue> ConstantValue::FromLiteral(
+    const Literal& literal) {
   CHECK_EQ(literal.shape().dimensions_size(), 0) << "Expected scalar literal";
   return primitive_util::PrimitiveTypeSwitch<StatusOr<ConstantValue>>(
-      [&](auto primitive_type_constant) -> StatusOr<ConstantValue> {
+      [&](auto primitive_type_constant) -> absl::StatusOr<ConstantValue> {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
           return ConstantValue(
               static_cast<uint64_t>(

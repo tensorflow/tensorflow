@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -31,6 +35,11 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tsl/platform/regexp.h"  // IWYU pragma: keep
+
+#define DEBUG_TYPE "lift_quantizable_spots_as_functions"
 
 namespace mlir::quant::stablehlo {
 
@@ -39,13 +48,16 @@ namespace mlir::quant::stablehlo {
 
 namespace {
 
+using ::stablehlo::quantization::FunctionNameMatcherSpec;
+using ::stablehlo::quantization::Method;
+using ::stablehlo::quantization::QuantizationSpec;
+using ::stablehlo::quantization::QuantizationSpecs;
+
 // TODO - b/303543789: Move the helper functions below to a separate util.
 // Fetches the default or null attribute, used for pattern matching.
 Attribute DefaultOrNullAttr(OpBuilder& builder, const Attribute& attr) {
-  if (!attr) {
-    return builder.getStringAttr(kNullAttributeValue);
-  }
-  return attr;
+  if (attr) return attr;
+  return builder.getStringAttr(kNullAttributeValue);
 }
 
 // Checks whether the value of a constant equals the given float, regardless
@@ -62,6 +74,12 @@ bool FloatValueEquals(const Attribute& attr, const double value) {
   });
 }
 
+// Lifts quantizable units as separate functions, thereby identifying the
+// boundaries of quantizable subgraphs. `QuantizationSpecs` influences how
+// quantizable units are lifted.
+//
+// FileCheck test cases using various `QuantizationSpecs` can be seen at
+// `TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass`.
 class LiftQuantizableSpotsAsFunctionsPass
     : public impl::LiftQuantizableSpotsAsFunctionsPassBase<
           LiftQuantizableSpotsAsFunctionsPass> {
@@ -69,10 +87,19 @@ class LiftQuantizableSpotsAsFunctionsPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       LiftQuantizableSpotsAsFunctionsPass)
 
-  explicit LiftQuantizableSpotsAsFunctionsPass() = default;
+  LiftQuantizableSpotsAsFunctionsPass() = default;
+
+  // Constructor with explicit user-provided `QuantizationSpecs`.
+  explicit LiftQuantizableSpotsAsFunctionsPass(
+      QuantizationSpecs quantization_specs)
+      : quantization_specs_(std::move(quantization_specs)) {}
 
  private:
   void runOnOperation() override;
+
+  // No explicit quantization spec is specified by default. Implicitly this
+  // means that all quantizable units will be identified and lifted.
+  QuantizationSpecs quantization_specs_{};
 };
 
 namespace simple_patterns {
@@ -81,6 +108,91 @@ namespace simple_patterns {
 
 namespace fusion_patterns {
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/lift_quantizable_spots_as_functions_fusion.inc"
+}
+
+// Returns a `func::FuncOp` in `module_op` (not nested) whose name matches
+// `name`. Returns null if no such a function exists.
+// TODO: b/307620778 - Factor out "FindMainFuncOp" functionality.
+func::FuncOp FindFuncOp(ModuleOp module_op, const StringRef name) {
+  auto func_ops = module_op.getOps<func::FuncOp>();
+  auto func_itr = llvm::find_if(func_ops, [name](func::FuncOp func_op) {
+    return func_op.getName() == name;
+  });
+
+  if (func_itr == func_ops.end()) return {};
+  return *func_itr;
+}
+
+// Quantizable Unit matcher that uses lifted function's name for matching.
+class FunctionNameMatcher {
+ public:
+  explicit FunctionNameMatcher(const FunctionNameMatcherSpec& spec)
+      : match_regex_(GetMatchRegex(spec)) {}
+
+  // Returns `true` when matched with the entry function of
+  // `xla_call_module_op`.
+  bool Match(TF::XlaCallModuleOp xla_call_module_op) const {
+    if (match_regex_ == nullptr) return false;
+
+    const std::string lifted_func_name =
+        xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function")
+            .getValue()
+            .str();
+
+    return RE2::FullMatch(lifted_func_name, *match_regex_);  // NOLINT
+  }
+
+ private:
+  // Returns an owned `RE2` object that corresponds to the `spec`. Returns
+  // `nullptr` if the `spec` is invalid.
+  // NOLINTNEXTLINE - RE2 included via TSL regexp.h
+  std::unique_ptr<RE2> GetMatchRegex(const FunctionNameMatcherSpec& spec) {
+    const std::string& regex = spec.regex();
+    if (regex.empty()) return nullptr;
+
+    return std::make_unique<RE2>(regex);  // NOLINT
+  }
+
+  // Regex object used for matching against a lifted function's name.
+  std::unique_ptr<RE2> match_regex_;  // NOLINT
+};
+
+// Applies quantization spec to all matched lifted functions. At this point only
+// denylisting (`NoQuantization`) will be applied if specs is nonempty.
+// TODO: b/307620778 - Support more advanced selective quantization methods.
+LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
+                                    ModuleOp module_op) {
+  func::FuncOp main_func = FindFuncOp(module_op, "main");
+  if (!main_func) return failure();
+
+  const Method& quantization_method = spec.method();
+  if (!quantization_method.has_no_quantization()) {
+    module_op->emitError() << "Unsupported quantization method: "
+                           << quantization_method.DebugString() << "\n";
+    return failure();
+  }
+
+  const FunctionNameMatcher matcher(spec.matcher().function_name());
+  for (auto xla_call_module_op : main_func.getOps<TF::XlaCallModuleOp>()) {
+    if (!matcher.Match(xla_call_module_op)) continue;
+
+    // Disable quantization when matched.
+    const std::string lifted_func_name =
+        xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function")
+            .getValue()
+            .str();
+    func::FuncOp lifted_func = FindFuncOp(module_op, lifted_func_name);
+
+    // Remove relevant attributes that enable quantization. This essentially
+    // disables quantization for the matched `xla_call_module_op`.
+    xla_call_module_op->removeAttr("_original_entry_function");
+    xla_call_module_op->removeAttr("_tfl_quant_trait");
+    lifted_func->removeAttr("tf_quant.composite_function");
+
+    LLVM_DEBUG(llvm::dbgs() << "Disabled quantization for quantizable unit: "
+                            << lifted_func_name << "\n");
+  }
+  return success();
 }
 
 void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
@@ -101,8 +213,26 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 
   // Remove all attr_map attributes.
   module_op.walk([](Operation* op) { op->removeAttr(kAttrMapAttribute); });
+
+  // Perform selective quantization. Iterates over the quantization specs and
+  // applies quantization methods to each matched lifted function.
+  for (const QuantizationSpec& spec : quantization_specs_.specs()) {
+    if (failed(ApplyQuantizationSpec(spec, module_op))) {
+      signalPassFailure();
+      return;
+    }
+  }
 }
 
 }  // namespace
+
+// Creates `LiftQuantizableSpotsAsFunctionsPass` with user-defined
+// `QuantizationSpecs`.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLiftQuantizableSpotsAsFunctionsPass(
+    const QuantizationSpecs& quantization_specs) {
+  return std::make_unique<LiftQuantizableSpotsAsFunctionsPass>(
+      quantization_specs);
+}
 
 }  // namespace mlir::quant::stablehlo

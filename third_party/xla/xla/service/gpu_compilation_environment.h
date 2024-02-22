@@ -23,10 +23,10 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromFlagStrings(
+absl::StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromFlagStrings(
     std::vector<std::string>& flags, bool strict);
 
-StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar();
+absl::StatusOr<GpuCompilationEnvironment> CreateGpuCompEnvFromEnvVar();
 
 GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues();
 

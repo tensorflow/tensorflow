@@ -494,6 +494,26 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
+XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceGeneralBitcastCompatible) {
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
+fused_computation {
+  param_0 = f32[64,128]{1,0} parameter(0)
+  neg = f32[64,128]{1,0} negate(param_0)
+  bitcast = f32[8,8,128]{2,1,0} bitcast(neg)
+  bitcast2 = f32[128,64]{0,1} bitcast(neg)
+  constant_0 = f32[] constant(0)
+  reduce.1 = f32[128]{0} reduce(bitcast, constant_0), dimensions={0,1}, to_apply=Add
+  ROOT tuple.12 = (f32[128]{0}, f32[64,128]{1,0}, f32[128,64]{0,1}) tuple(reduce.1, neg, bitcast2)
+}
+
+ENTRY main {
+  Arg_2.1 = f32[64,128]{1,0} parameter(0)
+  ROOT fusion = (f32[128]{0}, f32[64,128]{1,0}, f32[128,64]{0,1}) fusion(Arg_2.1), kind=kInput, calls=fused_computation
+})");
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
+}
+
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceWithEpilogue) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
 fused_computation {

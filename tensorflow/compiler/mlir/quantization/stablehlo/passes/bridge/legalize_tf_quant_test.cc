@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
 #include "xla/client/client_library.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -45,7 +45,7 @@ class LegalizeTFQuantTest : public Test {
         tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
     mlir_to_hlo_args.mlir_module = mlir_module_string;
     tensorflow::se::Platform* platform =
-        tensorflow::se::MultiPlatformManager::PlatformWithName("Host").value();
+        tensorflow::se::PlatformManager::PlatformWithName("Host").value();
     auto client =
         xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
     tensorflow::tpu::TPUCompileMetadataProto metadata_proto;

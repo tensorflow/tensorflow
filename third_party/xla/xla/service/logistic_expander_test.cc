@@ -16,30 +16,19 @@ limitations under the License.
 #include "xla/service/logistic_expander.h"
 
 #include <memory>
+#include <string_view>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "xla/service/hlo_creation_utils.h"
+#include "xla/service/dynamic_padder.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/shape_inference.h"
-#include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
-#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -73,5 +62,21 @@ TEST_F(LogisticExpanderTest, ExpandWith) {
                                  m::Exp(m::Negate(m::Parameter(0)))))));
 }
 
+TEST_F(LogisticExpanderTest, DynamicDimensions) {
+  constexpr std::string_view hlo = R"(
+HloModule DynamicDimensions
+
+ENTRY main {
+  p = f32[<=10] parameter(0)
+  ROOT root = f32[<=10] logistic(p)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  LogisticExpander logistic_expander;
+  ASSERT_TRUE(logistic_expander.Run(module.get()).value());
+  DynamicPadder dynamic_padder;
+  EXPECT_TRUE(dynamic_padder.Run(module.get()).value());
+}
 }  // namespace
 }  // namespace xla

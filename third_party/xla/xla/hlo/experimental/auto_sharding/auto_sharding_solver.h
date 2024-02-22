@@ -33,13 +33,13 @@ namespace spmd {
 struct AutoShardingSolverResult {
  public:
   AutoShardingSolverResult(
-      StatusOr<std::tuple<std::vector<NodeStrategyIdx>,
-                          std::vector<EdgeStrategyIdx>, double>>
+      absl::StatusOr<std::tuple<std::vector<NodeStrategyIdx>,
+                                std::vector<EdgeStrategyIdx>, double>>
           status,
       bool skip_auto_sharding)
       : status(status), skip_auto_sharding(skip_auto_sharding) {}
   bool operator==(const AutoShardingSolverResult& other) const;
-  StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
+  absl::StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
       status;
   bool skip_auto_sharding;
 };
@@ -110,19 +110,31 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
 AutoShardingSolverRequest ScaleRequest(
     const AutoShardingSolverRequest& request);
 
-// Determines if two strategies are equivalent (i.e., share identical node
-// costs, edge costs, and alias mappings).
-bool CheckEquivalent(const AutoShardingSolverRequest& request,
-                     const std::vector<EdgeIdx>& src_edges,
-                     const std::vector<EdgeIdx>& dst_edges,
-                     const std::vector<AliasIdx>& src_aliases,
-                     const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
-                     NodeStrategyIdx first, NodeStrategyIdx second);
+// Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
+// costs are all equal or worse, and it has identical alias mappings).
+bool CheckDominance(const AutoShardingSolverRequest& request,
+                    const std::vector<EdgeIdx>& src_edges,
+                    const std::vector<EdgeIdx>& dst_edges,
+                    const std::vector<AliasIdx>& src_aliases,
+                    const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
+                    NodeStrategyIdx first, NodeStrategyIdx second);
 
-// For every node, examine each sharding strategy to see if it is equivalent to
-// another (which, if so, would allow the reusing of strategy variables).
-std::vector<std::vector<NodeStrategyIdx>> StratFollow(
-    const AutoShardingSolverRequest& request);
+class StrategyShaver {
+ public:
+  explicit StrategyShaver(const AutoShardingSolverRequest& request);
+
+  // For every node, examine each sharding strategy to see if it is dominated by
+  // another.
+  NodeStrategies FindShavedStrategies() const;
+
+ private:
+  const AutoShardingSolverRequest& request_;  // NOLINT
+  std::vector<std::vector<EdgeIdx>> src_edge_map_;
+  std::vector<std::vector<EdgeIdx>> dst_edge_map_;
+  std::vector<std::vector<AliasIdx>> src_alias_map_;
+  std::vector<std::vector<AliasIdx>> dst_alias_map_;
+  std::vector<std::vector<NodeIdx>> followers_;
+};
 
 }  // namespace spmd
 }  // namespace xla

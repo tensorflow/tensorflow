@@ -4,6 +4,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
@@ -24,13 +25,11 @@ config_setting(
     define_values = {
         "tensorflow_mkldnn_contraction_kernel": "0",
     },
-    visibility = ["//visibility:public"],
 )
 
 bzl_library(
     name = "build_defs",
     srcs = ["build_defs.bzl"],
-    visibility = ["//visibility:public"],
 )
 
 # Add
@@ -45,7 +44,6 @@ bool_flag(
 config_setting(
     name = "disable_onednn_contraction_kernel_config",
     flag_values = {":disable_onednn_contraction_kernel": "True"},
-    visibility = ["//visibility:public"],
 )
 
 # Depending on a build configuration this target provides custom kernel for Eigen
@@ -77,7 +75,6 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         ":disable_onednn_contraction_kernel_config": [":eigen_contraction_kernel_no_mkl"],
@@ -105,7 +102,6 @@ cc_library(
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
         ],
     }),
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/framework/fixedpoint",
         "//tsl/platform:dynamic_annotations",
@@ -131,7 +127,6 @@ exports_files(
         "eigen_contraction_kernel.cc",
         "eigen_contraction_kernel.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -139,7 +134,6 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     # Somehow the following code works with fixedpoint, but not here.
     # visibility = [
     #     "//tensorflow:__subpackages__",
@@ -160,7 +154,6 @@ filegroup(
     srcs = [
         "eigen_contraction_kernel.h",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # Maintain the same name as other directories until a principled refactor is done, as these files
@@ -170,5 +163,4 @@ filegroup(
     srcs = [
         "eigen_contraction_kernel.cc",
     ],
-    visibility = ["//visibility:public"],
 )

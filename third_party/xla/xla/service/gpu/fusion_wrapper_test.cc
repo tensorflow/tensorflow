@@ -33,7 +33,7 @@ TEST_F(FusionWrapperTest, SimpleOp) {
         ROOT result = f16[60, 41] concatenate(p0, p1), dimensions={0}
       })",
                             FusionWrapper(), R"(
-// CHECK: %fused_computation (param_0: f16[30,41], param_1: f16[30,41]) -> f16[60,41] {
+// CHECK: %wrapped_concatenate_computation (param_0: f16[30,41], param_1: f16[30,41]) -> f16[60,41] {
 // CHECK:   %param_0 = f16[30,41]{1,0} parameter(0)
 // CHECK:   %param_1 = f16[30,41]{1,0} parameter(1)
 // CHECK:   ROOT %result.1 = f16[60,41]{1,0} concatenate(%param_0, %param_1), dimensions={0}
@@ -42,7 +42,7 @@ TEST_F(FusionWrapperTest, SimpleOp) {
 // CHECK: ENTRY %TestComputation (p0: f16[30,41], p1: f16[30,41]) -> f16[60,41] {
 // CHECK:   %p0 = f16[30,41]{1,0} parameter(0)
 // CHECK:   %p1 = f16[30,41]{1,0} parameter(1)
-// CHECK:   ROOT %wrapped_result = f16[60,41]{1,0} fusion(%p0, %p1), kind=kLoop, calls=%fused_computation
+// CHECK:   ROOT %wrapped_concatenate = f16[60,41]{1,0} fusion(%p0, %p1), kind=kLoop, calls=%wrapped_concatenate_computation
 // CHECK: })");
 }
 
@@ -67,7 +67,7 @@ TEST_F(FusionWrapperTest, Scatter) {
             to_apply=update_s32
       })",
                             FusionWrapper(), R"(
-// CHECK: fused_computation
+// CHECK: wrapped_scatter_computation
 // CHECK:   %[[param_0:.*]] = s32[] parameter(0)
 // CHECK:   %[[param_1:.*]] = s32[0]{0} parameter(1)
 // CHECK:   %[[param_2:.*]] = s32[] parameter(2)
@@ -77,7 +77,7 @@ TEST_F(FusionWrapperTest, Scatter) {
 // CHECK:   %[[p0:.*]] = s32[] parameter(0)
 // CHECK:   %[[p1:.*]] = s32[0]{0} parameter(1)
 // CHECK:   %[[p2:.*]] = s32[] parameter(2)
-// CHECK:   ROOT %{{.*}} = s32[] fusion(%[[p0]], %[[p1]], %[[p2]]), kind=kInput, calls=%fused_computation
+// CHECK:   ROOT %{{.*}} = s32[] fusion(%[[p0]], %[[p1]], %[[p2]]), kind=kInput, calls=%wrapped_scatter_computation
 // CHECK: })");
 }
 
@@ -123,28 +123,28 @@ TEST_F(FusionWrapperTest, While) {
         ROOT %while.19 = (f32[5]{0}) while((f32[5]{0}) %tuple), condition=%cond, body=%body
       })",
                             FusionWrapper(), R"(
-// CHECK: %fused_computation.1 {{.*}} {
+// CHECK: %wrapped_broadcast_computation {{.*}} {
 // CHECK:  %param_0.1 = f32[] parameter(0)
 // CHECK:  ROOT %broadcast.0 = f32[5]{0} broadcast(%param_0.1), dimensions={}
 // CHECK: }
 // CHECK: %body {{.*}} {
 // CHECK:   %parameter.5 = (f32[5]{0}) parameter(0)
 // CHECK:   %constant_8 = f32[] constant(0)
-// CHECK:   %wrapped_broadcast.9 = f32[5]{0} fusion(%constant_8), kind=kLoop, calls=%fused_computation.1
-// CHECK:   ROOT %tuple.2 = (f32[5]{0}) tuple(%wrapped_broadcast.9)
+// CHECK:   %wrapped_broadcast = f32[5]{0} fusion(%constant_8), kind=kLoop, calls=%wrapped_broadcast_computation
+// CHECK:   ROOT %tuple.2 = (f32[5]{0}) tuple(%wrapped_broadcast)
 // CHECK: }
 // CHECK: %cond {{.*}} {
 // CHECK:   %parameter.12 = (f32[5]{0}) parameter(0)
 // CHECK:   ROOT %constant_1 = pred[] constant(false)
 // CHECK: }
-// CHECK: %fused_computation {{.*}} {
+// CHECK: %wrapped_copy_computation {{.*}} {
 // CHECK:   %param_0 = f32[5]{0} parameter(0)
 // CHECK:   ROOT %copy.0 = f32[5]{0} copy(%param_0)
 // CHECK: }
 // CHECK: ENTRY %main {{.*}} {
 // CHECK:   %parameter.1 = f32[5]{0} parameter(0)
-// CHECK:   %wrapped_copy.3 = f32[5]{0} fusion(%parameter.1), kind=kLoop, calls=%fused_computation
-// CHECK:   %tuple = (f32[5]{0}) tuple(%wrapped_copy.3)
+// CHECK:   %wrapped_copy = f32[5]{0} fusion(%parameter.1), kind=kLoop, calls=%wrapped_copy_computation
+// CHECK:   %tuple = (f32[5]{0}) tuple(%wrapped_copy)
 // CHECK:   ROOT %while.19 = (f32[5]{0}) while(%tuple), condition=%cond, body=%body
 // CHECK: })");
 }

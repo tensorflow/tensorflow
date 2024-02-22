@@ -28,13 +28,13 @@ namespace xla {
 class BatchDotSimplification : public HloModulePass {
  public:
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   absl::string_view name() const override;
 
  private:
-  StatusOr<bool> ElideDegenerateBatchDimensionFromBatchDot(
+  absl::StatusOr<bool> ElideDegenerateBatchDimensionFromBatchDot(
       HloInstruction* batch_dot);
 };
 }  // namespace xla

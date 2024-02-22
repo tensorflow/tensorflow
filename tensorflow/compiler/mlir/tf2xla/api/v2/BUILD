@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
+        "//tensorflow/compiler/mlir/tf2xla/internal:compilation_timer",
         "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_mlir",
         "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_to_hlo",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -52,6 +53,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:error_logging",
@@ -74,6 +76,8 @@ tf_cc_test(
         ":legalize_tf",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/internal:test_matchers",
+        "//tensorflow/compiler/mlir/tf2xla/internal/utils:test_metadata_config",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
@@ -89,6 +93,7 @@ tf_cc_test(
         "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 

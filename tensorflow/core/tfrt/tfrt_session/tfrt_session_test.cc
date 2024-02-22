@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
 #include "absl/time/time.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace {
@@ -78,7 +80,7 @@ class TfrtSessionTest : public ::testing::Test {
 
     // Initialize the session with a GraphDef.
     std::string saved_model_dir = GetDataDependencyFilepath(
-        "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+        "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
     MetaGraphDef meta_graph_def;
     TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
@@ -131,27 +133,83 @@ TEST_F(TfrtSessionTest, NoTargetNodes) {
 }
 
 TEST_F(TfrtSessionTest, RunOptions) {
+  SessionOptions options;
+  options.config.mutable_experimental()->set_use_tfrt(true);
+  auto* model_metadata =
+      options.config.mutable_experimental()->mutable_session_metadata();
+  model_metadata->set_name("toy_v1");
+  model_metadata->set_version(0);
+
+  auto session = absl::WrapUnique(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+
+  tensorflow::GraphDef graph_def;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        node: {
+          name: "input"
+          op: "Placeholder"
+          attr: {
+            key: "dtype"
+            value: { type: DT_INT32 }
+          }
+        }
+        node: {
+          name: "sleep_seconds"
+          op: "Const"
+          attr: {
+            key: "dtype"
+            value: { type: DT_INT32 }
+          }
+          attr: {
+            key: "value"
+            value: {
+              tensor: {
+                tensor_shape: {}
+                dtype: DT_INT32
+                int_val: 2
+              }
+            }
+          }
+        }
+        node: {
+          name: "sleep"
+          op: "SleepIdentityOp"
+          input: "sleep_seconds:0"
+          input: "input:0"
+          attr: {
+            key: "T"
+            value: { type: DT_INT32 }
+          }
+        })pb"
+
+      ,
+      &graph_def));
+
+  TF_ASSERT_OK(session->Create(graph_def));
+
   std::vector<Tensor> outputs;
   // Test the Run() overload with RunOptions and RunMetadata
   RunMetadata run_metadata;
-  TF_ASSERT_OK(session_->Run(RunOptions{}, inputs_, output_tensor_names_,
-                             /*target_tensor_names=*/{}, &outputs,
-                             &run_metadata));
+  TF_ASSERT_OK(session->Run(
+      RunOptions{},
+      /*inputs=*/{{"input", test::AsTensor<int32_t>({1}, TensorShape{1})}},
+      /*output_tensor_names=*/{"sleep"},
+      /*target_tensor_names=*/{}, &outputs, &run_metadata));
 
-  ASSERT_EQ(outputs.size(), 3);
+  ASSERT_EQ(outputs.size(), 1);
 
   // Check output "r1".
-  test::ExpectEqual(outputs[0],
-                    test::AsTensor<int32_t>({6}, TensorShape{1, 1}));
+  test::ExpectEqual(outputs[0], test::AsTensor<int32_t>({1}, TensorShape{1}));
 
   // Test timeout.
   RunOptions run_options;
   run_options.set_timeout_in_ms(1);
-  // The "sleep" op will sleep for 1 second, so the Session::Run() call will
-  // time out.
-  auto status =
-      session_->Run(run_options, inputs_, output_tensor_names_,
-                    /*target_tensor_names=*/{"sleep"}, &outputs, &run_metadata);
+  auto status = session->Run(
+      run_options,
+      /*inputs=*/{{"input", test::AsTensor<int32_t>({1}, TensorShape{1})}},
+      /*output_tensor_names=*/{"sleep"},
+      /*target_tensor_names=*/{}, &outputs, &run_metadata);
 
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.ToString(), ::testing::HasSubstr("Deadline exceeded"));
@@ -234,7 +292,7 @@ TEST_F(TfrtSessionTest, RunInCallerThreadSessionOptions) {
 
   // Initialize the session with a GraphDef.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
@@ -340,7 +398,7 @@ TEST_F(TfrtSessionTest, CreateWithEmptyGraphIsNoop) {
 
   // Create agian with an unempty GraphDef.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
@@ -352,7 +410,7 @@ TEST_F(TfrtSessionTest, CreateWithEmptyGraphIsNoop) {
 TEST_F(TfrtSessionTest, CreateAgainError) {
   // On a created session, create agian with a GraphDef.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
@@ -378,7 +436,7 @@ TEST_F(TfrtSessionTest, CreateAfterCloseError) {
 
   // Create the session with a GraphDef.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
@@ -400,7 +458,7 @@ TEST_F(TfrtSessionTest, ExtendWhenNotCreated) {
 
   // Extend the session with a GraphDef.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
@@ -535,7 +593,7 @@ TEST_F(TfrtSessionTest, ExtendAfterCloseError) {
 
   // Extend the session with a GraphDef.
   std::string saved_model_dir = GetDataDependencyFilepath(
-      "tensorflow/core/tfrt/saved_model/tests/toy_v1");
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
 
   MetaGraphDef meta_graph_def;
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},

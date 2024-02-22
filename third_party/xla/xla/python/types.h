@@ -40,20 +40,22 @@ limitations under the License.
 namespace xla {
 
 // Converts a NumPy dtype to a PrimitiveType.
-StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
+absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(
+    const pybind11::dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
-StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
+absl::StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
 // Converts an IFRT dtype to a NumPy dtype.
-StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
+absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
-StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+absl::StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(
+    PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
@@ -100,7 +102,8 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
 // buffers with the literals. Takes ownership of `literal` and keeps the
 // necessary pieces alive using Python reference counting.
 // Requires the GIL.
-StatusOr<pybind11::object> LiteralToPython(std::shared_ptr<Literal> literal);
+absl::StatusOr<pybind11::object> LiteralToPython(
+    std::shared_ptr<Literal> literal);
 
 // Converts a Python object into an XLA shape and a vector of leaf buffers.
 // The leaf buffers correspond to a depth-first, left-to-right traversal of
@@ -113,7 +116,7 @@ struct PythonBufferTree {
   absl::InlinedVector<BorrowingLiteral, 1> leaves;
   Shape shape;
 };
-StatusOr<PythonBufferTree> GetPythonBufferTree(
+absl::StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
 
 // Converts a sequence of C++ ints to a Python tuple of ints.

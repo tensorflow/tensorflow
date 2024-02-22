@@ -512,6 +512,14 @@ class XlaBuilder {
   XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
                        absl::Span<const int64_t> broadcast_dimensions);
 
+  // This is an experimental API for creating the mhlo.dynamic_broadcast_in_dim
+  // op from the XlaBuilder. This is only intended for export to MHLO or
+  // StableHLO, and cannot be compiled. Only static output_dimensions are
+  // allowed, and broadcast_dimensions is verified.
+  XlaOp DynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
+                              absl::Span<const int64_t> broadcast_dimensions,
+                              const Shape& output_shape);
+
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
   XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64_t dimno,
@@ -1177,6 +1185,11 @@ class XlaBuilder {
                               absl::Span<const int64_t> out_dim_size,
                               absl::Span<const int64_t> broadcast_dimensions);
 
+  friend XlaOp DynamicBroadcastInDim(
+      XlaOp operand, XlaOp output_dimensions,
+      absl::Span<const int64_t> broadcast_dimensions,
+      const Shape& output_shape);
+
   friend XlaOp Copy(XlaOp operand);
 
   friend XlaOp Pad(XlaOp operand, XlaOp padding_value,
@@ -1494,6 +1507,7 @@ class XlaBuilder {
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Erf(XlaOp operand);
   friend XlaOp Exp(XlaOp operand);
   friend XlaOp Expm1(XlaOp operand);
   friend XlaOp Floor(XlaOp operand);
@@ -1858,6 +1872,15 @@ XlaOp Broadcast(XlaOp operand, absl::Span<const int64_t> broadcast_sizes);
 //    {2 , 2}}
 XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
                      absl::Span<const int64_t> broadcast_dimensions);
+
+// This is an experimental API for creating the mhlo.dynamic_broadcast_in_dim
+// op from the XlaBuilder. This is only intended for export to MHLO or
+// StableHLO, and cannot be compiled. See
+// https://www.tensorflow.org/mlir/hlo_ops#mhlodynamic_broadcast_in_dim_mhlodynamicbroadcastindimop.
+// for the op semantics.
+XlaOp DynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
+                            absl::Span<const int64_t> broadcast_dimensions,
+                            const Shape& output_shape);
 
 // Copies the input operand to the output. This operation is for internal
 // purpose and is only used by the compiler for optimization purposes or to
@@ -2544,6 +2567,9 @@ XlaOp Abs(XlaOp operand);
 // Enqueues a atan2 instruction onto the computation.
 XlaOp Atan2(XlaOp y, XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions = {});
+
+// Enqueues an erf instruction onto the computation.
+XlaOp Erf(XlaOp operand);
 
 // Enqueues an exp instruction onto the computation.
 XlaOp Exp(XlaOp operand);

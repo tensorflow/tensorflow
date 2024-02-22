@@ -1756,6 +1756,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/292104274): Sometimes times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -2156,13 +2157,6 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    # copybara:uncomment_begin
-    # args = [
-    # "--tpu_use_tfrt=false",  #TODO(b/227404010): Remove once the bug is fixed.
-    # ],
-    # copybara:uncomment_end
-    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
-    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [

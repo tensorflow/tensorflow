@@ -160,9 +160,9 @@ GpuExecutor::CreateOrShareConstant(Stream* stream,
           "Failed to allocate %d bytes for new constant", content.size()));
     }
 
-    absl::Status status =
-        stream->ThenMemcpy(new_constant, content.data(), content.size())
-            .BlockHostUntilDone();
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(new_constant, content.data(), content.size()));
+    absl::Status status = stream->BlockHostUntilDone();
     if (!status.ok()) {
       Deallocate(new_constant);
       status.Update(absl::InternalError(absl::StrFormat(
@@ -346,7 +346,8 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   if (VLOG_IS_ON(2)) {
     absl::MutexLock lock(&launched_kernels_mu_);
     if (!launched_kernels_.count(hipfunc)) {
-      VlogOccupancyInfo(kernel, thread_dims, block_dims);
+      VlogOccupancyInfo(stream->parent()->GetDeviceDescription(), kernel,
+                        thread_dims, block_dims);
       // TODO(rspringer): Remove elements from launched_kernels_...if we ever
       // expose a kernel/module deallocation method.
       launched_kernels_.insert(hipfunc);
@@ -464,7 +465,8 @@ absl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
 // This is a non-essential operation; if there's a failure, proceed without
 // logging an error. It's nearly certain that in case of failures, we'd never
 // get here in the first place; these are very low-impact routines.
-void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
+void GpuExecutor::VlogOccupancyInfo(const DeviceDescription& device_description,
+                                    const Kernel& kernel,
                                     const ThreadDim& thread_dims,
                                     const BlockDim& block_dims) {
   VLOG(2) << "Computing kernel occupancy for kernel "
@@ -478,9 +480,6 @@ void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
   if (!regs_per_thread && !smem_per_block) {
     return;
   }
-
-  const DeviceDescription& device_description =
-      kernel.parent()->GetDeviceDescription();
 
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
   auto hipfunc = rocm_kernel->AsGpuFunctionHandle();
@@ -857,28 +856,25 @@ GpuExecutor::CreateEventImplementation() {
   return std::unique_ptr<internal::EventInterface>(new GpuEvent(this));
 }
 
-std::unique_ptr<internal::KernelInterface>
-GpuExecutor::CreateKernelImplementation() {
-  return std::unique_ptr<internal::KernelInterface>(new GpuKernel());
-}
-
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
 }
 
-absl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
+absl::StatusOr<std::unique_ptr<Kernel>> GpuExecutor::CreateKernel() {
+  return std::make_unique<GpuKernel>(this);
+}
+
+absl::StatusOr<std::unique_ptr<CommandBuffer>> GpuExecutor::CreateCommandBuffer(
+    CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
   GpuGraphHandle graph = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
-std::unique_ptr<internal::CommandBufferInterface>
-GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode,
-                                            GpuGraphHandle graph,
-                                            bool is_owned_graph) {
+std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
+    CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph) {
   VLOG(2) << "Create HIP command buffer (HIP graph) from existing graph "
           << graph << "; is_owned_graph=" << is_owned_graph;
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph,
@@ -1078,4 +1074,4 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_executor, {});
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(rocm_executor, {});

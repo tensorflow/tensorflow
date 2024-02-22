@@ -8,7 +8,8 @@ load(
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
 )
 
@@ -23,7 +24,6 @@ cc_library(
     name = "allocation_block",
     srcs = ["allocation_block.cc"],
     hdrs = ["allocation_block.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
@@ -35,7 +35,6 @@ cc_library(
     name = "heap_simulator",
     srcs = ["heap_simulator.cc"],
     hdrs = ["heap_simulator.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":allocation_block",
         "//xla:comparison_util",

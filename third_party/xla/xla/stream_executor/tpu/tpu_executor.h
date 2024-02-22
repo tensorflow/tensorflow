@@ -167,10 +167,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   }
 
   // -- Unimplemented (stubbed out) methods.
-  std::unique_ptr<stream_executor::internal::KernelInterface>
-  CreateKernelImplementation() override {
-    LOG(FATAL) << "Not yet implemented";
-  }
 
   absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                        uint64_t size) override {

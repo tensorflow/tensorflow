@@ -19,6 +19,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/Support/Error.h"
+#include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+
 namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {

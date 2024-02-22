@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -118,6 +119,27 @@ bool HasEqualElementSize(Value val1, Value val2, ArrayRef<int> val1_indices,
   }
 
   return val1_result == val2_result;
+}
+
+// Checks if a shape has dim sizes of all ones except the right most dim.
+bool ReshapableTo1DTensor(ShapedType rhs_shape) {
+  for (auto rank = 0; rank < rhs_shape.getRank() - 1; rank++) {
+    if (rhs_shape.getDimSize(rank) != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
+  auto shape = value.getType().cast<ShapedType>();
+  if (shape.getRank() != 1) {
+    SmallVector<int64_t> new_shape;
+    new_shape.push_back(shape.getNumElements());
+    value = builder.create<TF::ReshapeOp>(
+        loc, value, Create1DConstValue(builder, loc, new_shape));
+  }
+  return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
 }
 
 // Matches convolution op with "NHWC" data format or matmul op with false adj_y.

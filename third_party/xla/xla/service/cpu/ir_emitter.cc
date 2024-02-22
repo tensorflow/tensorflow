@@ -2517,7 +2517,8 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
+Status IrEmitter::HandleOneDnnMatMulCalls(HloInstruction* custom_call,
+                                          std::string runtime_symbol_name) {
   // We would like to emit LLVM IR for the following function call
   //      custom_call_target(void* result, void** args)
   // args can be thought of an array of pointers allocated on the stack,
@@ -2592,7 +2593,7 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
   auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
 
-  EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
+  EmitCallToFunc(std::move(runtime_symbol_name),
                  {result_stack_alloca.value, args_ptr}, b_.getVoidTy());
 
   // Lifetime ends for all stack allocations.
@@ -2705,7 +2706,6 @@ Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
 
   return OkStatus();
 }
-
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
@@ -2720,13 +2720,18 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   if (custom_call->custom_call_target() == "__onednn$matmul") {
-    return HandleOneDnnMatMul(custom_call);
+    return HandleOneDnnMatMulCalls(custom_call,
+                                   runtime::kOneDnnMatMulSymbolName);
   }
   if (custom_call->custom_call_target() == "__onednn$softmax") {
     return HandleOneDnnSoftmax(custom_call);
   }
   if (custom_call->custom_call_target() == "__onednn$layernorm") {
     return HandleOneDnnLayerNorm(custom_call);
+  }
+  if (custom_call->custom_call_target() == "__onednn$matmul_reorder") {
+    return HandleOneDnnMatMulCalls(custom_call,
+                                   runtime::kOneDnnMatMulReorderSymbolName);
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   absl::Span<HloInstruction* const> operands(custom_call->operands());

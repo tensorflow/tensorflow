@@ -71,19 +71,19 @@ Status ValidateProcessingMode(const ProcessingModeDef& processing_mode);
 
 // Converts tf.data service `sharding_policy` to `AutoShardPolicy`. Returns an
 // internal error if `sharding_policy` is not supported.
-StatusOr<AutoShardPolicy> ToAutoShardPolicy(
+absl::StatusOr<AutoShardPolicy> ToAutoShardPolicy(
     ProcessingModeDef::ShardingPolicy sharding_policy);
 
 // Parses a string representing a `TargetWorkers` (case-insensitive).
 // Returns InvalidArgument if the string is not recognized.
-StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s);
+absl::StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s);
 
 // Converts a `TargetWorkers` enum to string.
 std::string TargetWorkersToString(TargetWorkers target_workers);
 
 // Parses a string representing a `DeploymentMode` (case-insensitive).
 // Returns InvalidArgument if the string is not recognized.
-StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s);
+absl::StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s);
 
 // Returns true if `status` is a retriable error that indicates preemption.
 bool IsPreemptedError(const Status& status);

@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -41,9 +41,9 @@ class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
 #if GOOGLE_CUDA
-      : platform_(se::MultiPlatformManager::PlatformWithName("CUDA").value()),
+      : platform_(se::PlatformManager::PlatformWithName("CUDA").value()),
 #elif TENSORFLOW_USE_ROCM
-      : platform_(se::MultiPlatformManager::PlatformWithName("ROCM").value()),
+      : platform_(se::PlatformManager::PlatformWithName("ROCM").value()),
 #endif
         stream_exec_(platform_->ExecutorForDevice(0).value()) {
   }
@@ -53,17 +53,17 @@ class BufferComparatorTest : public testing::Test {
   bool CompareEqualBuffers(const std::vector<ElementType>& current,
                            const std::vector<ElementType>& expected) {
     se::Stream stream(stream_exec_);
-    stream.Init();
+    TF_CHECK_OK(stream.Initialize());
 
     se::ScopedDeviceMemory<ElementType> current_buffer =
         stream_exec_->AllocateOwnedArray<ElementType>(current.size());
     se::ScopedDeviceMemory<ElementType> expected_buffer =
         stream_exec_->AllocateOwnedArray<ElementType>(expected.size());
 
-    stream.ThenMemcpy(current_buffer.ptr(), current.data(),
-                      current_buffer->size());
-    stream.ThenMemcpy(expected_buffer.ptr(), expected.data(),
-                      expected_buffer->size());
+    TF_CHECK_OK(stream.Memcpy(current_buffer.ptr(), current.data(),
+                              current_buffer->size()));
+    TF_CHECK_OK(stream.Memcpy(expected_buffer.ptr(), expected.data(),
+                              expected_buffer->size()));
     TF_CHECK_OK(stream.BlockHostUntilDone());
 
     BufferComparator comparator(
@@ -346,7 +346,7 @@ TEST_F(BufferComparatorTest, BF16) {
   int64_t rng_state = 0;
 
   se::Stream stream(stream_exec_);
-  stream.Init();
+  TF_CHECK_OK(stream.Initialize());
 
   se::ScopedDeviceMemory<Eigen::bfloat16> lhs =
       stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);

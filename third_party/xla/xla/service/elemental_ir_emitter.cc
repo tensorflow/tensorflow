@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Value.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/math_ops.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
@@ -902,6 +904,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           primitive_util::BitWidth(from_type),
           primitive_util::BitWidth(to_type));
     }
+    case HloOpcode::kErf:
+      return EmitErf(op->shape().element_type(), operand_value);
     case HloOpcode::kExp:
       return EmitExp(op->shape().element_type(), operand_value, "");
     case HloOpcode::kExpm1:
@@ -2041,6 +2045,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return Unimplemented("tanh");
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitErf(PrimitiveType prim_type,
+                                                   llvm::Value* value) {
+  return Unimplemented("erf");
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitTan(PrimitiveType prim_type,
                                                    llvm::Value* value) {
   auto sin_x = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {value},
@@ -2971,6 +2980,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
