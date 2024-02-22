@@ -453,12 +453,6 @@ cc_library(
     name = "command_buffer",
     srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
-    local_defines = select({
-        "//xla/stream_executor/cuda:graph_conditional_enabled": [
-            "STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1",
-        ],
-        "//conditions:default": [],
-    }),
     visibility = ["//visibility:private"],
     deps = [
         ":stream_executor_headers",

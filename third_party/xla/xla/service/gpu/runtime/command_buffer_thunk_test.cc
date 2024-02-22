@@ -55,8 +55,6 @@ namespace xla::gpu {
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
 using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
 
-namespace {
-
 static se::StreamExecutor* GpuExecutor() {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
@@ -64,7 +62,7 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-Thunk::ExecutableSource ExecutableSource() {
+static Thunk::ExecutableSource ExecutableSource() {
   Thunk::ExecutableSource source = {
 #if defined(GOOGLE_CUDA)
       /*text=*/se::gpu::internal::kAddI32Kernel,
@@ -77,7 +75,7 @@ Thunk::ExecutableSource ExecutableSource() {
   return source;
 }
 
-KernelArgsPacking CreateDefaultArgsPacking() {
+static KernelArgsPacking CreateDefaultArgsPacking() {
   using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
@@ -88,7 +86,16 @@ KernelArgsPacking CreateDefaultArgsPacking() {
   };
 }
 
-}  // namespace
+// Some of the tests rely on CUDA 12.3+ features.
+static bool IsAtLeastCuda12300() {
+#if defined(TENSORFLOW_USE_ROCM)
+  return false;
+#endif
+#if CUDA_VERSION >= 12030
+  return true;
+#endif
+  return false;
+}
 
 TEST(CommandBufferThunkTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
@@ -552,9 +559,10 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, GemmCmd) {
-#if defined(GOOGLE_CUDA) && CUDA_VERSION < 12030
-  GTEST_SKIP() << "Command buffer tracing is not supported";
-#endif
+  if (!IsAtLeastCuda12300()) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
   se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
@@ -778,10 +786,11 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfCmd) {
-  se::StreamExecutor* executor = GpuExecutor();
-  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
+
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   TF_ASSERT_OK(stream.Initialize());
@@ -863,10 +872,11 @@ TEST(CommandBufferThunkTest, IfCmd) {
 }
 
 TEST(CommandBufferThunkTest, IfElseCmd) {
-  se::StreamExecutor* executor = GpuExecutor();
-  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
+
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   TF_ASSERT_OK(stream.Initialize());
@@ -953,10 +963,11 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
 }
 
 TEST(CommandBufferThunkTest, CaseCmd) {
-  se::StreamExecutor* executor = GpuExecutor();
-  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
+
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   TF_ASSERT_OK(stream.Initialize());
@@ -1039,10 +1050,11 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 }
 
 TEST(CommandBufferThunkTest, ForCmd) {
-  se::StreamExecutor* executor = GpuExecutor();
-  if (!se::CommandBuffer::SupportsConditionalCommands(executor->platform())) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
+
+  se::StreamExecutor* executor = GpuExecutor();
 
   se::Stream stream(executor);
   TF_ASSERT_OK(stream.Initialize());

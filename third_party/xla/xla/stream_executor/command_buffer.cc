@@ -65,14 +65,4 @@ absl::StatusOr<std::unique_ptr<CommandBuffer>> CommandBuffer::Trace(
   return command_buffer;
 }
 
-bool CommandBuffer::SupportsConditionalCommands(const Platform* platform) {
-  // TODO(ezhulenev): We should extend a Platform with a way to query
-  // implemented StreamExecutor features, for now we know that only CUDA
-  // platform supports conditional commands in command buffers.
-#if defined(STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL)
-  return platform->Name() == "CUDA";
-#endif
-  return false;
-}
-
 }  // namespace stream_executor

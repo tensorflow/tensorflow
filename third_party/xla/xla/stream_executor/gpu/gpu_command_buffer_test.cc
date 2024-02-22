@@ -90,6 +90,17 @@ static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
   return {info.handle...};
 }
 
+// Some of the tests rely on CUDA 12.3+ features.
+static bool IsAtLeastCuda12300() {
+#if defined(TENSORFLOW_USE_ROCM)
+  return false;
+#endif
+#if CUDA_VERSION >= 12030
+  return true;
+#endif
+  return false;
+}
+
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
@@ -683,11 +694,11 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIf) {
-  Platform* platform = GpuPlatform();
-  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -770,11 +781,11 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfElse) {
-  Platform* platform = GpuPlatform();
-  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -867,11 +878,11 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalCase) {
-  Platform* platform = GpuPlatform();
-  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -957,11 +968,11 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalFor) {
-  Platform* platform = GpuPlatform();
-  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);
@@ -1008,11 +1019,11 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhile) {
-  Platform* platform = GpuPlatform();
-  if (!CommandBuffer::SupportsConditionalCommands(platform)) {
+  if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   Stream stream(executor);

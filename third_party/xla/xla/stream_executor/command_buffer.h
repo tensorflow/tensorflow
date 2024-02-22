@@ -184,14 +184,6 @@ class CommandBuffer {
       Mode mode = Mode::kNested);
 
   //===--------------------------------------------------------------------===//
-  // Command buffer properties
-  //===--------------------------------------------------------------------===//
-
-  // Returns true if command buffer on a given platform supports conditional
-  // commands (If, IfThen, While).
-  static bool SupportsConditionalCommands(const Platform* platform);
-
-  //===--------------------------------------------------------------------===//
   // Command buffer API
   //===--------------------------------------------------------------------===//
 

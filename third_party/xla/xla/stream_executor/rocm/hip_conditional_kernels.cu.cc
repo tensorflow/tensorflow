@@ -17,10 +17,10 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-std::string_view GetSetIfConditionKernel() { return ""; }
-std::string_view GetSetIfElseConditionKernel() { return ""; }
-std::string_view GetSetCaseConditionKernel() { return ""; }
-std::string_view GetSetForConditionKernel() { return ""; }
-std::string_view GetSetWhileConditionKernel() { return ""; }
+std::string_view GetSetIfConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetIfElseConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetCaseConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetForConditionKernel() { return "<unsupported>"; }
+std::string_view GetSetWhileConditionKernel() { return "<unsupported>"; }
 
 }  // namespace stream_executor::gpu

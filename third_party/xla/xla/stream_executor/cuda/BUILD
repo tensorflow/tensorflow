@@ -37,20 +37,6 @@ package_group(
     packages = stream_executor_friends(),
 )
 
-# Add `--//third_party/tensorflow/compiler/xla/stream_executor/cuda:enable_graph_conditional` to
-# build command to enable CUDA graph conditional nodes support. Requires CUDA >=12.3.
-#
-# See: https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#conditional-graph-nodes
-bool_flag(
-    name = "enable_graph_conditional",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "graph_conditional_enabled",
-    flag_values = {":enable_graph_conditional": "True"},
-)
-
 bool_flag(
     name = "enable_libnvptxcompiler_support",
     build_setting_default = if_google(
@@ -494,10 +480,6 @@ cuda_only_cc_library(
 cc_library(
     name = "cuda_conditional_kernels",
     srcs = ["cuda_conditional_kernels.cc"],
-    local_defines = select({
-        ":graph_conditional_enabled": ["STREAM_EXECUTOR_CUDA_ENABLE_GRAPH_CONDITIONAL=1"],
-        "//conditions:default": [],
-    }),
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
