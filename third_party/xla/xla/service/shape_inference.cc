@@ -184,9 +184,9 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   return OkStatus();
 }
 
-StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
-                                       const Window& window,
-                                       PrimitiveType element_type) {
+absl::StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
+                                             const Window& window,
+                                             PrimitiveType element_type) {
   if (window.dimensions_size() != base_shape.rank()) {
     return InvalidArgument(
         "Window has dimension %d but base shape has dimension %d.",
@@ -290,11 +290,11 @@ DimAndBound InferConcatenatedDimAndBound(int64_t left_size, int64_t right_size,
 // A HLO static dimension size `X` is expressed as size=X, and bound=?
 // A bounded dynamic dimension size `<=X` is be expressed as size=X, and bound=?
 // A unbounded dynamic dimension size, `?`, is expressed as size=?, and bound=?
-StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
-                                                   int64_t left_size,
-                                                   int64_t right_size,
-                                                   int64_t left_bound,
-                                                   int64_t right_bound) {
+absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
+                                                         int64_t left_size,
+                                                         int64_t right_size,
+                                                         int64_t left_bound,
+                                                         int64_t right_bound) {
   bool is_left_static_dim = !IsUnboundedDynamicSize(left_size);
   bool is_right_static_dim = !IsUnboundedDynamicSize(right_size);
   bool is_left_static_bound = !IsUnboundedDynamicSize(left_bound);
@@ -330,12 +330,12 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
 }  // namespace
 
-/* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const HloInstruction* operand) {
   return InferUnaryOpShape(opcode, operand->shape());
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const Shape& shape) {
   // There is no copy operation at the proto level, so handle copy explicitly.
   // A domain shape is the same as the input one.
@@ -465,7 +465,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferTopKShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferTopKShape(
     const Shape& operand_shape, int64_t k) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of top-k operation"));
   int64_t last_dim = operand_shape.rank() - 1;
@@ -487,7 +487,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   return ShapeUtil::MakeTupleShape({out, idxs_shape});
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferConcatOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferConcatOpShape(
     absl::Span<const Shape* const> arg_shapes, const int64_t dimension) {
   if (arg_shapes.empty()) {
     return InvalidArgument("Concatenate expects at least one argument.");
@@ -580,7 +580,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   return result;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
   if (!operand_shape.IsArray() ||
       !primitive_util::IsArrayType(new_element_type)) {
@@ -596,7 +596,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBitcastConvertShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBitcastConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
   auto old_element_type = operand_shape.element_type();
   if (primitive_util::IsComplexType(old_element_type) !=
@@ -650,7 +650,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   return new_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferStochasticConvertShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferStochasticConvertShape(
     const Shape& operand_shape, const Shape& random_shape,
     PrimitiveType new_element_type) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
@@ -694,7 +694,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReducePrecisionShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReducePrecisionShape(
     const Shape& operand_shape, const int exponent_bits,
     const int mantissa_bits) {
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
@@ -718,7 +718,7 @@ StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   return operand_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferPadShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {
   if (!operand_shape.IsArray()) {
@@ -841,7 +841,7 @@ Status ValidateDotDimensionNumbers(
 
 }  // namespace
 
-/* static */ StatusOr<Shape> ShapeInference::InferDotOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
     const DotDimensionNumbers& dimension_numbers,
     std::optional<PrimitiveType> preferred_element_type) {
@@ -940,7 +940,7 @@ Status ValidateDotDimensionNumbers(
   return result;
 }
 
-/* static */ StatusOr<Shape>
+/* static */ absl::StatusOr<Shape>
 ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                                                        const Shape& rhs) {
   TF_RET_CHECK(lhs.rank() == rhs.rank());
@@ -1004,7 +1004,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                               output_dimensions, output_dimensions_is_dynamic);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
     const Shape& smaller_shape, const Shape& larger_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
   if (smaller_shape.is_unbounded_dynamic() ||
@@ -1130,7 +1130,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return output_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferElementwiseBinaryOpShape(
+/* static */ absl::StatusOr<Shape>
+ShapeInference::InferElementwiseBinaryOpShape(
     HloOpcode operation, const Shape& lhs, const Shape& rhs,
     absl::Span<const int64_t> broadcast_dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of elementwise binary operation"));
@@ -1187,13 +1188,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs) {
   return InferBinaryOpShape(opcode, lhs->shape(), rhs->shape(),
                             /*broadcast_dimensions=*/{});
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBinaryOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     HloOpcode opcode, const Shape& lhs, const Shape& rhs,
     absl::Span<const int64_t> broadcast_dimensions) {
   VLOG(2) << StrFormat(
@@ -1278,13 +1279,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs,
     const HloInstruction* ehs) {
   return InferTernaryOpShape(opcode, lhs->shape(), rhs->shape(), ehs->shape());
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferTernaryOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
@@ -1299,7 +1300,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferVariadicOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferVariadicOpShape(
     HloOpcode opcode, absl::Span<const HloInstruction* const> operands) {
   std::vector<const Shape*> operand_shapes;
   operand_shapes.reserve(operands.size());
@@ -1309,7 +1310,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return InferVariadicOpShape(opcode, operand_shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferVariadicOpShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferVariadicOpShape(
     HloOpcode opcode, absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* shape : operand_shapes) {
     TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape));
@@ -1346,7 +1347,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferMapShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferMapShape(
     absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply,
     absl::Span<const int64_t> dimensions) {
   if (arg_shapes.empty()) {
@@ -1438,7 +1439,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                               arg_shape->dimensions());
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBatchNormTrainingShape(
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& offset_shape, int64_t feature_index) {
   TF_RETURN_IF_ERROR(
@@ -1546,7 +1547,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                                             &output_shape_for_mean_and_var});
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBatchNormInferenceShape(
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& offset_shape, const Shape& mean_shape,
     const Shape& variance_shape, int64_t feature_index) {
@@ -1692,7 +1693,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return operand_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBatchNormGradShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBatchNormGradShape(
     const Shape& operand_shape, const Shape& scale_shape,
     const Shape& mean_shape, const Shape& var_shape,
     const Shape& output_grad_shape, int64_t feature_index) {
@@ -1852,7 +1853,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
       {&operand_shape, &feature_shape, &feature_shape});
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
@@ -2116,7 +2117,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferFftShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferFftShape(
     const Shape& in, const FftType fft_type,
     const absl::Span<const int64_t> fft_length) {
   const int64_t fft_rank = fft_length.size();
@@ -2205,7 +2206,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
 #undef RET_CHECK_RANK
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferTriangularSolveShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferTriangularSolveShape(
     const Shape& a, const Shape& b, const TriangularSolveOptions& options) {
   if ((!ShapeUtil::ElementIsFloating(a) && !ShapeUtil::ElementIsComplex(a)) ||
       a.element_type() != b.element_type()) {
@@ -2256,7 +2257,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return b;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCholeskyShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferCholeskyShape(
     const Shape& a) {
   if (!ShapeUtil::ElementIsFloating(a) && !ShapeUtil::ElementIsComplex(a)) {
     return InvalidArgument(
@@ -2277,7 +2278,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return a;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllGatherShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllGatherShape(
     absl::Span<const Shape* const> operand_shapes, int64_t all_gather_dimension,
     int64_t shard_count) {
   TF_RET_CHECK(all_gather_dimension >= 0);
@@ -2301,7 +2302,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeTupleShape(output_shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllGatherStartShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllGatherStartShape(
     absl::Span<const Shape* const> operand_shapes, int64_t all_gather_dimension,
     int64_t shard_count) {
   TF_ASSIGN_OR_RETURN(
@@ -2316,12 +2317,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeTupleShapeWithPtrs({&input_shape, &ag_shape});
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllGatherDoneShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllGatherDoneShape(
     const Shape& all_gather_start_shape) {
   return ShapeUtil::GetTupleElementShape(all_gather_start_shape, 1);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
     TF_RETURN_IF_ERROR(
@@ -2333,7 +2334,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReduceScatterShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReduceScatterShape(
     absl::Span<const Shape* const> operand_shapes, int64_t scatter_dimension,
     int64_t shard_count) {
   TF_RET_CHECK(scatter_dimension >= 0);
@@ -2368,18 +2369,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeTupleShape(output_shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllReduceStartShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllReduceStartShape(
     absl::Span<const Shape* const> operand_shapes) {
   return InferAllReduceShape(operand_shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllReduceDoneShape(
     const Shape& operand_shape) {
   // The returned value from AllReduceDone is the operand forwarded.
   return operand_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllToAllShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllToAllShape(
     const Shape& shape, int64_t split_dimension, int64_t concat_dimension,
     int64_t split_count) {
   TF_RET_CHECK(split_count > 0);
@@ -2406,7 +2407,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeShape(shape.element_type(), new_dimensions);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAllToAllTupleShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferAllToAllTupleShape(
     absl::Span<const Shape* const> operand_shapes) {
   // An Alltoall HLO instruction receives N operands (with the same shape) and
   // returns a tuple that contains N array shapes.
@@ -2425,7 +2426,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
     absl::Span<const Shape* const> operand_shapes) {
   if (operand_shapes.size() == 1) {
     TF_RETURN_IF_ERROR(
@@ -2437,7 +2438,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteStartShape(
+/* static */ absl::StatusOr<Shape>
+ShapeInference::InferCollectivePermuteStartShape(
     absl::Span<const Shape* const> operand_shapes,
     absl::Span<const Shape> context_shapes) {
   absl::InlinedVector<const Shape*, 4> shapes;
@@ -2454,13 +2456,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeTupleShapeWithPtrs(shapes);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteDoneShape(
-    const Shape& operand_shape) {
+/* static */ absl::StatusOr<Shape>
+ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
   TF_RET_CHECK(operand_shape.IsTuple());
   return ShapeUtil::GetTupleElementShape(operand_shape, 1);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReduceShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReduceShape(
     absl::Span<const Shape* const> arg_shapes,
     absl::Span<const int64_t> dimensions_to_reduce,
     const ProgramShape& to_apply) {
@@ -2537,7 +2539,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window, const ProgramShape& to_apply_shape) {
   TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply_shape, {&init_value_shape},
@@ -2546,7 +2548,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return InferReduceWindowShape(operand_shape, init_value_shape, window);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     absl::Span<const Shape* const> operands,
     absl::Span<const Shape* const> init_values, const Window& window,
     const ProgramShape& to_apply_shape) {
@@ -2587,7 +2589,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   }
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReduceWindowShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReduceWindowShape(
     const Shape& operand_shape, const Shape& init_value_shape,
     const Window& window) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reduce-window"));
@@ -2595,7 +2597,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
                                 init_value_shape.element_type());
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferSelectAndScatterShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferSelectAndScatterShape(
     const Shape& operand_shape, const ProgramShape& select_shape,
     const Window& window, const Shape& source_shape,
     const Shape& init_value_shape, const ProgramShape& scatter_shape) {
@@ -2654,7 +2656,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return operand_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
     const Shape& shape, int64_t dimension) {
   if (dimension < 0 || dimension >= shape.rank()) {
     return InvalidArgument("GetDimensionSize dimension out of bounds: %d.",
@@ -2673,7 +2675,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeShape(S32, {});
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferSetDimensionSizeShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferSetDimensionSizeShape(
     const Shape& shape, const Shape& val_shape, int64_t dimension) {
   if (dimension < 0 || dimension >= shape.rank()) {
     return InvalidArgument("SetDimensionSize dimension out of bounds: %d.",
@@ -2699,7 +2701,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return result;
 }
 
-/* static */ StatusOr<Window> ShapeInference::InferWindowFromDimensions(
+/* static */ absl::StatusOr<Window> ShapeInference::InferWindowFromDimensions(
     absl::Span<const int64_t> window_dimensions,
     absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding,
@@ -2761,7 +2763,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return window;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferSliceShape(
     const Shape& arg, absl::Span<const int64_t> starts,
     absl::Span<const int64_t> limits, absl::Span<const int64_t> strides) {
   auto error = [&](const std::string& message) {
@@ -2836,7 +2838,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::MakeShape(arg.element_type(), sizes, is_dynamic);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferDynamicSliceShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferDynamicSliceShape(
     const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
     absl::Span<const int64_t> slice_sizes, bool allow_scalar_indices) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
@@ -2949,7 +2951,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return result;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferDynamicUpdateSliceShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferDynamicUpdateSliceShape(
     const Shape& operand_shape, const Shape& update_shape,
     absl::Span<const Shape> start_index_shapes, bool allow_scalar_indices) {
   TF_RETURN_IF_ERROR(
@@ -3086,7 +3088,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return result_shape;
 }
 
-/*static */ StatusOr<Shape> ShapeInference::InferReverseShape(
+/*static */ absl::StatusOr<Shape> ShapeInference::InferReverseShape(
     const Shape& operand_shape, absl::Span<const int64_t> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of reverse"));
   if (!AllUnique(dimensions)) {
@@ -3102,7 +3104,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return operand_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferGetTupleElementShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferGetTupleElementShape(
     const Shape& arg, int64_t index) {
   if (!arg.IsTuple()) {
     return InvalidArgument(
@@ -3120,7 +3122,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return arg.tuple_shapes(index);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferWhileShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferWhileShape(
     const ProgramShape& condition, const ProgramShape& body,
     const Shape& init) {
   // Check the number of parameters for given computations.
@@ -3157,7 +3159,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return init;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferConditionalShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferConditionalShape(
     const Shape& branch_index,
     absl::Span<const ProgramShape> branch_computations,
     absl::Span<const Shape> branch_operands) {
@@ -3232,7 +3234,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return result;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand, absl::Span<const int64_t> broadcast_sizes) {
   // This method is used to infer shape for xla::BroadcastInDim.
   TF_RETURN_IF_ERROR(ExpectArray(operand, "operand of broadcast"));
@@ -3262,7 +3264,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return result;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand_shape, const Shape& output_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
   // This method is used to infer shape for xla::BroadcastInDim.
@@ -3319,7 +3321,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return output_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferDynamicReshapeShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferDynamicReshapeShape(
     const Shape& operand, absl::Span<const Shape* const> dim_size_shapes,
     absl::Span<const int64_t> new_size_bounds,
     const std::vector<bool>& dims_are_dynamic) {
@@ -3351,7 +3353,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return inferred_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
@@ -3510,7 +3512,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return inferred_shape;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferTransposeShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferTransposeShape(
     const Shape& operand, absl::Span<const int64_t> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
@@ -3527,7 +3529,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferClampShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferClampShape(
     const Shape& min, const Shape& operand, const Shape& max) {
   TF_RETURN_IF_ERROR(ExpectArray(min, "clamp min"));
   TF_RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
@@ -3544,7 +3546,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return operand;
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
   TF_RETURN_IF_ERROR(ExpectArray(pred, "select pred"));
   TF_RETURN_IF_ERROR(ExpectArray(on_true, "select on-true"));
@@ -3574,7 +3576,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   for (int64_t dimension = 0; dimension < pred.rank(); ++dimension) {
     if (on_true.is_unbounded_dynamic_dimension(dimension) ||
         on_false.is_unbounded_dynamic_dimension(dimension)) {
-      StatusOr<DimAndBound> inferred = InferMostSpecificDimAndBound(
+      absl::StatusOr<DimAndBound> inferred = InferMostSpecificDimAndBound(
           dimension, on_true.dimensions(dimension),
           on_false.dimensions(dimension), on_true.dimensions(dimension),
           on_false.dimensions(dimension));
@@ -3592,7 +3594,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
   return std::move(result);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCallShape(
+/* static */ absl::StatusOr<Shape> ShapeInference::InferCallShape(
     absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply) {
   // The applied function's arity equals the number of arguments.
   if (arg_shapes.size() != to_apply.parameters_size()) {
@@ -3718,7 +3720,7 @@ static Status ValidateGatherDimensionNumbers(
   return OkStatus();
 }
 
-/*static*/ StatusOr<Shape> ShapeInference::InferGatherShape(
+/*static*/ absl::StatusOr<Shape> ShapeInference::InferGatherShape(
     const Shape& input_shape, const Shape& start_indices_shape,
     const GatherDimensionNumbers& gather_dim_numbers,
     absl::Span<const int64_t> slice_sizes) {
@@ -3956,7 +3958,7 @@ Status ValidateScatterDimensionNumbers(
 
 }  // namespace
 
-/*static*/ StatusOr<Shape> ShapeInference::InferScatterShape(
+/*static*/ absl::StatusOr<Shape> ShapeInference::InferScatterShape(
     absl::Span<const Shape* const> arg_shapes,
     const ProgramShape& to_apply_shape,
     const ScatterDimensionNumbers& scatter_dim_numbers) {
