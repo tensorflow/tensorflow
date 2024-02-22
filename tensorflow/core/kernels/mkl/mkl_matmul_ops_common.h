@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -776,7 +776,6 @@ struct MklMatMulParams {
   memory::dims a_strides;
   memory::dims b_strides;
   memory::dims c_strides;
-  memory::dim a_nnz;
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -788,19 +787,17 @@ struct MklMatMulParams {
 
   MklMatMulParams(string prefix, memory::dims a_dims, memory::dims b_dims,
                   memory::dims c_dims, memory::dims a_strides,
-                  memory::dims b_strides, memory::dims c_strides,
-                  memory::dim a_nnz = 0)
+                  memory::dims b_strides, memory::dims c_strides)
       : prefix(prefix),
         a_dims(a_dims),
         b_dims(b_dims),
         c_dims(c_dims),
         a_strides(a_strides),
         b_strides(b_strides),
-        c_strides(c_strides),
-        a_nnz(a_nnz) {}
+        c_strides(c_strides) {}
 };
 
-template <typename Tlhs, typename Trhs, typename Toutput, bool CSR = false>
+template <typename Tlhs, typename Trhs, typename Toutput>
 class MklMatMulPrimitive : public MklPrimitive {
  public:
   explicit MklMatMulPrimitive(const MklMatMulParams& params)
@@ -814,12 +811,9 @@ class MklMatMulPrimitive : public MklPrimitive {
   dnnl::memory::desc GetScratchPadDesc() {
     return context_.prim_desc->scratchpad_desc();
   }
-
   void Execute(const std::shared_ptr<stream>& stream, const Tlhs* a_data,
                const Trhs* b_data, const Toutput* c_data, void* sp_data,
-               void* mul_data = nullptr, void* add_data = nullptr,
-               const int32_t* a_col_indices = nullptr,
-               const int32_t* a_row_pointers = nullptr) {
+               void* mul_data = nullptr, void* add_data = nullptr) {
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
@@ -830,29 +824,20 @@ class MklMatMulPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<Trhs*>(b_data)), *stream);
     context_.c_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(c_data)), *stream);
+    context_.sp_mem->set_data_handle(sp_data, *stream);
 
-    if (sp_data != nullptr) context_.sp_mem->set_data_handle(sp_data, *stream);
     if (mul_data != nullptr)
       context_.mul_mem->set_data_handle(mul_data, *stream);
     if (add_data != nullptr)
       context_.add_mem->set_data_handle(add_data, *stream);
 #else
-    if constexpr (CSR) {
-      context_.a_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tlhs*>(a_data)), 0);
-      context_.a_mem->set_data_handle(
-          static_cast<void*>(const_cast<int32_t*>(a_col_indices)), 1);
-      context_.a_mem->set_data_handle(
-          static_cast<void*>(const_cast<int32_t*>(a_row_pointers)), 2);
-    } else {
-      context_.a_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tlhs*>(a_data)));
-    }
+    context_.a_mem->set_data_handle(
+        static_cast<void*>(const_cast<Tlhs*>(a_data)));
     context_.b_mem->set_data_handle(
         static_cast<void*>(const_cast<Trhs*>(b_data)));
     context_.c_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(c_data)));
-    if (sp_data != nullptr) context_.sp_mem->set_data_handle(sp_data);
+    context_.sp_mem->set_data_handle(sp_data);
     if (mul_data != nullptr) context_.mul_mem->set_data_handle(mul_data);
     if (add_data != nullptr) context_.add_mem->set_data_handle(add_data);
 #endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
@@ -862,7 +847,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.a_mem->set_data_handle(DummyData);
     context_.b_mem->set_data_handle(DummyData);
     context_.c_mem->set_data_handle(DummyData);
-    if (sp_data != nullptr) context_.sp_mem->set_data_handle(DummyData);
+    context_.sp_mem->set_data_handle(DummyData);
     if (mul_data != nullptr) context_.mul_mem->set_data_handle(DummyData);
     if (add_data != nullptr) context_.add_mem->set_data_handle(DummyData);
   }
@@ -922,16 +907,8 @@ class MklMatMulPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::primitive> matmul_primitive = nullptr;
 
     // Create MatMul descriptor and primitive descriptor.
-    if constexpr (CSR) {
-      // If it's a CSR matrix.
-      const auto tmp = memory::desc::csr(
-          params.a_dims, MklDnnType<Tlhs>(), params.a_nnz,
-          dnnl::memory::data_type::s32, dnnl::memory::data_type::s32);
-      context_.a_md.reset(new memory::desc(tmp));
-    } else {
-      context_.a_md.reset(new memory::desc({params.a_dims}, MklDnnType<Tlhs>(),
-                                           params.a_strides));
-    }
+    context_.a_md.reset(new memory::desc({params.a_dims}, MklDnnType<Tlhs>(),
+                                         params.a_strides));
 
     context_.b_md.reset(new memory::desc({params.b_dims}, MklDnnType<Trhs>(),
 #ifdef DNNL_AARCH64_USE_ACL
@@ -990,13 +967,8 @@ class MklMatMulPrimitive : public MklPrimitive {
 #endif  // !ENABLE_ONEDNN_V3
 
     // Create memory primitive based on dummy data.
-    if constexpr (CSR) {
-      context_.a_mem.reset(new dnnl::memory(*context_.a_md, cpu_engine_,
-                                            std::vector<void*>(3, DummyData)));
-    } else {
-      context_.a_mem.reset(
-          new dnnl::memory(*context_.a_md, cpu_engine_, DummyData));
-    }
+    context_.a_mem.reset(
+        new dnnl::memory(*context_.a_md, cpu_engine_, DummyData));
 #ifdef DNNL_AARCH64_USE_ACL
     context_.b_mem.reset(new dnnl::memory(
         context_.prim_desc.get()->weights_desc(), cpu_engine_, DummyData));
@@ -1047,25 +1019,24 @@ class MklMatMulPrimitive : public MklPrimitive {
 #endif
 };
 
-template <typename T, typename Tlhs, typename Trhs, typename Toutput,
-          bool CSR = false>
+template <typename T, typename Tlhs, typename Trhs, typename Toutput>
 class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklMatMulPrimitive<Tlhs, Trhs, Toutput, CSR>* Get(
+  static MklMatMulPrimitive<Tlhs, Trhs, Toutput>* Get(
       const MklMatMulParams& params, bool do_not_cache) {
-    MklMatMulPrimitive<Tlhs, Trhs, Toutput, CSR>* matmul_prim = nullptr;
+    MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim = nullptr;
 
     if (do_not_cache) {
       // Always create new primitive
-      matmul_prim = new MklMatMulPrimitive<Tlhs, Trhs, Toutput, CSR>(params);
+      matmul_prim = new MklMatMulPrimitive<Tlhs, Trhs, Toutput>(params);
     } else {
       // Try to find a suitable one in pool
-      matmul_prim = dynamic_cast<MklMatMulPrimitive<Tlhs, Trhs, Toutput, CSR>*>(
-          MklMatMulPrimitiveFactory<T, Tlhs, Trhs, Toutput, CSR>::GetInstance()
+      matmul_prim = dynamic_cast<MklMatMulPrimitive<Tlhs, Trhs, Toutput>*>(
+          MklMatMulPrimitiveFactory<T, Tlhs, Trhs, Toutput>::GetInstance()
               .GetMklMatMul(params));
       if (matmul_prim == nullptr) {
-        matmul_prim = new MklMatMulPrimitive<Tlhs, Trhs, Toutput, CSR>(params);
-        MklMatMulPrimitiveFactory<T, Tlhs, Trhs, Toutput, CSR>::GetInstance()
+        matmul_prim = new MklMatMulPrimitive<Tlhs, Trhs, Toutput>(params);
+        MklMatMulPrimitiveFactory<T, Tlhs, Trhs, Toutput>::GetInstance()
             .SetMklMatMul(params, matmul_prim);
       }
     }
