@@ -3488,6 +3488,127 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
   }
 };
 
+// Converts the tf.SplitV op into a series of mhlo.real_dynamic_slice ops, if
+// 1) the dimension to split is a constant
+// 2) the input shape is dynamic except the split dimension
+// 3) the split sizes are all constants
+class ConvertSplitVOpDynamic : public OpRewritePattern<TF::SplitVOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SplitVOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value input = op.getValue();
+    // We can only match with dynamic-shaped inputs.
+    auto input_type = input.getType().dyn_cast<RankedTensorType>();
+    if (!input_type || input_type.hasStaticShape()) return failure();
+
+    // We can only match when the split dimension is a constant scalar.
+    DenseIntElementsAttr split_dim_attr;
+    if (!matchPattern(op.getSplitDim(), m_Constant(&split_dim_attr)))
+      return failure();
+
+    // We can only match when the split sizes is a constant int vector.
+    DenseIntElementsAttr split_sizes_attr;
+    if (!matchPattern(op.getSizeSplits(), m_Constant(&split_sizes_attr)))
+      return failure();
+
+    // Get the dimension we are splitting at. Offset properly if it's negative.
+    int64_t input_rank = input_type.getRank();
+    int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+    if (dim_index < 0) dim_index += input_rank;
+
+    // We can only match when the split dimension isn't dynamic.
+    if (input_type.isDynamicDim(dim_index)) return failure();
+
+    // Get each chunck's size along the dimension to split. It may contain
+    // dynamic sizes and we need to update it if so.
+    SmallVector<int64_t, 4> split_sizes;
+    int64_t total_dim_size = 0;  // Total dimension size assigned to splits
+    std::optional<int> dynamic_dim_index;
+    split_sizes.reserve(
+        split_sizes_attr.getType().cast<ShapedType>().getNumElements());
+    for (const auto &dim : llvm::enumerate(split_sizes_attr)) {
+      int64_t dim_val = dim.value().getSExtValue();
+      split_sizes.push_back(dim_val);
+      if (dim_val == -1) {
+        // We cannot have more than one dynamic dimension.
+        assert(!dynamic_dim_index && "invalid split sizes");
+        dynamic_dim_index = dim.index();
+      } else {
+        total_dim_size += dim_val;
+      }
+    }
+
+    int64_t input_dim_size = input_type.getDimSize(dim_index);
+    assert(((dynamic_dim_index && total_dim_size <= input_dim_size) ||
+            (!dynamic_dim_index && total_dim_size == input_dim_size)) &&
+           "invalid split sizes");
+
+    // Update the dynamic dimension with calculated concrete size.
+    if (dynamic_dim_index)
+      split_sizes[*dynamic_dim_index] = input_dim_size - total_dim_size;
+
+    Type index_ty = rewriter.getIndexType();
+    auto indices_shape = RankedTensorType::get({input_rank}, index_ty);
+
+    // Parameters of strides for constructing each d_slice.
+    SmallVector<int64_t, 4> strides(input_rank, 1);
+    auto strides_attr =
+        DenseElementsAttr::get(indices_shape, ArrayRef<int64_t>(strides));
+    auto strides_op = rewriter.create<arith::ConstantOp>(loc, strides_attr);
+
+    // Parameters of begin indices for constructing each d_slice.
+    SmallVector<int64_t, 4> begin_indices(input_rank, 0);
+    SmallVector<Value, 4> begin_ops(op.getNumResults(), nullptr);
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
+      auto attr = DenseElementsAttr::get(
+          indices_shape, ArrayRef<int64_t>(begin_indices));
+      begin_ops[i] = rewriter.create<arith::ConstantOp>(loc, attr);
+      begin_indices[dim_index] += split_sizes[i];
+    }
+
+    // Parameters of end indices for constructing each d_slice.
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    SmallVector<Value, 4> end_values(input_rank, nullptr);
+    for (int i = 0; i < input_rank; ++i) {
+      if (i != dim_index)
+        if (input_type.isDynamicDim(i))
+          end_values[i] = rewriter.create<tensor::DimOp>(loc, input, i);
+        else
+          end_values[i] = rewriter.create<arith::ConstantIndexOp>(loc,
+              end_indices[i]);
+    }
+
+    // All HLO d_slice results used to replace the original tf.SplitV op.
+    SmallVector<Value, 4> slices;
+    slices.reserve(op.getNumResults());
+
+    begin_indices[dim_index] = 0;
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
+      end_indices[dim_index] = begin_indices[dim_index] + split_sizes[i];
+      end_values[dim_index] = rewriter.create<arith::ConstantIndexOp>(
+          loc, end_indices[dim_index]);
+
+      auto end_op = rewriter.create<tensor::FromElementsOp>(
+          loc,
+          tensorflow::GetTypeFromTFTensorShape(
+              {static_cast<int64_t>(end_values.size())}, index_ty), end_values);
+
+      slices.push_back(rewriter.create<mhlo::RealDynamicSliceOp>(
+          loc, op.getOperation()->getResult(i).getType(), input, begin_ops[i],
+          end_op, strides_op));
+
+      // Prepare the begin indice for the next slice.
+      begin_indices[dim_index] = end_indices[dim_index];
+    }
+
+    rewriter.replaceOp(op, slices);
+    return success();
+  }
+};
+
 // Converts StridedSlice op to HLO Slice op along with Reverse op to handle
 // negative strides and Reshape op to update the output shape. Indices and
 // strides operands are converted to attributes with non-negative indexing.
@@ -6923,6 +7044,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
     ConvertSplitOpDynamic,
+    ConvertSplitVOpDynamic,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,
     ConvertUnpackOpDynamic,

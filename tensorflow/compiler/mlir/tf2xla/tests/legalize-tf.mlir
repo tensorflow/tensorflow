@@ -4665,7 +4665,30 @@ func.func @splitv_dynamic_dim_in_split_sizes(%input: tensor<4x6xf32>) -> (tensor
 func.func @splitv_dynamic(%input: tensor<?x6xf32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>) {
   %split_sizes = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi32>} : () -> tensor<3xi32>
   %split_dim = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: tf.SplitV
+  // CHECK: tensor.dim %{{.*}} : tensor<?x6xf32>
+  // CHECK: tensor.from_elements %{{.*}} : tensor<2xindex>
+  // CHECK: mhlo.real_dynamic_slice %{{.*}} : (tensor<?x6xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x1xf32>
+  // CHECK: tensor.from_elements %{{.*}} : tensor<2xindex>
+  // CHECK: mhlo.real_dynamic_slice %{{.*}} : (tensor<?x6xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x2xf32>
+  // CHECK: tensor.from_elements %{{.*}} : tensor<2xindex>
+  // CHECK: mhlo.real_dynamic_slice %{{.*}} : (tensor<?x6xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x3xf32>
+  %0:3 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<?x6xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>)
+  func.return %0#0, %0#1, %0#2 : tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @splitv_dynamic_with_dynamic_dim_in_split_sizes
+func.func @splitv_dynamic_with_dynamic_dim_in_split_sizes(%input: tensor<?x6xf32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>) {
+  %split_sizes = "tf.Const"() {value = dense<[1, 2, -1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %split_dim = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: tensor.dim %{{.*}} : tensor<?x6xf32>
+  // CHECK: tensor.from_elements %{{.*}} : tensor<2xindex>
+  // CHECK: mhlo.real_dynamic_slice %{{.*}} : (tensor<?x6xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x1xf32>
+  // CHECK: tensor.from_elements %{{.*}} : tensor<2xindex>
+  // CHECK: mhlo.real_dynamic_slice %{{.*}} : (tensor<?x6xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x2xf32>
+  // CHECK: tensor.from_elements %{{.*}} : tensor<2xindex>
+  // CHECK: mhlo.real_dynamic_slice %{{.*}} : (tensor<?x6xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x3xf32>
   %0:3 = "tf.SplitV"(%input, %split_sizes, %split_dim) : (tensor<?x6xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>)
   func.return %0#0, %0#1, %0#2 : tensor<?x1xf32>, tensor<?x2xf32>, tensor<?x3xf32>
 }
