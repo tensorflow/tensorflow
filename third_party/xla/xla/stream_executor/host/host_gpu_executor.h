@@ -65,8 +65,8 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool HostMemoryRegister(void* mem, uint64_t size) override { return true; }
   bool HostMemoryUnregister(void* mem) override { return true; }
 
-  bool Memcpy(Stream* stream, void* host_dst, const DeviceMemoryBase& gpu_src,
-              uint64_t size) override;
+  absl::Status Memcpy(Stream* stream, void* host_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
   bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
               uint64_t size) override;
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,

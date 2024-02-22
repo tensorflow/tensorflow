@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "xla/status_macros.h"
 
 namespace stream_executor {
@@ -38,22 +39,14 @@ void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
 }
 
-bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
-                                    const DeviceMemoryBase &dev_src,
-                                    uint64_t size) {
+absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
+                                            const DeviceMemoryBase &dev_src,
+                                            uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     // Ignore errors.
     absl::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
-  absl::Status status = AsExecutorStream(stream)->BlockUntilDone();
-  if (status.ok()) {
-    return true;
-  }
-
-  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
-  // to throw away error information here.
-  LOG(WARNING) << "Memcpy: error on stream: " << status;
-  return false;
+  return AsExecutorStream(stream)->BlockUntilDone();
 }
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,

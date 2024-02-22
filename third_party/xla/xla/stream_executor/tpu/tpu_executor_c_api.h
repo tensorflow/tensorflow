@@ -82,10 +82,10 @@ void TpuExecutor_SynchronousMemcpyFromHost(SE_StreamExecutor* executor,
                                            SE_DeviceMemoryBase* device_dst,
                                            const void* host_src, uint64_t size,
                                            TF_Status* status);
-bool TpuExecutor_MemcpyToHost(SE_StreamExecutor* executor, SE_Stream* stream,
+void TpuExecutor_MemcpyToHost(SE_StreamExecutor* executor, SE_Stream* stream,
                               void* host_dst,
                               const SE_DeviceMemoryBase* device_src,
-                              uint64_t size);
+                              uint64_t size, TF_Status* status);
 
 bool TpuExecutor_MemcpyFromHost(SE_StreamExecutor* executor, SE_Stream* stream,
                                 SE_DeviceMemoryBase* device_dst,
