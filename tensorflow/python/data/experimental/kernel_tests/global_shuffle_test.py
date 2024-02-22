@@ -36,10 +36,16 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(seed=[None, 42], use_tensor_seed=[True, False])))
-  def testRange(self, seed: Optional[int], use_tensor_seed: bool):
+          combinations.combine(
+              seed=[None, 42],
+              use_tensor_seed=[True, False],
+              prefetch=[True, False])))
+  def testRange(
+      self, seed: Optional[int], use_tensor_seed: bool, prefetch: bool):
     dataset_range = 100
     dataset = dataset_ops.Dataset.range(dataset_range)
+    if prefetch:
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     seed = (constant_op.constant(seed, dtype=dtypes.int64)
             if seed and use_tensor_seed else seed)
     dataset = global_shuffle_op._global_shuffle(dataset, seed=seed)
@@ -153,14 +159,18 @@ class GlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(reshuffle_each_iteration=[True, False])))
+          combinations.combine(
+              reshuffle_each_iteration=[True, False], prefetch=[True, False])))
   def testRange(
       self,
       verify_fn: Callable[..., None],
-      reshuffle_each_iteration: bool):
+      reshuffle_each_iteration: bool,
+      prefetch: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(10)
+      if prefetch:
+        dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
       return dataset
