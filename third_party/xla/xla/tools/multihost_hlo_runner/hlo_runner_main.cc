@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
   }
 
   // The main logic:
-  xla::StatusOr<std::unique_ptr<xla::PjRtClient>> client;
+  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client;
   if (enable_mock_nccl) {
     CHECK_GT(num_nodes, 1);
     client = xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);
