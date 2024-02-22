@@ -589,7 +589,9 @@ func.func @tpu_execute_while_body(%arg0: !tf_res, %arg1: !tf_res,
     // CHECK: [[exe:%.*]] = tf_executor.island({{.*}}) wraps "tf.TPUExecuteAndUpdateVariables"
     %exe_control = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg0, %key) {
         device_var_reads_indices = [0, 1],
-        device_var_updates_indices = [0, 1]} : (!tf_res, !tf_res, !tf_str) -> ()
+        device_var_updates_indices = [0, 1],
+        device = "task:0"
+    } : (!tf_res, !tf_res, !tf_str) -> ()
 
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -644,14 +646,16 @@ func.func @incomplete_composite_devices_while_body(%arg0: !tf_res, %arg1: !tf_re
     // CHECK: [[exe:%.*]] = tf_executor.island({{.*}}) wraps "tf.TPUExecuteAndUpdateVariables"
     %exe_control = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %key) {
         device_var_reads_indices = [0, 1],
-        device_var_updates_indices = [0, 1]} : (!tf_res, !tf_res, !tf_str) -> ()
+        device_var_updates_indices = [0, 1],
+        device = "task:0"
+    } : (!tf_res, !tf_res, !tf_str) -> ()
 
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %add, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %control_barrier = tf_executor.island(%assign_control_0, %assign_control_1, %add_control, %exe_control) wraps "tf.NoOp"() : () -> ()
-    // CHECK: [[exe]]{{.*}}"tf.Identity"(%arg3)
+    // CHECK: [[exe]]{{.*}}"tf.Identity"
     // CHECK-NOT: "tf.Identity"
     // CHECK: tf_executor.fetch
     tf_executor.fetch %arg0, %arg1, %add, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control, !tf_executor.control
@@ -697,10 +701,12 @@ func.func @complete_composite_devices_while_body(%arg0: !tf_res, %arg1: !tf_res,
     -> (!tf_res, !tf_res, tensor<f32>) {
   %graph:3 = tf_executor.graph {
     %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
-    // CHECK: [[exe:%.*]] = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"
+    // CJHECK: [[exe:%.*]] = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"
     %exe_control = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %key) {
         device_var_reads_indices = [0, 1],
-        device_var_updates_indices = [0, 1]} : (!tf_res, !tf_res, !tf_str) -> ()
+        device_var_updates_indices = [0, 1],
+        device = "task:0"
+    } : (!tf_res, !tf_res, !tf_str) -> ()
 
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -754,10 +760,12 @@ func.func @tpu_execute_with_non_resource_operands_while_body(%arg0: !tf_res, %ar
     -> (!tf_res, !tf_res, tensor<f32>) {
   %graph:3 = tf_executor.graph {
     %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
-    // CHECK: [[exe:%.*]] = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"
+    // CHECK: [[exe:%.*]] = tf_executor.island({{[^)]*}}) wraps "tf.TPUExecuteAndUpdateVariables"
     %exe_control = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg2, %arg0, %arg1, %key) {
         device_var_reads_indices = [1, 2],
-        device_var_updates_indices = [1, 2]} : (tensor<f32>, !tf_res, !tf_res, !tf_str) -> ()
+        device_var_updates_indices = [1, 2],
+        device = "task:0"
+    } : (tensor<f32>, !tf_res, !tf_res, !tf_str) -> ()
 
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -792,6 +800,268 @@ func.func @tpu_execute_with_non_resource_operands(%arg0: !tf_res {tf._composite_
     %while_out:3, %control_while = tf_executor.island wraps "tf.While"(%arg0, %arg1, %arg2)
         {body = @tpu_execute_with_non_resource_operands_while_body,
          cond = @tpu_execute_with_non_resource_operands_while_cond, is_stateless = false}
+    : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+!tf_res = tensor<!tf_type.resource<tensor<f32>>>
+!tf_str = tensor<3x!tf_type.string>
+
+// CHECK-LABEL: @double_tpu_execute_while_body
+func.func @double_tpu_execute_while_body(%arg0: !tf_res, %arg1: !tf_res,
+                                         %arg2: tensor<f32>)
+    -> (!tf_res, !tf_res, tensor<f32>) {
+    // CHECK: "tf.Identity"
+  %graph:3 = tf_executor.graph {
+    // CHECK: {{.*}}, [[ctrl1:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK: {{.*}}, [[ctrl2:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK: "tf.Identity"
+    %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
+    // CHECK: [[exe_ctrl1:%.*]] = tf_executor.island([[ctrl1]]) wraps "tf.TPUExecuteAndUpdateVariables"
+    %exe_control1 = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg2, %arg0, %arg1, %key) {
+        device_var_reads_indices = [1, 2],
+        device_var_updates_indices = [1, 2],
+        device = "task:0"
+    } : (tensor<f32>, !tf_res, !tf_res, !tf_str) -> ()
+
+    // CHECK: [[exe_ctrl2:%.*]] = tf_executor.island([[ctrl2]]) wraps "tf.TPUExecuteAndUpdateVariables"
+    %exe_control2 = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg2, %arg0, %arg1, %key) {
+        device_var_reads_indices = [1, 2],
+        device_var_updates_indices = [1, 2],
+        device = "task:1"
+    } : (tensor<f32>, !tf_res, !tf_res, !tf_str) -> ()
+
+    %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    %add, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %control_barrier = tf_executor.island(%assign_control_0, %assign_control_1, %add_control,
+                                          %exe_control1, %exe_control2) wraps "tf.NoOp"() : () -> ()
+    // CHECK: tf_executor.island([[exe_ctrl1]]) wraps "tf.Identity"
+    // CHECK: tf_executor.island([[exe_ctrl2]]) wraps "tf.Identity"
+    // CHECK: tf_executor.fetch
+    tf_executor.fetch %arg0, %arg1, %add, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control, !tf_executor.control
+  }
+  func.return %graph#0, %graph#1, %graph#2 : !tf_res, !tf_res, tensor<f32>
+}
+
+// CHECK-LABEL: @double_tpu_execute_while_cond
+func.func @double_tpu_execute_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) -> (tensor<i32>) {
+  %graph = tf_executor.graph {
+    %island, %ctrl = tf_executor.island {
+      %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
+      tf_executor.yield %pred : tensor<i32>
+    }
+    tf_executor.fetch %island : tensor<i32>
+  }
+  func.return %graph : tensor<i32>
+}
+
+// CHECK-LABEL: @double_tpu_execute
+func.func @double_tpu_execute(%arg0: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"},
+                              %arg1: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"}, %arg2: tensor<f32>) {
+  tf_executor.graph {
+    // CHECK: "tf.Const"{{.*}}tensor<i32>
+    %while_out:3, %control_while = tf_executor.island wraps "tf.While"(%arg0, %arg1, %arg2)
+        {body = @double_tpu_execute_while_body,
+         cond = @double_tpu_execute_while_cond, is_stateless = false}
+    : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+!tf_res = tensor<!tf_type.resource<tensor<f32>>>
+!tf_str = tensor<3x!tf_type.string>
+
+// CHECK-LABEL: @tpu_executes_on_same_device_while_body
+func.func @tpu_executes_on_same_device_while_body(%arg0: !tf_res, %arg1: !tf_res,
+                                         %arg2: tensor<f32>)
+    -> (!tf_res, !tf_res, tensor<f32>) {
+  %graph:3 = tf_executor.graph {
+    // CHECK: "tf.Identity"
+    // CHECK: {{.*}}, [[id_ctrl:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK: "tf.Identity"
+    %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
+    // CHECK: [[exe_ctrl1:%.*]] = tf_executor.island([[id_ctrl]]) wraps "tf.TPUExecuteAndUpdateVariables"
+    %exe_control1 = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg2, %arg0, %arg1, %key) {
+        device_var_reads_indices = [1, 2],
+        device_var_updates_indices = [1, 2],
+        device = "task:0"
+    } : (tensor<f32>, !tf_res, !tf_res, !tf_str) -> ()
+
+    // CHECK: [[exe_ctrl2:%.*]] = tf_executor.island([[id_ctrl]]) wraps "tf.TPUExecuteAndUpdateVariables"
+    %exe_control2 = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg2, %arg0, %arg1, %key) {
+        device_var_reads_indices = [1, 2],
+        device_var_updates_indices = [1, 2],
+        device = "task:0"
+    } : (tensor<f32>, !tf_res, !tf_res, !tf_str) -> ()
+
+    %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    %add, %add_control = tf_executor.island wraps "tf.Add"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    %control_barrier = tf_executor.island(%assign_control_0, %assign_control_1, %add_control,
+                                          %exe_control1, %exe_control2) wraps "tf.NoOp"() : () -> ()
+    // CHECK: "tf.Identity"(%arg3)
+    // CHECK: tf_executor.island([[exe_ctrl1]], [[exe_ctrl2]]) wraps "tf.Identity"
+    // CHECK: "tf.Identity"(%arg5)
+    // CHECK-NEXT: tf_executor.fetch
+    tf_executor.fetch %arg0, %arg1, %add, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control, !tf_executor.control
+  }
+  func.return %graph#0, %graph#1, %graph#2 : !tf_res, !tf_res, tensor<f32>
+}
+
+// CHECK-LABEL: @tpu_executes_on_same_device_while_cond
+func.func @tpu_executes_on_same_device_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) -> (tensor<i32>) {
+  %graph = tf_executor.graph {
+    %island, %ctrl = tf_executor.island {
+      %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
+      tf_executor.yield %pred : tensor<i32>
+    }
+    tf_executor.fetch %island : tensor<i32>
+  }
+  func.return %graph : tensor<i32>
+}
+
+// CHECK-LABEL: @tpu_executes_on_same_device
+func.func @tpu_executes_on_same_device(%arg0: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"},
+                              %arg1: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"}, %arg2: tensor<f32>) {
+  tf_executor.graph {
+    // CHECK: "tf.Const"{{.*}}tensor<i32>
+    %while_out:3, %control_while = tf_executor.island wraps "tf.While"(%arg0, %arg1, %arg2)
+        {body = @tpu_executes_on_same_device_while_body,
+         cond = @tpu_executes_on_same_device_while_cond, is_stateless = false}
+    : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+!tf_res = tensor<!tf_type.resource<tensor<f32>>>
+!tf_str = tensor<3x!tf_type.string>
+
+// CHECK-LABEL: @tpu_execute_and_assign_variable_while_body
+func.func @tpu_execute_and_assign_variable_while_body(%arg0: !tf_res, %arg1: !tf_res,
+                                         %arg2: tensor<f32>)
+    -> (!tf_res, !tf_res, tensor<f32>) {
+  %graph:3 = tf_executor.graph {
+    // CHECK: tf.Identity
+    // CHECK-NOT: tf.Identity
+    // CHECK: TPUExecuteAndUpdate
+    %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
+    %exe_control = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %key) {
+        device_var_reads_indices = [1, 2],
+        device_var_updates_indices = [1, 2],
+        device = "task:0"
+    } : (!tf_res, !tf_res, !tf_str) -> ()
+
+    // CHECK: AssignVariableOp
+    %assign_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) {
+        device = "task:0"
+    } : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    // CHECK: tf.Identity
+    // CHECK-NOT: tf.Identity
+    %control_barrier = tf_executor.island(%assign_control, %exe_control) wraps "tf.NoOp"() : () -> ()
+    // CHECK: fetch
+    tf_executor.fetch %arg0, %arg1, %arg2, %control_barrier : !tf_res, !tf_res, tensor<f32>, !tf_executor.control
+  }
+  func.return %graph#0, %graph#1, %graph#2 : !tf_res, !tf_res, tensor<f32>
+}
+
+// CHECK-LABEL: @tpu_execute_and_assign_variable_while_cond
+func.func @tpu_execute_and_assign_variable_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) -> (tensor<i32>) {
+  %graph = tf_executor.graph {
+    %island, %ctrl = tf_executor.island {
+      %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
+      tf_executor.yield %pred : tensor<i32>
+    }
+    tf_executor.fetch %island : tensor<i32>
+  }
+  func.return %graph : tensor<i32>
+}
+
+// CHECK-LABEL: @tpu_execute_and_assign_variable
+func.func @tpu_execute_and_assign_variable(%arg0: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"},
+                              %arg1: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"}, %arg2: tensor<f32>) {
+  tf_executor.graph {
+    // CHECK: "tf.Const"{{.*}}tensor<i32>
+    %while_out:3, %control_while = tf_executor.island wraps "tf.While"(%arg0, %arg1, %arg2)
+        {body = @tpu_execute_and_assign_variable_while_body,
+         cond = @tpu_execute_and_assign_variable_while_cond, is_stateless = false}
+    : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+!tf_res = tensor<!tf_type.resource<tensor<f32>>>
+!tf_str = tensor<3x!tf_type.string>
+
+// CHECK-LABEL: @tpu_execute_and_assign_variable_on_different_devices_while_body
+func.func @tpu_execute_and_assign_variable_on_different_devices_while_body(%arg0: !tf_res, %arg1: !tf_res,
+                                         %arg2: tensor<f32>)
+    -> (!tf_res, !tf_res, tensor<f32>) {
+  %graph:3 = tf_executor.graph {
+    // CHECK: {{.*}}, [[ctrl1:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK: {{.*}}, [[ctrl2:%.*]] = tf_executor.island wraps "tf.Identity"
+    // CHECK-NOT: tf.Identity
+    // CHECK: [[exe_ctrl:%.*]] = tf_executor.island([[ctrl1]]) wraps "tf.TPUExecuteAndUpdateVariables"
+    %key, %key_control = tf_executor.island wraps "tf.Const"() {value = dense<"">: !tf_str} : () -> !tf_str
+    %exe_control = tf_executor.island wraps "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %key) {
+        device_var_reads_indices = [1, 2],
+        device_var_updates_indices = [1, 2],
+        device = "task:0"
+    } : (!tf_res, !tf_res, !tf_str) -> ()
+
+    // CHECK: [[assign_ctrl:%.*]] = tf_executor.island([[ctrl2]]) wraps "tf.AssignVariableOp"
+    %assign_control = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) {
+        device = "task:1"
+    } : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
+    // CHECK-DAG: tf_executor.island([[exe_ctrl]]) wraps "tf.Identity"
+    // CHECK-DAG: tf_executor.island([[assign_ctrl]]) wraps "tf.Identity"
+    // CHECK-NOT: tf.Identity
+    %control_barrier = tf_executor.island(%assign_control, %exe_control) wraps "tf.NoOp"() : () -> ()
+    // CHECK: fetch
+    tf_executor.fetch %arg0, %arg1, %arg2, %control_barrier : !tf_res, !tf_res, tensor<f32>, !tf_executor.control
+  }
+  func.return %graph#0, %graph#1, %graph#2 : !tf_res, !tf_res, tensor<f32>
+}
+
+// CHECK-LABEL: @tpu_execute_and_assign_variable_on_different_devices_while_cond
+func.func @tpu_execute_and_assign_variable_on_different_devices_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) -> (tensor<i32>) {
+  %graph = tf_executor.graph {
+    %island, %ctrl = tf_executor.island {
+      %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
+      tf_executor.yield %pred : tensor<i32>
+    }
+    tf_executor.fetch %island : tensor<i32>
+  }
+  func.return %graph : tensor<i32>
+}
+
+// CHECK-LABEL: @tpu_execute_and_assign_variable_on_different_devices
+func.func @tpu_execute_and_assign_variable_on_different_devices(%arg0: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"},
+                              %arg1: !tf_res {tf._composite_device = "/job:tpu_host_worker/replica:0/task:0/device:COMPOSITE:0"}, %arg2: tensor<f32>) {
+  tf_executor.graph {
+    // CHECK: "tf.Const"{{.*}}tensor<i32>
+    %while_out:3, %control_while = tf_executor.island wraps "tf.While"(%arg0, %arg1, %arg2)
+        {body = @tpu_execute_and_assign_variable_on_different_devices_while_body,
+         cond = @tpu_execute_and_assign_variable_on_different_devices_while_cond, is_stateless = false}
     : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
     -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>)
     tf_executor.fetch
