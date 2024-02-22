@@ -287,9 +287,11 @@ class CommandBufferCmdSequence {
 
   // Functions for tracking buffer usage of recorded commands and figuring out
   // when the next command requires a barrier for correctness.
-  bool HasConflicts(const CommandBufferCmd::BufferUsageVector& buffers);
-  void TrackBuffers(const CommandBufferCmd::BufferUsageVector& buffers);
-  void ClearTrackedBuffers();
+  bool HasConflicts(ExecutionStreamId execution_stream_id,
+                    const CommandBufferCmd::BufferUsageVector& buffers);
+  void TrackBuffers(ExecutionStreamId execution_stream_id,
+                    const CommandBufferCmd::BufferUsageVector& buffers);
+  void ClearTrackedBuffers(ExecutionStreamId execution_stream_id);
 
   SynchronizationMode synchronization_mode_;
   std::vector<CommandInfo> commands_;
@@ -303,8 +305,12 @@ class CommandBufferCmdSequence {
   // We track read and write sets of commands recorded into the command
   // sequence to detect conflicts and insert explicit barriers. These are the
   // buffer allocation slices used by commands appended since the last barrier.
-  absl::flat_hash_set<BufferAllocation::Slice> read_set_;
-  absl::flat_hash_set<BufferAllocation::Slice> write_set_;
+  struct ReadWriteSet {
+    absl::flat_hash_set<BufferAllocation::Slice> read;
+    absl::flat_hash_set<BufferAllocation::Slice> write;
+  };
+
+  absl::flat_hash_map<ExecutionStreamId, ReadWriteSet> read_write_sets_;
 };
 
 //===----------------------------------------------------------------------===//

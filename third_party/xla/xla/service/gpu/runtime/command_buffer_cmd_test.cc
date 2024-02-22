@@ -55,8 +55,9 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-// Give a short alias to default execution thread.
-static constexpr auto s0 = Thunk::kDefaultExecutionStreamId;
+// Give a short aliases to execution threads.
+static constexpr auto s0 = ExecutionStreamId(0);
+static constexpr auto s1 = ExecutionStreamId(1);
 
 // A command buffer cmd for testing automatic barriers insertion by the command
 // buffer cmd sequence. We never execute this command, we need it only to pass
@@ -155,6 +156,26 @@ TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   EXPECT_EQ(commands.barriers().at(0), false);
   EXPECT_EQ(commands.barriers().at(1), false);
   EXPECT_EQ(commands.barriers().at(2), true);
+}
+
+TEST(CommandBufferCmdTest, NoWriteConflictsAcrossStreams) {
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
+  auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
+
+  // Read and write happens on different execution streams and we do not insert
+  // any automatic barriers between streams.
+  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
+  auto use1 = BufferUsage(slice1, MemoryAccess::kWrite);
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(s0, BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(s1, BufferUsageVector{use1});
+
+  ASSERT_EQ(commands.barriers().size(), 2);
+  EXPECT_EQ(commands.barriers().at(0), false);
+  EXPECT_EQ(commands.barriers().at(1), false);
 }
 
 TEST(CommandBufferCmdTest, MemcpyCmd) {

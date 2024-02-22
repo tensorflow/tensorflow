@@ -145,8 +145,9 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
     allocs_indices_.insert(buffer.slice.index());
   }
 
+  ExecutionStreamId execution_stream_id = cmd->execution_stream_id();
   CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
-  bool requires_barrier = HasConflicts(buffers);
+  bool requires_barrier = HasConflicts(execution_stream_id, buffers);
 
   // Always add barriers between commands if we want to serialize execution.
   if (synchronization_mode_ == SynchronizationMode::kSerialize &&
@@ -161,10 +162,10 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
     requires_barrier = true;
   }
 
-  if (requires_barrier) ClearTrackedBuffers();
+  if (requires_barrier) ClearTrackedBuffers(execution_stream_id);
 
   commands_.push_back({std::move(cmd), requires_barrier});
-  TrackBuffers(buffers);
+  TrackBuffers(execution_stream_id, buffers);
 }
 
 absl::Status CommandBufferCmdSequence::Prepare(
@@ -186,19 +187,22 @@ absl::Status CommandBufferCmdSequence::Initialize(
 }
 
 bool CommandBufferCmdSequence::HasConflicts(
+    ExecutionStreamId execution_stream_id,
     const CommandBufferCmd::BufferUsageVector& buffers) {
+  auto& rwset = read_write_sets_[execution_stream_id];
+
   // Returns true if slice overlaps with any of the slices in read set.
   auto read_overlap = [&](const BufferAllocation::Slice& slice) {
-    if (read_set_.contains(slice)) return true;
-    for (auto& read : read_set_)
+    if (rwset.read.contains(slice)) return true;
+    for (auto& read : rwset.read)
       if (read.OverlapsWith(slice)) return true;
     return false;
   };
 
   // Returns true if slice overlaps with any of the slices in write set.
   auto write_overlap = [&](const BufferAllocation::Slice& slice) {
-    if (write_set_.contains(slice)) return true;
-    for (auto& write : write_set_)
+    if (rwset.write.contains(slice)) return true;
+    for (auto& write : rwset.write)
       if (write.OverlapsWith(slice)) return true;
     return false;
   };
@@ -211,16 +215,18 @@ bool CommandBufferCmdSequence::HasConflicts(
 }
 
 void CommandBufferCmdSequence::TrackBuffers(
+    ExecutionStreamId execution_stream_id,
     const CommandBufferCmd::BufferUsageVector& buffers) {
-  for (auto& buffer : buffers) {
-    if (buffer.access == MemoryAccess::kWrite) write_set_.insert(buffer.slice);
-    if (buffer.access == MemoryAccess::kRead) read_set_.insert(buffer.slice);
+  auto& rwset = read_write_sets_[execution_stream_id];
+  for (const CommandBufferCmd::BufferUsage& buffer : buffers) {
+    if (buffer.access == MemoryAccess::kWrite) rwset.write.insert(buffer.slice);
+    if (buffer.access == MemoryAccess::kRead) rwset.read.insert(buffer.slice);
   }
 }
 
-void CommandBufferCmdSequence::ClearTrackedBuffers() {
-  read_set_.clear();
-  write_set_.clear();
+void CommandBufferCmdSequence::ClearTrackedBuffers(
+    ExecutionStreamId execution_stream_id) {
+  read_write_sets_[execution_stream_id] = ReadWriteSet();
 }
 
 static std::string_view RecordModeString(
