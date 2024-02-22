@@ -79,7 +79,7 @@ Status RewriteLayoutWithShardedShape(
 
 // There is a shape_representation_fn or sharding for an output, this function
 // uses a reshape to fix the layout.
-StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     std::optional<xla::OpSharding> sharding, bool fast_mem) {
