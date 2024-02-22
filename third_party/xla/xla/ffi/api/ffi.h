@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_FFI_API_FFI_H_
 #define XLA_FFI_API_FFI_H_
 
-#ifdef TENSORFLOW_COMPILER_XLA_FFI_FFI_H_
+#ifdef XLA_FFI_FFI_H_
 #error Two different XLA FFI implementations cannot be included together
-#endif  // XLA_FFI_API_H_
+#endif  // XLA_FFI_FFI_H_
 
 #include <cstddef>
 #include <cstdint>
