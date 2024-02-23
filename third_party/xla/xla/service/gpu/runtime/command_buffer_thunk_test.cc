@@ -99,8 +99,9 @@ static bool IsAtLeastCuda12300() {
   return false;
 }
 
-// Give a short alias to default execution thread.
-static constexpr auto s0 = Thunk::kDefaultExecutionStreamId;
+// Give a short aliases to execution threads.
+static constexpr auto s0 = ExecutionStreamId(0);
+static constexpr auto s1 = ExecutionStreamId(1);
 
 TEST(CommandBufferThunkTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
@@ -243,6 +244,45 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   TF_ASSERT_OK(stream.Memcpy(dst.data(), a, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 84));
+}
+
+TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
+  se::StreamExecutor* executor = GpuExecutor();
+
+  se::Stream stream(executor);
+  TF_ASSERT_OK(stream.Initialize());
+
+  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(2, 0);
+  TF_ASSERT_OK(stream.MemZero(&a, 2 * sizeof(int32_t)));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc(/*index=*/0, a.size(), /*color=*/0);
+  BufferAllocation::Slice slice0(&alloc, 0 * sizeof(int32_t), sizeof(int32_t));
+  BufferAllocation::Slice slice1(&alloc, 1 * sizeof(int32_t), sizeof(int32_t));
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<Memset32Cmd>(s0, slice0, int32_t{12});
+  commands.Emplace<Memset32Cmd>(s1, slice1, int32_t{34});
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({a}, 0, executor->GetAllocator());
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+
+  // Execute command buffer thunk and verify that it set the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream.BlockHostUntilDone());
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(2, 0);
+  TF_ASSERT_OK(stream.Memcpy(dst.data(), a, a.size()));
+
+  ASSERT_EQ(dst, std::vector<int32_t>({12, 34}));
 }
 
 // This test does the following operations:

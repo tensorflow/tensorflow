@@ -198,6 +198,11 @@ class CommandBufferCmd {
   // Returns true if command implemented as a nested command buffer.
   virtual bool IsNestedCommandBuffer() const { return false; }
 
+  // Returns a command execution scope computed from the command stream id and
+  // the default command buffer execution scope.
+  se::CommandBuffer::ExecutionScopeId GetExecutionScope(
+      const RecordParams& record_params) const;
+
   std::string_view profile_annotation() const { return profile_annotation_; }
   void set_profile_annotation(std::string_view profile_annotation) {
     profile_annotation_ = profile_annotation;
