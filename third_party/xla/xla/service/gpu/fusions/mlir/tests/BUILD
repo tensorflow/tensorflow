@@ -12,6 +12,7 @@ xla_cc_binary(
     deps = [
         "//xla/mlir_hlo",
         "//xla/service/gpu/fusions/mlir:passes",
+        "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
