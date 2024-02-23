@@ -69,6 +69,7 @@ cc_library(
         ":metrics",
         ":util",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status:statusor",
     ] + if_google([
         "//tensorflow/tools/proto_splitter:merge",
     ]) + if_not_mobile([
