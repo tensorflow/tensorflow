@@ -1029,6 +1029,7 @@ cc_library(
     deps = [
         "//xla/service:global_device_id",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",

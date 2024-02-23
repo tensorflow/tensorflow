@@ -100,6 +100,7 @@ class NcclCliqueKey {
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
   friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
   std::vector<GlobalDeviceId> devices_;

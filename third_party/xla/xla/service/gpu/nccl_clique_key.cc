@@ -81,6 +81,18 @@ bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   return a.stream_id_ < b.stream_id_;
 }
 
+bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b) {
+  if (a.devices_.size() > b.devices_.size()) return true;
+  if (b.devices_.size() > a.devices_.size()) return false;
+
+  if (a.devices_ > b.devices_) return true;
+  if (b.devices_ > a.devices_) return false;
+
+  // We still use `<` to order by stream id as we want to acquire sync cliques
+  // before async ones.
+  return a.stream_id_ < b.stream_id_;
+}
+
 //===----------------------------------------------------------------------===//
 // NcclCliqueId
 //===----------------------------------------------------------------------===//

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_clique_key.h"
 
+#include <cstdint>
+#include <functional>
+
+#include "absl/container/btree_map.h"
 #include "xla/service/global_device_id.h"
 #include "tsl/platform/test.h"
 
@@ -46,6 +50,23 @@ TEST(NcclCliqueKeyTest, Compare) {
   NcclCliqueKey key1({id1, id2, id3}, 0);
 
   EXPECT_LT(key0, key1);
+  EXPECT_GT(key1, key0);
+}
+
+TEST(NcclCliqueKeyTest, BtreeIterationOrder) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  NcclCliqueKey key0({id0, id2}, 0);
+  NcclCliqueKey key1({id0, id1, id2, id3}, 0);
+
+  absl::btree_map<NcclCliqueKey, int64_t, std::greater<NcclCliqueKey>> map;
+  map[key0] = 0;
+  map[key1] = 1;
+
+  EXPECT_EQ(map.begin()->first, key1);
 }
 
 }  // namespace xla::gpu
