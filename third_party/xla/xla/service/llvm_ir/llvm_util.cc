@@ -223,16 +223,22 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
+    case BF16:
+      // For BF16 we just need some type that is 16 bits wide so that it will
+      // take up the right amount of space in memory. LLVM does not have a BF16
+      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
+      // we can't map it directly to an LLVM type. We will not map a BF16
+      // addition to an addition on this type (int16_t) - this is just the type
+      // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
-      // We represent F8 as an int since there is no LLVM F8 dtype.
+      // Similarly as with BF16, we represent F8 as an int since there is no
+      // LLVM F8 dtype.
       return llvm::Type::getInt8Ty(module->getContext());
-    case BF16:
-      return llvm::Type::getBFloatTy(module->getContext());
     case F16:
       return llvm::Type::getHalfTy(module->getContext());
     case S32:
