@@ -413,6 +413,7 @@ class ComputationIdCmd : public CommandBufferCmd {
   BufferAllocation::Slice dest_;
   Kind kind_;
 
+#if defined(GOOGLE_CUDA)
   // Command sequence can be recorded concurrently for multiple command buffers
   // on different stream executors and we need to synchronize mutable state.
   absl::Mutex mutex_;
@@ -424,6 +425,7 @@ class ComputationIdCmd : public CommandBufferCmd {
   // memset. This should be removed when bug is fixed in CUDA.
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>>
       memset_kernels_ ABSL_GUARDED_BY(mutex_);
+#endif  // GOOGLE_CUDA
 };
 
 //===----------------------------------------------------------------------===//

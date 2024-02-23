@@ -63,6 +63,32 @@ message PipelineConfig {
   optional bool unpack_quantized_types = 1;
 }
 
+// Represents a single quantizable unit, a (nearly) minimum unit of work when
+// applying quantization. It may correspond to a single or multiple ops.
+// Next ID: 2
+message QuantizableUnit {
+  // Name of the `FuncOp` symbol corresponding to the "lifted function",
+  // representing a single quantizable unit. This value is guaranteed to be
+  // unique across a single `ModuleOp`.
+  string name = 1;
+}
+
+// Represents a quantization result of a single `QuantizableUnit`. It is
+// essentially a `(QuantizableUnit, Method)` pair, where the `Method`
+// corresponds to the quantization method eventually applied to the
+// `QuantizableUnit`.
+// Next ID: 3
+message QuantizationResult {
+  QuantizableUnit quantizable_unit = 1;
+  Method method = 2;
+}
+
+// A series of `QuantizationResult`s. See `QuantizationResult` for details.
+// Next ID: 2
+message QuantizationResults {
+  repeated QuantizationResult results = 1;
+}
+
 // A quantization method representing "do not quantize". Mostly used for
 // denylisting quantizable units from quantization.
 message NoQuantization {}
