@@ -944,6 +944,13 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
 
 absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable) {
+  // TODO(jieying): To be removed after 03/2024.
+  if (api->pjrt_api_version.major_version == 0 &&
+      api->pjrt_api_version.minor_version < 40) {
+    return absl::UnimplementedError(
+        "GetCompiledMemoryStats requires a plugin with PJRT C API version >= "
+        "0.40");
+  }
   PJRT_Executable_GetCompiledMemoryStats_Args args;
   args.struct_size = PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
