@@ -164,7 +164,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
             stream_->parent(), xla_tensor->shaped_buffer())) {
       // Initially wait for the compute stream so that memory allocations are
       // synchronized.
-      host_to_device_stream_->ThenWaitFor(stream_.get());
+      TF_RETURN_IF_ERROR(host_to_device_stream_->WaitFor(stream_.get()));
     }
 
     TF_RETURN_IF_ERROR(transfer_manager_->TransferLiteralToDeviceAsync(
@@ -173,7 +173,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     if (UseMultipleStreams()) {
       auto event = std::make_shared<se::Event>(stream_->parent());
       TF_RET_CHECK(event->Init()) << "Event failed to initialize!";
-      host_to_device_stream_->ThenRecordEvent(event.get());
+      TF_RETURN_IF_ERROR(host_to_device_stream_->RecordEvent(event.get()));
       xla_tensor->ResetDefinitionEvent(std::move(event),
                                        host_to_device_stream_.get());
     }
@@ -195,13 +195,16 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     // a) all consumers of the device tensor will wait for its definition event.
     // b) if the tensor is destroyed, then the memory allocator will not hand
     //    out the same buffers until the transfer has completed.
-    host_to_device_stream_->ThenDoHostCallback([ref]() { ref.Unref(); });
+    status = host_to_device_stream_->DoHostCallback([ref]() { ref.Unref(); });
     done(status);
   } else {
-    host_to_device_stream_->ThenDoHostCallback([ref, done]() {
+    status = host_to_device_stream_->DoHostCallback([ref, done]() {
       ref.Unref();
       done(absl::OkStatus());
     });
+    if (!status.ok()) {
+      done(status);
+    }
   }
 }
 
@@ -280,8 +283,9 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
           auto status_or_new_stream = client_->mutable_backend()->BorrowStream(
               stream_->parent()->device_ordinal());
           if (status_or_new_stream.ok()) {
-            status_or_new_stream.value()->ThenDoHostCallback(
-                [device_to_host_stream] {});
+            status_or_new_stream.value()
+                ->DoHostCallback([device_to_host_stream] {})
+                .IgnoreError();
           }
         }
       });
@@ -299,8 +303,7 @@ Status XlaDeviceContext::ThenExecute(Device* device,
                                      stream_executor::Stream* stream,
                                      std::function<void()> func) {
   VLOG(2) << "XlaDeviceContext::ThenExecute";
-  stream->ThenDoHostCallback(std::move(func));
-  return absl::OkStatus();
+  return stream->DoHostCallback(std::move(func));
 }
 
 }  // namespace tensorflow
