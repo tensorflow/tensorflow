@@ -8505,6 +8505,30 @@ TEST_F(AlgebraicSimplifierTest, EqTrue2) {
   EXPECT_EQ(root, param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, CompareSelectCompare) {
+  // Causal mask suboptimal HLO simplification
+  // Ne(select(Ge(a, b), ones, zeros), zeros) -> Ge(a, b)
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      a = s32[4,4] parameter(0)
+      b = s32[4,4] parameter(1)
+      %cmp0 = pred[4,4] compare(a, b), direction=GE
+      %c1 = f32[] constant(1)
+      %ones = f32[4,4] broadcast(f32[] %c1)
+      %c0 = f32[] constant(0)
+      %zeros = f32[4,4] broadcast(f32[] %c0)
+      %sel0 = f32[4,4] select(%cmp0, %ones, %zeros)
+      ROOT %cmp1 = pred[4,4] compare(%sel0, %zeros), direction=NE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))
+                     .WithComparisonDirection(ComparisonDirection::kGe)));
+}
+
 TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   // Some backends may have better performance by treating an outer product as a
   // Dot, rather than a broadcast Multiply

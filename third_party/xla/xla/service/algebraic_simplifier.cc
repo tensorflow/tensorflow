@@ -4716,6 +4716,41 @@ Status AlgebraicSimplifierVisitor::HandleCompare(HloInstruction* compare) {
     }
   }
 
+  // Below is a common JAX code issue encountered when generating a Causal mask
+  // The user either neglected to specify `dtype=bool` in `ones()`
+  // or mistakenly applied `.astype(bool)` to the result of `tril()` instead of
+  // to `ones()`. Consequently, the mask will be converted from f32 to bool,
+  // resulting in suboptimal HLO.
+  //
+  // mask = jnp.tril(jnp.ones((seq_len, seq_len)))
+  // res = jnp.where(mask, x, -jnp.inf)
+  //
+  // # it will be lowered to the following suboptimal HLO
+  // %cmp0 = pred compare(s32, s32, direction=GE)
+  // %sel0 = f32 select(%cmp0, ones, zeros)
+  // %cmp1 = pred compare(%sel0, zeros, direction=NE)
+  //
+  // # which can be simplified to just
+  // %cmp0 = pred compare(s32, s32, direction=GE)
+  //
+  // Simplification:
+  // Ne(select(Ge(a, b), ones, zeros), zeros) -> Ge(a, b)
+  if (compare->comparison_direction() == ComparisonDirection::kNe &&
+      IsAll(rhs, 0)) {
+    HloInstruction* compare0;
+    HloInstruction* sel_on_true;
+    HloInstruction* sel_on_false;
+    if (Match(lhs,
+              m::Select(m::Op(&compare0)
+                            .WithOpcode(HloOpcode::kCompare)
+                            .WithComparisonDirection(ComparisonDirection::kGe),
+                        m::Op(&sel_on_true), m::Op(&sel_on_false))) &&
+        IsAll(sel_on_true, 1) && IsAll(sel_on_false, 0) &&
+        SameShape(compare->shape(), compare0->shape())) {
+      return ReplaceInstruction(compare, compare0);
+    }
+  }
+
   // Gt(Max(a,b), a) -> Gt(b,a)
   // Gt(Max(a,b), b) -> Gt(a,b)
   // Gt(a, Min(a,b)) -> Gt(a,b)
