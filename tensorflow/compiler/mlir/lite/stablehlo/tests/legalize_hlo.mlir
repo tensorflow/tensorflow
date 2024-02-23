@@ -1191,21 +1191,6 @@ func.func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
   func.return %2 : tensor<4x?xf32>
 }
 
-// CHECK-LABEL:   func @transpose_unranked_2d(
-// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
-// CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
-// CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi64>}> : () -> tensor<2xi64>
-// CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_0]], %[[VAL_3]]) : (tensor<*xf32>, tensor<2xi64>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_4]] : tensor<*xf32>
-// CHECK:         }
-func.func @transpose_unranked_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
-  %1 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
-  %2 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %2 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @abs(
 // CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Abs"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1226,16 +1211,6 @@ func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @abs_unranked(
-// CHECK-SAME:                       %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Abs"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @ceil(
 // CHECK-SAME:               %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Ceil"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1254,16 +1229,6 @@ func.func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 func.func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.ceil"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// CHECK-LABEL:   func @ceil_unranked(
-// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Ceil"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @ceil_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @complex_abs(
@@ -1296,16 +1261,6 @@ func.func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @cos_unranked(
-// CHECK-SAME:                       %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Cos"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @cos_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.cosine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @exp(
 // CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Exp"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1324,16 +1279,6 @@ func.func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 func.func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// CHECK-LABEL:   func @exp_unranked(
-// CHECK-SAME:                       %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Exp"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @exp_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.exponential"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @floor(
@@ -1356,16 +1301,6 @@ func.func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @floor_unranked(
-// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Floor"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @is_finite(
 // CHECK-SAME:                    %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xi1> {
 // CHECK:           %[[VAL_1:.*]] = "tf.IsFinite"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xi1>
@@ -1384,16 +1319,6 @@ func.func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
 func.func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
   %0 = "mhlo.is_finite"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
   func.return %0 : tensor<?xi1>
-}
-
-// CHECK-LABEL:   func @is_finite_unranked(
-// CHECK-SAME:                             %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.IsFinite"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xi1>
-// CHECK:           return %[[VAL_1]] : tensor<*xi1>
-// CHECK:         }
-func.func @is_finite_unranked(%arg0: tensor<*xf32>) -> tensor<*xi1> {
-  %0 = "mhlo.is_finite"(%arg0) : (tensor<*xf32>) -> tensor<*xi1>
-  func.return %0 : tensor<*xi1>
 }
 
 // CHECK-LABEL:   func @log(
@@ -1416,16 +1341,6 @@ func.func @log_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @log_unranked(
-// CHECK-SAME:                       %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Log"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @log_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.log"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @log1p(
 // CHECK-SAME:                %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Log1p"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1446,16 +1361,6 @@ func.func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @log1p_unranked(
-// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Log1p"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @log1p_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.log_plus_one"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @neg(
 // CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Neg"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1474,16 +1379,6 @@ func.func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 func.func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.negate"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// CHECK-LABEL:   func @neg_unranked(
-// CHECK-SAME:                       %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Neg"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.negate"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @sigmoid(
@@ -1528,16 +1423,6 @@ func.func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @sin_unranked(
-// CHECK-SAME:                       %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Sin"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.sine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @rsqrt(
 // CHECK-SAME:                %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Rsqrt"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1556,16 +1441,6 @@ func.func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 func.func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// CHECK-LABEL:   func @rsqrt_unranked(
-// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Rsqrt"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @rsqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @sqrt(
@@ -1588,16 +1463,6 @@ func.func @sqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @sqrt_unranked(
-// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Sqrt"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @sqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.sqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @tanh(
 // CHECK-SAME:               %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Tanh"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1618,16 +1483,6 @@ func.func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL:   func @tanh_unranked(
-// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Tanh"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @tanh_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL:   func @bitcast(
 // CHECK-SAME:                  %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Bitcast"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1646,16 +1501,6 @@ func.func @bitcast(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 func.func @bitcast_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
-}
-
-// CHECK-LABEL:   func @bitcast_unranked(
-// CHECK-SAME:                           %[[VAL_0:.*]]: tensor<*xf32>) -> tensor<*xf32> {
-// CHECK:           %[[VAL_1:.*]] = "tf.Bitcast"(%[[VAL_0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK:           return %[[VAL_1]] : tensor<*xf32>
-// CHECK:         }
-func.func @bitcast_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @bitcast_same_widths(
