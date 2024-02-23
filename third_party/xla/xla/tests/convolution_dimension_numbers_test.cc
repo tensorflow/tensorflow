@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
+absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
     int64_t input_batch, int64_t input_feature, int64_t input_first_spatial,
     int64_t input_second_spatial, int64_t output_batch, int64_t output_feature,
     int64_t output_first_spatial, int64_t output_second_spatial,

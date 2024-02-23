@@ -34,7 +34,7 @@ namespace {
 
 using CollectivePipelinerExecutionTest = HloTestBase;
 
-StatusOr<bool> RunOptimizer(
+absl::StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
     CollectivePipeliner::PipeliningDirection pipelining_direction =
