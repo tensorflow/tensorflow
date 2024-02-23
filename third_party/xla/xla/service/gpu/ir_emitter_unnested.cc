@@ -29,7 +29,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -57,23 +56,14 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
@@ -89,12 +79,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -108,7 +94,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_fused_mha_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -152,7 +137,6 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
-#include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -162,20 +146,14 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
-#include "xla/translate/mhlo_to_hlo/location_exporter.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/human_readable_json.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/protobuf/dnn.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -193,100 +171,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-// Some HLO operations are not implemented as Thunks, and only available when
-// XLA:GPU compiled for XLA runtime. However we still depend on emitting thunk
-// sequence during compilation, and for unsupported operations we emit
-// unreachable thunk, which is not supposed to be executed, and exists only
-// during compilation as we transition from thunks to XLA runtime.
-//
-// Examples: Point-to-point communication operations (Send and Recv) are only
-// available as XLA runtime custom calls. API_VERSION_TYPED_FFI custom calls
-// are only implemented when executing with XLA runtime.
-class UnreachableThunk : public Thunk {
- public:
-  UnreachableThunk(mlir::Operation* op, std::string error_message)
-      : Thunk(Kind::kKernel, ThunkInfo(op)),
-        error_message_(std::move(error_message)) {}
-
-  UnreachableThunk(const UnreachableThunk&) = delete;
-  UnreachableThunk& operator=(const UnreachableThunk&) = delete;
-
-  absl::Status Initialize(const InitializeParams& params) final {
-    return tsl::errors::Internal(error_message_);
-  }
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) final {
-    return tsl::errors::Internal(error_message_);
-  }
-
- private:
-  std::string error_message_;
-};
-
-absl::StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnfMHAKind(
-    mlir::lmhlo_gpu::FusedMhaDagSignature signature) {
-  switch (signature) {
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::Default:
-      return xla::gpu::CudnnfMHAKind::kBmmBmm;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmax:
-      return xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmax:
-      return xla::gpu::CudnnfMHAKind::kScaleMaskSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kScaleMaskSoftmaxDropout;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::SoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kSoftmaxDropout;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::Softmax:
-      return xla::gpu::CudnnfMHAKind::kSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmax:
-      return xla::gpu::CudnnfMHAKind::kScaleBiasSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout;
-    default:
-      return xla::Internal("Unsupported fused_mha_dag_signature");
-  }
-}
-
-absl::StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
-    mlir::lmhlo_gpu::FusedMhaBackwardDagSignature signature) {
-  switch (signature) {
-    // backward
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
-        BackwardScaleBiasSoftmax:
-      return xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
-        BackwardScaleBiasSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
-        BackwardScaleBiasMaskSoftmax:
-      return xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
-        BackwardScaleBiasMaskSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout;
-      break;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmax:
-      return xla::gpu::CudnnfMHAKind::kBackwardSoftmax;
-      break;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout;
-      break;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
-        BackwardScaleMaskSoftmax:
-      return xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmax;
-    case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
-        BackwardScaleMaskSoftmaxDropout:
-      return xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout;
-      break;
-    default:
-      return xla::Internal("Unsupported fused_mha_backward_dag_signature");
-  }
-}
-
-}  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
@@ -317,27 +201,6 @@ absl::Status IrEmitterUnnested::EmitConstant(
   ir_emitter_context_->emit_constant(num_elements, element_bytes, global_name,
                                      slice.index(), std::move(content), &b_);
   return absl::OkStatus();
-}
-
-static ConditionalThunkConfig GetConditionalThunkConfig(
-    mlir::lmhlo::CaseOp op, std::vector<ThunkSequence> branch_thunk_sequences) {
-  ConditionalThunkConfig config;
-  config.branch_index_is_bool = op.getIndex()
-                                    .getType()
-                                    .cast<mlir::ShapedType>()
-                                    .getElementType()
-                                    .isInteger(
-                                        /*width=*/1);
-  config.branch_count = op.getBranches().size();
-  // Pass nullptr as the HloInstruction* to the branch_thunks
-  // constructors because these SequentialThunks are logically "part of"
-  // this ConditionalThunk, and shouldn't be profiled separately from it.
-  config.branch_thunks.reserve(branch_thunk_sequences.size());
-  for (auto& branch_thunk_sequence : branch_thunk_sequences) {
-    config.branch_thunks.emplace_back(new SequentialThunk(
-        Thunk::ThunkInfo(op), std::move(branch_thunk_sequence)));
-  }
-  return config;
 }
 
 static ConditionalThunkConfig GetConditionalThunkConfig(
@@ -1853,65 +1716,6 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 #endif  // GOOGLE_CUDA
 }
 
-// Convert the following form of fusion region:
-//   fusion() {
-//     %0 = tensor_load %external_memref0
-//     %1 = tensor_load %external_memref1
-//     ...
-//     materialize_in_destination %ret, %external_memref2
-//   }
-// to
-//   fusion(%external_memref0, %external_memref1) (^bb(%0, %1) {
-//     ...
-//     mhlo.return %ret
-//   })
-//
-// So that it's suitable for MHLO -> XLA HLO conversion.
-// This function won't be needed once ElementalIrEmitter migrates to take MHLO
-// instead.
-static absl::Status ProcessFusionForConversion(
-    mlir::Region* region, std::vector<Shape>* operand_shapes,
-    std::vector<Shape>* output_shapes) {
-  std::vector<mlir::bufferization::ToTensorOp> loads;
-  std::vector<mlir::bufferization::MaterializeInDestinationOp> stores;
-
-  region->walk([&](mlir::bufferization::ToTensorOp load) {
-    if (load.getMemref().getParentRegion() != region) {
-      loads.push_back(load);
-    }
-  });
-
-  region->walk([&](mlir::bufferization::MaterializeInDestinationOp store) {
-    if (!llvm::isa<mlir::TensorType>(store.getDest().getType())) return;
-    if (store.getDest().getParentRegion() != region) {
-      stores.push_back(store);
-    }
-  });
-
-  for (auto& load : loads) {
-    auto arg = region->addArgument(load.getType(), region->getLoc());
-    load.replaceAllUsesWith(arg);
-    Shape shape = GetShape(load.getResult());
-    operand_shapes->push_back(std::move(shape));
-    load.erase();
-  }
-
-  std::vector<mlir::Value> returned_values;
-  for (auto store : stores) {
-    Shape shape = GetShape(store.getDest());
-    output_shapes->push_back(shape);
-
-    returned_values.push_back(store.getSource());
-    store.erase();
-  }
-
-  region->back().back().erase();
-  auto b = mlir::OpBuilder::atBlockEnd(&region->back());
-  auto loc = returned_values[0].getLoc();
-  b.create<mlir::mhlo::ReturnOp>(loc, returned_values);
-  return absl::OkStatus();
-}
-
 absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                            HloFusionAnalysis& fusion_analysis) {
   TF_ASSIGN_OR_RETURN(
@@ -3118,18 +2922,6 @@ absl::Status IrEmitterUnnested::EmitHloComputation(
     TF_RETURN_IF_ERROR(EmitHloInstruction(instr));
   }
   return absl::OkStatus();
-}
-
-void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
-                  mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect,
-                  mlir::memref::MemRefDialect>();
-  mlir::registerBuiltinDialectTranslation(registry);
-  mlir::registerLLVMDialectTranslation(registry);
-  mlir::registerNVVMDialectTranslation(registry);
-  mlir::registerROCDLDialectTranslation(registry);
-  mlir::func::registerAllExtensions(registry);
 }
 
 }  // namespace gpu

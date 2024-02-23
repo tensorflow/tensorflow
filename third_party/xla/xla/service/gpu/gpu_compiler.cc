@@ -454,7 +454,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
   std::string platform_name = platform->Name();
   se::DeviceDescription gpu_device_info = stream_exec->GetDeviceDescription();
   mlir::DialectRegistry registry;
-  IrEmitterUnnested::GetDependentDialects(registry);
   auto mlir_context = std::make_unique<mlir::MLIRContext>(registry);
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);

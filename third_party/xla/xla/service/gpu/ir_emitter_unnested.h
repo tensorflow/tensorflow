@@ -120,8 +120,6 @@ class IrEmitterUnnested : public IrEmitter {
   // generated code will have empty 'content'.
   absl::Status EmitHloComputation(const HloComputation* computation);
 
-  static void GetDependentDialects(mlir::DialectRegistry& registry);
-
  private:
   explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
 

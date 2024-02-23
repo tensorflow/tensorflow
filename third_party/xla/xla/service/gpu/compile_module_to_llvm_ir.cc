@@ -271,7 +271,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
   mlir::DialectRegistry registry;
-  IrEmitterUnnested::GetDependentDialects(registry);
   // Disable MLIR multi-threading to prevent creating too many threads when
   // compiling XLA executables concurrently (e.g. during auto-tuning).
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
