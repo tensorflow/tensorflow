@@ -52,9 +52,11 @@ bool RngBitGeneratorExpander::InstructionMatchesPattern(
   return instruction->opcode() == HloOpcode::kRngBitGenerator;
 }
 
-StatusOr<HloComputation*> RngBitGeneratorExpander::GetGeneratorComputation(
-    const Shape& data_shape, const Shape& state_shape,
-    RandomAlgorithm algorithm, HloModule* module) {
+absl::StatusOr<HloComputation*>
+RngBitGeneratorExpander::GetGeneratorComputation(const Shape& data_shape,
+                                                 const Shape& state_shape,
+                                                 RandomAlgorithm algorithm,
+                                                 HloModule* module) {
   RngGeneratorKey cache_key{data_shape, state_shape, algorithm, module};
   auto it = computation_cache_.find(cache_key);
   if (it != computation_cache_.end()) {
@@ -97,7 +99,7 @@ StatusOr<HloComputation*> RngBitGeneratorExpander::GetGeneratorComputation(
   return new_computation;
 }
 
-StatusOr<HloInstruction*> RngBitGeneratorExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> RngBitGeneratorExpander::ExpandInstruction(
     HloInstruction* hlo) {
   HloRngBitGeneratorInstruction* rng = Cast<HloRngBitGeneratorInstruction>(hlo);
   RandomAlgorithm algorithm = rng->algorithm();

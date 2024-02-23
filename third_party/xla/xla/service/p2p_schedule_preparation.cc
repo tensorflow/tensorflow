@@ -439,9 +439,9 @@ Status GatherP2PGroupsAndCollectiveInfo(
 // pipelined or unpipelined P2P group in the computation. Returns the total
 // number of P2P chains and if the computation is a while-body with a pipelined
 // P2P group, returns such a group or a nullptr.
-StatusOr<int> ConnectP2PChain(HloComputation* computation,
-                              const P2PGroupMap& p2p_group_map,
-                              const std::set<int64_t>& p2p_channels) {
+absl::StatusOr<int> ConnectP2PChain(HloComputation* computation,
+                                    const P2PGroupMap& p2p_group_map,
+                                    const std::set<int64_t>& p2p_channels) {
   // If the current computation is a while-body and has a pipelined P2P chain,
   // record such a P2P group.
   const P2PGroup* pipelined_group = nullptr;
@@ -721,7 +721,7 @@ Status ChainCollectivesWithPipelinedP2PChild(
 
 }  // namespace
 
-StatusOr<bool> P2PSchedulePreparation::Run(
+absl::StatusOr<bool> P2PSchedulePreparation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   P2PGroupMap p2p_group_map;

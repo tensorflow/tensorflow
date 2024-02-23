@@ -196,7 +196,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
 //     a[j+1:, j] = v[j+1:]
 //     taus[j] = tau
 //   return (a, taus)
-StatusOr<QrDecomposition> QrExpander::QrBlock(
+absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -219,8 +219,9 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
   std::vector<int64_t> batch_dim_indices(num_batch_dims);
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
 
-  auto qr_body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
-                        XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+  auto qr_body_fn =
+      [&](XlaOp j, absl::Span<const XlaOp> values,
+          XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
     auto a = values[0];
     auto taus = values[1];
 
@@ -315,7 +316,7 @@ StatusOr<QrDecomposition> QrExpander::QrBlock(
 //   for i in range(1, n):
 //     t[:, i] = scipy.linalg.blas.strmm(t, vtv[:, i])
 //   return t
-StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
+absl::StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
     PrimitiveType type, absl::Span<const int64_t> batch_dims, XlaOp vs,
     XlaOp taus, int64_t m, int64_t n, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = vs.builder();
@@ -324,8 +325,9 @@ StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
   int64_t n_index = batch_dims.size() + 1;
 
-  auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
-                     XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+  auto body_fn =
+      [&](XlaOp j, absl::Span<const XlaOp> values,
+          XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
     // w has shape [..., m, n]
     auto t = values[0];
     const auto vtv = values[1];
@@ -370,7 +372,7 @@ StatusOr<XlaOp> QrExpander::CompactWYRepresentation(
 //     a[i:, i+k:] += (y @ np.conj(t.T)) @ (np.conj(y.T) @ a[i:, i+k:])
 //     q[:, i:] += (q[:, i:] @ y) @ np.conj((y @ np.conj(t.T)).T)
 //   return (q, a)
-StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
+absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
     XlaOp a, int64_t block_size, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
@@ -433,7 +435,7 @@ StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
   return Tuple(builder, {a, taus});
 }
 
-StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
+absl::StatusOr<XlaOp> QrExpander::ProductOfElementaryHouseholderReflectors(
     XlaOp a, XlaOp taus, int64_t block_size,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
@@ -505,7 +507,7 @@ bool QrExpander::InstructionMatchesPattern(HloInstruction* instruction) {
               kHouseholderProductCustomCallName);
 }
 
-StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const std::string name =
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),

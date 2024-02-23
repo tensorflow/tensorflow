@@ -34,7 +34,7 @@ constexpr int64_t kMaxByteCount = 10 * 1024 * 1024;
 
 class ReduceScatterCombinerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change,
       int64_t byte_threshold = kMaxByteCount,
       int64_t count_threshold = kMaxCombineCount, bool combine_by_dim = true) {
@@ -54,7 +54,7 @@ class ReduceScatterCombinerTest : public HloTestBase {
             << ReduceScatterCount(module.get()) << " reduce-scatter ops";
 
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   size_t ReduceScatterCount(HloModule *module) {

@@ -64,7 +64,7 @@ std::string CanonicalPlatformName(const std::string& platform_name) {
   return lowercase_platform_name;
 }
 
-StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
+absl::StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
   return se::PlatformManager::PlatformsWithFilter(
       [](const se::Platform* platform) {
         auto compiler_status = Compiler::GetForPlatform(platform);
@@ -80,18 +80,18 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
 
 }  // namespace
 
-/*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+/*static */ absl::StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
     const std::string& platform_name) {
   return xla::CanonicalPlatformName(platform_name);
 }
 
-/* static */ StatusOr<std::vector<se::Platform*>>
+/* static */ absl::StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
   // Gather all platforms which have an XLA compiler.
   return xla::GetSupportedPlatforms();
 }
 
-/* static */ StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
+/* static */ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(auto platforms, GetSupportedPlatforms());
 
   se::Platform* platform = nullptr;
@@ -122,7 +122,7 @@ PlatformUtil::GetSupportedPlatforms() {
       platforms_string);
 }
 
-/*static*/ StatusOr<se::Platform*> PlatformUtil::GetPlatform(
+/*static*/ absl::StatusOr<se::Platform*> PlatformUtil::GetPlatform(
     const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
@@ -162,7 +162,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
   return true;
 }
 
-/* static */ StatusOr<std::vector<se::StreamExecutor*>>
+/* static */ absl::StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
     const std::optional<std::set<int>>& allowed_devices) {

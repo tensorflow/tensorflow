@@ -59,7 +59,7 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -74,10 +74,10 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
   // Match buffer donors and donees and save the matched paired in the
   // alias_config. The availability of buffer donors is controlled by the flag
   // registered_buffer_donor_only_.
-  StatusOr<bool> Build(absl::Span<const Shape> input_shapes,
-                       const Shape& output_shape,
-                       HloInputOutputAliasConfig* alias_config,
-                       HloBufferDonorConfig* buffer_donor_config);
+  absl::StatusOr<bool> Build(absl::Span<const Shape> input_shapes,
+                             const Shape& output_shape,
+                             HloInputOutputAliasConfig* alias_config,
+                             HloBufferDonorConfig* buffer_donor_config);
 
   std::function<int64_t(const Shape&)> shape_size_fn_ = [](const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);
