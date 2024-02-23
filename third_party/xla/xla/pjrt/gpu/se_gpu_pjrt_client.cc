@@ -103,6 +103,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 
@@ -858,6 +859,16 @@ GetStreamExecutorGpuDeviceAllocator(
                             ordinal_and_device.second->compute_stream(),
                             /*memory_space=*/1);
   }
+
+  for (const auto& ordinal_and_device : addressable_devices) {
+    auto host_allocator =
+        GetGpuHostAllocator(ordinal_and_device.second->executor());
+    allocators.emplace_back(std::move(host_allocator),
+                            ordinal_and_device.second->compute_stream(),
+                            /*memory_space=*/
+                            static_cast<int>(se::MemoryType::kHost));
+  }
+
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }

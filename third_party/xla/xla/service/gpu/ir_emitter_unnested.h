@@ -192,6 +192,8 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitCollectivePermute(
       const HloCollectivePermuteInstruction* instr);
 
+  absl::Status EmitCopyStartThunk(const HloCopyStartInstruction* instr);
+
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
   absl::Status EmitTargetElementLoop(

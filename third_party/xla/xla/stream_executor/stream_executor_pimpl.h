@@ -352,14 +352,13 @@ class StreamExecutor {
   // Creates and initializes a Stream.
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+  // Deallocates a region of host memory allocated by HostMemoryAllocate().
+  void HostMemoryDeallocate(void* data, uint64_t size);
 
  private:
   friend class Event;
   friend class Stream;
   friend class HostMemoryAllocation;
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  void HostMemoryDeallocate(void* data, uint64_t size);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // a DeviceMemoryBase representing that allocation. In the case of failure,

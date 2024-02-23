@@ -165,6 +165,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -2739,6 +2740,63 @@ static std::optional<GlobalDeviceId> DeviceConstraint(
   return std::nullopt;
 }
 
+absl::Status IrEmitterUnnested::EmitCopyStartThunk(
+    const HloCopyStartInstruction* instr) {
+  // copy-start has a tuple shape: {host, device, context},
+  // or {device, host, context}.
+  // Only the destination shape is needed to get the output buffer.
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+                      GetAllocationSliceForHlo(instr,
+                                               /*ShapeIndex=*/{0}));
+
+  const HloInstruction* src = instr->operand(0);
+  const Shape& input_shape = src->shape();
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+                      GetAllocationSliceForHlo(src, {}));
+  Shape shape = instr->shape();
+  CHECK(shape.IsTuple());
+
+  if (shape.mutable_tuple_shapes(0)->has_layout() &&
+      shape.mutable_tuple_shapes(0)->mutable_layout()->memory_space() ==
+          static_cast<int>(stream_executor::MemoryType::kHost)) {
+    VLOG(3) << "Device to Host: host memory space "
+            << static_cast<int>(stream_executor::MemoryType::kHost);
+    auto thunk = std::make_unique<DeviceToHostCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        /*source_buffer=*/src_buffer,
+        /*destination_buffer=*/dst_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+    AddThunkToThunkSequence(std::move(thunk));
+    return absl::OkStatus();
+  }
+  if (shape.mutable_tuple_shapes(1)->has_layout() &&
+      shape.mutable_tuple_shapes(1)->mutable_layout()->memory_space() ==
+          static_cast<int>(stream_executor::MemoryType::kHost)) {
+    VLOG(3) << "Host to Device from the host memory space "
+            << static_cast<int>(stream_executor::MemoryType::kHost);
+    ;
+    auto thunk = std::make_unique<HostToDeviceCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        /*source_buffer=*/src_buffer,
+        /*destination_buffer=*/dst_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+    AddThunkToThunkSequence(std::move(thunk));
+    return absl::OkStatus();
+  }
+
+  // Disabled the generation of memcpy D2D as only H2D and D2H are useful
+  // for memory offload now.
+
+  auto thunk = std::make_unique<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      /*source_buffer=*/src_buffer,
+      /*destination_buffer=*/dst_buffer,
+      /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
+  AddThunkToThunkSequence(std::move(thunk));
+
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
   if (!instr->channel_id().has_value())
     return absl::InternalError("Unknown send instruction channel id");
@@ -3026,6 +3084,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitSort(Cast<HloSortInstruction>(instr));
     case HloOpcode::kWhile:
       return EmitWhile(instr);
+    case HloOpcode::kCopyStart:
+      return EmitCopyStartThunk(Cast<HloCopyStartInstruction>(instr));
 
     // HLO module is already scheduled, so instructions for ordering are noops.
     case HloOpcode::kAddDependency:
@@ -3036,6 +3096,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
+    case HloOpcode::kCopyDone:
       return absl::OkStatus();
     default:
       return Internal("Unsupported instruction opcode: %s",
