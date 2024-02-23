@@ -142,28 +142,6 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "custom_call_test",
-    srcs = ["custom_call_test.cc"],
-    deps = [
-        ":arguments",
-        ":async_runtime",
-        ":custom_call",
-        ":custom_call_registry",
-        ":diagnostics",
-        ":jit_executable",
-        ":module",
-        ":state",
-        "//xla/mlir/runtime/ir/tests:testlib",
-        "//xla/mlir/runtime/transforms:compilation_pipeline_gpu",
-        "//xla/mlir/runtime/transforms:custom_call_encoding",
-        "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
 cc_library(
     name = "custom_call_registry",
     srcs = ["custom_call_registry.cc"],
@@ -236,30 +214,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "executable_test",
-    srcs = ["executable_test.cc"],
-    tags = ["nomsan"],  # TODO(ezhulenev): Find msan error in LLVM coroutine passes
-    deps = [
-        ":arguments",
-        ":async_runtime",
-        ":custom_call_registry",
-        ":jit_executable",
-        ":logical_result",
-        ":results",
-        ":types",
-        "//xla/mlir/runtime/transforms:compilation_pipeline_options",
-        "//xla/mlir/runtime/transforms/tests:testlib_pipeline",
-        "//xla/mlir/runtime/utils:async_runtime_api",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

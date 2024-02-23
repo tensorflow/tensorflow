@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir/runtime/ir/rt_dialect.h"
-#include "xla/mlir/runtime/ir/tests/testlib.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
@@ -62,7 +61,6 @@ void RegisterLmhloGpuDialect(DialectRegistry& dialects) {
 }
 
 void RegisterTestlibDialect(DialectRegistry& dialects) {
-  dialects->insert<TestlibDialect>();
 }
 
 static void CreateDefaultXlaGpuRuntimeCompilationPipeline(

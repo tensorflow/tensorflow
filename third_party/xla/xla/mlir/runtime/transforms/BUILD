@@ -165,7 +165,6 @@ cc_library(
         ":compiler",
         ":passes",
         "//xla/mlir/runtime/ir:rt",
-        "//xla/mlir/runtime/ir/tests:testlib",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:lhlo_gpu",
