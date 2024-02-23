@@ -968,13 +968,9 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
   DeviceMemory<CUDA_T *> b(b_bytes);
   DeviceMemory<CUDA_T *> c(c_bytes);
 
-  if (!stream->ThenMemcpy(&a, a_raw_ptrs.data(), size).ok() ||
-      !stream->ThenMemcpy(&b, b_raw_ptrs.data(), size).ok() ||
-      !stream->ThenMemcpy(&c, c_raw_ptrs.data(), size).ok()) {
-    return absl::InternalError(
-        "failed to copy memory from host to device in "
-        "CUDABlas::DoBlasGemmBatched");
-  }
+  TF_RETURN_IF_ERROR(stream->Memcpy(&a, a_raw_ptrs.data(), size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&b, b_raw_ptrs.data(), size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&c, c_raw_ptrs.data(), size));
 
   cudaDataType_t data_type = CUDADataType<T>::type;
 

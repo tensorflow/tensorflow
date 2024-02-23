@@ -25,12 +25,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
-#include "mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Quant/QuantOps.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -1281,7 +1279,7 @@ class ConvertGenericOp : public ConversionPattern {
       ConversionPatternRewriter &rewriter) const override {
     // This pattern only handle selected ops.
     if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
-             mhlo::ConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
+             mhlo::BitcastConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
              mhlo::PadOp, mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
              mhlo::SelectOp, mhlo::SliceOp, mhlo::TransposeOp,
              mhlo::GetDimensionSizeOp, mhlo::DynamicBroadcastInDimOp>(op)) {
@@ -1325,10 +1323,6 @@ class UniformQuantizedToIntTypeConverter : public TypeConverter {
 class MhloQuantLegalizeToInt
     : public impl::MhloQuantLegalizeToIntBase<MhloQuantLegalizeToInt> {
  public:
-  explicit MhloQuantLegalizeToInt(bool legalizeChlo) {
-    legalize_chlo_ = legalizeChlo;
-  }
-
   // Performs conversion of MHLO quant ops to primitive ops.
   void runOnOperation() override {
     Operation *op = getOperation();
@@ -1368,34 +1362,14 @@ class MhloQuantLegalizeToInt
     if (failed(result)) {
       signalPassFailure();
     }
-
-    // Legalize CHLO if needed.
-    if (!legalize_chlo_) return;
-    RewritePatternSet patterns2(context);
-
-    chlo::populateDecomposeChloPatterns(context, &patterns2);
-    chlo::populateChloBroadcastingPatterns(context, &patterns2);
-
-    ConversionTarget target2(*op->getContext());
-    target2.addIllegalDialect<chlo::ChloDialect>();
-    target2.addIllegalDialect<quant::QuantizationDialect>();
-    target2.addLegalDialect<MhloDialect>();
-    target2.addLegalDialect<func::FuncDialect>();
-    target2.addLegalDialect<shape::ShapeDialect>();
-    target2.addLegalOp<func::CallOp>();
-
-    result = applyPartialConversion(op, target2, std::move(patterns2));
-    if (failed(result)) {
-      signalPassFailure();
-    }
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createMhloQuantLegalizeToIntPass(
-    bool legalizeChlo) {
-  return std::make_unique<MhloQuantLegalizeToInt>(legalizeChlo);
+std::unique_ptr<OperationPass<func::FuncOp>>
+createMhloQuantLegalizeToIntPass() {
+  return std::make_unique<MhloQuantLegalizeToInt>();
 }
 
 }  // namespace mlir::mhlo

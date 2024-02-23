@@ -60,7 +60,7 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
     TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
         transfer_stream ? transfer_stream : stream, result));
     if (transfer_stream && transfer_stream != stream) {
-      stream->ThenWaitFor(transfer_stream);
+      TF_RETURN_IF_ERROR(stream->WaitFor(transfer_stream));
     }
     return absl::OkStatus();
   } else {

@@ -137,7 +137,7 @@ Status AsymmetricQuantize(const ConstTensorTin& input_tensor,
     quantized_tensor.setZero();
     scale = 1.0;
     zero_point = 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Using the scale calculated from the quantization range and data range,
@@ -166,7 +166,7 @@ Status AsymmetricQuantize(const ConstTensorTin& input_tensor,
 
   AffineQuantize(input_tensor, inv_scale, zero_point, quantization_min_val,
                  quantization_max_val, quantized_tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Given double_multiplier, quantize it where it is represented by two int32_t,
@@ -227,7 +227,7 @@ Status PerTensorToPerTensorRequantize(
             input_zero_point, output_zero_point, quantization_min_val,
             quantization_max_val);
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Requantize where the input or output contains any per-axis quantized cases.
@@ -298,7 +298,7 @@ Status PerAxisRequantize(OpKernelContext* context, const Tensor& input,
                   quantization_min_val, quantization_max_val);
             });
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace internal

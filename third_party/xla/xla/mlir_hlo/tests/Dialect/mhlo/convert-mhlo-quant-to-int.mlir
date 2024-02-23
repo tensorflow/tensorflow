@@ -1,4 +1,4 @@
-// RUN:  mlir-hlo-opt "-mhlo-quant-legalize-to-int=legalize-chlo=false" -split-input-file %s -verify-diagnostics | FileCheck %s
+// RUN:  mlir-hlo-opt --mhlo-quant-legalize-to-int -split-input-file %s -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @uniform_quantize_and_dequantize
 func.func @uniform_quantize_and_dequantize(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -39,11 +39,11 @@ func.func @uniform_quantize_convert_dequantize(%arg0: tensor<?x?xf32>) -> tensor
   // CHECK: %[[VAL4:.*]] = mhlo.convert %[[VAL3]] : (tensor<?x?xf32>) -> tensor<?x?xi8>
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
 
-  // CHECK: %[[VAL5:.*]] = mhlo.convert %[[VAL4]] : tensor<?x?xi8>
-  %1 = mhlo.convert %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xi8>
+  // CHECK: %[[VAL5:.*]] = mhlo.bitcast_convert %[[VAL4]] : (tensor<?x?xi8>) -> tensor<?x?xi8>
+  %1 = mhlo.bitcast_convert %0 : (tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xi8>
 
-  // CHECK: %[[VAL6:.*]] = mhlo.convert %[[VAL5]] : tensor<?x?xi8>
-  %2 = mhlo.convert %1 : (tensor<?x?xi8>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: %[[VAL6:.*]] = mhlo.bitcast_convert %[[VAL5]] : (tensor<?x?xi8>) -> tensor<?x?xi8>
+  %2 = mhlo.bitcast_convert %1 : (tensor<?x?xi8>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
 
   // CHECK-DAG: %[[SCALES_DQ:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ZPS_DQ:.*]] = mhlo.constant dense<3> : tensor<i32>

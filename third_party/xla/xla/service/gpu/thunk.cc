@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/thunk.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -252,13 +253,14 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kWhile);
     CASE(kFusedMHA);
     CASE(kWaitForStreams);
+    CASE(kCuDnn);
   }
 }
 
 /*static*/
 absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
     ExecutionStreamId stream_id, const ExecuteParams& params) {
-  if (stream_id == GetMainComputeStreamId()) {
+  if (stream_id == kDefaultExecutionStreamId) {
     return params.stream;
   }
   auto iter = params.additional_compute_streams.find(stream_id);
@@ -310,20 +312,19 @@ bool IsReductionCollective(Thunk::Kind kind) {
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
   ThunkInfo thunk_info(op);
-  thunk_info.profile_annotation = absl::StrFormat(
-      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  thunk_info.profile_annotation =
+      mlir::mhlo::GetDebugNameFromLocation(op->getLoc());
   return thunk_info;
 }
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
     const HloInstruction* instr) {
   ThunkInfo thunk_info(nullptr);
-  thunk_info.profile_annotation =
-      absl::StrFormat("Thunk:#hlo_op=%s#", instr->name());
+  thunk_info.profile_annotation = instr->name();
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
   if (gpu_backend_config.ok()) {
     thunk_info.execution_stream_id =
-        std::max(Thunk::GetMainComputeStreamId().value(),
+        std::max(kDefaultExecutionStreamId.value(),
                  gpu_backend_config->operation_queue_id());
   }
   return thunk_info;

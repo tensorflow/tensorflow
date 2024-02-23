@@ -2234,7 +2234,12 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
   if (c_api == nullptr) {
     return Internal("PJRT C API is nullptr for %s", device_type);
   }
+  return GetCApiTopology(c_api, topology_name, create_options);
+}
 
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
+    const PJRT_Api* c_api, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
   PJRT_TopologyDescription_Create_Args init_args;
   init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.extension_start = nullptr;

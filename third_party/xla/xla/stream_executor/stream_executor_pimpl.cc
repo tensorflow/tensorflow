@@ -379,12 +379,12 @@ absl::Status StreamExecutor::SynchronousMemcpyH2D(
 
 bool StreamExecutor::Memcpy(Stream* stream, void* host_dst,
                             const DeviceMemoryBase& device_src, uint64_t size) {
-  return implementation_->Memcpy(stream, host_dst, device_src, size);
+  return implementation_->Memcpy(stream, host_dst, device_src, size).ok();
 }
 
 bool StreamExecutor::Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
                             const void* host_src, uint64_t size) {
-  return implementation_->Memcpy(stream, device_dst, host_src, size);
+  return implementation_->Memcpy(stream, device_dst, host_src, size).ok();
 }
 
 bool StreamExecutor::MemcpyDeviceToDevice(Stream* stream,

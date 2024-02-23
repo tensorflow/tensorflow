@@ -130,7 +130,11 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
   }
   // Wait for the main stream on the sender to make sure the result is
   // available.
-  send_device_to_device_stream->ThenWaitFor(send_stream);
+  s = send_device_to_device_stream->WaitFor(send_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
   const int64_t total_bytes = input->TotalBytes();
   if (total_bytes > 0) {
@@ -147,11 +151,19 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
     // Since we want to use the memory from recv_stream in the
     // send_device_to_host_stream, add a dependency to make sure the memory is
     // truly free.
-    send_device_to_device_stream->ThenWaitFor(recv_stream);
+    s = send_device_to_device_stream->WaitFor(recv_stream);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
     VLOG(2) << "src_ptr " << src_ptr << " dst_ptr " << dst_ptr;
-    send_device_to_device_stream->ThenMemcpy(&device_dst_ptr, device_src_ptr,
+    s = send_device_to_device_stream->Memcpy(&device_dst_ptr, device_src_ptr,
                                              total_bytes);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
   }
   // Use of input may outlive stack scope, so keep a ref.
   TensorReference input_ref(*input);
@@ -192,15 +204,23 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
     return;
   }
   // Wait for the sender's main stream to make sure that the data are available.
-  send_device_to_host_stream->ThenWaitFor(send_stream);
+  s = send_device_to_host_stream->WaitFor(send_stream);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
   const int64_t total_bytes = device_tensor->TotalBytes();
   if (total_bytes > 0) {
     void* src_ptr = GetBase(device_tensor);
     DeviceMemoryBase device_src_ptr(src_ptr, total_bytes);
     void* dst_ptr = GetBase(cpu_tensor);
-    send_device_to_host_stream->ThenMemcpy(dst_ptr, device_src_ptr,
+    s = send_device_to_host_stream->Memcpy(dst_ptr, device_src_ptr,
                                            total_bytes);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
   }
 
   // Use of the input may outlive stack scope, so keep a ref.
@@ -241,7 +261,11 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
   }
   // Wait for the recv-stream to make sure the buffer is truly available.
   if (sync_dst_compute) {
-    recv_host_to_device_stream->ThenWaitFor(recv_stream);
+    s = recv_host_to_device_stream->WaitFor(recv_stream);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
   }
   const int64_t total_bytes = cpu_tensor->TotalBytes();
   // Note that 0-size tensors have no backing buffer.
@@ -249,8 +273,12 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
     void* src_ptr = GetBase(cpu_tensor);
     void* dst_ptr = GetBase(device_tensor);
     DeviceMemoryBase device_dst_ptr(dst_ptr, total_bytes);
-    recv_host_to_device_stream->ThenMemcpy(&device_dst_ptr, src_ptr,
+    s = recv_host_to_device_stream->Memcpy(&device_dst_ptr, src_ptr,
                                            total_bytes);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
   }
   // Use of cpu_tensor may outlive stack scope, so keep a ref.
   TensorReference input_ref(*cpu_tensor);
@@ -308,7 +336,12 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
     DeviceMemoryBase device_src_ptr(src_ptr, total_bytes);
     void* dst_ptr = GetBase(dst_device_tensor);
     DeviceMemoryBase device_dst_ptr(dst_ptr, total_bytes);
-    send_stream->ThenMemcpy(&device_dst_ptr, device_src_ptr, total_bytes);
+    auto status =
+        send_stream->Memcpy(&device_dst_ptr, device_src_ptr, total_bytes);
+    if (!status.ok()) {
+      done(status);
+      return;
+    }
   }
 
   done(absl::OkStatus());

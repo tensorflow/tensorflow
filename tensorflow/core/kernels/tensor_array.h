@@ -202,7 +202,7 @@ class TensorArray : public ResourceBase {
       ++i;
       TF_RETURN_IF_ERROR(s);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Read from index 'index' into Tensor 'value'.
@@ -238,7 +238,7 @@ class TensorArray : public ResourceBase {
       ++i;
       if (!s.ok()) return s;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType ElemType() const { return dtype_; }
@@ -256,7 +256,7 @@ class TensorArray : public ResourceBase {
       return s;
     }
     element_shape_ = new_element_shape_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const override {
@@ -275,7 +275,7 @@ class TensorArray : public ResourceBase {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(LockedReturnIfClosed());
     *size = tensors_.size();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Record the size of the TensorArray after an unpack or split.
@@ -285,7 +285,7 @@ class TensorArray : public ResourceBase {
     if (!is_grad_) {
       marked_size_ = size;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Return the marked size of the TensorArray.
@@ -293,7 +293,7 @@ class TensorArray : public ResourceBase {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(LockedReturnIfClosed());
     *size = marked_size_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Return the size that should be used by pack or concat op.
@@ -301,7 +301,7 @@ class TensorArray : public ResourceBase {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(LockedReturnIfClosed());
     *size = is_grad_ ? marked_size_ : tensors_.size();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Once a TensorArray is being used for gradient calculations, it
@@ -367,7 +367,7 @@ class TensorArray : public ResourceBase {
       return errors::InvalidArgument("TensorArray ", handle_.vec<tstring>()(1),
                                      " has already been closed.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const string key_;
@@ -508,7 +508,7 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
       // was just a shape, which just means zeros.  So all we must do in this
       // case is copy the reference over and return early.
       t.tensor = *value;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Tensor* existing_t = &t.tensor;
@@ -536,7 +536,7 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
     t.shape = value->shape();
     t.written = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, typename T>
@@ -619,7 +619,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32_t index,
     t.cleared = true;
   }
   t.read = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

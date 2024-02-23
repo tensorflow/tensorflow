@@ -652,7 +652,7 @@ void NcclManager::RunCollective(Collective* collective) {
       // Wait to ensure that the kernel that produces the data in the input
       // tensor has finished running before the nccl kernel runs on the
       // communication stream.
-      nccl_stream->stream->ThenWaitFor(p->tensor_stream);
+      status = nccl_stream->stream->WaitFor(p->tensor_stream);
     }
     if (p->root) {
       if (collective->root_rank == -1) {

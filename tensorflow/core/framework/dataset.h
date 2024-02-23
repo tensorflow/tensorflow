@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -789,6 +790,10 @@ class IteratorContext {
     // given an index i, returns the permuted index p(i) for the iterator. Used
     // to support global shuffling of datasets that support random access.
     std::function<int64_t(int64_t)> index_mapper = nullptr;
+
+    // This is set when restoring a globally shuffled iterator. Records the
+    // number of elements that have been produced prior to the checkpoint.
+    std::optional<int64_t> element_count = std::nullopt;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -880,6 +885,8 @@ class IteratorContext {
   std::function<int64_t(int64_t)> index_mapper() const {
     return params_.index_mapper;
   }
+
+  std::optional<int64_t> element_count() const { return params_.element_count; }
 
   void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
 

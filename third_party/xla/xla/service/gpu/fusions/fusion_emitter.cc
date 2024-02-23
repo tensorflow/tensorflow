@@ -85,6 +85,8 @@ void AnnotateWithInt32Value(std::string name, int64_t value,
            llvm::IntegerType::get(llvm_context, /*NumBits=*/32), value))}));
 }
 
+}  // namespace
+
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
 absl::Status AnnotateKernelLaunchDimensions(
@@ -115,8 +117,6 @@ absl::Status AnnotateKernelLaunchDimensions(
   // LLVM supports that yet. Let's do that later when needed.
   return absl::OkStatus();
 }
-
-}  // namespace
 
 IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     const LaunchDimensions& launch_dims, int unroll_factor,

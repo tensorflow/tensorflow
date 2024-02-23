@@ -40,10 +40,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/path.h"
@@ -52,8 +52,8 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using DebuggerType = tensorflow::quantization::DebuggerOptions::DebuggerType;
-using DebuggerOptions = tensorflow::quantization::DebuggerOptions;
+using ::stablehlo::quantization::DebuggerConfig;
+using DebuggerType = DebuggerConfig::DebuggerType;
 
 constexpr StringRef kEntryFuncAttrName = "_entry_function";
 constexpr StringRef kOriginalEntryFuncAttrName = "_original_entry_function";
@@ -148,13 +148,13 @@ class AddDumpTensorOpPass
 
   Option<DebuggerType> debugger_type_{
       *this, "debugger_type",
-      llvm::cl::init(DebuggerOptions::DEBUGGER_TYPE_UNSPECIFIED),
+      llvm::cl::init(DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED),
       llvm::cl::values(
-          clEnumValN(DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL, "whole_model",
+          clEnumValN(DebuggerConfig::DEBUGGER_TYPE_WHOLE_MODEL, "whole_model",
                      "Whole model verify"),
-          clEnumValN(DebuggerOptions::DEBUGGER_TYPE_INT_PER_LAYER,
+          clEnumValN(DebuggerConfig::DEBUGGER_TYPE_INT_PER_LAYER,
                      "int_per_layer", "Int Per-layer verify"),
-          clEnumValN(DebuggerOptions::DEBUGGER_TYPE_FLOAT_PER_LAYER,
+          clEnumValN(DebuggerConfig::DEBUGGER_TYPE_FLOAT_PER_LAYER,
                      "float_per_layer", "Float Per-layer verify"))};
 
   std::string log_dir_path_ = "/tmp/dumps";
@@ -229,7 +229,7 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
     // TODO: b/296933893 - Refactor the debugger code when no quantize option
     // is added
     std::string file_name =
-        debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL
+        debugger_type_ == DebuggerConfig::DEBUGGER_TYPE_WHOLE_MODEL
             ? "unquantized_tensor_data.pb"
             : "quantized_tensor_data.pb";
 
@@ -251,8 +251,8 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
                                       dump_attributes);
 
     // Per-layer mode.
-    if (debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_INT_PER_LAYER ||
-        debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
+    if (debugger_type_ == DebuggerConfig::DEBUGGER_TYPE_INT_PER_LAYER ||
+        debugger_type_ == DebuggerConfig::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
       // Duplicate composite function and op of quantizable layer for creating
       // unquantized layer.
       StringAttr new_ref_func_name = DuplicateFunction(op, f_attr);
@@ -265,7 +265,7 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
       rewriter.create<TF::DumpTensorOp>(op.getLoc(), TypeRange{},
                                         new_op->getResult(0), dump_attributes);
 
-      if (debugger_type_ == DebuggerOptions::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
+      if (debugger_type_ == DebuggerConfig::DEBUGGER_TYPE_FLOAT_PER_LAYER) {
         // Swap all uses between call_op and ref_call_op, except for the
         // particular use that owns DumpTensor.
         rewriter.replaceUsesWithIf(

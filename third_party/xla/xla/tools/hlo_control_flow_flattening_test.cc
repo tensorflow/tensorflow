@@ -34,7 +34,7 @@ namespace op = xla::testing::opcode_matchers;
 
 class HloControlFlowFlatteningTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+  absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       std::unique_ptr<VerifiedHloModule> hlo_module, int64_t num_devices = 2) {
     spmd::SpmdPartitionerOptions options;
     auto collective_ops_creator =
@@ -52,7 +52,7 @@ class HloControlFlowFlatteningTest : public HloTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };
 

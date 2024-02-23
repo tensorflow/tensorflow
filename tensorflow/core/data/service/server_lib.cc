@@ -212,7 +212,7 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
       str_util::StringReplace(config_.data_transfer_address(), kPortPlaceholder,
                               absl::StrCat(transfer_server_->Port()),
                               /*replace_all=*/false));
-  StatusOr<std::string> compatibility_info =
+  absl::StatusOr<std::string> compatibility_info =
       transfer_server_->GetCompatibilityInfo();
   if (!compatibility_info.ok()) {
     LOG(ERROR)

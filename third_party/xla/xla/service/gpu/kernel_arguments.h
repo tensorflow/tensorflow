@@ -47,6 +47,7 @@ class KernelArgument {
     return first_with_same_slice_;
   }
   bool aliased() const { return aliased_; }
+  int llvm_arg_index() const { return llvm_arg_index_; }
 
  private:
   KernelArgument(mlir::Value value, Shape shape, BufferAllocation::Slice slice,
@@ -59,6 +60,7 @@ class KernelArgument {
   bool aliased_ = true;
   int64_t alignment_ = 1;
   bool written_ = true;
+  int llvm_arg_index_;
   // Holds the index of the first argument which has the same slice as this,
   // if this is not the first such argument.
   std::optional<int> first_with_same_slice_;

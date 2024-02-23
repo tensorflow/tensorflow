@@ -284,14 +284,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         done);
     se::DeviceMemoryBase wrapped(partition_count.flat<int32>().data(),
                                  num_partitions_ * sizeof(int32));
-    const bool status =
-        stream
-            ->ThenMemcpy(cpu_tensor.flat<int32>().data(), wrapped,
-                         num_partitions_ * sizeof(int32))
-            .ok();
-    OP_REQUIRES_ASYNC(
-        c, status,
-        errors::Internal("Failed to launch copy from device to host."), done);
+    OP_REQUIRES_OK_ASYNC(
+        c,
+        stream->Memcpy(cpu_tensor.flat<int32>().data(), wrapped,
+                       num_partitions_ * sizeof(int32)),
+        done);
 
     // Keep a reference to partition_count so that the buffer
     // is not deallocated at the end of the function, before

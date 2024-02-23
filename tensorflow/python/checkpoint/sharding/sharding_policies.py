@@ -15,12 +15,14 @@
 """Checkpoint policies that determine how tensors are split into shards."""
 
 import math
-from typing import Sequence
+import operator
+from typing import MutableSequence, Sequence
 
 from absl import logging
 
 from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
@@ -81,6 +83,22 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
   class MaxShardSizePartitioner():
     """Partition tensors into shards with a max shard size."""
 
+    max_shard_size: int
+    _large_scalars: MutableSequence[sharding_util.Shard]
+    _tensors_by_shard: MutableSequence[sharding_util.Shard]
+    _shard_size_remaining: int
+    _checkpoint_key: str
+    _dtype: dtypes.DType
+    _device: device_lib.DeviceSpec
+    _root_tensor: tensor_lib.Tensor
+    _slice_spec: variables.Variable.SaveSliceInfo
+    _full_shape: tensor_shape.TensorShape
+    _root_shape: tensor_shape.TensorShape
+    _root_offset: Sequence[int]
+    _dtype_size: int
+    _working_tensor_offset: MutableSequence[float]
+    _working_tensor_shape: tensor_shape.TensorShape
+
     def _get_next_partition(self) -> tuple[int, float]:
       """Gets tensor partition with size closest to shard_size_remaining.
 
@@ -115,64 +133,59 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
       return (min_axis,
               math.ceil(int(self._working_tensor_shape[min_axis]) / min_parts))
 
-    def _add_partition(
-        self, part_axis: int, part_size: float
-    ) -> tuple[tensor_lib.Tensor, _OffsetAndShape]:
+    def _add_partition(self, part_axis: int, part_size: float):
       """Adds the tensor partition to the shard, if possible.
 
       Args:
         part_axis: The axis of the partition.
         part_size: The size of the partition.
 
-      Returns:
-        A tuple containing the size of the slice that was added to the shard and
-            the offset & shape of the remaining portion of the tensor.
+      Raises:
+        RuntimeError: When the slice size is larger than the remaining shard
+        size.
       """
-      if self._root_shape.rank is None or self._root_shape.rank == 0:
-        return None, (None, None)
 
       # Add what we can to the current shard.
-      slice_offset = self._working_tensor_offset
-      slice_shape = [self._root_shape[i] - slice_offset[i]
-                     for i in range(self._root_shape.rank)]
+      relative_offset = list(
+          map(operator.sub, self._working_tensor_offset, self._root_offset))
+      slice_shape = list(map(operator.sub, self._root_shape, relative_offset))
       slice_shape[part_axis] = part_size
       slice_size_in_bytes = int(math.prod(slice_shape)) * self._dtype_size
       with ops.device(self._device):
         tensor_slice = array_ops.slice(
-            self._root_tensor, begin=slice_offset, size=slice_shape)
+            self._root_tensor, begin=relative_offset, size=slice_shape)
       slice_spec = variables.Variable.SaveSliceInfo(
           full_name=self._checkpoint_key,
-          full_shape=self._root_shape,
-          var_offset=slice_offset,
+          full_shape=self._full_shape,
+          var_offset=self._working_tensor_offset,
           var_shape=slice_shape).spec.strip()
-      remaining_size = self._shard_size_remaining
       if slice_size_in_bytes > self.max_shard_size:
-        logging.warning("Slice %s of tensor %s is a scalar of size %s bytes "
-                        "and cannot be partitioned into a shard of max shard "
-                        "size %s bytes. It will be added as an individual "
-                        "shard that exceeds the max shard size.", slice_spec,
-                        self._checkpoint_key, slice_size_in_bytes,
+        logging.warning("Tensor %s's minimum slice %s has size %s bytes and "
+                        "cannot be partitioned into a shard of max shard size "
+                        "%s bytes. It will be added as an individual shard "
+                        "that exceeds the max shard size.",
+                        self._checkpoint_key, slice_spec, slice_size_in_bytes,
                         self.max_shard_size)
         self._large_scalars.append(
             {self._checkpoint_key: {slice_spec: tensor_slice}})
       elif slice_size_in_bytes > self._shard_size_remaining:
-        # Smallest partition can't fit in the remaining shard space. Start fresh
-        # with a new shard.
-        return None, (None, None)
+        raise RuntimeError(
+            f"Slice size ({slice_size_in_bytes} bytes) is larger than the "
+            f"remaining shard size ({self._shard_size_remaining} bytes). This "
+            "should have been caught in MaxShardSizePolicy._add_partition().")
       else:
-        if not self._tensors_by_shard or self._shard_size_remaining < 1:
-          self._tensors_by_shard.append({})
-          remaining_size = self.max_shard_size
         (self._tensors_by_shard[-1]
          .setdefault(self._checkpoint_key, {})[slice_spec]) = tensor_slice
-        remaining_size -= slice_size_in_bytes
+        self._shard_size_remaining -= slice_size_in_bytes
+        if self._shard_size_remaining == 0:
+          self._tensors_by_shard.append({})
+          self._shard_size_remaining = self.max_shard_size
 
       # Get remaining portion of tensor to add to the next shard(s).
-      slice_offset[part_axis] += part_size
-      slice_shape = [self._root_shape[i] - slice_offset[i]
-                     for i in range(self._root_shape.rank)]
-
-      return (remaining_size, (slice_offset, slice_shape))
+      self._working_tensor_offset[part_axis] += part_size
+      relative_offset[part_axis] += part_size
+      self._working_tensor_shape = tensor_shape.TensorShape(list(
+          map(operator.sub, self._root_shape, relative_offset)))
 
     def get_shards(
         self,
@@ -190,17 +203,30 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
             [ {checkpoint key: {slice_spec: tensor} } ]
       """
       self.max_shard_size = max_shard_size
-      self._tensors_by_shard = []
+      self._tensors_by_shard = [{}]
       self._large_scalars = []
 
+      string_size_warning_printed = False
       self._shard_size_remaining = self.max_shard_size
       for shardable_tensor in shardable_tensors:
-        self._root_tensor = shardable_tensor.tensor
-        self._root_shape = shardable_tensor.shape
+        self._checkpoint_key = shardable_tensor.checkpoint_key
         self._dtype = shardable_tensor.dtype
         self._device = shardable_tensor.device
-        self._checkpoint_key = shardable_tensor.checkpoint_key
+        self._root_tensor = shardable_tensor.tensor
         self._slice_spec = shardable_tensor.slice_spec
+        # If the tensor has already been sliced, maked sure to keep track of its
+        # parent tensor's shape & offset. These will be used when creating slice
+        # specs later.
+        if self._slice_spec:
+          save_slice_info = variables.Variable.SaveSliceInfo.from_spec(
+              self._slice_spec)
+          self._full_shape = tensor_shape.TensorShape(
+              save_slice_info.full_shape)
+          self._root_shape = tensor_shape.TensorShape(save_slice_info.var_shape)
+          self._root_offset = save_slice_info.var_offset
+        else:
+          self._full_shape = self._root_shape = shardable_tensor.shape
+          self._root_offset = [0] * self._root_shape.rank
 
         self._dtype_size = dtypes.as_dtype(self._dtype).size
         total_size = self._root_shape.num_elements() * self._dtype_size  # bytes
@@ -213,40 +239,62 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
           # big, so we just place it in the current shard without worrying about
           # its size.
           total_size = self._dtype_size = 0
+        elif self._dtype == dtypes.variant:
+          # Can't determine a variant's type, so can't calculate its size.
+          total_size = self._dtype_size = 0
+        elif (self._dtype == dtypes.string
+              and not context.executing_eagerly()
+              and ops.get_default_session() is None):
+          # TODO(b/326287351): Get string tensor size in tf.function.
+          total_size = self._dtype_size = 0
+          if not string_size_warning_printed:
+            logging.warning("The checkpoint sharding policy is being executed "
+                            "in a tf.function. The size of the string/variant "
+                            "constant cannot be obtained.")
+            string_size_warning_printed = True
         elif self._dtype == dtypes.string:
-          if not context.executing_eagerly():
-            with ops.device(self._device):
+          with ops.device(self._device):
+            if not context.executing_eagerly():
               self._root_tensor = ops.get_default_session().run(
                   self._root_tensor)
 
-          if self._root_shape.rank is None or self._root_shape.rank == 0:
-            sizes = [string_ops.string_length(self._root_tensor, unit="BYTE")]
-          else:
-            sizes = [string_ops.string_length(elem, unit="BYTE")
-                     for elem in self._root_tensor]
+            if self._root_shape.rank is None or self._root_shape.rank == 0:
+              sizes = [string_ops.string_length(self._root_tensor,
+                                                unit="BYTE")]
+            else:
+              sizes = [string_ops.string_length(elem, unit="BYTE")
+                       for elem in self._root_tensor]
 
-          if context.executing_eagerly():
-            sizes = [size.numpy() for size in sizes]
-          else:
-            with ops.device(self._device):
+            if context.executing_eagerly():
+              sizes = [size.numpy() for size in sizes]
+            else:
               sizes = ops.get_default_session().run(sizes)
 
           total_size = sum(sizes)
           self._dtype_size = max(sizes)
 
-        if (total_size > self.max_shard_size and
-            (self._root_shape.rank is None or self._root_shape.rank == 0)):
-          logging.warning("Tensor %s is a scalar of size %s bytes and cannot "
-                          "be partitioned into a shard of max shard size %s "
-                          "bytes. It will be added as an individual shard that "
-                          "exceeds the max shard size.",
-                          self._checkpoint_key, total_size, self.max_shard_size)
-          self._large_scalars.append(
-              {self._checkpoint_key: {self._slice_spec: self._root_tensor}})
+        if self._root_shape.rank is None or self._root_shape.rank == 0:
+          if total_size > self.max_shard_size:
+            logging.warning(
+                "Tensor %s is a %s scalar of size %s bytes and cannot be "
+                "partitioned into a shard of max shard size %s bytes. It will "
+                "be added as an individual shard that exceeds the max shard "
+                "size.", self._checkpoint_key, self._dtype, total_size,
+                self.max_shard_size)
+            self._large_scalars.append(
+                {self._checkpoint_key: {self._slice_spec: self._root_tensor}})
+          else:
+            if total_size > self._shard_size_remaining:
+              self._tensors_by_shard.append({})
+              self._shard_size_remaining = self.max_shard_size
+            (self._tensors_by_shard[-1]
+             .setdefault(self._checkpoint_key, {})
+             [self._slice_spec]) = self._root_tensor
+            self._shard_size_remaining -= total_size
           continue
 
         # Partition tensor and add partitions to shards.
-        self._working_tensor_offset = [0] * self._root_shape.rank
+        self._working_tensor_offset = self._root_offset[:]
         self._working_tensor_shape = self._root_shape
         working_tensor_size = total_size
         while working_tensor_size > self._shard_size_remaining:
@@ -257,47 +305,39 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
             # with the next full shard.
             self._tensors_by_shard.append({})
             self._shard_size_remaining = self.max_shard_size
-            continue
-
-          (remaining_size,
-           (remaining_offset, remaining_shape)) = self._add_partition(
-               part_axis=part_axis, part_size=part_size)
-
-          if remaining_size is None:
-            # Tensor partition couldn't fit in remaining shard space. Try again
-            # with the next full shard.
-            self._tensors_by_shard.append({})
-            self._shard_size_remaining = self.max_shard_size
           else:
-            self._working_tensor_offset = remaining_offset
-            self._working_tensor_shape = tensor_shape.TensorShape(
-                remaining_shape)
+            self._add_partition(part_axis, part_size)
+
             working_tensor_size = (
-                int(math.prod(remaining_shape)) * self._dtype_size)
-            self._shard_size_remaining = remaining_size
+                int(math.prod(self._working_tensor_shape)) * self._dtype_size)
 
         if self._working_tensor_shape.num_elements() > 0:
           if self._working_tensor_offset and self._working_tensor_shape:
             with ops.device(self._device):
               working_tensor = array_ops.slice(
                   self._root_tensor,
-                  begin=self._working_tensor_offset,
+                  begin=list(map(
+                      operator.sub,
+                      self._working_tensor_offset, self._root_offset)),
                   size=self._working_tensor_shape.as_list())
           else:
             working_tensor = self._root_tensor
           remaining_tensor_slice_spec = variables.Variable.SaveSliceInfo(
               full_name=self._checkpoint_key,
-              full_shape=self._root_shape,
+              full_shape=self._full_shape,
               var_offset=self._working_tensor_offset,
               var_shape=self._working_tensor_shape).spec.strip()
-          if not self._tensors_by_shard:
-            self._tensors_by_shard.append({})
           (self._tensors_by_shard[-1]
            .setdefault(self._checkpoint_key, {})
            [remaining_tensor_slice_spec]) = working_tensor
         self._shard_size_remaining -= working_tensor_size
 
-      return self._tensors_by_shard + self._large_scalars
+      shards = []
+      if self._tensors_by_shard[0]:
+        shards.extend(self._tensors_by_shard)
+      shards.extend(self._large_scalars)
+
+      return shards
 
   def __init__(self, max_shard_size: int):
     self.max_shard_size = max_shard_size

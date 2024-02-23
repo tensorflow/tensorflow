@@ -99,7 +99,7 @@ Status GetAndLockVariablesAndBuildXlaCompilerArguments(
                       XlaComputationLaunchContext::BuildXlaCompilerArguments(
                           constant_indices, inputs, *variables,
                           static_cast<Device*>(ctx.device())));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -164,7 +164,7 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
       ctx, result, execution_output.ConsumeResult(),
       /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
       input_output_alias, snapshot_ptrs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompileOnDemandOp::Compile(
@@ -215,7 +215,7 @@ Status XlaCompileOnDemandOp::Compile(
       rm->default_container(), "device_compilation_profiler", profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   XlaCompiler::Options options = GenerateCompilerOptions(

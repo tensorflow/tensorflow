@@ -155,7 +155,7 @@ Status HloControlFlowFlattening::FlattenWhileLoop(
   // non-get-tuple-element users with a new tuple instruction which has the
   // first N - 1 elements.
   auto replace_non_gte_users =
-      [](HloInstruction* new_tuple) -> StatusOr<HloInstruction*> {
+      [](HloInstruction* new_tuple) -> absl::StatusOr<HloInstruction*> {
     CHECK(new_tuple->shape().IsTuple());
     HloInstruction* prefix = nullptr;
     std::vector<HloInstruction*> users(new_tuple->users());
@@ -399,7 +399,7 @@ Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   return OkStatus();
 }
 
-StatusOr<bool> HloControlFlowFlattening::Run(
+absl::StatusOr<bool> HloControlFlowFlattening::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto call_graph = CallGraph::Build(module);

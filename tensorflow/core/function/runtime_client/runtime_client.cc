@@ -89,7 +89,7 @@ EagerContext& GlobalPythonEagerContext() {
   return *ctx;
 }
 
-StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
+absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
   EagerContext& ctx = this->eager_ctx_;
 
   const FunctionDef* f = ctx.FindFunctionDef(std::string(name));
@@ -205,7 +205,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
                    ". Supported dialects are Dialect::TFG and Dialect::TF."));
 }
 
-StatusOr<ReturnValues> Runtime::CallFunction(
+absl::StatusOr<ReturnValues> Runtime::CallFunction(
     StringPiece name, absl::Span<AbstractTensorHandle* const> args) {
   EagerContext& ctx = this->eager_ctx_;
 

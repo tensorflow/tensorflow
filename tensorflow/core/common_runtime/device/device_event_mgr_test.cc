@@ -378,18 +378,20 @@ class EMBenchmarkHelper {
         times->at(r).iter = r;
         times->at(r).start = Env::Default()->NowMicros();
       }
-      gpu_helper_->h2d_stream()->ThenWaitFor(gpu_helper_->compute_stream());
+      TF_ASSERT_OK(
+          gpu_helper_->h2d_stream()->WaitFor(gpu_helper_->compute_stream()));
       // Begin by copying the input values from CPU to GPU.
       const int64_t src_bytes = host_inputs_[0].TotalBytes();
       se::DeviceMemoryBase gpu_dst_ptr0(DMAHelper::base(&gpu_inputs_[0]),
                                         src_bytes);
-      gpu_helper_->h2d_stream()->ThenMemcpy(
-          &gpu_dst_ptr0, DMAHelper::base(&host_inputs_[0]), src_bytes);
+      TF_ASSERT_OK(gpu_helper_->h2d_stream()->Memcpy(
+          &gpu_dst_ptr0, DMAHelper::base(&host_inputs_[0]), src_bytes));
       se::DeviceMemoryBase gpu_dst_ptr1(DMAHelper::base(&gpu_inputs_[1]),
                                         src_bytes);
-      gpu_helper_->h2d_stream()->ThenMemcpy(
-          &gpu_dst_ptr1, DMAHelper::base(&host_inputs_[1]), src_bytes);
-      gpu_helper_->compute_stream()->ThenWaitFor(gpu_helper_->h2d_stream());
+      TF_ASSERT_OK(gpu_helper_->h2d_stream()->Memcpy(
+          &gpu_dst_ptr1, DMAHelper::base(&host_inputs_[1]), src_bytes));
+      TF_ASSERT_OK(
+          gpu_helper_->compute_stream()->WaitFor(gpu_helper_->h2d_stream()));
       if (times) {
         gpu_helper_->event_mgr()->ThenExecute(
             gpu_helper_->compute_stream(), [times, r]() {
@@ -413,12 +415,13 @@ class EMBenchmarkHelper {
               times->at(r).compute_done = Env::Default()->NowMicros();
             });
       }
-      gpu_helper_->d2h_stream()->ThenWaitFor(gpu_helper_->compute_stream());
+      TF_ASSERT_OK(
+          gpu_helper_->d2h_stream()->WaitFor(gpu_helper_->compute_stream()));
       const int64_t return_bytes = ctx->mutable_output(0)->TotalBytes();
       se::DeviceMemoryBase gpu_src_ptr(DMAHelper::base(ctx->mutable_output(0)),
                                        return_bytes);
-      gpu_helper_->d2h_stream()->ThenMemcpy(DMAHelper::base(&host_outputs_[0]),
-                                            gpu_src_ptr, return_bytes);
+      TF_ASSERT_OK(gpu_helper_->d2h_stream()->Memcpy(
+          DMAHelper::base(&host_outputs_[0]), gpu_src_ptr, return_bytes));
       gpu_helper_->event_mgr()->ThenExecute(gpu_helper_->d2h_stream(),
                                             callback);
       if (times) {

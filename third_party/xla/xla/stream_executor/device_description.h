@@ -53,8 +53,8 @@ struct CudaComputeCapability {
     HOPPER = 9
   };
 
-  CudaComputeCapability() = default;
-  CudaComputeCapability(int major, int minor) {
+  constexpr CudaComputeCapability() = default;
+  constexpr CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
   }

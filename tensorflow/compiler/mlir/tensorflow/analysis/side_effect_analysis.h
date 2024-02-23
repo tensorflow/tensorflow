@@ -125,6 +125,10 @@ class SideEffectAnalysisInfo {
     return alias_analysis_.IsUniqueResourceAllocationId(resource_id);
   }
 
+  const TF::ResourceAliasAnalysis::Info& GetAliasAnalysis() const {
+    return alias_analysis_;
+  }
+
  private:
   // Runs the analysis and populates `sorted_control_predecessors_` and
   // `sorted_control_successors_` for `func_op`. Clears `control_predecessors_`.

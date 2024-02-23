@@ -1515,7 +1515,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
 // copy node for reshard.
 // `unspecified_dims` will be populated with the converted copies if the custom
 // call is partially specified.
-StatusOr<bool> ProcessShardingInstruction(
+absl::StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
@@ -2823,23 +2823,27 @@ bool ShardingPropagation::InferShardingFromUsers(
   return improved_sharding;
 }
 
-Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
-  if (!allow_spmd_sharding_propagation_to_output_) {
-    return OkStatus();
+Status SetParameterShapes(
+    HloModule* module, const std::vector<Shape>& parameter_shapes,
+    const std::vector<bool>&
+        allow_spmd_sharding_propagation_to_parameters_vector) {
+  for (int64_t i = 0; i < module->entry_computation()->num_parameters(); ++i) {
+    if (!allow_spmd_sharding_propagation_to_parameters_vector[i]) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(module->mutable_config()
+                           .mutable_entry_computation_layout()
+                           ->mutable_parameter_layout(i)
+                           ->CopyLayoutFromShape(parameter_shapes[i]));
   }
-  if (!module->layout_canonicalization_callback()) {
-    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
-    return OkStatus();
-  }
-  // If the result layout is automatically set, allow layout assignment to
-  // choose the layout.
+  return OkStatus();
+}
+
+Status SetResultShape(HloModule* module, const Shape& result_shape) {
   if (!module->entry_computation_layout().LayoutIsSet() ||
       !module->entry_computation_layout().result_layout().LayoutIsSet()) {
     return OkStatus();
   }
-  TF_ASSIGN_OR_RETURN(auto layouts,
-                      module->layout_canonicalization_callback()(*module));
-  Shape& result_shape = layouts.second;
   TF_RETURN_IF_ERROR(module->mutable_config()
                          .mutable_entry_computation_layout()
                          ->mutable_result_layout()
@@ -2847,7 +2851,29 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   return OkStatus();
 }
 
-StatusOr<bool> ShardingPropagation::Run(
+Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
+  if (!allow_spmd_sharding_propagation_to_output_ &&
+      !allow_spmd_sharding_propagation_to_parameters_) {
+    return OkStatus();
+  }
+  if (!module->layout_canonicalization_callback()) {
+    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(auto shapes_with_layout,
+                      module->layout_canonicalization_callback()(*module));
+  if (allow_spmd_sharding_propagation_to_parameters_) {
+    TF_RETURN_IF_ERROR(SetParameterShapes(
+        module, shapes_with_layout.first,
+        allow_spmd_sharding_propagation_to_parameters_vector_));
+  }
+  if (allow_spmd_sharding_propagation_to_output_) {
+    TF_RETURN_IF_ERROR(SetResultShape(module, shapes_with_layout.second));
+  }
+  return OkStatus();
+}
+
+absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>

@@ -76,6 +76,8 @@ tf_cc_test(
         ":legalize_tf",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/internal:test_matchers",
+        "//tensorflow/compiler/mlir/tf2xla/internal/utils:test_metadata_config",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",

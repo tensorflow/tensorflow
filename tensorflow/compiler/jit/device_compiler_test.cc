@@ -285,7 +285,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   EXPECT_CALL(*mock_profiler_, RegisterCompilation(_, _, false))
       .WillOnce([&done] {
         done.Notify();
-        return OkStatus();
+        return absl::OkStatus();
       });
 
   auto args = SampleArgsForAddXY();

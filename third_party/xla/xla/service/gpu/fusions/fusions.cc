@@ -31,11 +31,14 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/copy.h"
+#include "xla/service/gpu/fusions/cudnn.h"
 #include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
 #include "xla/service/gpu/fusions/input_slices.h"
 #include "xla/service/gpu/fusions/loop.h"
+#include "xla/service/gpu/fusions/loop_mlir.h"
+#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/scatter.h"
 #include "xla/service/gpu/fusions/transpose.h"
@@ -186,6 +189,18 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (auto copy_fusion = fusion_info.GetCopyFusion()) {
         return *std::move(copy_fusion);
       }
+
+      if (analysis.fusion_roots()
+              .front()
+              ->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_enable_mlir_emitters() &&
+          mlir_converter::IsHloConversionSupported(
+              analysis.fusion(),
+              fusion_info.analysis().device_info().gpu_compute_capability())) {
+        return std::make_unique<MlirLoopFusion>(analysis);
+      }
       return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
@@ -198,6 +213,8 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<ConcatenateFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kCuDnn:
+      return std::make_unique<CuDnnFusion>(analysis);
   }
 }
 

@@ -103,6 +103,7 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
 
   absl::flat_hash_map<BufferAllocation::Slice, std::optional<int64_t>>
       first_indices_for_slices;
+  int next_llvm_arg_index = 0;
   for (int i = 0; i < static_cast<int>(kernel_arguments.size()); ++i) {
     KernelArgument& kernel_argument = kernel_arguments[i];
 
@@ -113,9 +114,11 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
       kernel_argument.alignment_ = same.alignment_;
       kernel_argument.aliased_ = same.aliased_;
       kernel_argument.written_ = same.written_;
+      kernel_argument.llvm_arg_index_ = same.llvm_arg_index_;
       continue;
     } else {
       first_index = i;
+      kernel_argument.llvm_arg_index_ = next_llvm_arg_index++;
     }
 
     const BufferAllocation* alloc = kernel_argument.slice().allocation();

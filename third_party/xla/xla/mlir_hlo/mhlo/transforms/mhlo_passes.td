@@ -402,14 +402,8 @@ def MhloQuantLegalizeToInt : Pass<"mhlo-quant-legalize-to-int", "mlir::func::Fun
     Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
     like int ops.
   }];
-  let options = [
-    Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
-        "Legalizes intermediate chlo ops to hlo">
-    ];
-
   let constructor = "createMhloQuantLegalizeToIntPass()";
   let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
                            "quant::QuantizationDialect",
-                           "shape::ShapeDialect",
                            "func::FuncDialect"];
 }

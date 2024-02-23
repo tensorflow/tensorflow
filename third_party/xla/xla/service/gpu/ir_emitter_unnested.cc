@@ -688,14 +688,18 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   std::unique_ptr<ThunkSequence> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
 
-  // Linearize all commands in a sequence by forcing barriers between all
+  // Maybe serialize all commands in a sequence by forcing barriers between all
   // recorded commands. This guarantees that we execute all device operations
   // in the exact same order as a thunk sequence.
-  bool force_barriers = !ir_emitter_context_->debug_options()
-                             .xla_gpu_graph_enable_concurrent_region();
+  CommandBufferCmdSequence::SynchronizationMode synchronization_mode =
+      ir_emitter_context_->debug_options()
+              .xla_gpu_graph_enable_concurrent_region()
+          ? CommandBufferCmdSequence::SynchronizationMode::kAutomatic
+          : CommandBufferCmdSequence::SynchronizationMode::kSerialize;
 
   TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence cmd_sequence,
-                      ConvertToCommands(*thunk_sequence, force_barriers));
+                      ConvertToCommands(*thunk_sequence, synchronization_mode));
+
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr),
       std::move(*thunk_sequence)));
@@ -1700,8 +1704,11 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(thunks)));
+    auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+    // Don't repeat the annotation from inside thunks
+    thunk_info.profile_annotation = {};
+    AddThunkToThunkSequence(
+        std::make_unique<SequentialThunk>(thunk_info, std::move(thunks)));
   }
   return absl::OkStatus();
 }
@@ -2541,8 +2548,8 @@ absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
     const HloInstruction* inst, GpuBackendConfig& gpu_config,
     bool is_async_done) {
   std::vector<ExecutionStreamId> wait_on_streams;
-  ExecutionStreamId source_stream_id = Thunk::GetMainComputeStreamId();
-  // If it's for an async done, then we need to sychronize on the execution
+  ExecutionStreamId source_stream_id = Thunk::kDefaultExecutionStreamId;
+  // If it's for an async done, then we need to synchronize on the execution
   // stream of the instruction from main compute stream
   if (is_async_done) {
     wait_on_streams.push_back(
@@ -2550,7 +2557,7 @@ absl::Status IrEmitterUnnested::EmitWaitForStreamsThunk(
   } else if (gpu_config.wait_on_operation_queues().size() == 0) {
     // If wait on queue is empty, we just synchronize on the main compute
     // stream from the execution stream.
-    wait_on_streams.push_back(Thunk::GetMainComputeStreamId());
+    wait_on_streams.push_back(Thunk::kDefaultExecutionStreamId);
     source_stream_id = gpu_config.operation_queue_id();
   } else {
     // Else, we synchronize on all specified
@@ -2830,7 +2837,6 @@ absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
 
 absl::Status IrEmitterUnnested::EmitHloInstruction(
     const HloInstruction* instr) {
-  // TODO(anlunx): Support other instruction opcodes.
   switch (instr->opcode()) {
     case HloOpcode::kAllGatherDone:
       return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);

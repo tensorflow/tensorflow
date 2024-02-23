@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -28,7 +29,7 @@ TEST(MemcpyTest, PinnedHostMemory) {
   Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
   TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
@@ -36,7 +37,7 @@ TEST(MemcpyTest, PinnedHostMemory) {
   DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
 
   int h_ptr;
-  stream.ThenMemcpy(&h_ptr, d_mem, d_mem.size());
+  TF_ASSERT_OK(stream.Memcpy(&h_ptr, d_mem, d_mem.size()));
   EXPECT_TRUE(stream.BlockHostUntilDone().ok());
 }
 

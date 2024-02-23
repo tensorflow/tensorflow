@@ -82,6 +82,10 @@ class Thunk {
   using ExecutionStreamIdMap =
       absl::flat_hash_map<ExecutionStreamId, se::Stream*>;
 
+  // When default execution stream id is used, operations launched by a thunk
+  // must be synchronized with a stream passed in ExecuteOptions.
+  static constexpr auto kDefaultExecutionStreamId = ExecutionStreamId(0);
+
   enum Kind {
     kCholesky,
     kConditional,
@@ -130,7 +134,8 @@ class Thunk {
     kTriangularSolve,
     kWhile,
     kFusedMHA,
-    kWaitForStreams
+    kWaitForStreams,
+    kCuDnn
   };
 
   // TODO(ezhulenev): This should become a part of StreamExecutor library, but
@@ -152,7 +157,7 @@ class Thunk {
     // LMHLO is removed from the runtime pipeline.
     mlir::Operation* op;
 
-    ExecutionStreamId execution_stream_id = Thunk::GetMainComputeStreamId();
+    ExecutionStreamId execution_stream_id = kDefaultExecutionStreamId;
   };
 
   //===--------------------------------------------------------------------===//
@@ -365,7 +370,7 @@ class Thunk {
 
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
-  std::string profile_annotation() const { return profile_annotation_; }
+  std::string_view profile_annotation() const { return profile_annotation_; }
 
   // Only valid during compilation, i.e., lowering thunks to kernel-launch
   // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
@@ -408,10 +413,6 @@ class Thunk {
 
   static absl::StatusOr<se::Stream*> GetStreamForExecution(
       ExecutionStreamId stream_id, const ExecuteParams& params);
-
-  static ExecutionStreamId GetMainComputeStreamId() {
-    return ExecutionStreamId(0);
-  }
 
  private:
   Kind kind_;

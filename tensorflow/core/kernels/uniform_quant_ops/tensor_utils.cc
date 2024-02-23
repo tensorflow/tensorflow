@@ -53,7 +53,7 @@ Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
           " and zero_points shape ", zero_points_shape.DebugString());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TensorShape TransposedShape(const TensorShape& in_shape,

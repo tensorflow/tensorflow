@@ -619,28 +619,13 @@ TEST_F(TfrtSessionTest, RunAfterCloseError) {
               ::testing::HasSubstr("Session has been closed."));
 }
 
-TEST_F(TfrtSessionTest, RunsGraphWithNoTpuOps) {
+TEST_F(TfrtSessionTest, InitializeTwiceCrashes) {
   TfrtSessionOptions options;
-  TF_ASSERT_OK(InitializeTfrtSession(options));
-  options.use_tpu = true;
-  TF_ASSERT_OK(InitializeTfrtSession(options));
-  std::vector<Tensor> outputs;
-  TF_ASSERT_OK(session_->Run(inputs_, output_tensor_names_, target_node_names_,
-                             &outputs));
-
-  ASSERT_EQ(outputs.size(), 3);
-
-  // Check output "r1".
-  test::ExpectEqual(outputs[0],
-                    test::AsTensor<int32_t>({6}, TensorShape{1, 1}));
-
-  // Check output "r21".
-  test::ExpectEqual(outputs[1],
-                    test::AsTensor<int32_t>({12}, TensorShape{1, 1}));
-
-  // Check output "r31".
-  test::ExpectEqual(outputs[2],
-                    test::AsTensor<int32_t>({18}, TensorShape{1, 1}));
+  auto second_initialize = [](TfrtSessionOptions options) {
+    auto status = InitializeTfrtSession(options);
+    TF_ASSERT_OK(status);  // Crashes before getting here.
+  };
+  ASSERT_DEBUG_DEATH(second_initialize(options), "");
 }
 
 TEST_F(TfrtSessionTest, GetRuntime) {

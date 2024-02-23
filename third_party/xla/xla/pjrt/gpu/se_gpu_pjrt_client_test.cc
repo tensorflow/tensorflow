@@ -55,7 +55,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
   TF_ASSIGN_OR_RETURN(auto hlo_module,
@@ -67,8 +67,8 @@ StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
 
 // Given the result of a PjrtExecutable::Execute call (TF-status of vectors of
 // vectors), extract the zeroth result from the zeroth device.
-StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
-    xla::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
+absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
+    absl::StatusOr<std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>>&
         result) {
   TF_RETURN_IF_ERROR(result.status());
   TF_RET_CHECK(result->size() == 1);

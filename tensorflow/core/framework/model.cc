@@ -883,9 +883,9 @@ class AsyncRatio : public Node {
              std::vector<std::shared_ptr<Parameter>> parameters,
              bool is_legacy_prefetch_autotuned = false)
       : Node(args),
+        is_legacy_prefetch_autotuned_(is_legacy_prefetch_autotuned),
         ratio_(ratio),
-        memory_ratio_(memory_ratio),
-        is_legacy_prefetch_autotuned_(is_legacy_prefetch_autotuned) {
+        memory_ratio_(memory_ratio) {
     for (auto& parameter : parameters) {
       parameters_[parameter->name] = std::move(parameter);
     }
@@ -1114,6 +1114,10 @@ class AsyncRatio : public Node {
     return result;
   }
 
+  // Whether this node represents a prefetch node tuned by the legacy prefetch
+  // autotuner, rather than the model.
+  const bool is_legacy_prefetch_autotuned_;
+
  private:
   // Identifies how many input elements need to be created to construct an
   // element for the dataset.
@@ -1126,9 +1130,6 @@ class AsyncRatio : public Node {
   // budget bound with given num_parallel_calls (or buffer_size) combined with
   // the estimated average size of buffered elements.
   const double memory_ratio_;
-  // Whether this node represents a prefetch node tuned by the legacy prefetch
-  // autotuner, rather than the model.
-  const bool is_legacy_prefetch_autotuned_;
 };
 
 class UnknownRatio : public Node {
@@ -1333,6 +1334,18 @@ class AsyncKnownRatio : public AsyncRatio {
     node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
     node_proto->set_ratio(Ratio());
     node_proto->set_memory_ratio(MemoryRatio());
+    if (is_legacy_prefetch_autotuned_) {
+      // Update buffer_size parameter to make sense from a user perspective.
+      if (node_proto->parameters_size() != 1) {
+        return absl::InternalError(absl::StrCat(
+            "Expected prefetch node to have one parameter, but it has ",
+            node_proto->parameters_size()));
+      }
+      auto* parameter = node_proto->mutable_parameters(0);
+      // Legacy autotuner only modifies the state_value, not the model value.
+      parameter->set_value(parameter->state_value());
+      parameter->set_tunable(true);
+    }
     return OkStatus();
   }
 };

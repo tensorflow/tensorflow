@@ -102,6 +102,22 @@ class NVPTXCompiler : public GpuCompiler {
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable, const CompileOptions& options);
 
+  struct CompilationCacheFlags {
+    template <typename H>
+    friend H AbslHashValue(H h, const CompilationCacheFlags& flags) {
+      return H::combine(std::move(h),
+                        flags.filter_kernels_spilling_registers_on_autotuning);
+    }
+
+    friend bool operator==(const CompilationCacheFlags& a,
+                           const CompilationCacheFlags& b) {
+      return a.filter_kernels_spilling_registers_on_autotuning ==
+             b.filter_kernels_spilling_registers_on_autotuning;
+    }
+
+    bool filter_kernels_spilling_registers_on_autotuning;
+  };
+
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for
   // some interactive workflows.  (We also cache at the HLO level, but sometimes
@@ -116,26 +132,33 @@ class NVPTXCompiler : public GpuCompiler {
   // and leave compilation up to the driver.
   struct CompilationCacheKey {
     CompilationCacheKey(std::string ptx, int cc_major, int cc_minor,
-                        bool relocatable)
+                        bool relocatable, CompilationCacheFlags flags)
         : ptx(std::move(ptx)),
           cc_major(cc_major),
           cc_minor(cc_minor),
-          relocatable(relocatable) {}
+          relocatable(relocatable),
+          flags(std::move(flags)) {}
+
     template <typename H>
     friend H AbslHashValue(H h, const CompilationCacheKey& key) {
       return H::combine(std::move(h), key.ptx, key.cc_major, key.cc_minor,
-                        key.relocatable);
+                        key.relocatable, key.flags);
     }
+
     friend bool operator==(const CompilationCacheKey& a,
                            const CompilationCacheKey& b) {
       return a.cc_major == b.cc_major && a.cc_minor == b.cc_minor &&
-             a.ptx == b.ptx && a.relocatable == b.relocatable;
+             a.ptx == b.ptx && a.relocatable == b.relocatable &&
+             a.flags == b.flags;
     }
+
     std::string ptx;
     int cc_major;
     int cc_minor;
     bool relocatable;
+    CompilationCacheFlags flags;
   };
+
   struct CompilationCacheValue {
     bool compilation_done = false;
     absl::StatusOr<std::vector<uint8_t>> maybe_cubin;

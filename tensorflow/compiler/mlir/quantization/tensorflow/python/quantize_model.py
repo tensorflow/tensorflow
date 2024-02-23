@@ -19,6 +19,7 @@ from typing import Mapping, Optional
 
 from absl import logging
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
@@ -730,7 +731,7 @@ def _populate_quantization_options_default_values(
 
     if (
         quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
+        == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
     ):
       raise ValueError(
           'Debugger is enabled but debugger type was not specified.'
@@ -738,7 +739,7 @@ def _populate_quantization_options_default_values(
 
     if (
         quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+        == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
         and not quantization_options.debugger_options.unquantized_dump_model_path
     ):
       raise ValueError(

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/host_memory_offload_annotations.h"
@@ -592,10 +593,41 @@ StatusOr<bool> HostOffloader::Run(
     changed = true;
   }
 
+  // Recompute alias analysis after changes.
+  TF_ASSIGN_OR_RETURN(alias_analysis_, HloAliasAnalysis::Run(module));
+  auto uses_parameter_buffer = [this](HloInstruction* hlo) {
+    for (const HloBuffer* buffer : alias_analysis_->ComputeBuffersAt(hlo)) {
+      for (const HloValue* value : buffer->values()) {
+        for (const HloPosition& pos : value->positions()) {
+          if (absl::c_linear_search(hlo->parent()->parameter_instructions(),
+                                    pos.instruction)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
   // Remove these custom-calls that were previously used for annotation.
   for (HloInstruction* custom_call : custom_calls_to_remove_) {
     CHECK_EQ(custom_call->operand_count(), 1);
     HloInstruction* operand = custom_call->operands()[0];
+    if (custom_call->parent() !=
+            custom_call->GetModule()->entry_computation() &&
+        custom_call->IsCustomCall(
+            host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+      // Replace custom call with a copy for dynamic-update-slice in case it
+      // used parameter buffer directly because in case of aliasing with loop
+      // parameters control dependencies can mess with scheduling.
+      if (uses_parameter_buffer(operand)) {
+        VLOG(10) << "Adding copy for custom call " << custom_call->name();
+        operand =
+            custom_call->parent()->AddInstruction(HloInstruction::CreateUnary(
+                operand->shape(), HloOpcode::kCopy, operand));
+      } else {
+        VLOG(10) << "NOT Adding copy for custom call " << custom_call->name();
+      }
+    }
     CHECK_OK(custom_call->ReplaceAllUsesWith(operand));
     TF_RETURN_IF_ERROR(custom_call->parent()->RemoveInstruction(custom_call));
     changed = true;

@@ -45,6 +45,7 @@ namespace {
 
 constexpr int32_t kIndexShuffleRounds = 8;
 
+constexpr const char kElementCount[] = "element_count";
 constexpr const char kGlobalShuffleDataset[] = "GlobalShuffleDataset";
 constexpr const char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 constexpr const char kSeed[] = "seed";
@@ -195,19 +196,33 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
     TF_RETURN_IF_ERROR(input_impl_->GetNext(&global_shuffle_ctx, out_tensors,
                                             end_of_sequence));
     ctx->MergeCheckpoint(global_shuffle_ctx.checkpoint());
+    ++element_count_;
     return absl::OkStatus();
   }
 
   absl::Status SaveInternal(SerializationContext* ctx,
                             IteratorStateWriter* writer) override {
-    return absl::UnimplementedError(
-        "TODO(b/325112575): Support checkpoints for random access iterators.");
+    absl::MutexLock l(&mu_);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(prefix(), kElementCount, element_count_));
+    return absl::OkStatus();
   }
 
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
-    return absl::UnimplementedError(
-        "TODO(b/325112575): Support checkpoints for random access iterators.");
+    absl::MutexLock l(&mu_);
+    if (ctx->element_count().has_value()) {
+      element_count_ = *ctx->element_count();
+    } else {
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kElementCount, &element_count_));
+    }
+    IteratorContext::Params params(ctx);
+    params.element_count = element_count_;
+    IteratorContext ctx_copy(params);
+    TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
+    ctx->MergeCheckpoint(ctx_copy.checkpoint());
+    return absl::OkStatus();
   }
 
  private:
@@ -237,7 +252,9 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   int64_t seed_ ABSL_GUARDED_BY(mu_) = 0;
   int64_t seed2_ ABSL_GUARDED_BY(mu_) = 0;
   int64_t seed3_ ABSL_GUARDED_BY(mu_) = 0;
+
   std::unique_ptr<IteratorBase> input_impl_ ABSL_GUARDED_BY(mu_);
+  int64_t element_count_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
 GlobalShuffleDatasetOp::GlobalShuffleDatasetOp(OpKernelConstruction* ctx)

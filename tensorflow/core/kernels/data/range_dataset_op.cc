@@ -341,6 +341,11 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
+      if (ctx->element_count().has_value()) {
+        tsl::mutex_lock l(mu_);
+        element_count_ = *(ctx->element_count());
+        return absl::OkStatus();
+      }
       if (reader->Contains(prefix(), kHasSplitProvider)) {
         TF_RETURN_IF_ERROR(split_provider_->Restore(
             [this](const std::string& key) {

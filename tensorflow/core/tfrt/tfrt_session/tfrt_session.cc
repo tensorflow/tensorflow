@@ -760,13 +760,9 @@ void TfrtSessionFactory::RegisterInitializer(RuntimeInitializer initializer) {
 Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
-    // TODO(b/319186082): Update callers to set `use_tpu` alongside other.
-    // options, instead of separately, and remove this check.
-    DCHECK(runtime_);
     DCHECK(!options.backend_compiler);
     device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
     tpu_use_tpu_runner_ = true;
-    return OkStatus();
   } else if (options.backend_compiler) {
     backend_compiler_ = options.backend_compiler;
   }
@@ -836,6 +832,7 @@ tfrt_stub::Runtime* TfrtSessionFactory::GetRuntime() {
 Status InitializeTfrtSession(const TfrtSessionOptions& options) {
   DCHECK(session_factory != nullptr);
   absl::MutexLock lock(&session_factory->mutex_);
+  DCHECK(!session_factory->IsInitialized());
   return UpdateTfrtSessionOptionsLocked(options);
 }
 

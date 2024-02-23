@@ -221,6 +221,7 @@ cc_library(
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         ":profiling_result",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service/spmd:spmd_partitioner",
     ],

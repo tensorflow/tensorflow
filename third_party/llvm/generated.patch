@@ -1,1 +1,46 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/aarch64-sme-inline-streaming-attrs.c b/clang/test/CodeGen/aarch64-sme-inline-streaming-attrs.c
+--- a/clang/test/CodeGen/aarch64-sme-inline-streaming-attrs.c
++++ b/clang/test/CodeGen/aarch64-sme-inline-streaming-attrs.c
+@@ -1,7 +1,7 @@
+-// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -target-feature +sme -verify -DTEST_NONE %s
+-// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -target-feature +sme -verify -DTEST_COMPATIBLE %s
+-// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -target-feature +sme -verify -DTEST_STREAMING %s
+-// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -target-feature +sme -verify -DTEST_LOCALLY %s
++// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -o /dev/null -target-feature +sme -verify -DTEST_NONE %s
++// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -o /dev/null -target-feature +sme -verify -DTEST_COMPATIBLE %s
++// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -o /dev/null -target-feature +sme -verify -DTEST_STREAMING %s
++// RUN: %clang_cc1 -triple aarch64-none-linux-gnu -S -o /dev/null -target-feature +sme -verify -DTEST_LOCALLY %s
+ 
+ #define __ai __attribute__((always_inline))
+ __ai void inlined_fn(void) {}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/pr72969.ll b/llvm/test/Transforms/LoopVectorize/X86/pr72969.ll
+--- a/llvm/test/Transforms/LoopVectorize/X86/pr72969.ll
++++ b/llvm/test/Transforms/LoopVectorize/X86/pr72969.ll
+@@ -1,5 +1,6 @@
+ ; RUN: not --crash opt -mtriple=x86_64 -mattr=-avx,-avx2,-avx512f,+sse,-sse2,-sse3,-sse4.2 -passes=loop-vectorize -S < %s
+ ; RUN: not --crash opt -mtriple=x86_64 -mattr=-avx,-avx2,-avx512f,+sse,-sse2,-sse3,-sse4.2 -passes=loop-vectorize -force-vector-width=4 -S < %s
++; REQUIRES: asserts
+ 
+ @h = global i64 0
+ 
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -613,14 +613,15 @@
+ libc_support_library(
+     name = "__support_fixed_point",
+     hdrs = [
+-        "src/__support/fixed_point/fx_rep.h",
+         "src/__support/fixed_point/fx_bits.h",
++        "src/__support/fixed_point/fx_rep.h",
+     ],
+     deps = [
+         ":__support_cpp_bit",
+         ":__support_cpp_type_traits",
+         ":__support_macros_attributes",
+         ":__support_macros_optimization",
++        ":__support_math_extras",
+         ":llvm_libc_macros_stdfix_macros",
+     ],
+ )

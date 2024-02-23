@@ -1919,51 +1919,6 @@ HloInstruction* FindInstruction(
   return nullptr;
 }
 
-double AllToAllCostUtil(double num_bytes, int mesh_dim, int64_t num_devices,
-                        const std::vector<double>& mesh_alpha,
-                        const std::vector<double>& mesh_beta) {
-  // A penalty factor to make the theoretical cost match the
-  // empirical cost on v100 + nvlink.
-  double penalty_factor = static_cast<double>(num_devices) / 2.0;
-  return (round(mesh_alpha[mesh_dim] + mesh_beta[mesh_dim] * (num_devices - 1) /
-                                           num_devices / num_devices *
-                                           num_bytes * penalty_factor) +
-          0.001);
-}
-
-// Do not consider device id changes yet.
-double ReshardingCostMixedMeshShape(
-    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-    std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t num_devices,
-    const std::vector<double>& mesh_alpha,
-    const std::vector<double>& mesh_beta) {
-  double resharding_costs = 0.0;
-  for (size_t i = 0; i < shape.rank(); ++i) {
-    // Only consider sharded dimensions, do not consider replicate_on_last_dim.
-    if (src_tensor_dim_to_mesh_dim[i] == dst_tensor_dim_to_mesh_dim[i]) {
-      continue;
-    }
-    if (dst_tensor_dim_to_mesh_dim[i] == -1 ||
-        src_tensor_dim_to_mesh_dim[i] == -1) {
-      // AllToAll cost
-      int64_t communication_dim;
-      if (dst_tensor_dim_to_mesh_dim[i] != -1) {
-        communication_dim = dst_tensor_dim_to_mesh_dim[i];
-      } else {
-        communication_dim = src_tensor_dim_to_mesh_dim[i];
-      }
-      int64_t communication_bytes = GetBytes(shape);
-      resharding_costs +=
-          AllToAllCostUtil(communication_bytes, communication_dim, num_devices,
-                           mesh_alpha, mesh_beta);
-    } else {
-      // Do not support this sharding, assuming it is gonna be very expensive.
-      return kInfinityCost;
-    }
-  }
-  return resharding_costs;
-}
-
 absl::StatusOr<std::optional<HloSharding>>
 AdjustShardingWithPartialMeshShapePerElement(
     const HloSharding& sharding,

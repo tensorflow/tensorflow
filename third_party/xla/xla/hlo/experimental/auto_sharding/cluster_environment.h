@@ -123,6 +123,10 @@ class ClusterEnvironment {
 
   double AllToAllCost(double num_bytes, int mesh_dim) const;
 
+  double ReshardingCostMixedMeshShape(
+      const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
+      std::vector<int64_t> dst_tensor_dim_to_mesh_dim) const;
+
   double CollectivePermuteCost(
       double num_bytes,
       const std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs) const;
@@ -174,6 +178,9 @@ class ClusterEnvironment {
   std::vector<std::vector<std::vector<int64_t>>> cached_replica_groups_;
 
  private:
+  double AllToAllCostUtil(double num_bytes, int mesh_dim,
+                          int64_t num_devices) const;
+
   void GenerateCachedReplicaGroups() {
     // One vector per device_mesh_ dimension.
     cached_replica_groups_.reserve(device_mesh_.num_dimensions());

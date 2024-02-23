@@ -695,7 +695,9 @@ message DebugOptions {
   // will use for p2p operations.
   int64 xla_gpu_nccl_p2p_max_nchannels = 274;
 
-  // Next id: 275
+  bool xla_gpu_enable_mlir_emitters = 275;
+
+  // Next id: 276
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

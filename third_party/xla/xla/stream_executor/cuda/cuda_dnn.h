@@ -29,11 +29,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "tsl/protobuf/dnn.pb.h"
+
+#if CUDNN_VERSION >= 8100
+#include "third_party/cudnn_frontend/include/cudnn_frontend.h"
+#endif  // CUDNN_VERSION >= 8100
 
 namespace stream_executor {
 namespace gpu {
@@ -48,6 +53,24 @@ using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
 using DeviceMemorySlice = absl::Span<const DeviceMemory<T>* const>;
+
+#if CUDNN_VERSION >= 8100
+class CudnnGraph : public dnn::DnnGraph {
+ public:
+  explicit CudnnGraph(cudnn_frontend::graph::Graph&& graph)
+      : graph_(std::move(graph)) {}
+  // Prepares a graph and checks whether it is generally supported.
+  absl::StatusOr<bool> Prepare() override;
+  // Builds single plan of the graph with given ID.
+  absl::Status Build(int64_t plan_id) override;
+  absl::Status Execute(Stream& stream,
+                       absl::Span<DeviceMemoryBase> operands) const override;
+  const cudnn_frontend::graph::Graph& Graph() { return graph_; }
+
+ private:
+  cudnn_frontend::graph::Graph graph_;
+};
+#endif  // CUDNN_VERSION >= 8100
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -551,7 +574,16 @@ class CudnnSupport : public dnn::DnnSupport {
 
   void NotifyStreamDestroyed(Stream* stream) override;
 
+#if CUDNN_VERSION >= 8100
+  // Loads complete graph from its serialized representation.
+  absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> DeserializeGraph(
+      absl::string_view serialized_data) const override;
+#endif  // CUDNN_VERSION >= 8100
+
  private:
+  // Uses cuDNN handle for execution.
+  friend class CudnnGraph;
+
   GpuExecutor* parent_;  // Parent executor object. Not owned.
 
   // Provides access to the cuDNN handle.

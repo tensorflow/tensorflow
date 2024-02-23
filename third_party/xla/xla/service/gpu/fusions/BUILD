@@ -169,11 +169,13 @@ cc_library(
     deps = [
         ":concatenate",
         ":copy",
+        ":cudnn",
         ":custom",
         ":fusion_emitter",
         ":in_place_dynamic_update_slice",
         ":input_slices",
         ":loop",
+        ":loop_mlir",
         ":reduction",
         ":scatter",
         ":transpose",
@@ -186,6 +188,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
@@ -219,6 +222,64 @@ cc_library(
         "@com_google_absl//absl/numeric:bits",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "loop_mlir",
+    srcs = ["loop_mlir.cc"],
+    hdrs = ["loop_mlir.h"],
+    deps = [
+        ":loop",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu/fusions/mlir:computation_partitioner",
+        "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
+        "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "loop_mlir_test",
+    srcs = ["loop_mlir_test.cc"],
+    deps = [
+        ":loop_mlir",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -356,6 +417,37 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "cudnn",
+    srcs = ["cudnn.cc"],
+    hdrs = ["cudnn.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        ":fusion_emitter",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/runtime:cudnn_thunk",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "cudnn_test",
+    srcs = if_cuda_is_configured(["cudnn_test.cc"]),
+    backend_tags = {"gpu": [
+        "requires-gpu-sm80",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

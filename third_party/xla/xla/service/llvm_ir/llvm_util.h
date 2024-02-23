@@ -273,7 +273,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 // Tells LLVM `inst >= lower && inst < upper`. Returns `inst` for convenience.
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst,
-                                    llvm::IRBuilder<>* b);
+                                    llvm::Module* module);
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
 

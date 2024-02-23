@@ -818,11 +818,7 @@ absl::Status ReorganizeMemory(Stream *stream,
     } else {
       DeviceMemoryBase src_mem = DeviceMemoryBase(x.src_ptr, x.size);
       DeviceMemoryBase target_mem = DeviceMemoryBase(x.dst_ptr, x.size);
-      bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
-      if (!a_status) {
-        return absl::InternalError(
-            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
-      }
+      TF_RETURN_IF_ERROR(stream->Memcpy(&target_mem, src_mem, x.size));
     }
     i++;
   }

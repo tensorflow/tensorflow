@@ -81,7 +81,7 @@ inline void SetZero(OpKernelContext* ctx, Tensor& tensor) {
     auto ptr =
         se::DeviceMemoryBase(tensor.flat<T>().data(), tensor.TotalBytes());
     auto stream = ctx->op_device_context()->stream();
-    auto result = stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok();
+    auto result = stream->MemZero(&ptr, tensor.TotalBytes()).ok();
     DCHECK_EQ(true, result);
   } else {
 #endif  // PLUGGABLE_DEVICE_SUPPORTED
@@ -102,7 +102,7 @@ inline void CopyTensorPluggableDevice(OpKernelContext* ctx, Tensor& src,
   auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
   auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
   auto stream = ctx->op_device_context()->stream();
-  auto result = stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok();
+  auto result = stream->Memcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok();
   DCHECK_EQ(true, result);
 #else
   LOG(FATAL)  // Crash OK.
@@ -149,7 +149,8 @@ void ConcatPluggableDevice(
       auto size = sizes[j];
       se::DeviceMemoryBase out_base{out, size * sizeof(T)};
       se::DeviceMemoryBase inp_base{const_cast<T*>(inp[j]), size * sizeof(T)};
-      stream->ThenMemcpy(&out_base, inp_base, size * sizeof(T));
+      OP_REQUIRES_OK(context,
+                     stream->Memcpy(&out_base, inp_base, size * sizeof(T)));
       out += size;
       inp[j] += size;
     }

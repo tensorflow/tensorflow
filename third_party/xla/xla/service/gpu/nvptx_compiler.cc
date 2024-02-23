@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/cudnn_fused_mha_rewriter.h"
 #include "xla/service/gpu/cudnn_fused_mha_transpose_fusion.h"
+#include "xla/service/gpu/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/cudnn_simplify_padding.h"
@@ -327,6 +328,7 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  pipeline->AddPass<CuDnnFusionCompiler>(autotune_config);
   return absl::OkStatus();
 }
 
@@ -638,10 +640,13 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                                   tsl::profiler::TraceMeLevel::kInfo);
   CompilationCacheValue* cache_value = nullptr;
   bool inserted = [&] {
+    auto flags = CompilationCacheFlags{
+        hlo_module_config.debug_options()
+            .xla_gpu_filter_kernels_spilling_registers_on_autotuning()};
     absl::MutexLock lock(&mutex_);
     auto [iter, inserted] = compilation_cache_.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
+        std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable, flags),
         std::forward_as_tuple());
     // Do not move this assignment outside of the critical section. There is
     // a TOCTOU if `compilation_cache_` is rehashed before the iterator is used.

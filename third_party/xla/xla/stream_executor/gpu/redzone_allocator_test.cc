@@ -79,8 +79,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Check that the redzones are in fact filled with kRedzonePattern.
   auto check_redzone = [&](DeviceMemoryBase redzone, absl::string_view name) {
     std::vector<uint8_t> host_buf(kRedzoneSize);
-    TF_ASSERT_OK(stream.ThenMemcpy(host_buf.data(), redzone, kRedzoneSize)
-                     .BlockHostUntilDone());
+    TF_ASSERT_OK(stream.Memcpy(host_buf.data(), redzone, kRedzoneSize));
+    TF_ASSERT_OK(stream.BlockHostUntilDone());
     const int64_t kMaxMismatches = 16;
     int64_t mismatches = 0;
     for (int64_t i = 0; i < host_buf.size(); ++i) {
@@ -108,8 +108,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
         reinterpret_cast<char*>(redzone.opaque()) + offset, 1);
     char old_redzone_value = 0;
     { EXPECT_REDZONE_OK(allocator.CheckRedzones()); }
-    stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
-        .ThenMemZero(&redzone_at_offset, 1);
+    TF_ASSERT_OK(stream.Memcpy(&old_redzone_value, redzone_at_offset, 1));
+    TF_ASSERT_OK(stream.MemZero(&redzone_at_offset, 1));
     EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones());
 
     // Checking reinitializes the redzone.

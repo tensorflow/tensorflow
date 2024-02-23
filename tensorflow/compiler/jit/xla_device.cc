@@ -75,7 +75,7 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 
   const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
   *shape = shaped_buffer.on_device_shape();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
@@ -182,7 +182,7 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
         "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
@@ -305,7 +305,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
             << (*stream)->DebugStreamPointers();
     *stream_was_changed = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
@@ -448,7 +448,7 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   TF_ASSIGN_OR_RETURN(auto device_context, GetDeviceContextDefault());
   device_context->Ref();
   *out_context = device_context;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Warn about XLA_CPU/XLA_GPU exactly once.
@@ -490,7 +490,7 @@ Status XlaDevice::Sync() {
     mutex_lock lock(mu_);
     stream = stream_;
   }
-  if (!stream) return OkStatus();
+  if (!stream) return absl::OkStatus();
 
   Status status = stream->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(status);
@@ -498,7 +498,7 @@ Status XlaDevice::Sync() {
     return errors::Internal("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
@@ -562,7 +562,7 @@ Status XlaDevice::HandleDeviceError() {
   if (local_device_error_callback != nullptr) {
     return local_device_error_callback();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaDevice::RefreshStatus() {
@@ -572,7 +572,7 @@ Status XlaDevice::RefreshStatus() {
     stream = stream_;
   }
   if (!stream) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status status = stream->RefreshStatus();
   if (!status.ok()) {

@@ -139,6 +139,8 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
                         num_big_inputs);
 }
 
+}  // namespace
+
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis) {
   int unroll_factor = 1;
@@ -208,8 +210,6 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   }
   return launch_config;
 }
-
-}  // namespace
 
 LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}

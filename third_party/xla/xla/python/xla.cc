@@ -668,12 +668,25 @@ static void Init(py::module_& m) {
       py::arg("platform_name"),
       py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
       py::arg("distributed_client") = nullptr);
+  // TODO(b/322357665): Delete this method after TPU plugin changes to use the
+  // standard registration.
   m.def("get_default_c_api_topology",
         [](std::string platform_name, std::string topology_name,
            const absl::flat_hash_map<std::string, PjRtValueType>& options)
             -> std::shared_ptr<PjRtTopologyDescription> {
           return xla::ValueOrThrow(
               GetCApiTopology(platform_name, topology_name, options));
+        });
+  m.def("get_c_api_topology",
+        [](py::capsule c_api, std::string topology_name,
+           const absl::flat_hash_map<std::string, PjRtValueType>& options)
+            -> std::shared_ptr<PjRtTopologyDescription> {
+          if (absl::string_view(c_api.name()) != "pjrt_c_api") {
+            throw py::value_error(
+                "Argument to get_c_api_topology was not a pjrt_c_api capsule.");
+          }
+          return xla::ValueOrThrow(GetCApiTopology(
+              static_cast<const PJRT_Api*>(c_api), topology_name, options));
         });
   m.def("get_topology_for_devices",
         [](std::vector<ClientAndPtr<PjRtDevice>> devices_and_clients) {
