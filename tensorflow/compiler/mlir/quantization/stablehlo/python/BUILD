@@ -71,6 +71,7 @@ tf_py_strict_test(
     deps = [
         ":quantization",
         ":quantize_model_test_base",
+        "//tensorflow/compiler/mlir/quantization/common/python:testing",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/python/eager:def_function",

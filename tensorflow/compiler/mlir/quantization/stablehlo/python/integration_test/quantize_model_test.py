@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import itertools
 from typing import Mapping, Optional, Sequence
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.mlir.quantization.common.python import testing
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
 from tensorflow.compiler.mlir.quantization.stablehlo.python import quantization
 from tensorflow.compiler.mlir.quantization.stablehlo.python.integration_test import quantize_model_test_base
@@ -37,23 +37,13 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.types import core
 
 
-def parameter_combinations(test_parameters):
-  """Generate all combinations of test parameters."""
-  real_parameters = []
-  for parameters in test_parameters:
-    keys = parameters.keys()
-    for curr in itertools.product(*parameters.values()):
-      real_parameters.append(dict(zip(keys, curr)))
-  return real_parameters
-
-
 # Test cases for Static Range Quantization.
 # Tries to run all tests cases in both the graph mode (default in TF1) and the
 # eager mode (default in TF2) to ensure support for when TF2 is disabled.
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'bias_fn': (
               None,
               nn_ops.bias_add,
@@ -144,7 +134,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'same_scale_op': (
               'concatenate',
               'gather',
@@ -225,7 +215,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'bias_fn': (
               None,
               nn_ops.bias_add,
@@ -325,7 +315,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.05)
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'equation': (
               'abc,cde->abde',
               'abc,dce->abde',

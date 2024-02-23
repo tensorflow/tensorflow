@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
+from tensorflow.compiler.mlir.quantization.common.python import testing
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
@@ -60,6 +61,7 @@ from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.types import core
+
 
 # Type aliases for quantization method protobuf enums.
 _PresetMethod = quant_opts_pb2.QuantizationMethod.PresetMethod
@@ -126,16 +128,6 @@ def _find_variables(
       variable_nodes[shared_name] = var_node
 
   return variable_nodes
-
-
-def parameter_combinations(test_parameters):
-  """Generate all combinations of test parameters."""
-  real_parameters = []
-  for parameters in test_parameters:
-    keys = parameters.keys()
-    for curr in itertools.product(*parameters.values()):
-      real_parameters.append(dict(zip(keys, curr)))
-  return real_parameters
 
 
 class MultipleSignatureModel(module.Module):
@@ -546,7 +538,7 @@ class TensorNamePreservationTest(quantize_model_test_base.QuantizedModelTest):
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'shapes': [
               ([3, 3], [3, 3]),
               ([3, None], [None, 3]),
@@ -727,7 +719,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, expected_outputs, atol=1e-1)
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
           'has_bias': [True, False],
           'has_batch_norm': [True, False],
@@ -888,7 +880,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   # Currently, only some specific forms of equantions are supported for
   # batchmatmul conversion.
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'equation': ('abc,cd->abd', 'abcd,cde->abe'),
           'shape_unknown': (True, False),
           'activation_fn': (None, nn_ops.relu, nn_ops.relu6),
@@ -1005,7 +997,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   # Equations only supported for XLA operations.
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'equation': ('abc,acd->abd', 'abcd,aecd->acbe'),
           'shape_unknown': (True, False),
           'activation_fn': (None, nn_ops.relu, nn_ops.relu6),
@@ -1089,7 +1081,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   # Equations NOT supported for XLA operations.
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'equation': ('aecd,abcd->acbe', 'abc,acd->adb'),
           'use_kernel': (True, False),
       }])
@@ -2425,7 +2417,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
 
   @parameterized.parameters(
-      *parameter_combinations([
+      *testing.parameter_combinations([
           {
               'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
               'has_bias': [True, False],
@@ -6161,7 +6153,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   """
 
   @parameterized.parameters(
-      parameter_combinations([{
+      testing.parameter_combinations([{
           'target_opset': [
               quant_opts_pb2.TF,
               quant_opts_pb2.XLA,

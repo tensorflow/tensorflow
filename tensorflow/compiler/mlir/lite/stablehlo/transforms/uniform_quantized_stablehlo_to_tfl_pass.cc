@@ -1289,7 +1289,6 @@ class RewriteQuantizedConvolutionOp
 };
 
 // Rewrites quantized stablehlo.transpose to tfl.transpose.
-// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedTransposeOp
     : public OpRewritePattern<stablehlo::TransposeOp> {
  public:
@@ -1320,7 +1319,6 @@ class RewriteQuantizedTransposeOp
 };
 
 // Rewrites quantized stablehlo.reshape to tfl.reshape.
-// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedReshapeOp
     : public OpRewritePattern<stablehlo::ReshapeOp> {
  public:
@@ -1473,7 +1471,6 @@ class RewriteQuantizedPadOp : public OpRewritePattern<stablehlo::PadOp> {
 };
 
 // Rewrites quantized stablehlo.slice to tfl.slice or tfl.strided_slice.
-// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
  public:
   using OpRewritePattern<stablehlo::SliceOp>::OpRewritePattern;
@@ -1632,7 +1629,6 @@ class RewriteQuantizedBroadcastInDimOp
 };
 
 // Rewrites quantized stablehlo.reduce_window with max to tfl.max_pool_2d.
-// TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedReduceWindowOpWithMax
     : public OpRewritePattern<stablehlo::ReduceWindowOp> {
  public:

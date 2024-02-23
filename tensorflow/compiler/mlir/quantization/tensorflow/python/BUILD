@@ -335,6 +335,7 @@ tf_py_strict_test(
         ":representative_dataset",
         ":save_model",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/mlir/quantization/common/python:testing",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
