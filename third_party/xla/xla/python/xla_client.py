@@ -48,7 +48,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 238
+_version = 239
 
 # Version number for MLIR:Python components.
 mlir_api_version = 55
@@ -138,6 +138,13 @@ def make_tfrt_tpu_c_api_device_topology(
 ) -> DeviceTopology:
   """Creates a PJRT C API TopologyDescription."""
   return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
+
+
+def make_c_api_device_topology(
+    c_api: Any, topology_name: str = '', **kwargs
+) -> DeviceTopology:
+  """Creates a PJRT C API TopologyDescription."""
+  return _xla.get_c_api_topology(c_api, topology_name, dict(**kwargs))
 
 
 def pjrt_plugin_loaded(plugin_name: str) -> bool:

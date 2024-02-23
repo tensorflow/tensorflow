@@ -783,6 +783,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {},
     std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr);
 
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
+    const PJRT_Api* c_api, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options);
+
+// A variant that takes `device_type` as an input, used for plugins that are not
+// registered with standard way (xla_bridge.register_plugin).
+// TODO(b/322357665): Delete this method after TPU plugin changes to use the
+// standard registration.
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
