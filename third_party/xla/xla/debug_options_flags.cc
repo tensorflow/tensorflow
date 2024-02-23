@@ -1553,6 +1553,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Specify the maximum number of channels(SMs) NCCL will use "
       "for p2p operations. Default is 0 which is to let "
       "NCCL decide."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_mlir_emitters",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_emitters),
+      debug_options->xla_gpu_enable_mlir_emitters(),
+      "Enable new MLIR-based emitters."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
