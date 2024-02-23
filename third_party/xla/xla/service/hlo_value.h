@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/lazy.h"
@@ -230,6 +231,10 @@ class HloValueSet {
   const HloValue& GetUniqueValue() const {
     CHECK_EQ(values_.size(), 1);
     return *values_[0];
+  }
+  const HloValue* GetUniqueValuePtr() const {
+    CHECK_EQ(values_.size(), 1);
+    return values_[0];
   }
 
   bool operator==(const HloValueSet& other) const {

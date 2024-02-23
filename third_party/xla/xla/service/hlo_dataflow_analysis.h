@@ -160,6 +160,10 @@ class HloDataflowAnalysis {
                              const ShapeIndex& index = {}) {
     return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
   }
+  const HloValue* GetUniqueValuePtrAt(const HloInstruction* instruction,
+                                      const ShapeIndex& index = {}) const {
+    return GetValueSet(instruction, index).GetUniqueValuePtr();
+  }
 
   // Returns the HloValue with the given Id.
   const HloValue& GetValue(HloValue::Id value_id) const;
