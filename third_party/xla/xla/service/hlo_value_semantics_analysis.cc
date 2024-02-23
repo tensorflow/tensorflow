@@ -1084,6 +1084,9 @@ HloValueSemanticsPropagation::ComputeSemanticsFromActivationGradientAndOther(
         other_semantics.label() != HloValueSemanticLabel::kWeight &&
         other_semantics.label() != HloValueSemanticLabel::kActivation);
   if (other_semantics.label() == HloValueSemanticLabel::kActivationGradient) {
+    if (other_semantics.origin() == activation_gradient_semantics.origin()) {
+      return CopySemantics(activation_gradient_semantics);
+    }
     return CopySemanticsWithNewOrigin(other_semantics, instruction);
   }
 
