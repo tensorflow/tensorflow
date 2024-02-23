@@ -1044,11 +1044,7 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
-  // It doesn't really make sense to call this function with a fusion, but it
-  // happens. Return the fusion itself for historical reasons.
-  // TODO(jreiffers): Clean this up.
-  if (instr.opcode() == HloOpcode::kFusion) return instr;
-
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion);
   return FindNonTrivialHero(instr,
                             *HloFusionAdaptor::ForComputation(instr.parent()));
 }

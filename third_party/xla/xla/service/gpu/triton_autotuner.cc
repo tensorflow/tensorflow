@@ -471,7 +471,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     if (root->opcode() == HloOpcode::kReduce) {
       HloInstruction* fusion_instruction =
           entry_computation->AddInstruction(HloInstruction::CreateFusion(
-              root->shape(), ChooseFusionKind(*root), root));
+              root->shape(), ChooseFusionKind(*root, *root), root));
       HloInstruction* init_value = root->mutable_operand(1);
       TF_CHECK_OK(
           entry_computation->ReplaceInstruction(root, fusion_instruction));
