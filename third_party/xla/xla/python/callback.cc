@@ -76,7 +76,7 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
       options.dims = dims;
       options.permutation = results_[i].reversed_layout;
       options.input_layout = xla::TransposePlan::Striding{strides};
-      xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
+      absl::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
           transpose_cache_.GetOrCreate(options);
       if (!plan.ok()) {
         return std::move(plan).status();
@@ -102,7 +102,7 @@ Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
   return PrepareAndCallInternal(result, arg_ptrs);
 }
 
-StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
+absl::StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
   py::object result_object;
   try {
     result_object = callable_(*py::reinterpret_borrow<py::args>(args));
@@ -150,7 +150,7 @@ StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
   return result_tuple;
 }
 
-StatusOr<py::tuple> CpuCallback::Call(py::tuple args) {
+absl::StatusOr<py::tuple> CpuCallback::Call(py::tuple args) {
   return CallInternal(std::move(args));
 }
 

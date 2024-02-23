@@ -73,7 +73,7 @@ void DLPackTensorDeleter(DLManagedTensor* t) {
   }
 }
 
-StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
+absl::StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
   switch (type) {
     case S8:
       return DLDataType{kDLInt, 8, 1};
@@ -111,7 +111,7 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
   }
 }
 
-StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
+absl::StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
   if (type.lanes != 1) {
     return Unimplemented("DLPack types with lanes != 1 not implemented, got %d",
                          type.lanes);
@@ -192,7 +192,7 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
   }
 }
 
-StatusOr<std::vector<int64_t>> StridesToLayout(
+absl::StatusOr<std::vector<int64_t>> StridesToLayout(
     absl::Span<int64_t const> dims, absl::Span<int64_t const> strides) {
   CHECK_EQ(dims.size(), strides.size());
   std::vector<int64_t> minor_to_major(dims.size());
@@ -223,7 +223,7 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
   return minor_to_major;
 }
 
-StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
+absl::StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == CudaId()) {
@@ -235,16 +235,16 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
                          device.DebugString());
 }
 
-StatusOr<DLDevice> DLDeviceForDevice(const PjRtDevice& device) {
+absl::StatusOr<DLDevice> DLDeviceForDevice(const PjRtDevice& device) {
   DLDevice context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
   context.device_id = device.local_hardware_id();
   return context;
 }
 
-StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
-                                        const PjRtClient* gpu_client,
-                                        const DLDevice& context) {
+absl::StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
+                                              const PjRtClient* gpu_client,
+                                              const DLDevice& context) {
   switch (context.device_type) {
     case kDLCPU:
       if (cpu_client == nullptr) {
@@ -275,7 +275,7 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 }  // namespace
 
-StatusOr<py::capsule> BufferToDLPackManagedTensor(
+absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
     py::handle py_buffer, std::optional<std::intptr_t> stream) {
   ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
   auto pack = std::make_unique<DLPackTensor>();
@@ -342,7 +342,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(
   return capsule;
 }
 
-StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
+absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
     std::shared_ptr<PyClient> gpu_client) {
   // TODO(hyeontaek): This is a potential target for an IFRT client to multiplex
@@ -431,7 +431,7 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
                                             std::move(ifrt_array), false, true);
 }
 
-StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
+absl::StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, PjRtDevice* device,
     std::shared_ptr<PyClient> client, std::optional<std::intptr_t> stream) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {

@@ -83,11 +83,11 @@ class CpuCallback {
 
   std::optional<pybind11::tuple> Call(pybind11::tuple args,
                                       XlaCustomCallStatus* status);
-  StatusOr<pybind11::tuple> Call(pybind11::tuple args);
+  absl::StatusOr<pybind11::tuple> Call(pybind11::tuple args);
 
  private:
   Status PrepareAndCallInternal(void* result, void** arg_ptrs);
-  StatusOr<pybind11::tuple> CallInternal(pybind11::tuple args);
+  absl::StatusOr<pybind11::tuple> CallInternal(pybind11::tuple args);
 
   pybind11::function callable_;
   std::vector<Arg> args_;
