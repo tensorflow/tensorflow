@@ -15,13 +15,17 @@
 """Tests for checkpoint sharding policies."""
 
 import random
+import re
 import string
+
+from absl import logging
 
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.checkpoint.sharding import sharding_util
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import device as device_lib
@@ -676,6 +680,129 @@ class ShardingPoliciesTest(test.TestCase):
     # 8 files = 3 shards for v0, 3 for v1, 1 for v2, and 1 for the object graph
     self.assertLen(gfile.Glob(save_path + ".data*"), 8)
     ckpt.restore(save_path)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_MaxShardSizePolicy_PreSlicedTensor(self):
+    root = module.Module()
+
+    sliced_v0_name = "sliced_v0/.ATTRIBUTES/VARIABLE_VALUE"
+
+    class V0SaveSliceInfo(variables.Variable.SaveSliceInfo):
+      def __init__(self, var_offset, var_shape):
+        super().__init__(
+            full_name=sliced_v0_name,
+            full_shape=tensor_shape.TensorShape(dims=[2, 5]),
+            var_offset=var_offset,
+            var_shape=var_shape)
+
+    v0_slice_spec = V0SaveSliceInfo(var_offset=[0, 1], var_shape=[2, 3])
+
+    class ResourceVariableWithSliceSpec(resource_variable_ops.ResourceVariable):
+      def _serialize_to_tensors(self):
+        ckpt_key, tensor = list(super()._serialize_to_tensors().items())[0]
+        return {ckpt_key: {v0_slice_spec.spec: tensor}}
+
+    with ops.device("cpu:0"):
+      # full_v0 = [[0.0, 1.0, 2.0, 3.0, 4.0],
+      #            [5.0, 6.0, 7.0, 8.0, 9.0]]
+      sliced_v0 = ResourceVariableWithSliceSpec([[1.0, 2.0, 3.0],
+                                                 [6.0, 7.0, 8.0]],
+                                                name="sliced_v0",
+                                                dtype=dtypes.float32)
+      sliced_v0._set_save_slice_info(v0_slice_spec)
+    self.evaluate(sliced_v0.initializer)
+    root.sliced_v0 = sliced_v0
+
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+
+    # Test sharding the pre-sliced v0 tensor with different max shard sizes.
+
+    # max_shard_size: 8 bytes
+    # Each element of v0 is a 32 bit/4 byte value, so v0 should be split into 3
+    # shards containing 2 elements each.
+    callback = sharding_policies.MaxShardSizePolicy(max_shard_size=8)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
+
+    self.assertEqual(
+        [set(shard.keys()) for shard in shards],
+        [
+            {"sliced_v0/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"sliced_v0/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"sliced_v0/.ATTRIBUTES/VARIABLE_VALUE",
+             "_CHECKPOINTABLE_OBJECT_GRAPH",},
+        ])
+
+    slice_spec = V0SaveSliceInfo(var_offset=[0, 1], var_shape=[2, 1]).spec
+    self.assertAllEqual(
+        self.evaluate(shards[0][sliced_v0_name][slice_spec]), [[1.0], [6.0]])
+
+    slice_spec = V0SaveSliceInfo(var_offset=[0, 2], var_shape=[1, 2]).spec
+    self.assertAllEqual(
+        self.evaluate(shards[1][sliced_v0_name][slice_spec]), [[2.0, 3.0]])
+
+    slice_spec = V0SaveSliceInfo(var_offset=[1, 2], var_shape=[1, 2]).spec
+    self.assertAllEqual(
+        self.evaluate(shards[2][sliced_v0_name][slice_spec]), [[7.0, 8.0]])
+
+    # max_shard_size: 12 bytes
+    # Each element of v0 is a 32 bit/4 byte value, so v0 should be split into 2
+    # shards containing 3 elements each.
+    callback = sharding_policies.MaxShardSizePolicy(max_shard_size=12)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
+
+    self.assertEqual(
+        [set(shard.keys()) for shard in shards],
+        [
+            {"sliced_v0/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"sliced_v0/.ATTRIBUTES/VARIABLE_VALUE",
+             "_CHECKPOINTABLE_OBJECT_GRAPH",},
+        ])
+
+    slice_spec = V0SaveSliceInfo(var_offset=[0, 1], var_shape=[1, 3]).spec
+    self.assertAllEqual(
+        self.evaluate(shards[0][sliced_v0_name][slice_spec]), [[1.0, 2.0, 3.0]])
+
+    slice_spec = V0SaveSliceInfo(var_offset=[1, 1], var_shape=[1, 3]).spec
+    self.assertAllEqual(
+        self.evaluate(shards[1][sliced_v0_name][slice_spec]), [[6.0, 7.0, 8.0]])
+
+  def test_MaxShardSizePolicy_TFFunction(self):
+    v_string = "".join(random.choices(
+        string.ascii_uppercase + string.digits, k=10)).encode("utf-8")
+    root = module.Module()
+    with ops.device("cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(
+          v_string, name="v0", dtype=dtypes.string)
+    self.evaluate(v0.initializer)
+    root.v0 = v0
+
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
+
+    @def_function.function
+    def wrapped_policy(shardable_tensors):
+      callback = sharding_policies.MaxShardSizePolicy(max_shard_size=4)
+      shards = []
+      for tensors in shardable_tensors:
+        shards.extend(callback(tensors))
+      return shards
+
+    # TODO(b/326287351): Get string tensor size in tf.function.
+    # This test case should be changed when the bug is fixed/warning removed.
+    with self.assertLogs(level="WARNING") as log_output:
+      log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARNING)
+      try:
+        wrapped_policy(shardable_tensors)
+      finally:
+        logging.set_verbosity(log_level)
+
+    output = log_output[0][0].message
+    self.assertTrue(
+        re.search("sharding policy is being executed in a tf.function", output))
 
 
 if __name__ == "__main__":

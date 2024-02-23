@@ -137,17 +137,18 @@ class ShardingCallback(abc.ABC):
   ```
 
   """
-  description: str
 
   @property
   @abc.abstractmethod
   def description(self) -> str:
+    """Returns a text description of the sharding policy."""
     pass
 
   @abc.abstractmethod
   def __call__(
       self, shardable_tensors: Sequence[ShardableTensor]
   ) -> Sequence[Shard]:
+    """Returns a list of shards for the given shardable tensors."""
     pass
 
   def __hash__(self) -> int:

@@ -97,7 +97,7 @@ def _single_shard_save(
         tensors.append(tensor)
         slice_specs.append(spec)
 
-  save_device = options.experimental_io_device or (len(tensors) and task)
+  save_device = options.experimental_io_device or (tensors and task)
   with ops.device(save_device or "CPU:0"):
     return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
@@ -235,8 +235,7 @@ class MultiDeviceSaver:
 
   def __init__(
       self,
-      serialized_tensors: Mapping[
-          base.Trackable, sharding_util.Shard],
+      serialized_tensors: Mapping[base.Trackable, sharding_util.Shard],
       registered_savers: "RegisteredSaversDict | None" = None,
       call_with_mapped_captures: "MappedCapturesCallable | None" = None):
     """Specify a list of `SaveableObject`s to save and restore.
@@ -378,7 +377,7 @@ class MultiDeviceSaver:
   def _get_shards_by_task(
       self,
       sharding_callback: sharding_util.ShardingCallback
-  ) -> Sequence[sharding_util.Shard]:
+  ) -> Sequence[tuple[str, Sequence[sharding_util.Shard]]]:
     """Calls the sharding callback with shardable_tensors.
 
     Args:
@@ -386,7 +385,7 @@ class MultiDeviceSaver:
         splits shardable_tensors into shards.
 
     Returns:
-      A list of shards.
+      A list of (task, shards) tuples.
     """
     def wrap_tensor(shardable_tensor):
       tensor_val = shardable_tensor.tensor
@@ -429,11 +428,13 @@ class MultiDeviceSaver:
     metrics.SetShardingCallbackDescription(
         description=sharding_callback.description)
 
-    start_time = time.time() * 1e6
-    shards_by_task = [
-        (task, sharding_callback(shardable_tensors))
-        for task, shardable_tensors in shardable_tensors_by_task.items()]
-    callback_duration = math.ceil(time.time() * 1e6 - start_time)
+    callback_start_time = time.time() * 1e6
+    shards_by_task = []
+    for task, shardable_tensors in shardable_tensors_by_task.items():
+      shards_by_task.append((task, sharding_callback(shardable_tensors)))
+    callback_end_time = time.time() * 1e6
+
+    callback_duration = math.ceil(callback_end_time - callback_start_time)
     metrics.AddShardingCallbackDuration(
         callback_duration=max(1, callback_duration))  # in microseconds
     logging.info("Sharding callback duration: %s", callback_duration)
