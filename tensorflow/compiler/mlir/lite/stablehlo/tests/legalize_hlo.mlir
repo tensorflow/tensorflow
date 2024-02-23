@@ -2809,6 +2809,47 @@ func.func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<
   func.return %0 : tensor<1x8x8x3312xf32>
 }
 
+// CHECK-LABEL:   func @convert_depthwise_transposed_conv2d
+func.func @convert_depthwise_transposed_conv2d(%arg0: tensor<1x2x20x20xf32>, %arg1: tensor<8x8x2x1xf32>) -> (tensor<1x2x80x80xf32>) {
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[0, 1, o, i]->[b, f, 0, 1], window = {pad = [[5, 5], [5, 5]], lhs_dilate = [4, 4]} {batch_group_count = 1 : i64, feature_group_count = 2 : i64} : (tensor<1x2x20x20xf32>, tensor<8x8x2x1xf32>) -> tensor<1x2x80x80xf32>
+  return %0 : tensor<1x2x80x80xf32>
+  // CHECK:  %cst = "tf.Const"() <{value = dense<0> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG:  %cst_0 = "tf.Const"() <{value = dense<[1, 1, 20, 20]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %cst_1 = "tf.Const"() <{value = dense<1> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_0, %cst_1) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<1x2x20x20xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<1x1x20x20xf32>
+  // CHECK:  %cst_2 = "tf.Const"() <{value = dense<0> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG:  %cst_3 = "tf.Const"() <{value = dense<[8, 8, 1, 1]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %cst_4 = "tf.Const"() <{value = dense<1> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %1 = "tf.StridedSlice"(%arg1, %cst_2, %cst_3, %cst_4) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<8x8x2x1xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<8x8x1x1xf32>
+  // CHECK:  %cst_5 = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %2 = "tf.Transpose"(%0, %cst_5) : (tensor<1x1x20x20xf32>, tensor<4xi64>) -> tensor<1x20x20x1xf32>
+  // CHECK:  %cst_6 = "tf.Const"() <{value = dense<[0, 1]> : tensor<2xi64>}> : () -> tensor<2xi64>
+  // CHECK:  %3 = "tf.ReverseV2"(%1, %cst_6) : (tensor<8x8x1x1xf32>, tensor<2xi64>) -> tensor<8x8x1x1xf32>
+  // CHECK:  %cst_7 = "tf.Const"() <{value = dense<[1, 80, 80, 1]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK:  %4 = "tf.Conv2DBackpropInput"(%cst_7, %3, %2) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 4, 4, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<8x8x1x1xf32>, tensor<1x20x20x1xf32>) -> tensor<1x80x80x1xf32>
+  // CHECK:  %cst_8 = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %5 = "tf.Transpose"(%4, %cst_8) : (tensor<1x80x80x1xf32>, tensor<4xi64>) -> tensor<1x1x80x80xf32>
+  // CHECK:  %cst_9 = "tf.Const"() <{value = dense<[0, 1, 0, 0]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG:  %cst_10 = "tf.Const"() <{value = dense<[1, 2, 20, 20]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %cst_11 = "tf.Const"() <{value = dense<1> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %6 = "tf.StridedSlice"(%arg0, %cst_9, %cst_10, %cst_11) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<1x2x20x20xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<1x1x20x20xf32>
+  // CHECK:  %cst_12 = "tf.Const"() <{value = dense<[0, 0, 1, 0]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG:  %cst_13 = "tf.Const"() <{value = dense<[8, 8, 2, 1]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %cst_14 = "tf.Const"() <{value = dense<1> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %7 = "tf.StridedSlice"(%arg1, %cst_12, %cst_13, %cst_14) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64}> : (tensor<8x8x2x1xf32>, tensor<4xi64>, tensor<4xi64>, tensor<4xi64>) -> tensor<8x8x1x1xf32>
+  // CHECK:  %cst_15 = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %8 = "tf.Transpose"(%6, %cst_15) : (tensor<1x1x20x20xf32>, tensor<4xi64>) -> tensor<1x20x20x1xf32>
+  // CHECK:  %cst_16 = "tf.Const"() <{value = dense<[0, 1]> : tensor<2xi64>}> : () -> tensor<2xi64>
+  // CHECK:  %9 = "tf.ReverseV2"(%7, %cst_16) : (tensor<8x8x1x1xf32>, tensor<2xi64>) -> tensor<8x8x1x1xf32>
+  // CHECK:  %cst_17 = "tf.Const"() <{value = dense<[1, 80, 80, 1]> : tensor<4xi32>}> : () -> tensor<4xi32>
+  // CHECK:  %10 = "tf.Conv2DBackpropInput"(%cst_17, %9, %8) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 4, 4, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<8x8x1x1xf32>, tensor<1x20x20x1xf32>) -> tensor<1x80x80x1xf32>
+  // CHECK:  %cst_18 = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK:  %11 = "tf.Transpose"(%10, %cst_18) : (tensor<1x80x80x1xf32>, tensor<4xi64>) -> tensor<1x1x80x80xf32>
+  // CHECK:  %cst_19 = "tf.Const"() <{value = dense<1> : tensor<i64>}> : () -> tensor<i64>
+  // CHECK:  %12 = "tf.ConcatV2"(%5, %11, %cst_19) : (tensor<1x1x80x80xf32>, tensor<1x1x80x80xf32>, tensor<i64>) -> tensor<1x2x80x80xf32>
+  // CHECK:  return %12 : tensor<1x2x80x80xf32>
+}
+
 // CHECK-LABEL:   func @convert_conv2d_to_resize(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x56x624x16xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<1x257x16x1xf32>) -> tensor<1x56x904x16xf32> {
