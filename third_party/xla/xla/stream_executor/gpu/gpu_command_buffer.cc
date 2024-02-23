@@ -545,7 +545,7 @@ absl::Status GpuCommandBuffer::Launch(ExecutionScopeId execution_scope_id,
 
   // For device memory array we rely on a custom kernel arguments packing.
   if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.kernel_args_packing();
+    auto& pack = kernel.args_packing();
     if (!pack) {
       return absl::InternalError(
           "Kernel is missing a custom arguments packing function for device "

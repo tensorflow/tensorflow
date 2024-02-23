@@ -28,7 +28,7 @@ namespace stream_executor {
 namespace gpu {
 
 CUfunc_cache GpuKernel::GetGpuCacheConfig() const {
-  switch (preferred_cache_config_) {
+  switch (cache_config()) {
     case KernelCacheConfig::kNoPreference:
       return CU_FUNC_CACHE_PREFER_NONE;
     case KernelCacheConfig::kPreferShared:
@@ -39,7 +39,7 @@ CUfunc_cache GpuKernel::GetGpuCacheConfig() const {
       return CU_FUNC_CACHE_PREFER_EQUAL;
     default:
       LOG(FATAL) << "Unknown KernelCacheConfig"
-                 << static_cast<int32_t>(preferred_cache_config_);
+                 << static_cast<int32_t>(cache_config());
   }
 }
 
