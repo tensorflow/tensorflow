@@ -53,7 +53,7 @@ bool Convolution4DExpander::InstructionMatchesPattern(
   return false;
 }
 
-StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloComputation* computation = instruction->parent();
   ConvolutionDimensionNumbers dim_nums =
