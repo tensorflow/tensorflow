@@ -1867,8 +1867,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # The difference between float model and target path quantized model is
     # expected to be small.
     # The atol value is arbitrary.
-    # TODO(b/296916785): Revisit the per-channel conv implementation and
-    # complete numerical verification.
     if not enable_per_channel_quantization:
       expected_outputs = model.conv(input_data)
       target_outputs = converted_model.signatures['serving_default'](
