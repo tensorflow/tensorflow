@@ -93,8 +93,8 @@ static std::string_view ReductionKindString(ReductionKind kind) {
   }
 }
 
-// Creates condition command buffer builder from a cmd sequence.
-static se::CommandBuffer::Builder ConditionBuilder(
+// Creates command buffer builder from a cmd sequence.
+static se::CommandBuffer::Builder CreateBuilder(
     CommandBufferCmdSequence* commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
@@ -104,16 +104,29 @@ static se::CommandBuffer::Builder ConditionBuilder(
   };
 }
 
-// Creates condition command buffer builders from a span of cmd sequences.
-static std::vector<se::CommandBuffer::Builder> ConditionBuilders(
+// Creates command buffer builders from a span of cmd sequences.
+static std::vector<se::CommandBuffer::Builder> CreateBuilders(
     absl::Span<CommandBufferCmdSequence> commands,
     const Thunk::ExecuteParams* execute_params,
     const CommandBufferCmd::RecordParams* record_params) {
   std::vector<se::CommandBuffer::Builder> builders;
   for (CommandBufferCmdSequence& cmd : commands) {
-    builders.push_back(ConditionBuilder(&cmd, execute_params, record_params));
+    builders.push_back(CreateBuilder(&cmd, execute_params, record_params));
   }
   return builders;
+}
+
+// Creates command buffer execution scope builder from a cmd sequence.
+static se::CommandBuffer::ExecutionScopeBuilder CreateExecutionScopeBuilder(
+    CommandBufferCmdSequence* commands,
+    const Thunk::ExecuteParams* execute_params,
+    const CommandBufferCmd::RecordParams* record_params) {
+  return [=](ExecutionScopeId id, se::CommandBuffer* command_buffer) {
+    CommandBufferCmd::RecordParams params = *record_params;
+    params.execution_scope_id = id;
+    return commands->Record(*execute_params, params, command_buffer,
+                            CommandBufferCmdSequence::RecordMode::kConditional);
+  };
 }
 
 //===----------------------------------------------------------------------===//
@@ -816,7 +829,7 @@ absl::Status IfCmd::Record(const Thunk::ExecuteParams& execute_params,
   return command_buffer->If(
       execution_scope_id, execute_params.stream->parent(),
       se::DeviceMemory<bool>(pred),
-      ConditionBuilder(&then_commands_, &execute_params, &record_params));
+      CreateBuilder(&then_commands_, &execute_params, &record_params));
 }
 
 CommandBufferCmd::BufferUsageVector IfCmd::buffers() {
@@ -860,8 +873,8 @@ absl::Status IfElseCmd::Record(const Thunk::ExecuteParams& execute_params,
   return command_buffer->IfElse(
       execution_scope_id, execute_params.stream->parent(),
       se::DeviceMemory<bool>(pred),
-      ConditionBuilder(&then_commands_, &execute_params, &record_params),
-      ConditionBuilder(&else_commands_, &execute_params, &record_params));
+      CreateBuilder(&then_commands_, &execute_params, &record_params),
+      CreateBuilder(&else_commands_, &execute_params, &record_params));
 }
 
 CommandBufferCmd::BufferUsageVector IfElseCmd::buffers() {
@@ -903,11 +916,11 @@ absl::Status CaseCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "CaseCmd: execution_scope_id=" << execution_scope_id.value();
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
 
-  return command_buffer->Case(
-      execution_scope_id, execute_params.stream->parent(),
-      se::DeviceMemory<int32_t>(index),
-      ConditionBuilders(absl::MakeSpan(branches_commands_), &execute_params,
-                        &record_params));
+  return command_buffer->Case(execution_scope_id,
+                              execute_params.stream->parent(),
+                              se::DeviceMemory<int32_t>(index),
+                              CreateBuilders(absl::MakeSpan(branches_commands_),
+                                             &execute_params, &record_params));
 }
 
 CommandBufferCmd::BufferUsageVector CaseCmd::buffers() {
@@ -952,7 +965,7 @@ absl::Status ForCmd::Record(const Thunk::ExecuteParams& execute_params,
   return command_buffer->For(
       execution_scope_id, execute_params.stream->parent(), num_iterations_,
       se::DeviceMemory<int32_t>(loop_counter),
-      ConditionBuilder(&body_commands_, &execute_params, &record_params));
+      CreateBuilder(&body_commands_, &execute_params, &record_params));
 }
 
 CommandBufferCmd::BufferUsageVector ForCmd::buffers() {
@@ -997,8 +1010,9 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
   return command_buffer->While(
       execution_scope_id, execute_params.stream->parent(),
       se::DeviceMemory<bool>(pred),
-      ConditionBuilder(&cond_commands_, &execute_params, &record_params),
-      ConditionBuilder(&body_commands_, &execute_params, &record_params));
+      CreateExecutionScopeBuilder(&cond_commands_, &execute_params,
+                                  &record_params),
+      CreateBuilder(&body_commands_, &execute_params, &record_params));
 }
 
 CommandBufferCmd::BufferUsageVector WhileCmd::buffers() {

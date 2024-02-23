@@ -128,7 +128,8 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::Status While(ExecutionScopeId execution_scope_id,
                      StreamExecutor* executor, DeviceMemory<bool> pred,
-                     Builder cond_builder, Builder body_builder) override;
+                     ExecutionScopeBuilder cond_builder,
+                     Builder body_builder) override;
 
   absl::Status Finalize() override;
   absl::Status Update() override;
