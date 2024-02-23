@@ -65,9 +65,10 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, GetByteSizeRequirement(shape), element_pointers->data(), region));
   // Ensure the buffer is transferred before we destroy element_pointers.
-  stream->ThenDoHostCallback([element_pointers{std::move(element_pointers)}]() {
-    /* holds reference to element_pointers in closure */
-  });
+  TF_RETURN_IF_ERROR(
+      stream->DoHostCallback([element_pointers{std::move(element_pointers)}]() {
+        /* holds reference to element_pointers in closure */
+      }));
   return OkStatus();
 }
 
@@ -128,10 +129,13 @@ void GenericTransferManager::TransferLiteralFromDevice(
   if ((transfer_metadata != nullptr) &&
       tensorflow::down_cast<const LiteralFromDeviceMetadata*>(transfer_metadata)
           ->callback_is_host_callback_safe) {
-    stream->ThenDoHostCallback([done = std::move(done), stream] {
+    auto status = stream->DoHostCallback([done = std::move(done), stream] {
       done(stream->ok() ? OkStatus()
                         : Internal("`TransferLiteralFromDevice` failed"));
     });
+    if (!status.ok()) {
+      done(status);
+    }
   } else {
     done(stream->BlockHostUntilDone());
   }
@@ -189,7 +193,8 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
                 subliteral.Relayout(device_subshape.layout()));
             TF_RETURN_IF_ERROR(TransferBuffer(relaid_out->untyped_data()));
             // Ensure the buffer is transferred before we destroy it.
-            stream->ThenDoHostCallback([keep_alive = std::move(relaid_out)] {});
+            TF_RETURN_IF_ERROR(stream->DoHostCallback(
+                [keep_alive = std::move(relaid_out)] {}));
           }
         }
         return OkStatus();
@@ -222,8 +227,7 @@ Status GenericTransferManager::TransferBufferFromDevice(
         "%d < %d",
         source.size(), size));
   }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
+  return stream->Memcpy(destination, source, size);
 }
 
 Status GenericTransferManager::TransferBufferToDevice(
@@ -235,8 +239,7 @@ Status GenericTransferManager::TransferBufferToDevice(
         "%d < %d",
         destination->size(), size));
   }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
+  return stream->Memcpy(destination, source, size);
 }
 
 Status GenericTransferManager::TransferInt4ArrayFromDevice(
@@ -246,11 +249,12 @@ Status GenericTransferManager::TransferInt4ArrayFromDevice(
   auto packed_dst_data = std::make_unique<std::vector<char>>(packed_size);
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(stream, source, packed_size,
                                               packed_dst_data->data()));
-  stream->ThenDoHostCallback([destination, num_elements,
-                              packed_dst_data = std::move(packed_dst_data)]() {
+  TF_RETURN_IF_ERROR(stream->DoHostCallback([destination, num_elements,
+                                             packed_dst_data =
+                                                 std::move(packed_dst_data)]() {
     UnpackInt4(*packed_dst_data,
                absl::MakeSpan(static_cast<char*>(destination), num_elements));
-  });
+  }));
   return OkStatus();
 }
 
@@ -263,8 +267,7 @@ Status GenericTransferManager::TransferInt4ArrayToDevice(
            absl::MakeSpan(*packed_src_data));
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, packed_src_data->size(), packed_src_data->data(), destination));
-  stream->ThenDoHostCallback([keep_alive = std::move(packed_src_data)] {});
-  return OkStatus();
+  return stream->DoHostCallback([keep_alive = std::move(packed_src_data)] {});
 }
 
 int64_t GenericTransferManager::GetByteSizeRequirement(

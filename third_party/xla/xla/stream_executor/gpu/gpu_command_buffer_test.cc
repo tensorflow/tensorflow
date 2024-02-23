@@ -638,7 +638,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   auto transfer_buffers = [&]() -> std::vector<int32_t> {
     std::vector<int32_t> dst(buffers.size(), 0);
     for (size_t i = 0; i < buffers.size(); ++i) {
-      stream.ThenMemcpy(dst.data() + i, buffers[i], sizeof(int32_t));
+      TF_CHECK_OK(stream.Memcpy(dst.data() + i, buffers[i], sizeof(int32_t)));
     }
     return dst;
   };
@@ -1251,8 +1251,8 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
 
   // Copy `b` and `c` data back to host.
   int32_t b_dst, c_dst;
-  stream.ThenMemcpy(&b_dst, b, sizeof(int32_t));
-  stream.ThenMemcpy(&c_dst, c, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memcpy(&b_dst, b, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memcpy(&c_dst, c, sizeof(int32_t)));
 
   EXPECT_EQ(b_dst, 10);
   EXPECT_EQ(c_dst, 42);
@@ -1282,8 +1282,8 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   TF_ASSERT_OK(stream.MemZero(&b, sizeof(int32_t)));
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
-  stream.ThenMemcpy(&b_dst, b, sizeof(int32_t));
-  stream.ThenMemcpy(&c_dst, c, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memcpy(&b_dst, b, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memcpy(&c_dst, c, sizeof(int32_t)));
 
   EXPECT_EQ(b_dst, 20);
   EXPECT_EQ(c_dst, 43);
