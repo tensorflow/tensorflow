@@ -30,6 +30,7 @@
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
@@ -127,6 +128,9 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       break;
   }
 
+  Future<absl::Status> ready_future =
+      rpc_helper_->CheckFuture(response->ready_future_handle());
+
   std::vector<uint64_t> loaded_host_callback_handles(
       response->loaded_host_callback_handles().begin(),
       response->loaded_host_callback_handles().end());
@@ -136,7 +140,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> Compiler::Compile(
       response->name(), response->num_devices(),
       std::move(addressable_device_logical_device_ids),
       std::move(addressable_devices), std::move(fingerprint),
-      std::move(loaded_host_callbacks),
+      std::move(ready_future), std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 }
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -99,6 +100,16 @@ class LoadedExecutable
   // Serializes this executable into a string. The compatibility of the
   // serialized executable is implementation-specific.
   virtual StatusOr<std::string> Serialize() const = 0;
+
+  // Returns a future that becomes ready when the executable is ready to be
+  // used for execution.
+  //
+  // This can be used by implementations that support async compilation, where
+  // `Compiler::Compile()` returns an executable ~immediately and does heavy
+  // compilation work in the background. Implementations must still ensure that
+  // all other methods can be used even without explicitly waiting for the ready
+  // future (e.g., via blocking).
+  virtual Future<absl::Status> GetReadyFuture() const = 0;
 
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.

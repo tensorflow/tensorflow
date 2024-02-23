@@ -56,6 +56,7 @@ using ::testing::Pointee;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
 using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 #if defined(PLATFORM_GOOGLE)
 using ::testing::EquivToProto;
@@ -175,6 +176,7 @@ TEST_F(CompilerTest, Compile) {
              addressable_device_logical_ids { replica: 0 partition: 1 }
              addressable_device_ids: [ 0, 1 ]
              fingerprint_value: "fingerprint"
+             ready_future_handle: 5678
            })pb",
       &response));
   EXPECT_CALL(*session_,
@@ -182,6 +184,21 @@ TEST_F(CompilerTest, Compile) {
                   R"pb(compile_request {
                          program { type_name: "xla::ifrt::proxy::TestProgram" }
                        })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            response_metadata {
+                                              status {
+                                                code: 2  # UNKNOWN
+                                                message: "injected error"
+                                              }
+                                            }
+                                          )pb",
+                                          &response));
+  EXPECT_CALL(*session_,
+              Enqueue(Pointee(Partially(EquivToProto(R"pb(check_future_request {
+                                                            future_handle: 5678
+                                                          })pb")))))
       .WillOnce(MockClientSessionReturnResponse(response));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -197,6 +214,8 @@ TEST_F(CompilerTest, Compile) {
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),
               IsOkAndHolds(Optional(std::string("fingerprint"))));
+  EXPECT_THAT(executable->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kUnknown, "injected error"));
 }
 #endif
 
