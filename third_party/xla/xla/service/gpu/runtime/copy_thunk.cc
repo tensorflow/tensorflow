@@ -42,8 +42,7 @@ absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
   VLOG(3) << "Memcpy D2D of size " << mem_size_ << " from "
           << source_data.opaque() << " to " << destination_data.opaque();
-  params.stream->ThenMemcpy(&destination_data, source_data, mem_size_);
-  return absl::OkStatus();
+  return params.stream->Memcpy(&destination_data, source_data, mem_size_);
 }
 
 DeviceToHostCopyThunk::DeviceToHostCopyThunk(
@@ -61,8 +60,7 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   void* cpu_dst = destination_data.opaque();
   VLOG(3) << "Memcpy D2H for memory offload from " << source_data.opaque()
           << " to " << cpu_dst;
-  params.stream->ThenMemcpy(cpu_dst, source_data, size_bytes());
-  return absl::OkStatus();
+  return params.stream->Memcpy(cpu_dst, source_data, size_bytes());
 }
 
 HostToDeviceCopyThunk::HostToDeviceCopyThunk(
@@ -80,8 +78,7 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   void* cpu_src = source_data.opaque();
   VLOG(3) << "Memcpy H2D for memory offload from " << cpu_src << " to "
           << destination_data.opaque();
-  params.stream->ThenMemcpy(&destination_data, cpu_src, size_bytes());
-  return absl::OkStatus();
+  return params.stream->Memcpy(&destination_data, cpu_src, size_bytes());
 }
 
 }  // namespace gpu
