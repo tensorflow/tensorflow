@@ -402,9 +402,6 @@ cc_library(
     hdrs = ["kernel_fallback_compat_request_state.h"],
     visibility = [
         "//tensorflow/core/runtime_fallback:internal",
-        # JIT compilation kernels need access to fallback state to set up
-        # Eigen thread pool as async runtime worker threads.
-        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
