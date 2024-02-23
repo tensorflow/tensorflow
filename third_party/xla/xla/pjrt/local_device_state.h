@@ -175,7 +175,8 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  void ThenExecuteCallback(se::Stream* stream, std::function<void()> callback);
+  absl::Status ThenExecuteCallback(se::Stream* stream,
+                                   std::function<void()> callback);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -184,8 +185,8 @@ class LocalDeviceState {
   // device callback, so it is safe if the destructor frees device resource
   // (e.g., GPU objects).
   template <typename T>
-  void ThenRelease(se::Stream* stream, T&& object) {
-    ThenExecuteCallback(
+  absl::Status ThenRelease(se::Stream* stream, T&& object) {
+    return ThenExecuteCallback(
         stream, [object = std::forward<T>(object)]() { /* releases object */ });
   }
 
