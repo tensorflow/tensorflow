@@ -132,3 +132,63 @@ module {
 
 // CHECK: @large_tensor
 // CHECK: arith.index_castui {{.*}} : index to i64
+
+// -----
+
+module {
+  // This example is a bit silly, in real life there wouldn't be a loop (the
+  // loop body would be executed by different threads). We're just doing it this
+  // way so control flow with shared memory is tested as well.
+  func.func @transpose_shared(%in: tensor<32x32xf32>,
+                              %out: tensor<32x32xf32>) -> tensor<32x32xf32> {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c32 = arith.constant 32 : index
+
+    %shared = xla_gpu.allocate_shared : tensor<32x32xf32>
+    %loaded_tile = scf.for %i = %c0 to %c32 step %c1
+        iter_args(%tile = %shared) -> tensor<32x32xf32> {
+      %inner_loaded_tile = scf.for %j = %c0 to %c32 step %c1
+          iter_args(%inner_tile = %tile) -> tensor<32x32xf32> {
+        %v = tensor.extract %in[%i, %j] : tensor<32x32xf32>
+        %inserted = tensor.insert %v into %inner_tile[%i, %j]
+            : tensor<32x32xf32>
+        scf.yield %inserted : tensor<32x32xf32>
+      }
+      scf.yield %inner_loaded_tile : tensor<32x32xf32>
+    }
+
+    %synced = xla_gpu.sync_threads %shared
+        : (tensor<32x32xf32>) -> (tensor<32x32xf32>)
+    %written_tile = scf.for %i = %c0 to %c32 step %c1
+        iter_args(%written = %out) -> tensor<32x32xf32> {
+      %inner_written_tile = scf.for %j = %c0 to %c32 step %c1
+          iter_args(%inner_written = %written) -> tensor<32x32xf32> {
+        %v = tensor.extract %shared[%j, %i] : tensor<32x32xf32>
+        %inserted = tensor.insert %v into %inner_written[%i, %j]
+            : tensor<32x32xf32>
+        scf.yield %inserted : tensor<32x32xf32>
+      }
+      scf.yield %inner_written_tile : tensor<32x32xf32>
+    }
+
+    return %written_tile : tensor<32x32xf32>
+  }
+}
+
+// CHECK:      llvm.mlir.global private @[[SHARED:shared_.*]]()
+// CHECK-SAME:     {addr_space = 3 : i32} : !llvm.array<1024 x f32>
+// CHECK:      @transpose_shared
+// CHECK:        %[[ADDR:.*]] = llvm.mlir.addressof @[[SHARED]] : !llvm.ptr<3>
+// CHECK:        %[[CAST:.*]] = llvm.addrspacecast %[[ADDR]]
+// CHECK-SAME:       : !llvm.ptr<3> to !llvm.ptr
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
+// CHECK:            llvm.store {{.*}} %[[ELEM_ADDR]]
+// CHECK:        xla_gpu.sync_threads
+// CHECK:        scf.for
+// CHECK:          scf.for
+// CHECK:            %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
+// CHECK:            llvm.load %[[ELEM_ADDR]]
+

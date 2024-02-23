@@ -13,21 +13,26 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -37,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "xla/layout_util.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -209,6 +215,44 @@ struct RewriteCall : mlir::OpRewritePattern<mlir::func::CallOp> {
   }
 };
 
+struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      AllocateSharedOp op, mlir::PatternRewriter& rewriter) const override {
+    auto module = op->getParentOfType<mlir::ModuleOp>();
+    auto shaped_ty = op.getResult().getType().cast<mlir::ShapedType>();
+    constexpr int kGPUSharedMemoryAddrSpace = 3;
+    auto array_ty = mlir::LLVM::LLVMArrayType::get(shaped_ty.getElementType(),
+                                                   shaped_ty.getNumElements());
+
+    std::string name;
+    int index = 0;
+    do {
+      name = absl::StrCat("shared_", index);
+      ++index;
+    } while (module.lookupSymbol(name));
+
+    rewriter.setInsertionPointToStart(module.getBody());
+    auto global = rewriter.create<mlir::LLVM::GlobalOp>(
+        op.getLoc(), array_ty, /*isConstant=*/false,
+        /*linkage=*/mlir::LLVM::Linkage::Private, name,
+        /*value=*/mlir::Attribute{},
+        /*alignment=*/0, kGPUSharedMemoryAddrSpace);
+
+    rewriter.setInsertionPoint(op);
+    auto addr = rewriter.create<mlir::LLVM::AddressOfOp>(op.getLoc(), global);
+    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+        op, op.getResult().getType(),
+        rewriter
+            .create<mlir::LLVM::AddrSpaceCastOp>(
+                op.getLoc(), mlir::LLVM::LLVMPointerType::get(op.getContext()),
+                addr)
+            .getResult());
+    return mlir::success();
+  }
+};
+
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
   void runOnOperation() override;
@@ -216,7 +260,9 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 
 void LowerTensorsPass::runOnOperation() {
   mlir::RewritePatternSet tensor_patterns(&getContext());
-  tensor_patterns.add<RewriteTensorExtract, RewriteTensorInsert>(&getContext());
+  tensor_patterns
+      .add<RewriteTensorExtract, RewriteTensorInsert, RewriteAllocateShared>(
+          &getContext());
   if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
           getOperation(), std::move(tensor_patterns)))) {
     signalPassFailure();
@@ -237,6 +283,10 @@ void LowerTensorsPass::runOnOperation() {
     mlir::Value addr = load.getAddr();
     if (auto gep = load.getAddr().getDefiningOp<mlir::LLVM::GEPOp>()) {
       addr = gep.getBase();
+    }
+    if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>()) {
+      // Shared memory - no need to annotate anything.
+      return;
     }
     if (auto base = mlir::dyn_cast<mlir::BlockArgument>(addr)) {
       if (auto func = mlir::dyn_cast<mlir::func::FuncOp>(
