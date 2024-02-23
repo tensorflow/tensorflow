@@ -220,8 +220,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   absl::Status Memcpy(Stream* stream, void* host_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
 
-  bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
-              uint64_t size) override;
+  absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                      const void* host_src, uint64_t size) override;
 
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& gpu_src,

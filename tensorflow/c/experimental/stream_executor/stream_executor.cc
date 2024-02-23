@@ -376,8 +376,8 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     }
     return StatusFromTF_Status(c_status.get());
   }
-  bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst, const void* host_src,
-              uint64 size) override {
+  tsl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                     const void* host_src, uint64 size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_Stream stream_handle =
         static_cast<CStream*>(stream->implementation())->Handle();
@@ -386,9 +386,8 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
                                   host_src, size, c_status.get());
     if (TF_GetCode(c_status.get()) != TF_OK) {
       LOG(ERROR) << TF_Message(c_status.get());
-      return false;
     }
-    return true;
+    return StatusFromTF_Status(c_status.get());
   }
   bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                             const DeviceMemoryBase& gpu_src,

@@ -246,13 +246,15 @@ absl::Status TpuExecutor::Memcpy(
   return status.status();
 }
 
-bool TpuExecutor::Memcpy(Stream* stream,
-                         ::stream_executor::DeviceMemoryBase* device_dst,
-                         const void* host_src, uint64_t size) {
+absl::Status TpuExecutor::Memcpy(
+    Stream* stream, ::stream_executor::DeviceMemoryBase* device_dst,
+    const void* host_src, uint64_t size) {
+  StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
-  return ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
-      executor_, get_stream(stream->implementation()), &se_base, host_src,
-      size);
+  ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
+      executor_, get_stream(stream->implementation()), &se_base, host_src, size,
+      status.c_status);
+  return status.status();
 }
 
 Status TpuExecutor::SynchronousMemcpy(

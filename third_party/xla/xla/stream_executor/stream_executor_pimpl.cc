@@ -384,7 +384,7 @@ bool StreamExecutor::Memcpy(Stream* stream, void* host_dst,
 
 bool StreamExecutor::Memcpy(Stream* stream, DeviceMemoryBase* device_dst,
                             const void* host_src, uint64_t size) {
-  return implementation_->Memcpy(stream, device_dst, host_src, size);
+  return implementation_->Memcpy(stream, device_dst, host_src, size).ok();
 }
 
 bool StreamExecutor::MemcpyDeviceToDevice(Stream* stream,

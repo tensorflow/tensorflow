@@ -224,8 +224,8 @@ class StreamExecutorInterface {
   virtual absl::Status Memcpy(Stream* stream, void* host_dst,
                               const DeviceMemoryBase& gpu_src,
                               uint64_t size) = 0;
-  virtual bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                      const void* host_src, uint64_t size) = 0;
+  virtual absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                              const void* host_src, uint64_t size) = 0;
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
