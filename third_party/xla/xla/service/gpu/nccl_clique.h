@@ -116,8 +116,7 @@ struct NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
   // We keep acquired cliques in a sorted container to guarantee that all
   // participants iterate over cliques in the same order.
   using AcquiredCliquesMap =
-      absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>,
-                      std::greater<NcclCliqueKey>>;
+      absl::btree_map<NcclCliqueKey, std::shared_ptr<NcclClique::Lock>>;
 
   NcclClique(NcclCliqueKey clique_key, std::optional<NcclCliqueId> clique_id,
              absl::btree_map<int32_t, NcclApi::OwnedNcclComm> communicators)

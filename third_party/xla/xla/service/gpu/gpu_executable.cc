@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <set>
@@ -26,7 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/btree_map.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -226,18 +225,29 @@ class ResourceRequests : public Thunk::ResourceRequests {
     VLOG(5) << "Add collective clique request: " << clique_key.ToString()
             << "; num_local_participants: " << num_local_participants;
 
-    // We can't have multiple requests for a same clique key with different
-    // number of local participants as we can acquire a clique only once and we
-    // have to know how many executables will join the rendezvous.
-    auto emplaced = cliques_.try_emplace(clique_key, num_local_participants);
-    if (!emplaced.second && emplaced.first->second != num_local_participants) {
-      return absl::InternalError(absl::StrCat(
-          "Clique request for a clique key ", clique_key.ToString(),
-          " has number of local participants ", num_local_participants,
-          " different from previous value of ", emplaced.first->second, ".",
-          " This will lead to deadlock at run time and is an XLA compiler"
-          " bug. Please report it to XLA team."));
+    // Check if there is already a clique request for this clique key.
+    if (auto it = cliques_.find(clique_key); it != cliques_.end()) {
+      // We can't have multiple requests for a same clique key with different
+      // number of local participants as we can acquire a clique only once and
+      // we have to know how many executables will join the rendezvous.
+      if (it->second.num_local_participants != num_local_participants) {
+        return absl::InternalError(absl::StrFormat(
+            "Clique request for a clique key %s has number of local "
+            "participants %d different from previously requested value of %d. "
+            "This will lead to deadlock at run time and is an XLA compiler "
+            "bug. Please report it to XLA team.",
+            clique_key.ToString(), num_local_participants,
+            it->second.num_local_participants));
+      }
+      return absl::OkStatus();
     }
+
+    // XLA compiler guarantees that all collective operations have the same
+    // order on all replicas. We rely on this property to assign unique id to
+    // clique requests simply based on the number of already recored requests.
+    int64_t id = cliques_.size();
+    cliques_.try_emplace(clique_key,
+                         CliqueRequest{clique_key, num_local_participants, id});
     return absl::OkStatus();
   }
 
@@ -262,31 +272,30 @@ class ResourceRequests : public Thunk::ResourceRequests {
 
     NcclClique::AcquiredCliquesMap cliques_map;
 
-    for (const auto& [clique_key, num_local_participants] : cliques_) {
-      std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
+    for (const CliqueRequest& r : GetOrderedCliqueRequests()) {
+      std::optional<int64_t> rank = r.key.rank(params.global_device_id);
 
       if (!rank.has_value()) {
         return absl::InternalError(absl::StrCat(
             "Can't find global device id ", params.global_device_id.value(),
-            " in clique key ", clique_key.ToString()));
+            " in clique key ", r.key.ToString()));
       }
 
-      bool is_local = clique_key.devices().size() == num_local_participants;
+      bool is_local = r.key.devices().size() == r.num_local_participants;
       TF_ASSIGN_OR_RETURN(
           const NcclCliqueIdCallback* clique_id_callback,
           GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
-      int64_t max_channels =
-          clique_key.stream_kind() == AsyncStreamKind::kCollective
-              ? params.collective_max_nchannels
-              : params.p2p_max_nchannels;
-      TF_ASSIGN_OR_RETURN(
-          std::shared_ptr<NcclClique::Lock> clique,
-          AcquireNcclClique(params.executor, params.run_id, clique_key,
-                            *clique_id_callback, *rank, num_local_participants,
-                            cliques_map, max_channels));
+      int64_t max_channels = r.key.stream_kind() == AsyncStreamKind::kCollective
+                                 ? params.collective_max_nchannels
+                                 : params.p2p_max_nchannels;
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
+                          AcquireNcclClique(params.executor, params.run_id,
+                                            r.key, *clique_id_callback, *rank,
+                                            r.num_local_participants,
+                                            cliques_map, max_channels));
 
-      cliques_map[clique_key] = std::move(clique);
+      cliques_map[r.key] = std::move(clique);
     }
 
     auto end_micros = tsl::Env::Default()->NowMicros();
@@ -300,10 +309,48 @@ class ResourceRequests : public Thunk::ResourceRequests {
   }
 
  private:
-  // Keep all clique requests in an ordered container so that we acquire cliques
-  // in the same order for all participants and do not create a deadlock. We use
-  // greater ordering to acquire largest cliques first.
-  absl::btree_map<NcclCliqueKey, int64_t, std::greater<NcclCliqueKey>> cliques_;
+  struct CliqueRequest {
+    NcclCliqueKey key;
+    int64_t num_local_participants;
+    int64_t id;
+  };
+
+  // Return clique requests deterministically ordered using a comparison
+  // function that produces identical ordering for all participating ranks.
+  //
+  // Example: 8 ranks splitted in different groups of communicators
+  //
+  // Group #0: [0,1], [2,3], [4,5], [6,7]
+  // Group #1: [0,4], [1,5], [2,6], [3,7]
+  //
+  // Both groups #0 and #1 can be acqured by splitting [0...7] clique. To avoid
+  // deadlocks all participants should acquire all cliques in a group #0 before
+  // acquiring any cliques in a group #1.
+  //
+  // We rely on clique request id to guarantee that the order is identical
+  // on all participating ranks (including ranks running on different hosts).
+  std::vector<CliqueRequest> GetOrderedCliqueRequests() {
+    std::vector<CliqueRequest> cliques;
+    cliques.reserve(cliques_.size());
+    for (const auto& [_, request] : cliques_) cliques.push_back(request);
+
+    absl::c_sort(cliques, [](const CliqueRequest& a, const CliqueRequest& b) {
+      // Acquire larger cliques first to be able to split them later.
+      if (a.key.devices().size() > b.key.devices().size()) return true;
+      if (b.key.devices().size() > a.key.devices().size()) return false;
+
+      // If cliques have the same size prefer cliques with smaller stream id.
+      if (a.key.stream_id() < b.key.stream_id()) return true;
+      if (b.key.stream_id() < a.key.stream_id()) return false;
+
+      // Prefer cliques with smaller id (comes earlier in execution order).
+      return a.id < b.id;
+    });
+
+    return cliques;
+  }
+
+  absl::flat_hash_map<NcclCliqueKey, CliqueRequest> cliques_;
 };
 
 absl::Status MaybeSyncAndProfile(

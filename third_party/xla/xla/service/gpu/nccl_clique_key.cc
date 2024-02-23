@@ -46,6 +46,8 @@ absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;
 }
 
+int64_t NcclCliqueKey::stream_id() const { return stream_id_; }
+
 std::optional<int64_t> NcclCliqueKey::rank(GlobalDeviceId id) const {
   if (auto it = absl::c_find(devices_, id); it != devices_.end()) {
     return it - devices_.begin();
@@ -76,18 +78,6 @@ bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   if (a.devices_ < b.devices_) return true;
   if (b.devices_ < a.devices_) return false;
 
-  return a.stream_id_ < b.stream_id_;
-}
-
-bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b) {
-  if (a.devices_.size() > b.devices_.size()) return true;
-  if (b.devices_.size() > a.devices_.size()) return false;
-
-  if (a.devices_ > b.devices_) return true;
-  if (b.devices_ > a.devices_) return false;
-
-  // We still use `<` to order by stream id as we want to acquire sync cliques
-  // before async ones.
   return a.stream_id_ < b.stream_id_;
 }
 
