@@ -424,9 +424,8 @@ absl::Status ExecuteThunks(
   if (ExecutionProfile* profile =
           run_options->run_options().execution_profile();
       profile) {
-    TF_ASSIGN_OR_RETURN(
-        execution_timer,
-        se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(main_stream)));
+    TF_ASSIGN_OR_RETURN(execution_timer,
+                        se::gpu::GpuTimer::Create(main_stream));
   }
 #endif
 

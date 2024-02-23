@@ -365,9 +365,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
     DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
     blas::ProfileResult* profile_result) const {
-  TF_ASSIGN_OR_RETURN(
-      std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(gpu::AsGpuStream(stream), profile_result));
+  TF_ASSIGN_OR_RETURN(std::optional<gpu::GpuTimer> timer,
+                      gpu::GpuTimer::CreateIfNeeded(stream, profile_result));
 
   void* workspace = nullptr;
   if (algorithm.workspace_size > 0) {

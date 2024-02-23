@@ -750,8 +750,7 @@ absl::Status CUDABlas::DoBlasGemmWithAlgorithm(
 
   TF_ASSIGN_OR_RETURN(
       std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
-                               output_profile_result != nullptr));
+      GpuTimer::CreateIfNeeded(stream, output_profile_result != nullptr));
 
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
   // we do the following compile-time check on the default value:
@@ -783,8 +782,7 @@ absl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
   TF_ASSIGN_OR_RETURN(
       std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
-                               output_profile_result != nullptr));
+      GpuTimer::CreateIfNeeded(stream, output_profile_result != nullptr));
   cudaDataType_t cuda_in_type = AsCudaDataType(type_a);
 
 #if CUDA_VERSION >= 11000

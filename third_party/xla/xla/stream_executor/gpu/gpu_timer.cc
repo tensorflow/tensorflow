@@ -53,7 +53,8 @@ absl::Duration RandomDuration() {
 
 }  // namespace
 
-/*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
+/*deprecated*/ /*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(
+    GpuStream* stream) {
   GpuExecutor* parent = stream->parent();
   GpuContext* context = parent->gpu_context();
   GpuEventHandle start_event;
@@ -69,13 +70,25 @@ absl::Duration RandomDuration() {
                                   stop_event, stream};
 }
 
-/*static*/ absl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
-    GpuStream* stream, bool is_needed) {
+/*deprecated*/ /*static*/ absl::StatusOr<std::optional<GpuTimer>>
+GpuTimer::CreateIfNeeded(GpuStream* stream, bool is_needed) {
   if (is_needed) {
     TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
     return {std::make_optional(std::move(t))};
   }
   return std::nullopt;
+}
+
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<GpuTimer>
+    GpuTimer::Create(Stream* stream) {
+  return GpuTimer::Create(AsGpuStream(stream));
+}
+
+[[deprecated("So it can quietly call a deprecated method")]] /*static*/ absl::
+    StatusOr<std::optional<GpuTimer>>
+    GpuTimer::CreateIfNeeded(Stream* stream, bool is_needed) {
+  return GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_needed);
 }
 
 /*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
