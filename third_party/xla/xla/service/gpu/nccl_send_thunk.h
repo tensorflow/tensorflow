@@ -28,19 +28,6 @@ namespace gpu {
 // Thunk that performs a NCCL-send.
 class NcclSendThunk : public NcclCollectiveThunk {
  public:
-  static NcclP2PConfig GetNcclP2PConfig(mlir::lmhlo::SendOp,
-                                        int64_t replica_count,
-                                        int64_t partition_count);
-
-  static absl::Status CheckImplementable(mlir::lmhlo::SendOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::SendOp op);
-  static const char* GetHloOpName() { return "send"; }
-
-  NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, mlir::lmhlo::SendOp op,
-                int64_t replica_count, int64_t partition_count,
-                const Buffer& buffer);
   NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                 const HloSendInstruction* instr, int64_t replica_count,
                 int64_t partition_count, const Buffer& buffer);

@@ -29,36 +29,20 @@ namespace gpu {
 class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
  public:
   static NcclP2PConfig GetNcclP2PConfig(
-      mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
-      int64_t partition_count);
-  static NcclP2PConfig GetNcclP2PConfig(
       const HloCollectivePermuteInstruction* instr, int64_t replica_count,
       int64_t partition_count);
 
-  static bool IsDegenerate(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
-                           int64_t replica_count, int64_t partition_count);
   static bool IsDegenerate(const HloCollectivePermuteInstruction* instr,
                            int64_t replica_count, int64_t partition_count);
 
   static CollectiveOpGroupMode GetGroupMode(
-      mlir::lmhlo_gpu::CollectivePermuteStartOp op);
-  static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
-                                  mlir::lmhlo_gpu::CollectivePermuteStartOp op,
-                                  int64_t replica_count,
-                                  int64_t partition_count,
-                                  const Buffer& buffer);
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                                   const HloCollectivePermuteInstruction* instr,
                                   int64_t replica_count,
                                   int64_t partition_count,
                                   const Buffer& buffer);
-
-  static absl::Status CheckImplementable(
-      mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
-      int64_t partition_count);
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 

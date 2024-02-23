@@ -28,21 +28,6 @@ namespace gpu {
 // Thunk that performs a NCCL-recv.
 class NcclRecvThunk : public NcclCollectiveThunk {
  public:
-  static NcclP2PConfig GetNcclP2PConfig(mlir::lmhlo::RecvOp,
-                                        int64_t replica_count,
-                                        int64_t partition_count);
-
-  static absl::Status CheckImplementable(mlir::lmhlo::RecvOp op,
-                                         int64_t replica_count,
-                                         int64_t partition_count);
-
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::RecvOp op);
-  static const char* GetHloOpName() { return "recv"; }
-
-  NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api, mlir::lmhlo::RecvOp op,
-                int64_t replica_count, int64_t partition_count,
-                const Buffer& buffer);
-
   NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                 const HloRecvInstruction* instr, int64_t replica_count,
                 int64_t partition_count, const Buffer& buffer);
