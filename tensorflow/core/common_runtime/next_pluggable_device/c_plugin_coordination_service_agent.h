@@ -41,10 +41,10 @@ class CPluginCoordinationServiceAgent : public PluginCoordinationServiceAgent {
 
   Status InsertKeyValue(std::string_view key, std::string_view value) override;
 
-  StatusOr<std::string> GetKeyValue(std::string_view key) override;
-  StatusOr<std::string> GetKeyValue(std::string_view key,
-                                    absl::Duration timeout) override;
-  StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
+  absl::StatusOr<std::string> GetKeyValue(std::string_view key) override;
+  absl::StatusOr<std::string> GetKeyValue(std::string_view key,
+                                          absl::Duration timeout) override;
+  absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
 
   Status DeleteKeyValue(std::string_view key) override;
 
