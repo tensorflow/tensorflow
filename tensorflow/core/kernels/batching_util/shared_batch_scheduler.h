@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <atomic>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <list>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
-#include "absl/types/variant.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
@@ -36,11 +40,15 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace serving {
@@ -112,7 +120,7 @@ class SharedBatchScheduler
       std::unique_ptr<Batch<internal::BatchInputTaskHandle<TaskType>>>;
   using BatchTaskUniqueptr = std::unique_ptr<Batch<TaskType>>;
   using BatchUniquePtr =
-      absl::variant<BatchTaskUniqueptr, BatchTaskHandleUniquePtr>;
+      std::variant<BatchTaskUniqueptr, BatchTaskHandleUniquePtr>;
   // TODO(b/25089730): Tune defaults based on best practices as they develop.
   struct Options {
     // The name to use for the pool of batch threads.
