@@ -5368,13 +5368,14 @@ cc_library(
         "//xla:status",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo:lhlo",
         "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

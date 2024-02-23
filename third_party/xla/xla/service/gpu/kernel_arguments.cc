@@ -14,57 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_arguments.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-
-absl::StatusOr<KernelArgument> KernelArgument::Create(
-    absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
-    bool is_written) {
-  TF_ASSIGN_OR_RETURN(
-      auto slice, xla::gpu::GetAllocationSlice(value, allocations, nullptr));
-  return KernelArgument(value, GetShape(value), slice, is_written);
-}
-
-absl::StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation* const> allocations,
-    mlir::lmhlo::FusionOp fusion) {
-  auto operands = GetHloOperands(fusion);
-  auto outputs = GetHloOutputs(fusion);
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(operands.size() + outputs.size());
-
-  for (auto value : operands) {
-    TF_ASSIGN_OR_RETURN(auto arg, KernelArgument::Create(allocations, value,
-                                                         /*is_written=*/false));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-  for (auto value : outputs) {
-    TF_ASSIGN_OR_RETURN(auto arg, KernelArgument::Create(allocations, value,
-                                                         /*is_written=*/true));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-
-  return KernelArguments{std::move(kernel_arguments)};
-}
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
@@ -73,8 +43,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
   for (const HloInstruction* operand : fusion->operands()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment.GetUniqueSlice(operand, {}));
-    kernel_arguments.emplace_back(KernelArgument(
-        /*value=*/nullptr, operand->shape(), slice, /*written=*/false));
+    kernel_arguments.emplace_back(
+        KernelArgument(operand->shape(), slice, /*written=*/false));
   }
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
@@ -84,8 +54,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
         }
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             buffer_assignment.GetUniqueSlice(fusion, index));
-        kernel_arguments.emplace_back(KernelArgument(
-            /*value=*/nullptr, subshape, slice, /*written=*/true));
+        kernel_arguments.emplace_back(
+            KernelArgument(subshape, slice, /*written=*/true));
         return absl::OkStatus();
       }));
 
@@ -155,20 +125,6 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
 }
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation* const> allocations,
-    mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands) {
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(needed_operands.size());
-  for (const auto& [i, value] : llvm::enumerate(needed_operands)) {
-    bool written = WritesMlirBuffer(non_fusion_op, value);
-    TF_ASSIGN_OR_RETURN(auto arg,
-                        KernelArgument::Create(allocations, value, written));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-  return KernelArguments{std::move(kernel_arguments)};
-}
-
-absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const HloInstruction* non_fusion_hlo,
     absl::Span<const HloInstruction* const> needed_operands) {
@@ -176,8 +132,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
   for (const HloInstruction* operand : needed_operands) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                         buffer_assignment.GetUniqueSlice(operand, {}));
-    kernel_arguments.emplace_back(KernelArgument(
-        /*value=*/nullptr, operand->shape(), slice, /*written=*/false));
+    kernel_arguments.emplace_back(
+        KernelArgument(operand->shape(), slice, /*written=*/false));
   }
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
@@ -189,8 +145,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
             BufferAllocation::Slice slice,
             buffer_assignment.GetUniqueSlice(non_fusion_hlo, index));
 
-        kernel_arguments.emplace_back(KernelArgument(
-            /*value=*/nullptr, subshape, slice, /*written=*/true));
+        kernel_arguments.emplace_back(
+            KernelArgument(subshape, slice, /*written=*/true));
         return absl::OkStatus();
       }));
 
