@@ -260,7 +260,6 @@ gentbl_cc_library(
 cc_library(
     name = "bridge_passes",
     srcs = [
-        "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
         "passes/bridge/optimize.cc",
