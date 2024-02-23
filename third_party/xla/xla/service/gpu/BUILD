@@ -3317,6 +3317,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":gpu_constants",
         ":hlo_traversal",
         ":ir_emission_utils",
         "//xla:shape_util",
