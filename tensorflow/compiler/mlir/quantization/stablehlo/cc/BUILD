@@ -113,8 +113,7 @@ cc_library(
     hdrs = ["debugger.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":graph_def",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:graph_def",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",

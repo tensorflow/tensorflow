@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
-from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
@@ -80,7 +79,6 @@ _PER_CHANNEL_QUANTIZED_OPS = (
 )
 
 _DebuggerOptions = quant_opts_pb2.DebuggerOptions
-_DebuggerConfig = stablehlo_quant_config_pb2.DebuggerConfig
 
 # Lists of ops whose channel dimension should be changed if per_channel
 # quantization is enabled. Respectively refers to (scale, zero_point).
@@ -5935,7 +5933,7 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         ),
         op_set=quant_opts_pb2.XLA,
         debugger_options=_DebuggerOptions(
-            debugger_type=_DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
+            debugger_type=_DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
             unquantized_dump_model_path=unquantized_dump_model_path,
             log_dir_path=log_dir_path,
         ),
@@ -5992,31 +5990,60 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
       self.assertEqual(quant_unit.node_name, 'Conv2D')
       self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
 
-  @parameterized.parameters(
-      parameter_combinations([{
-          'activation_fn': [None, nn_ops.relu, nn_ops.relu6],
-          'has_bias': [True, False],
-          'debugger_type': [
-              _DebuggerConfig.DEBUGGER_TYPE_INT_PER_LAYER,
-              _DebuggerConfig.DEBUGGER_TYPE_FLOAT_PER_LAYER,
-          ],
-          'target_opset': [quant_opts_pb2.XLA, quant_opts_pb2.STABLEHLO],
-      }])
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'none_int',
+          'activation_fn': None,
+          'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'relu_int',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'with_bias_int',
+          'activation_fn': None,
+          'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu_int',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'none_float',
+          'activation_fn': None,
+          'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'relu_float',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'with_bias_float',
+          'activation_fn': None,
+          'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu_float',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'debugger_type': _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER,
+      },
   )
   def test_conv2d_ptq_model_per_layer_verify(
-      self,
-      activation_fn: Optional[ops.Operation],
-      has_bias: bool,
-      debugger_type: _DebuggerConfig.DebuggerType,
-      target_opset: quant_opts_pb2.OpSet,
+      self, activation_fn, has_bias, debugger_type
   ):
-    # TODO: b/326114903 - Support dynamic input dimensions after 0th rank in
-    # op_set=STABLEHLO.
-    input_shape_dynamic = target_opset != quant_opts_pb2.STABLEHLO
-    concrete_input_shape = [None, 3, 4, 3]
-    input_shape = (
-        [None, None, None, 3] if input_shape_dynamic else concrete_input_shape
-    )
+    input_shape = [None, None, None, 3]
     filter_shape = [2, 3, 3, 2]
 
     model = self._create_conv2d_model(
@@ -6028,11 +6055,10 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
     saved_model_save.save(model, self._input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      data_input_size = [1] + concrete_input_shape[1:]
       for _ in range(8):
         yield {
             'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=150, size=data_input_size).astype(
+                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
                     'f4'
                 )
             ),
@@ -6046,7 +6072,7 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
-        op_set=target_opset,
+        op_set=quant_opts_pb2.XLA,
         debugger_options=_DebuggerOptions(
             debugger_type=debugger_type,
             log_dir_path=log_dir_path,
@@ -6067,18 +6093,9 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
 
-    sample_input_size = [16] + concrete_input_shape[1:]
     sample_inputs = [
-        {
-            'input_tensor': np.random.uniform(
-                low=0, high=1, size=sample_input_size
-            )
-        },
-        {
-            'input_tensor': np.random.uniform(
-                low=0, high=1, size=sample_input_size
-            )
-        },
+        {'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))},
+        {'input_tensor': np.random.uniform(low=0, high=1, size=(16, 3, 4, 3))},
     ]
 
     output_value_from_original_model = self._run_model_in_sess(
@@ -6114,11 +6131,11 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
     # a quantized value, while for DEBUGGER_TYPE_FLOAT_PER_LAYER, it's an
     # unquantized value. Therefore there are different verifications for the
     # output value.
-    if debugger_type == _DebuggerConfig.DEBUGGER_TYPE_INT_PER_LAYER:
+    if debugger_type == _DebuggerOptions.DEBUGGER_TYPE_INT_PER_LAYER:
       self.assertAllEqual(
           output_value_from_debugging_model, quantized_dump_file_numpy
       )
-    else:  # debugger_type == _DebuggerConfig.DEBUGGER_TYPE_FLOAT_PER_LAYER:
+    else:  # debugger_type == _DebuggerOptions.DEBUGGER_TYPE_FLOAT_PER_LAYER:
       self.assertAllEqual(
           output_value_from_debugging_model, output_value_from_original_model
       )
@@ -6131,16 +6148,8 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
         )
     )
 
-    if target_opset == quant_opts_pb2.XLA:
-      self.assertEqual(quant_unit.node_name, 'Conv2D')
-      self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
-    elif target_opset == quant_opts_pb2.STABLEHLO:
-      self.assertEqual(quant_unit.node_name, '_empty_node')
-      self.assertRegex(
-          quant_unit.func_name, r'^composite_conv_([a-zA-Z_0-9]+_)*fn_\d+'
-      )
-    else:
-      assert False, f'Please add assertion for the op_set: {target_opset}.'
+    self.assertEqual(quant_unit.node_name, 'Conv2D')
+    self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
 
 
 @test_util.run_all_in_graph_and_eager_modes
