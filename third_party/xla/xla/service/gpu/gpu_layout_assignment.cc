@@ -125,11 +125,22 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  // If we're on Ampere or Hopper with type TF32: Use NHCW
+  // See:
+  // https://github.com/tensorflow/tensorflow/pull/60377#discussion_r1261754077.
+  const bool isFloat32 = (input_ty == F32);
+  const auto* cuda_compute_capability =
+      std::get_if<se::CudaComputeCapability>(&gpu_version);
+  bool is_at_least_ampere =
+      cuda_compute_capability &&
+      cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::AMPERE);
+  if (is_at_least_ampere && isFloat32) {
+    return kAllNHWC;
+  }
+
   // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
   // easy: Use NCHW.
   const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-  const auto* cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
   bool is_volta =
       cuda_compute_capability &&
       cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::VOLTA);
