@@ -1,0 +1,115 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Test Protobuf definitions with proto3 syntax.
+syntax = "proto3";
+
+package pb3;
+option go_package = "google.golang.org/protobuf/internal/testprotos/textpb3";
+
+// Scalars contains scalar field types.
+message Scalars {
+  bool s_bool = 1;
+  int32 s_int32 = 2;
+  int64 s_int64 = 3;
+  uint32 s_uint32 = 4;
+  uint64 s_uint64 = 5;
+  sint32 s_sint32 = 6;
+  sint64 s_sint64 = 7;
+  fixed32 s_fixed32 = 8;
+  fixed64 s_fixed64 = 9;
+  sfixed32 s_sfixed32 = 10;
+  sfixed64 s_sfixed64 = 11;
+
+  // Textproto marshal outputs fields in the same order as this proto
+  // definition regardless of field number. Following fields are intended to
+  // test that assumption.
+
+  float s_float = 20;
+  double s_double = 21;
+
+  bytes s_bytes = 14;
+  string s_string = 13;
+}
+
+// Message contains repeated fields.
+message Repeats {
+  repeated bool rpt_bool = 1;
+  repeated int32 rpt_int32 = 2;
+  repeated int64 rpt_int64 = 3;
+  repeated uint32 rpt_uint32 = 4;
+  repeated uint64 rpt_uint64 = 5;
+  repeated float rpt_float = 6;
+  repeated double rpt_double = 7;
+  repeated string rpt_string = 8;
+  repeated bytes rpt_bytes = 9;
+}
+
+message Proto3Optional {
+  optional bool opt_bool = 1;
+  optional int32 opt_int32 = 2;
+  optional int64 opt_int64 = 3;
+  optional uint32 opt_uint32 = 4;
+  optional uint64 opt_uint64 = 5;
+  optional float opt_float = 6;
+  optional double opt_double = 7;
+  optional string opt_string = 8;
+  optional bytes opt_bytes = 9;
+  optional Enum opt_enum = 10;
+  optional Nested opt_message = 11;
+}
+
+enum Enum {
+  ZERO = 0;
+  ONE = 1;
+  TWO = 2;
+  TEN = 10;
+}
+
+// Message contains enum fields.
+message Enums {
+  Enum s_enum = 1;
+
+  enum NestedEnum {
+  	CERO = 0;
+	UNO = 1;
+	DOS = 2;
+	DIEZ = 10;
+  }
+  NestedEnum s_nested_enum = 3;
+}
+
+// Message contains nested message field.
+message Nests {
+  Nested s_nested = 2;
+}
+
+// Message type used as submessage.
+message Nested {
+  string s_string = 1;
+  Nested s_nested = 2;
+}
+
+// Message contains oneof field.
+message Oneofs {
+  oneof union {
+    Enum oneof_enum = 1;
+    string oneof_string = 2;
+    Nested oneof_nested = 3;
+  }
+}
+
+// Message contains map fields.
+message Maps {
+  map<int32, string> int32_to_str = 1;
+  map<bool, uint32> bool_to_uint32 = 2;
+  map<uint64, Enum> uint64_to_enum = 3;
+  map<string, Nested> str_to_nested = 4;
+  map<string, Oneofs> str_to_oneofs = 5;
+}
+
+// Message for testing json_name option.
+message JSONNames {
+  string s_string = 1 [json_name = "foo_bar"];
+}

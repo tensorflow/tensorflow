@@ -1,0 +1,26 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// This file exercises a deadlock in registation of legacy extensions:
+// https://github.com/golang/protobuf/issues/1052
+//
+// The corresponding .pb.go file was generated with protoc 3.11.3 and
+// protoc-gen-go 1.3.3.
+
+syntax = "proto2";
+
+package goproto.proto.legacy;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/legacy/bug1052";
+
+enum Enum {
+  ZERO = 0;
+}
+
+extend google.protobuf.MethodOptions {
+  optional Enum extension_enum = 5000;
+}
+

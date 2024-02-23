@@ -1,0 +1,31 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// This file contains a message which references a message that implements the
+// proto.Message interface but does not have the structure of a normal generated
+// message.
+
+syntax = "proto2";
+
+package goproto.proto.irregular;
+
+import "internal/testprotos/irregular/irregular.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/irregular";
+
+message Message {
+  optional IrregularMessage optional_message = 1;
+  repeated IrregularMessage repeated_message = 2;
+  required IrregularMessage required_message = 3;
+  map<string,IrregularMessage> map_message = 4;
+  oneof union {
+    IrregularMessage oneof_message = 5;
+    AberrantMessage oneof_aberrant_message = 6;
+  }
+
+  optional AberrantMessage optional_aberrant_message = 7;
+  repeated AberrantMessage repeated_aberrant_message = 8;
+  required AberrantMessage required_aberrant_message = 9;
+  map<string,AberrantMessage> map_aberrant_message = 10;
+}

@@ -1,0 +1,136 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package google.golang.org.proto3_20160225;
+option go_package = "google.golang.org/protobuf/internal/testprotos/legacy/proto3_20160225_2fc053c5";
+
+enum SiblingEnum {
+	ALPHA   = 0;
+	BRAVO   = 10;
+	CHARLIE = 200;
+}
+
+message SiblingMessage {
+	string          f1 = 1;
+	repeated string f2 = 2;
+	Message         f3 = 3;
+}
+
+message Message {
+	enum ChildEnum {
+		ALPHA   = 0;
+		BRAVO   = 1;
+		CHARLIE = 2;
+	}
+	message ChildMessage {
+		string          f1 = 1;
+		repeated string f2 = 2;
+		Message         f3 = 3;
+	}
+
+	// Optional fields.
+	bool     optional_bool     = 100;
+	int32    optional_int32    = 101;
+	sint32   optional_sint32   = 102;
+	uint32   optional_uint32   = 103;
+	int64    optional_int64    = 104;
+	sint64   optional_sint64   = 105;
+	uint64   optional_uint64   = 106;
+	fixed32  optional_fixed32  = 107;
+	sfixed32 optional_sfixed32 = 108;
+	float    optional_float    = 109;
+	fixed64  optional_fixed64  = 110;
+	sfixed64 optional_sfixed64 = 111;
+	double   optional_double   = 112;
+	string   optional_string   = 113;
+	bytes    optional_bytes    = 114;
+
+	ChildEnum      optional_child_enum      = 115;
+	ChildMessage   optional_child_message   = 116;
+	SiblingEnum    optional_sibling_enum    = 117;
+	SiblingMessage optional_sibling_message = 118;
+
+	// Repeated fields.
+	repeated bool     repeated_bool     = 200;
+	repeated int32    repeated_int32    = 201;
+	repeated sint32   repeated_sint32   = 202;
+	repeated uint32   repeated_uint32   = 203;
+	repeated int64    repeated_int64    = 204;
+	repeated sint64   repeated_sint64   = 205;
+	repeated uint64   repeated_uint64   = 206;
+	repeated fixed32  repeated_fixed32  = 207;
+	repeated sfixed32 repeated_sfixed32 = 208;
+	repeated float    repeated_float    = 209;
+	repeated fixed64  repeated_fixed64  = 210;
+	repeated sfixed64 repeated_sfixed64 = 211;
+	repeated double   repeated_double   = 212;
+	repeated string   repeated_string   = 213;
+	repeated bytes    repeated_bytes    = 214;
+
+	repeated ChildEnum      repeated_child_enum      = 215;
+	repeated ChildMessage   repeated_child_message   = 216;
+	repeated SiblingEnum    repeated_sibling_enum    = 217;
+	repeated SiblingMessage repeated_sibling_message = 218;
+
+	// Map fields.
+	map<bool, bool>     map_bool_bool     = 300;
+	map<bool, int32>    map_bool_int32    = 301;
+	map<bool, sint32>   map_bool_sint32   = 302;
+	map<bool, uint32>   map_bool_uint32   = 303;
+	map<bool, int64>    map_bool_int64    = 304;
+	map<bool, sint64>   map_bool_sint64   = 305;
+	map<bool, uint64>   map_bool_uint64   = 306;
+	map<bool, fixed32>  map_bool_fixed32  = 307;
+	map<bool, sfixed32> map_bool_sfixed32 = 308;
+	map<bool, float>    map_bool_float    = 309;
+	map<bool, fixed64>  map_bool_fixed64  = 310;
+	map<bool, sfixed64> map_bool_sfixed64 = 311;
+	map<bool, double>   map_bool_double   = 312;
+	map<bool, string>   map_bool_string   = 313;
+	map<bool, bytes>    map_bool_bytes    = 314;
+
+	map<bool, ChildEnum>      map_bool_child_enum      = 315;
+	map<bool, ChildMessage>   map_bool_child_message   = 316;
+	map<bool, SiblingEnum>    map_bool_sibling_enum    = 317;
+	map<bool, SiblingMessage> map_bool_sibling_message = 318;
+
+	map<int32, bool>   map_int32_bool   = 319;
+	map<sint32, bool>  map_sint32_bool  = 320;
+	map<uint32, bool>  map_uint32_bool  = 321;
+	map<int64, bool>   map_int64_bool   = 322;
+	map<sint64, bool>  map_sint64_bool  = 323;
+	map<uint64, bool>  map_uint64_bool  = 324;
+	map<fixed32, bool> map_fixed32_bool = 325;
+	map<string, bool>  map_string_bool  = 326;
+
+	// Oneof fields.
+	oneof oneof_union {
+		bool     oneof_bool     = 400;
+		int32    oneof_int32    = 401;
+		sint32   oneof_sint32   = 402;
+		uint32   oneof_uint32   = 403;
+		int64    oneof_int64    = 404;
+		sint64   oneof_sint64   = 405;
+		uint64   oneof_uint64   = 406;
+		fixed32  oneof_fixed32  = 407;
+		sfixed32 oneof_sfixed32 = 408;
+		float    oneof_float    = 409;
+		fixed64  oneof_fixed64  = 410;
+		sfixed64 oneof_sfixed64 = 411;
+		double   oneof_double   = 412;
+		string   oneof_string   = 413;
+		bytes    oneof_bytes    = 414;
+
+		ChildEnum      oneof_child_enum      = 415;
+		ChildMessage   oneof_child_message   = 416;
+		SiblingEnum    oneof_sibling_enum    = 417;
+		SiblingMessage oneof_sibling_message = 418;
+
+		string oneof_string1 = 419;
+		string oneof_string2 = 420;
+		string oneof_string3 = 421;
+	}
+}

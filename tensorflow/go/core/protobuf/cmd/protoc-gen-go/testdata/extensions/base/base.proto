@@ -1,0 +1,20 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.extension.base;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/extensions/base";
+
+message BaseMessage {
+  optional string field = 1;
+  extensions 4 to 9;
+  extensions 16 to max;
+}
+
+message MessageSetWireFormatMessage {
+  option message_set_wire_format = true;
+  extensions 100 to max;
+}

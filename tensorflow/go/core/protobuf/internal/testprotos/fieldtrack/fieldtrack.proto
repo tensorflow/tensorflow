@@ -1,0 +1,75 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.test;
+
+import "internal/testprotos/annotation/annotation.proto";
+import "internal/testprotos/test/test.proto";
+import weak "internal/testprotos/test/weak1/test_weak.proto";
+import weak "internal/testprotos/test/weak2/test_weak.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/fieldtrack";
+
+message TestFieldTrack {
+  option (go_annotation.track_field_use) = true;
+
+  optional int32    optional_int32    =  1;
+  optional int64    optional_int64    =  2;
+  optional uint32   optional_uint32   =  3;
+  optional uint64   optional_uint64   =  4;
+  optional sint32   optional_sint32   =  5;
+  optional sint64   optional_sint64   =  6;
+  optional fixed32  optional_fixed32  =  7;
+  optional fixed64  optional_fixed64  =  8;
+  optional sfixed32 optional_sfixed32 =  9;
+  optional sfixed64 optional_sfixed64 = 10;
+  optional float    optional_float    = 11;
+  optional double   optional_double   = 12;
+  optional bool     optional_bool     = 13;
+  optional string   optional_string   = 14;
+  optional bytes    optional_bytes    = 15;
+  optional goproto.proto.test.TestAllTypes.NestedEnum    optional_enum    = 16;
+  optional goproto.proto.test.TestAllTypes.NestedMessage optional_message = 17;
+
+  repeated int32    repeated_int32    = 21;
+  repeated int64    repeated_int64    = 22;
+  repeated uint32   repeated_uint32   = 23;
+  repeated uint64   repeated_uint64   = 24;
+  repeated sint32   repeated_sint32   = 25;
+  repeated sint64   repeated_sint64   = 26;
+  repeated fixed32  repeated_fixed32  = 27;
+  repeated fixed64  repeated_fixed64  = 28;
+  repeated sfixed32 repeated_sfixed32 = 29;
+  repeated sfixed64 repeated_sfixed64 = 30;
+  repeated float    repeated_float    = 31;
+  repeated double   repeated_double   = 32;
+  repeated bool     repeated_bool     = 33;
+  repeated string   repeated_string   = 34;
+  repeated bytes    repeated_bytes    = 35;
+  repeated goproto.proto.test.TestAllTypes.NestedEnum    repeated_enum    = 36;
+  repeated goproto.proto.test.TestAllTypes.NestedMessage repeated_message = 37;
+
+  map <string, int32>    map_string_int32    = 41;
+  map <string, int64>    map_string_int64    = 42;
+  map <string, uint32>   map_string_uint32   = 43;
+  map <string, uint64>   map_string_uint64   = 44;
+  map <string, sint32>   map_string_sint32   = 45;
+  map <string, sint64>   map_string_sint64   = 46;
+  map <string, fixed32>  map_string_fixed32  = 47;
+  map <string, fixed64>  map_string_fixed64  = 48;
+  map <string, sfixed32> map_string_sfixed32 = 49;
+  map <string, sfixed64> map_string_sfixed64 = 50;
+  map <string, float>    map_string_float    = 51;
+  map <string, double>   map_string_double   = 52;
+  map <string, bool>     map_string_bool     = 53;
+  map <string, string>   map_string_string   = 54;
+  map <string, bytes>    map_string_bytes    = 55;
+  map <string, goproto.proto.test.TestAllTypes.NestedEnum>    map_string_enum    = 56;
+  map <string, goproto.proto.test.TestAllTypes.NestedMessage> map_string_message = 57;
+
+  optional goproto.proto.test.weak.WeakImportMessage1 weak_message1 = 100 [weak=true];
+  optional goproto.proto.test.weak.WeakImportMessage2 weak_message2 = 101 [weak=true];
+}

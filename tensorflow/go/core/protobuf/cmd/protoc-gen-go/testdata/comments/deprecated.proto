@@ -1,0 +1,20 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package goproto.protoc.comments;
+
+option deprecated = true;
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/comments";
+
+message DeprecatedMessage {
+  option deprecated = true;
+  string deprecated_field = 1 [deprecated=true];
+}
+
+enum DeprecatedEnum {
+  option deprecated = true;
+  DEPRECATED = 0 [deprecated=true];
+}

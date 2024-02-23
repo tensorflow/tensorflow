@@ -1,0 +1,30 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Messages in this file are used to test wire encoding order.
+
+syntax = "proto2";
+
+package goproto.proto.order;
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/order";
+
+message Message {
+  optional string field_2 = 2;
+  optional string field_1 = 1;
+
+  oneof oneof_1 {
+    string field_10 = 10;
+  }
+
+  extensions 30 to 40;
+
+  optional string field_20 = 20;
+}
+
+extend Message {
+  optional string field_30 = 30;
+  optional string field_31 = 31;
+  optional string field_32 = 32;
+}

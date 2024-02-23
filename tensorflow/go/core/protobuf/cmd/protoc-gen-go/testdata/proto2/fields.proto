@@ -1,0 +1,143 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.proto2;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/proto2";
+
+message FieldTestMessage {
+  optional bool     optional_bool     = 1;
+  optional Enum     optional_enum     = 2;
+  optional int32    optional_int32    = 3;
+  optional sint32   optional_sint32   = 4;
+  optional uint32   optional_uint32   = 5;
+  optional int64    optional_int64    = 6;
+  optional sint64   optional_sint64   = 7;
+  optional uint64   optional_uint64   = 8;
+  optional sfixed32 optional_sfixed32 = 9;
+  optional fixed32  optional_fixed32  = 10;
+  optional float    optional_float    = 11;
+  optional sfixed64 optional_sfixed64 = 12;
+  optional fixed64  optional_fixed64  = 13;
+  optional double   optional_double   = 14;
+  optional string   optional_string   = 15;
+  optional bytes    optional_bytes    = 16;
+  optional Message  optional_Message  = 17;
+  optional group OptionalGroup = 18 {
+    optional string optional_group = 19;
+  }
+
+  required bool     required_bool     = 101;
+  required Enum     required_enum     = 102;
+  required int32    required_int32    = 103;
+  required sint32   required_sint32   = 104;
+  required uint32   required_uint32   = 105;
+  required int64    required_int64    = 106;
+  required sint64   required_sint64   = 107;
+  required uint64   required_uint64   = 108;
+  required sfixed32 required_sfixed32 = 109;
+  required fixed32  required_fixed32  = 110;
+  required float    required_float    = 111;
+  required sfixed64 required_sfixed64 = 112;
+  required fixed64  required_fixed64  = 113;
+  required double   required_double   = 114;
+  required string   required_string   = 115;
+  required bytes    required_bytes    = 116;
+  required Message  required_Message  = 117;
+  required group RequiredGroup = 118 {
+    required string required_group = 119;
+  }
+
+  repeated bool     repeated_bool     = 201;
+  repeated Enum     repeated_enum     = 202;
+  repeated int32    repeated_int32    = 203;
+  repeated sint32   repeated_sint32   = 204;
+  repeated uint32   repeated_uint32   = 205;
+  repeated int64    repeated_int64    = 206;
+  repeated sint64   repeated_sint64   = 207;
+  repeated uint64   repeated_uint64   = 208;
+  repeated sfixed32 repeated_sfixed32 = 209;
+  repeated fixed32  repeated_fixed32  = 210;
+  repeated float    repeated_float    = 211;
+  repeated sfixed64 repeated_sfixed64 = 212;
+  repeated fixed64  repeated_fixed64  = 213;
+  repeated double   repeated_double   = 214;
+  repeated string   repeated_string   = 215;
+  repeated bytes    repeated_bytes    = 216;
+  repeated Message  repeated_Message  = 217;
+  repeated group RepeatedGroup = 218 {
+    repeated string repeated_group = 219;
+  }
+
+  optional bool     default_bool     = 301 [default=true];
+  optional Enum     default_enum     = 302 [default=ONE];
+  optional int32    default_int32    = 303 [default=1];
+  optional sint32   default_sint32   = 304 [default=1];
+  optional uint32   default_uint32   = 305 [default=1];
+  optional int64    default_int64    = 306 [default=1];
+  optional sint64   default_sint64   = 307 [default=1];
+  optional uint64   default_uint64   = 308 [default=1];
+  optional sfixed32 default_sfixed32 = 309 [default=1];
+  optional fixed32  default_fixed32  = 310 [default=1];
+  optional float    default_float    = 311 [default=3.14];
+  optional sfixed64 default_sfixed64 = 312 [default=1];
+  optional fixed64  default_fixed64  = 313 [default=1];
+  optional double   default_double   = 314 [default=3.1415];
+  optional string   default_string   = 315 [default="hello,\"world!\"\n"];
+  optional bytes    default_bytes    = 316 [default="hello,\xde\xad\xbe\xef"];
+
+  optional string default_zero_string = 350 [default=""];
+  optional bytes  default_zero_bytes  = 351 [default=""];
+
+  optional float  default_float_neginf  = 400 [default=-inf];
+  optional float  default_float_posinf  = 401 [default=inf];
+  optional float  default_float_nan     = 402 [default=nan];
+  optional double default_double_neginf = 403 [default=-inf];
+  optional double default_double_posinf = 404 [default=inf];
+  optional double default_double_nan    = 405 [default=nan];
+
+  map<int32, int64>   map_int32_int64    = 500;
+  map<string,Message> map_string_message = 501;
+  map<fixed64,Enum>   map_fixed64_enum   = 502;
+
+  oneof oneof_field {
+    bool     oneof_bool     = 601;
+    Enum     oneof_enum     = 602;
+    int32    oneof_int32    = 603;
+    sint32   oneof_sint32   = 604;
+    uint32   oneof_uint32   = 605;
+    int64    oneof_int64    = 606;
+    sint64   oneof_sint64   = 607;
+    uint64   oneof_uint64   = 608;
+    sfixed32 oneof_sfixed32 = 609;
+    fixed32  oneof_fixed32  = 610;
+    float    oneof_float    = 611;
+    sfixed64 oneof_sfixed64 = 612;
+    fixed64  oneof_fixed64  = 613;
+    double   oneof_double   = 614;
+    string   oneof_string   = 615;
+    bytes    oneof_bytes    = 616;
+    Message  oneof_Message  = 617;
+    group OneofGroup = 618 {
+      optional string oneof_group_field = 619;
+    }
+    int32 oneof_largest_tag = 536870911;
+  }
+
+  oneof oneof_two {
+    int32 oneof_two_1 = 700;
+    int64 oneof_two_2 = 701;
+  }
+
+  enum Enum {
+    ZERO = 0;
+    ONE = 1;
+  }
+  message Message {}
+
+  reserved 10000, 10001;
+  reserved "TEN_THOUSAND", "TEN_THOUSAND_AND_ONE";
+}

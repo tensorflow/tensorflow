@@ -1,0 +1,24 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.fuzz;
+
+import "internal/testprotos/test/test.proto";
+import "internal/testprotos/test3/test.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/fuzz";
+
+// Fuzz is a container for every message we want to make available to the fuzzer.
+message Fuzz {
+  optional goproto.proto.test.TestAllTypes test_all_types = 1;
+  optional goproto.proto.test.TestAllExtensions test_all_extensions = 2;
+  optional goproto.proto.test.TestRequired test_required = 3;
+  optional goproto.proto.test.TestRequiredForeign test_required_foreign = 4;
+  optional goproto.proto.test.TestRequiredGroupFields test_required_group_fields = 5;
+  optional goproto.proto.test.TestPackedTypes test_packed_types = 6;
+  optional goproto.proto.test.TestPackedExtensions test_packed_extensions = 7;
+  optional goproto.proto.test3.TestAllTypes test_all_types3 = 8;
+}

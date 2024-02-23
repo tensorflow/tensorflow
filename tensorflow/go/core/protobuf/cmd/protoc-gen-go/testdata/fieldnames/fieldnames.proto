@@ -1,0 +1,55 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.fieldnames;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/fieldnames";
+
+// Assorted edge cases in field name conflict resolution.
+//
+// Not all (or possibly any) of these behave in an easily-understood fashion.
+// This exists to demonstrate the current behavior and catch unintended
+// changes in it.
+message Message {
+  // Various CamelCase conversions.
+  optional string field_one = 1;
+  optional string FieldTwo = 2;
+  optional string fieldThree = 3;
+  optional string field__four = 4;
+
+  // Field names that conflict with standard methods on the message struct.
+  optional string descriptor = 10;
+  optional string marshal = 11;
+  optional string unmarshal = 12;
+  optional string proto_message = 13;
+
+  // Field names that conflict with each other after CamelCasing.
+  optional string CamelCase = 20;
+  optional string CamelCase_ = 21;
+  optional string camel_case = 22; // conflicts with 20, 21
+  optional string CamelCase__ = 23; // conflicts with 21, 21, renamed 22
+
+  // Field with a getter that conflicts with another field.
+  optional string get_name = 30;
+  optional string name = 31;
+
+  // Oneof that conflicts with its first field: The oneof is renamed.
+  oneof oneof_conflict_a {
+    string OneofConflictA = 40;
+  }
+
+  // Oneof that conflicts with its second field: The field is renamed.
+  oneof oneof_conflict_b {
+    string oneof_no_conflict = 50;
+    string OneofConflictB = 51;
+  }
+
+  // Oneof with a field name that conflicts with a nested message.
+  oneof oneof_conflict_c {
+    string oneof_message_conflict = 60;
+  }
+  message OneofMessageConflict {}
+}

@@ -1,0 +1,18 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2023";
+
+package goproto.protoc.protoeditions;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/protoeditions";
+
+message Layer1 {
+  message Layer2 {
+    message Layer3 {}
+    Layer3 l3 = 1;
+  }
+  Layer2 l2 = 1;
+  Layer2.Layer3 l3 = 2;
+}

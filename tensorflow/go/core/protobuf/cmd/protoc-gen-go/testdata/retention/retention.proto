@@ -1,0 +1,176 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package testretention;
+
+import "cmd/protoc-gen-go/testdata/retention/options_message.proto";
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/retention";
+
+option (imported_plain_option) = 1;
+option (imported_runtime_retention_option) = 2;
+option (imported_source_retention_option) = 3;
+
+// Retention attributes set directly on custom options
+extend google.protobuf.FileOptions {
+  optional int32 plain_option = 505092806;
+  optional int32 runtime_retention_option = 505039132
+      [retention = RETENTION_RUNTIME];
+  optional int32 source_retention_option = 504878676
+      [retention = RETENTION_SOURCE];
+}
+
+option (plain_option) = 1;
+option (runtime_retention_option) = 2;
+option (source_retention_option) = 3;
+
+option (file_option) = {
+  plain_field: 1
+  runtime_retention_field: 2
+  source_retention_field: 3
+};
+
+// Retention attribute nested inside a repeated message field
+extend google.protobuf.FileOptions {
+  repeated OptionsMessage repeated_options = 504823570;
+}
+
+option (repeated_options) = {
+  plain_field: 1
+  runtime_retention_field: 2
+  source_retention_field: 3
+};
+
+extend google.protobuf.ExtensionRangeOptions {
+  optional OptionsMessage extension_range_option = 504822148;
+}
+
+extend google.protobuf.MessageOptions {
+  optional OptionsMessage message_option = 504820819;
+}
+
+extend google.protobuf.FieldOptions {
+  optional OptionsMessage field_option = 504589219;
+}
+
+extend google.protobuf.OneofOptions {
+  optional OptionsMessage oneof_option = 504479153;
+}
+
+extend google.protobuf.EnumOptions {
+  optional OptionsMessage enum_option = 504451567;
+}
+
+extend google.protobuf.EnumValueOptions {
+  optional OptionsMessage enum_entry_option = 504450522;
+}
+
+extend google.protobuf.ServiceOptions {
+  optional OptionsMessage service_option = 504387709;
+}
+
+extend google.protobuf.MethodOptions {
+  optional OptionsMessage method_option = 504349420;
+}
+
+message Extendee {
+  extensions 1, 2;
+}
+
+extend Extendee {
+  optional int32 i = 1 [(field_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  }];
+}
+
+message TopLevelMessage {
+  option (message_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  };
+
+  message NestedMessage {
+    option (message_option) = {
+      plain_field: 1
+      runtime_retention_field: 2
+      source_retention_field: 3
+    };
+  }
+
+  enum NestedEnum {
+    option (enum_option) = {
+      plain_field: 1
+      runtime_retention_field: 2
+      source_retention_field: 3
+    };
+
+    NESTED_UNKNOWN = 0;
+  }
+
+  optional float f = 1 [(field_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  }];
+
+  oneof o {
+    option (oneof_option) = {
+      plain_field: 1
+      runtime_retention_field: 2
+      source_retention_field: 3
+    };
+
+    int64 i = 2;
+  }
+
+  extensions 10 to 100 [(extension_range_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  }];
+
+  extend Extendee {
+    optional string s = 2 [(field_option) = {
+      plain_field: 1
+      runtime_retention_field: 2
+      source_retention_field: 3
+    }];
+  }
+}
+
+enum TopLevelEnum {
+  option (enum_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  };
+
+  TOP_LEVEL_UNKNOWN = 0 [(enum_entry_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  }];
+}
+
+service Service {
+  option (service_option) = {
+    plain_field: 1
+    runtime_retention_field: 2
+    source_retention_field: 3
+  };
+
+  rpc DoStuff(TopLevelMessage) returns (TopLevelMessage) {
+    option (method_option) = {
+      plain_field: 1
+      runtime_retention_field: 2
+      source_retention_field: 3
+    };
+  }
+}

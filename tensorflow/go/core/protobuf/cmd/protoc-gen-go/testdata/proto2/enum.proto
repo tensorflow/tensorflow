@@ -1,0 +1,54 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.proto2;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/proto2";
+
+// EnumType1 comment.
+enum EnumType1 {
+  // EnumType1_ONE comment.
+  ONE = 1;
+  // EnumType1_TWO comment.
+  TWO = 2;
+}
+
+enum EnumType2 {
+  option allow_alias = true;
+  duplicate1 = 1;
+  duplicate2 = 1;
+
+  reserved "RESERVED1";
+  reserved "RESERVED2";
+  reserved 2, 3;
+}
+
+message EnumContainerMessage1 {
+  optional EnumType2 default_duplicate1 = 1 [default=duplicate1];
+  optional EnumType2 default_duplicate2 = 2 [default=duplicate2];
+
+  // NestedEnumType1A comment.
+  enum NestedEnumType1A {
+    // NestedEnumType1A_VALUE comment.
+    NESTED_1A_VALUE = 0;
+  }
+
+  enum NestedEnumType1B {
+    NESTED_1B_VALUE = 0;
+  }
+
+  message EnumContainerMessage2 {
+    // NestedEnumType2A comment.
+    enum NestedEnumType2A {
+      // NestedEnumType2A_VALUE comment.
+      NESTED_2A_VALUE = 0;
+    }
+
+    enum NestedEnumType2B {
+      NESTED_2B_VALUE = 0;
+    }
+  }
+}

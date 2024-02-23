@@ -1,0 +1,21 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.annotations;
+
+import weak "cmd/protoc-gen-go/testdata/imports/fmt/m.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/annotations";
+
+message AnnotationsTestMessage {
+  optional string AnnotationsTestField = 1;
+
+  optional fmt.M m = 2 [weak = true];
+}
+
+enum AnnotationsTestEnum {
+  ANNOTATIONS_TEST_ENUM_VALUE = 0;
+}

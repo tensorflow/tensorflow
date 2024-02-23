@@ -1,0 +1,20 @@
+// Copyright 2021 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.enums;
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/enums";
+
+enum Enum {
+  DEFAULT = 1337;
+  ZERO = 0;
+  ONE = 1;
+  ELEVENT = 11;
+  SEVENTEEN = 17;
+  THIRTYSEVEN = 37;
+  SIXTYSEVEN = 67;
+  NEGATIVE = -1;
+}

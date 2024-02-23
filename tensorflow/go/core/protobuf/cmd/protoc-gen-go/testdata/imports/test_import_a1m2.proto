@@ -1,0 +1,15 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package test;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/imports";
+
+import "cmd/protoc-gen-go/testdata/imports/test_a_1/m2.proto";
+
+message A1M2 {
+  test.a.M2 f = 1;
+}

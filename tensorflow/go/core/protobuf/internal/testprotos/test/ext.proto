@@ -1,0 +1,15 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.test;
+
+import "internal/testprotos/test/test.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/test";
+
+extend TestAllExtensions {
+  optional int32    foreign_int32_extension =  2000;
+}

@@ -1,0 +1,13 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.test.weak;
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/test/weak1";
+
+message WeakImportMessage1 {
+	required int32 a = 1;
+}

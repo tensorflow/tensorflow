@@ -1,0 +1,333 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package google.golang.org.proto2_20160225;
+option go_package = "google.golang.org/protobuf/internal/testprotos/legacy/proto2_20160225_2fc053c5";
+
+enum SiblingEnum {
+	ALPHA   = 0;
+	BRAVO   = 10;
+	CHARLIE = 200;
+}
+
+message SiblingMessage {
+	optional string  f1 = 1;
+	required string  f2 = 2;
+	repeated string  f3 = 3;
+	optional Message f4 = 4;
+}
+
+message Message {
+	enum ChildEnum {
+		ALPHA   = 0;
+		BRAVO   = 1;
+		CHARLIE = 2;
+	}
+	message ChildMessage {
+		optional string  f1 = 1;
+		required string  f2 = 2;
+		repeated string  f3 = 3;
+	    optional Message f4 = 4;
+	}
+	optional group NamedGroup = 1 {
+		optional string  f1 = 1;
+		required string  f2 = 2;
+		repeated string  f3 = 3;
+	    optional Message f4 = 4;
+	}
+
+	// Optional fields.
+	optional bool     optional_bool     = 100;
+	optional int32    optional_int32    = 101;
+	optional sint32   optional_sint32   = 102;
+	optional uint32   optional_uint32   = 103;
+	optional int64    optional_int64    = 104;
+	optional sint64   optional_sint64   = 105;
+	optional uint64   optional_uint64   = 106;
+	optional fixed32  optional_fixed32  = 107;
+	optional sfixed32 optional_sfixed32 = 108;
+	optional float    optional_float    = 109;
+	optional fixed64  optional_fixed64  = 110;
+	optional sfixed64 optional_sfixed64 = 111;
+	optional double   optional_double   = 112;
+	optional string   optional_string   = 113;
+	optional bytes    optional_bytes    = 114;
+
+	optional ChildEnum      optional_child_enum      = 115;
+	optional ChildMessage   optional_child_message   = 116;
+	optional NamedGroup     optional_named_group     = 117;
+	optional SiblingEnum    optional_sibling_enum    = 118;
+	optional SiblingMessage optional_sibling_message = 119;
+	optional group OptionalGroup = 120 {
+		optional string f1 = 1;
+		required string f2 = 2;
+		repeated string f3 = 3;
+	}
+
+	// Optional default fields.
+	optional bool      defaulted_bool     = 200 [default = true];
+	optional int32     defaulted_int32    = 201 [default = -12345];
+	optional sint32    defaulted_sint32   = 202 [default = -3200];
+	optional uint32    defaulted_uint32   = 203 [default = 3200];
+	optional int64     defaulted_int64    = 204 [default = -123456789];
+	optional sint64    defaulted_sint64   = 205 [default = -6400];
+	optional uint64    defaulted_uint64   = 206 [default = 6400];
+	optional fixed32   defaulted_fixed32  = 207 [default = 320000];
+	optional sfixed32  defaulted_sfixed32 = 208 [default = -320000];
+	optional float     defaulted_float    = 209 [default = 3.14159];
+	optional fixed64   defaulted_fixed64  = 210 [default = 640000];
+	optional sfixed64  defaulted_sfixed64 = 211 [default = -640000];
+	optional double    defaulted_double   = 212 [default = 3.14159265359];
+	optional string    defaulted_string   = 213 [default = "hello, \"world!\"\n"];
+	optional bytes     defaulted_bytes    = 214 [default = "dead\xde\xad\xbe\xefbeef"];
+
+	optional ChildEnum   defaulted_child_enum   = 215 [default = ALPHA];
+	optional SiblingEnum defaulted_sibling_enum = 216 [default = ALPHA];
+
+	// Required fields.
+	required bool     required_bool     = 300;
+	required int32    required_int32    = 301;
+	required sint32   required_sint32   = 302;
+	required uint32   required_uint32   = 303;
+	required int64    required_int64    = 304;
+	required sint64   required_sint64   = 305;
+	required uint64   required_uint64   = 306;
+	required fixed32  required_fixed32  = 307;
+	required sfixed32 required_sfixed32 = 308;
+	required float    required_float    = 309;
+	required fixed64  required_fixed64  = 310;
+	required sfixed64 required_sfixed64 = 311;
+	required double   required_double   = 312;
+	required string   required_string   = 313;
+	required bytes    required_bytes    = 314;
+
+	required ChildEnum      required_child_enum      = 315;
+	required ChildMessage   required_child_message   = 316;
+	required NamedGroup     required_named_group     = 317;
+	required SiblingEnum    required_sibling_enum    = 318;
+	required SiblingMessage required_sibling_message = 319;
+	required group RequiredGroup = 320 {
+		optional string f1 = 1;
+		required string f2 = 2;
+		repeated string f3 = 3;
+	}
+	// Required default fields.
+	required bool      required_defaulted_bool     = 400 [default = true];
+	required int32     required_defaulted_int32    = 401 [default = -12345];
+	required sint32    required_defaulted_sint32   = 402 [default = -3200];
+	required uint32    required_defaulted_uint32   = 403 [default = 3200];
+	required int64     required_defaulted_int64    = 404 [default = -123456789];
+	required sint64    required_defaulted_sint64   = 405 [default = -6400];
+	required uint64    required_defaulted_uint64   = 406 [default = 6400];
+	required fixed32   required_defaulted_fixed32  = 407 [default = 320000];
+	required sfixed32  required_defaulted_sfixed32 = 408 [default = -320000];
+	required float     required_defaulted_float    = 409 [default = 3.14159];
+	required fixed64   required_defaulted_fixed64  = 410 [default = 640000];
+	required sfixed64  required_defaulted_sfixed64 = 411 [default = -640000];
+	required double    required_defaulted_double   = 412 [default = 3.14159265359];
+	required string    required_defaulted_string   = 413 [default = "hello, \"world!\"\n"];
+	required bytes     required_defaulted_bytes    = 414 [default = "dead\xde\xad\xbe\xefbeef"];
+
+	required ChildEnum   required_defaulted_child_enum   = 415 [default = ALPHA];
+	required SiblingEnum required_defaulted_sibling_enum = 416 [default = ALPHA];
+
+	// Repeated fields.
+	repeated bool     repeated_bool     = 500;
+	repeated int32    repeated_int32    = 501;
+	repeated sint32   repeated_sint32   = 502;
+	repeated uint32   repeated_uint32   = 503;
+	repeated int64    repeated_int64    = 504;
+	repeated sint64   repeated_sint64   = 505;
+	repeated uint64   repeated_uint64   = 506;
+	repeated fixed32  repeated_fixed32  = 507;
+	repeated sfixed32 repeated_sfixed32 = 508;
+	repeated float    repeated_float    = 509;
+	repeated fixed64  repeated_fixed64  = 510;
+	repeated sfixed64 repeated_sfixed64 = 511;
+	repeated double   repeated_double   = 512;
+	repeated string   repeated_string   = 513;
+	repeated bytes    repeated_bytes    = 514;
+
+	repeated ChildEnum      repeated_child_enum      = 515;
+	repeated ChildMessage   repeated_child_message   = 516;
+	repeated NamedGroup     repeated_named_group     = 517;
+	repeated SiblingEnum    repeated_sibling_enum    = 518;
+	repeated SiblingMessage repeated_sibling_message = 519;
+	repeated group RepeatedGroup = 520 {
+		optional string f1 = 1;
+		required string f2 = 2;
+		repeated string f3 = 3;
+	}
+
+	// Map fields.
+	map<bool, bool>     map_bool_bool     = 600;
+	map<bool, int32>    map_bool_int32    = 601;
+	map<bool, sint32>   map_bool_sint32   = 602;
+	map<bool, uint32>   map_bool_uint32   = 603;
+	map<bool, int64>    map_bool_int64    = 604;
+	map<bool, sint64>   map_bool_sint64   = 605;
+	map<bool, uint64>   map_bool_uint64   = 606;
+	map<bool, fixed32>  map_bool_fixed32  = 607;
+	map<bool, sfixed32> map_bool_sfixed32 = 608;
+	map<bool, float>    map_bool_float    = 609;
+	map<bool, fixed64>  map_bool_fixed64  = 610;
+	map<bool, sfixed64> map_bool_sfixed64 = 611;
+	map<bool, double>   map_bool_double   = 612;
+	map<bool, string>   map_bool_string   = 613;
+	map<bool, bytes>    map_bool_bytes    = 614;
+
+	map<bool, ChildEnum>      map_bool_child_enum      = 615;
+	map<bool, ChildMessage>   map_bool_child_message   = 616;
+	map<bool, NamedGroup>     map_bool_named_group     = 617;
+	map<bool, SiblingEnum>    map_bool_sibling_enum    = 618;
+	map<bool, SiblingMessage> map_bool_sibling_message = 619;
+
+	map<int32, bool>   map_int32_bool   = 620;
+	map<sint32, bool>  map_sint32_bool  = 621;
+	map<uint32, bool>  map_uint32_bool  = 622;
+	map<int64, bool>   map_int64_bool   = 623;
+	map<sint64, bool>  map_sint64_bool  = 624;
+	map<uint64, bool>  map_uint64_bool  = 625;
+	map<fixed32, bool> map_fixed32_bool = 626;
+	map<string, bool>  map_string_bool  = 627;
+
+	// Oneof fields.
+	oneof oneof_union {
+		bool     oneof_bool     = 700;
+		int32    oneof_int32    = 701;
+		sint32   oneof_sint32   = 702;
+		uint32   oneof_uint32   = 703;
+		int64    oneof_int64    = 704;
+		sint64   oneof_sint64   = 705;
+		uint64   oneof_uint64   = 706;
+		fixed32  oneof_fixed32  = 707;
+		sfixed32 oneof_sfixed32 = 708;
+		float    oneof_float    = 709;
+		fixed64  oneof_fixed64  = 710;
+		sfixed64 oneof_sfixed64 = 711;
+		double   oneof_double   = 712;
+		string   oneof_string   = 713;
+		bytes    oneof_bytes    = 714;
+
+		ChildEnum      oneof_child_enum      = 715;
+		ChildMessage   oneof_child_message   = 716;
+		NamedGroup     oneof_named_group     = 717;
+		SiblingEnum    oneof_sibling_enum    = 718;
+		SiblingMessage oneof_sibling_message = 719;
+		group OneofGroup = 720 {
+			optional string f1 = 1;
+			required string f2 = 2;
+			repeated string f3 = 3;
+		}
+
+		string oneof_string1 = 721;
+		string oneof_string2 = 722;
+		string oneof_string3 = 723;
+	}
+
+	// Oneof default fields.
+	oneof oneof_defaulted_union {
+		bool      oneof_defaulted_bool     = 800 [default = true];
+		int32     oneof_defaulted_int32    = 801 [default = -12345];
+		sint32    oneof_defaulted_sint32   = 802 [default = -3200];
+		uint32    oneof_defaulted_uint32   = 803 [default = 3200];
+		int64     oneof_defaulted_int64    = 804 [default = -123456789];
+		sint64    oneof_defaulted_sint64   = 805 [default = -6400];
+		uint64    oneof_defaulted_uint64   = 806 [default = 6400];
+		fixed32   oneof_defaulted_fixed32  = 807 [default = 320000];
+		sfixed32  oneof_defaulted_sfixed32 = 808 [default = -320000];
+		float     oneof_defaulted_float    = 809 [default = 3.14159];
+		fixed64   oneof_defaulted_fixed64  = 810 [default = 640000];
+		sfixed64  oneof_defaulted_sfixed64 = 811 [default = -640000];
+		double    oneof_defaulted_double   = 812 [default = 3.14159265359];
+		string    oneof_defaulted_string   = 813 [default = "hello, \"world!\"\n"];
+		bytes     oneof_defaulted_bytes    = 814 [default = "dead\xde\xad\xbe\xefbeef"];
+
+		ChildEnum   oneof_defaulted_child_enum   = 815 [default = ALPHA];
+		SiblingEnum oneof_defaulted_sibling_enum = 816 [default = ALPHA];
+	}
+
+	// Extension fields.
+	extend Message {
+		// Optional fields.
+		optional bool     extension_optional_bool     = 10000;
+		optional int32    extension_optional_int32    = 10001;
+		optional sint32   extension_optional_sint32   = 10002;
+		optional uint32   extension_optional_uint32   = 10003;
+		optional int64    extension_optional_int64    = 10004;
+		optional sint64   extension_optional_sint64   = 10005;
+		optional uint64   extension_optional_uint64   = 10006;
+		optional fixed32  extension_optional_fixed32  = 10007;
+		optional sfixed32 extension_optional_sfixed32 = 10008;
+		optional float    extension_optional_float    = 10009;
+		optional fixed64  extension_optional_fixed64  = 10010;
+		optional sfixed64 extension_optional_sfixed64 = 10011;
+		optional double   extension_optional_double   = 10012;
+		optional string   extension_optional_string   = 10013;
+		optional bytes    extension_optional_bytes    = 10014;
+
+		optional ChildEnum      extension_optional_child_enum      = 10015;
+		optional ChildMessage   extension_optional_child_message   = 10016;
+		optional NamedGroup     extension_optional_named_group     = 10017;
+		optional SiblingEnum    extension_optional_sibling_enum    = 10018;
+		optional SiblingMessage extension_optional_sibling_message = 10019;
+		optional group ExtensionOptionalGroup = 10020 {
+			optional string f1 = 1;
+			required string f2 = 2;
+			repeated string f3 = 3;
+		}
+
+		// Optional default fields.
+		optional bool      extension_defaulted_bool     = 20000 [default = true];
+		optional int32     extension_defaulted_int32    = 20001 [default = -12345];
+		optional sint32    extension_defaulted_sint32   = 20002 [default = -3200];
+		optional uint32    extension_defaulted_uint32   = 20003 [default = 3200];
+		optional int64     extension_defaulted_int64    = 20004 [default = -123456789];
+		optional sint64    extension_defaulted_sint64   = 20005 [default = -6400];
+		optional uint64    extension_defaulted_uint64   = 20006 [default = 6400];
+		optional fixed32   extension_defaulted_fixed32  = 20007 [default = 320000];
+		optional sfixed32  extension_defaulted_sfixed32 = 20008 [default = -320000];
+		optional float     extension_defaulted_float    = 20009 [default = 3.14159];
+		optional fixed64   extension_defaulted_fixed64  = 20010 [default = 640000];
+		optional sfixed64  extension_defaulted_sfixed64 = 20011 [default = -640000];
+		optional double    extension_defaulted_double   = 20012 [default = 3.14159265359];
+		optional string    extension_defaulted_string   = 20013 [default = "hello, \"world!\"\n"];
+		optional bytes     extension_defaulted_bytes    = 20014 [default = "dead\xde\xad\xbe\xefbeef"];
+
+		optional ChildEnum   extension_defaulted_child_enum   = 20015 [default = ALPHA];
+		optional SiblingEnum extension_defaulted_sibling_enum = 20016 [default = ALPHA];
+
+		// Repeated fields.
+		repeated bool     extension_repeated_bool     = 30000;
+		repeated int32    extension_repeated_int32    = 30001;
+		repeated sint32   extension_repeated_sint32   = 30002;
+		repeated uint32   extension_repeated_uint32   = 30003;
+		repeated int64    extension_repeated_int64    = 30004;
+		repeated sint64   extension_repeated_sint64   = 30005;
+		repeated uint64   extension_repeated_uint64   = 30006;
+		repeated fixed32  extension_repeated_fixed32  = 30007;
+		repeated sfixed32 extension_repeated_sfixed32 = 30008;
+		repeated float    extension_repeated_float    = 30009;
+		repeated fixed64  extension_repeated_fixed64  = 30010;
+		repeated sfixed64 extension_repeated_sfixed64 = 30011;
+		repeated double   extension_repeated_double   = 30012;
+		repeated string   extension_repeated_string   = 30013;
+		repeated bytes    extension_repeated_bytes    = 30014;
+
+		repeated ChildEnum      extension_repeated_child_enum      = 30015;
+		repeated ChildMessage   extension_repeated_child_message   = 30016;
+		repeated NamedGroup     extension_repeated_named_group     = 30017;
+		repeated SiblingEnum    extension_repeated_sibling_enum    = 30018;
+		repeated SiblingMessage extension_repeated_sibling_message = 30019;
+		repeated group ExtensionRepeatedGroup = 30020 {
+			optional string f1 = 1;
+			required string f2 = 2;
+			repeated string f3 = 3;
+		}
+	}
+
+	extensions 10000 to max;
+}

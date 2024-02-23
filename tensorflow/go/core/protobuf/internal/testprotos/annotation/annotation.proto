@@ -1,0 +1,19 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package go_annotation;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/annotation";
+
+extend google.protobuf.MessageOptions {
+  // Setting this on a message enables tracking of which fields in the message
+  // a specific binary might access. As a consequence, it also disables the use
+  // of the message accessor methods to satisfy interfaces: they can only be
+  // called directly.
+  optional bool track_field_use = 37383685;
+}

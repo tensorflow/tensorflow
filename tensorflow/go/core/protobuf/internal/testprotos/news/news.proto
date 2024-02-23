@@ -1,0 +1,38 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package google.golang.org;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/news";
+
+message Article {
+	enum Status {
+		DRAFT = 0;
+		PUBLISHED = 1;
+		REVOKED = 2;
+	}
+
+	string author = 1;
+	google.protobuf.Timestamp date = 2;
+	string title = 3;
+	string content = 4;
+	Status status = 8;
+	repeated string tags = 7;
+	repeated google.protobuf.Any attachments = 6;
+}
+
+message BinaryAttachment {
+	string name = 1;
+	bytes data = 2;
+}
+
+message KeyValueAttachment {
+	string name = 1;
+	map<string, string> data = 2;
+}

@@ -1,0 +1,28 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.benchmarks.microt;
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/benchmarks/micro";
+
+message SixteenRequired {
+  required int32 f1 = 1;
+  required int32 f2 = 2;
+  required int32 f3 = 3;
+  required int32 f4 = 4;
+  required int32 f5 = 5;
+  required int32 f6 = 6;
+  required int32 f7 = 7;
+  required int32 f8 = 8;
+  required int32 f9 = 9;
+  required int32 f10 = 10;
+  required int32 f11 = 11;
+  required int32 f12 = 12;
+  required int32 f13 = 13;
+  required int32 f14 = 14;
+  required int32 f15 = 15;
+  required int32 f16 = 16;
+}

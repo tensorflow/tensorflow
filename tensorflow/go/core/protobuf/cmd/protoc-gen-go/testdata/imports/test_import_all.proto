@@ -1,0 +1,29 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package test;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/imports";
+
+// test_a_1/m*.proto are in the same Go package and proto package.
+// test_a_*/*.proto are in different Go packages, but the same proto package.
+// test_b_1/*.proto are in the same Go package, but different proto packages.
+// fmt/m.proto has a package name which conflicts with "fmt".
+import "cmd/protoc-gen-go/testdata/imports/test_a_1/m1.proto";
+import "cmd/protoc-gen-go/testdata/imports/test_a_1/m2.proto";
+import "cmd/protoc-gen-go/testdata/imports/test_a_2/m3.proto"; // unused in this file
+import "cmd/protoc-gen-go/testdata/imports/test_a_2/m4.proto"; // unused in this file
+import "cmd/protoc-gen-go/testdata/imports/test_b_1/m1.proto";
+import "cmd/protoc-gen-go/testdata/imports/test_b_1/m2.proto";
+import "cmd/protoc-gen-go/testdata/imports/fmt/m.proto";
+
+message All {
+  test.a.M1 am1 = 1;
+  test.a.M2 am2 = 2;
+  test.b.part1.M1 bm1 = 5;
+  test.b.part2.M2 bm2 = 6;
+  fmt.M fmt = 7;
+}

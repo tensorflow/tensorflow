@@ -1,0 +1,19 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.protoc.import_public;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/import_public";
+
+import "cmd/protoc-gen-go/testdata/import_public/a.proto";
+
+message UsingPublicImport {
+  // Local is declared in b.proto, which is a public import of a.proto.
+  optional Local local = 1;
+  // Sub2Message is declared in sub2/a.proto, which is a public import of
+  // sub/a.proto, which is a public import of a.proto.
+  optional sub2.Sub2Message sub2 = 2; // declared in sub2/a.proto
+}

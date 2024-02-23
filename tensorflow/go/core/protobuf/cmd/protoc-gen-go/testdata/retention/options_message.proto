@@ -1,0 +1,30 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package testretention;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/retention";
+
+// Retention attributes set on fields nested within a message
+message OptionsMessage {
+  optional int32 plain_field = 1;
+  optional int32 runtime_retention_field = 2 [retention = RETENTION_RUNTIME];
+  optional int32 source_retention_field = 3 [retention = RETENTION_SOURCE];
+}
+
+extend google.protobuf.FileOptions {
+  optional int32 imported_plain_option = 511807920;
+  optional int32 imported_runtime_retention_option = 512484074
+      [retention = RETENTION_RUNTIME];
+  optional int32 imported_source_retention_option = 512645287
+      [retention = RETENTION_SOURCE];
+}
+
+extend google.protobuf.FileOptions {
+  optional OptionsMessage file_option = 504871168;
+}

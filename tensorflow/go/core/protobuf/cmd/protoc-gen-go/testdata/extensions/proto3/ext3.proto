@@ -1,0 +1,53 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+package goproto.protoc.extension.proto3;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/extensions/proto3";
+
+message Message {}
+enum Enum { ZERO = 0; }
+
+// The only types proto3 is allowed to extend are descriptor options.
+extend google.protobuf.MessageOptions {
+  bool     extension_bool     = 1001;
+  Enum     extension_enum     = 1002;
+  int32    extension_int32    = 1003;
+  sint32   extension_sint32   = 1004;
+  uint32   extension_uint32   = 1005;
+  int64    extension_int64    = 1006;
+  sint64   extension_sint64   = 1007;
+  uint64   extension_uint64   = 1008;
+  sfixed32 extension_sfixed32 = 1009;
+  fixed32  extension_fixed32  = 1010;
+  float    extension_float    = 1011;
+  sfixed64 extension_sfixed64 = 1012;
+  fixed64  extension_fixed64  = 1013;
+  double   extension_double   = 1014;
+  string   extension_string   = 1015;
+  bytes    extension_bytes    = 1016;
+  Message  extension_Message  = 1017;
+
+  repeated bool     repeated_extension_bool     = 2001;
+  repeated Enum     repeated_extension_enum     = 2002;
+  repeated int32    repeated_extension_int32    = 2003;
+  repeated sint32   repeated_extension_sint32   = 2004;
+  repeated uint32   repeated_extension_uint32   = 2005;
+  repeated int64    repeated_extension_int64    = 2006;
+  repeated sint64   repeated_extension_sint64   = 2007;
+  repeated uint64   repeated_extension_uint64   = 2008;
+  repeated sfixed32 repeated_extension_sfixed32 = 2009;
+  repeated fixed32  repeated_extension_fixed32  = 2010;
+  repeated float    repeated_extension_float    = 2011;
+  repeated sfixed64 repeated_extension_sfixed64 = 2012;
+  repeated fixed64  repeated_extension_fixed64  = 2013;
+  repeated double   repeated_extension_double   = 2014;
+  repeated string   repeated_extension_string   = 2015;
+  repeated bytes    repeated_extension_bytes    = 2016;
+  repeated Message  repeated_extension_Message  = 2017;
+}

@@ -1,0 +1,133 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package goproto.proto.test3;
+
+import "internal/testprotos/test3/test_import.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/test3";
+
+message TestAllTypes {
+  message NestedMessage {
+    int32 a = 1;
+    TestAllTypes corecursive = 2;
+  }
+
+  enum NestedEnum {
+    FOO = 0;
+    BAR = 1;
+    BAZ = 2;
+    NEG = -1;  // Intentionally negative.
+  }
+
+  int32         singular_int32    = 81;
+  int64         singular_int64    = 82;
+  uint32        singular_uint32   = 83;
+  uint64        singular_uint64   = 84;
+  sint32        singular_sint32   = 85;
+  sint64        singular_sint64   = 86;
+  fixed32       singular_fixed32  = 87;
+  fixed64       singular_fixed64  = 88;
+  sfixed32      singular_sfixed32 = 89;
+  sfixed64      singular_sfixed64 = 90;
+  float         singular_float    = 91;
+  double        singular_double   = 92;
+  bool          singular_bool     = 93;
+  string        singular_string   = 94;
+  bytes         singular_bytes    = 95;
+  NestedMessage  singular_nested_message  = 98;
+  ForeignMessage singular_foreign_message = 99;
+  ImportMessage  singular_import_message  = 100;
+  NestedEnum     singular_nested_enum     = 101;
+  ForeignEnum    singular_foreign_enum    = 102;
+  ImportEnum     singular_import_enum     = 103;
+
+  optional int32         optional_int32    =  1;
+  optional int64         optional_int64    =  2;
+  optional uint32        optional_uint32   =  3;
+  optional uint64        optional_uint64   =  4;
+  optional sint32        optional_sint32   =  5;
+  optional sint64        optional_sint64   =  6;
+  optional fixed32       optional_fixed32  =  7;
+  optional fixed64       optional_fixed64  =  8;
+  optional sfixed32      optional_sfixed32 =  9;
+  optional sfixed64      optional_sfixed64 = 10;
+  optional float         optional_float    = 11;
+  optional double        optional_double   = 12;
+  optional bool          optional_bool     = 13;
+  optional string        optional_string   = 14;
+  optional bytes         optional_bytes    = 15;
+  optional NestedMessage  optional_nested_message  = 18;
+  optional ForeignMessage optional_foreign_message = 19;
+  optional ImportMessage  optional_import_message  = 20;
+  optional NestedEnum     optional_nested_enum     = 21;
+  optional ForeignEnum    optional_foreign_enum    = 22;
+  optional ImportEnum     optional_import_enum     = 23;
+
+  repeated int32         repeated_int32    = 31;
+  repeated int64         repeated_int64    = 32;
+  repeated uint32        repeated_uint32   = 33;
+  repeated uint64        repeated_uint64   = 34;
+  repeated sint32        repeated_sint32   = 35;
+  repeated sint64        repeated_sint64   = 36;
+  repeated fixed32       repeated_fixed32  = 37;
+  repeated fixed64       repeated_fixed64  = 38;
+  repeated sfixed32      repeated_sfixed32 = 39;
+  repeated sfixed64      repeated_sfixed64 = 40;
+  repeated float         repeated_float    = 41;
+  repeated double        repeated_double   = 42;
+  repeated bool          repeated_bool     = 43;
+  repeated string        repeated_string   = 44;
+  repeated bytes         repeated_bytes    = 45;
+  repeated NestedMessage  repeated_nested_message  = 48;
+  repeated ForeignMessage repeated_foreign_message = 49;
+  repeated ImportMessage  repeated_importmessage   = 50;
+  repeated NestedEnum     repeated_nested_enum     = 51;
+  repeated ForeignEnum    repeated_foreign_enum    = 52;
+  repeated ImportEnum     repeated_importenum      = 53;
+
+  map <   int32, int32>         map_int32_int32           = 56;
+  map <   int64, int64>         map_int64_int64           = 57;
+  map <  uint32, uint32>        map_uint32_uint32         = 58;
+  map <  uint64, uint64>        map_uint64_uint64         = 59;
+  map <  sint32, sint32>        map_sint32_sint32         = 60;
+  map <  sint64, sint64>        map_sint64_sint64         = 61;
+  map < fixed32, fixed32>       map_fixed32_fixed32       = 62;
+  map < fixed64, fixed64>       map_fixed64_fixed64       = 63;
+  map <sfixed32, sfixed32>      map_sfixed32_sfixed32     = 64;
+  map <sfixed64, sfixed64>      map_sfixed64_sfixed64     = 65;
+  map <   int32, float>         map_int32_float           = 66;
+  map <   int32, double>        map_int32_double          = 67;
+  map <    bool, bool>          map_bool_bool             = 68;
+  map <  string, string>        map_string_string         = 69;
+  map <  string, bytes>         map_string_bytes          = 70;
+  map <  string, NestedMessage> map_string_nested_message = 71;
+  map <  string, NestedEnum>    map_string_nested_enum    = 73;
+
+  oneof oneof_field {
+    uint32        oneof_uint32         = 111;
+    NestedMessage oneof_nested_message = 112;
+    string        oneof_string         = 113;
+    bytes         oneof_bytes          = 114;
+    bool          oneof_bool           = 115;
+    uint64        oneof_uint64         = 116;
+    float         oneof_float          = 117;
+    double        oneof_double         = 118;
+    NestedEnum    oneof_enum           = 119;
+  }
+}
+
+message ForeignMessage {
+  int32 c = 1;
+  int32 d = 2;
+}
+
+enum ForeignEnum {
+  FOREIGN_ZERO = 0;
+  FOREIGN_FOO = 4;
+  FOREIGN_BAR = 5;
+  FOREIGN_BAZ = 6;
+}

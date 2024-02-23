@@ -1,0 +1,19 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.irregular;
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/irregular";
+
+// IrregularMessage is a message with an implementation that does not match the
+// usual structure of a generated message.
+message IrregularMessage {
+  optional string s = 1;
+}
+
+// AberrantMessage is a message with an implementation with a non-struct underlying type.
+message AberrantMessage {
+}

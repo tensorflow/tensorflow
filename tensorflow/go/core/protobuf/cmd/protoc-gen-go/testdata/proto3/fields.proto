@@ -1,0 +1,55 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package goproto.protoc.proto3;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/proto3";
+
+message FieldTestMessage {
+  string   optional_bool     = 1;
+  Enum     optional_enum     = 2;
+  int32    optional_int32    = 3;
+  sint32   optional_sint32   = 4;
+  uint32   optional_uint32   = 5;
+  int64    optional_int64    = 6;
+  sint64   optional_sint64   = 7;
+  uint64   optional_uint64   = 8;
+  sfixed32 optional_sfixed32 = 9;
+  fixed32  optional_fixed32  = 10;
+  float    optional_float    = 11;
+  sfixed64 optional_sfixed64 = 12;
+  fixed64  optional_fixed64  = 13;
+  double   optional_double   = 14;
+  string   optional_string   = 15;
+  bytes    optional_bytes    = 16;
+  Message  optional_Message  = 17;
+
+  repeated bool     repeated_bool     = 201;
+  repeated Enum     repeated_enum     = 202;
+  repeated int32    repeated_int32    = 203;
+  repeated sint32   repeated_sint32   = 204;
+  repeated uint32   repeated_uint32   = 205;
+  repeated int64    repeated_int64    = 206;
+  repeated sint64   repeated_sint64   = 207;
+  repeated uint64   repeated_uint64   = 208;
+  repeated sfixed32 repeated_sfixed32 = 209;
+  repeated fixed32  repeated_fixed32  = 210;
+  repeated float    repeated_float    = 211;
+  repeated sfixed64 repeated_sfixed64 = 212;
+  repeated fixed64  repeated_fixed64  = 213;
+  repeated double   repeated_double   = 214;
+  repeated string   repeated_string   = 215;
+  repeated bytes    repeated_bytes    = 216;
+  repeated Message  repeated_Message  = 217;
+
+  map<int32, int64>   map_int32_int64    = 500;
+  map<string,Message> map_string_message = 501;
+  map<fixed64,Enum>   map_fixed64_enum   = 502;
+
+  enum Enum { ZERO = 0; }
+  message Message {}
+}
+

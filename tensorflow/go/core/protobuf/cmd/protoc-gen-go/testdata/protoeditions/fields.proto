@@ -1,0 +1,152 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+edition = "2023";
+
+package goproto.protoc.protoeditions;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/protoeditions";
+
+message FieldTestMessage {
+  bool optional_bool = 1;
+  Enum optional_enum = 2;
+  int32 optional_int32 = 3;
+  sint32 optional_sint32 = 4;
+  uint32 optional_uint32 = 5;
+  int64 optional_int64 = 6;
+  sint64 optional_sint64 = 7;
+  uint64 optional_uint64 = 8;
+  sfixed32 optional_sfixed32 = 9;
+  fixed32 optional_fixed32 = 10;
+  float optional_float = 11;
+  sfixed64 optional_sfixed64 = 12;
+  fixed64 optional_fixed64 = 13;
+  double optional_double = 14;
+  string optional_string = 15;
+  bytes optional_bytes = 16;
+  Message optional_Message = 17;
+  message OptionalGroup {
+    string optionalgroup = 19;
+  }
+  OptionalGroup optionalgroup = 18 [features.message_encoding = DELIMITED];
+
+  bool required_bool = 101 [features.field_presence = LEGACY_REQUIRED];
+  Enum required_enum = 102 [features.field_presence = LEGACY_REQUIRED];
+  int32 required_int32 = 103 [features.field_presence = LEGACY_REQUIRED];
+  sint32 required_sint32 = 104 [features.field_presence = LEGACY_REQUIRED];
+  uint32 required_uint32 = 105 [features.field_presence = LEGACY_REQUIRED];
+  int64 required_int64 = 106 [features.field_presence = LEGACY_REQUIRED];
+  sint64 required_sint64 = 107 [features.field_presence = LEGACY_REQUIRED];
+  uint64 required_uint64 = 108 [features.field_presence = LEGACY_REQUIRED];
+  sfixed32 required_sfixed32 = 109 [features.field_presence = LEGACY_REQUIRED];
+  fixed32 required_fixed32 = 110 [features.field_presence = LEGACY_REQUIRED];
+  float required_float = 111 [features.field_presence = LEGACY_REQUIRED];
+  sfixed64 required_sfixed64 = 112 [features.field_presence = LEGACY_REQUIRED];
+  fixed64 required_fixed64 = 113 [features.field_presence = LEGACY_REQUIRED];
+  double required_double = 114 [features.field_presence = LEGACY_REQUIRED];
+  string required_string = 115 [features.field_presence = LEGACY_REQUIRED];
+  bytes required_bytes = 116 [features.field_presence = LEGACY_REQUIRED];
+  Message required_Message = 117 [features.field_presence = LEGACY_REQUIRED];
+  message RequiredGroup {
+    string required_group = 119 [features.field_presence = LEGACY_REQUIRED];
+  }
+  RequiredGroup requiredgroup = 118 [
+    features.message_encoding = DELIMITED,
+    features.field_presence = LEGACY_REQUIRED
+  ];
+
+  repeated bool repeated_bool = 201;
+  repeated Enum repeated_enum = 202;
+  repeated int32 repeated_int32 = 203;
+  repeated sint32 repeated_sint32 = 204;
+  repeated uint32 repeated_uint32 = 205;
+  repeated int64 repeated_int64 = 206;
+  repeated sint64 repeated_sint64 = 207;
+  repeated uint64 repeated_uint64 = 208;
+  repeated sfixed32 repeated_sfixed32 = 209;
+  repeated fixed32 repeated_fixed32 = 210;
+  repeated float repeated_float = 211;
+  repeated sfixed64 repeated_sfixed64 = 212;
+  repeated fixed64 repeated_fixed64 = 213;
+  repeated double repeated_double = 214;
+  repeated string repeated_string = 215;
+  repeated bytes repeated_bytes = 216;
+  repeated Message repeated_Message = 217;
+  message RepeatedGroup {
+    repeated string repeated_group = 219;
+  }
+  repeated RepeatedGroup repeatedgroup = 218
+      [features.message_encoding = DELIMITED];
+
+  bool default_bool = 301 [default = true];
+  Enum default_enum = 302 [default = ONE];
+  int32 default_int32 = 303 [default = 1];
+  sint32 default_sint32 = 304 [default = 1];
+  uint32 default_uint32 = 305 [default = 1];
+  int64 default_int64 = 306 [default = 1];
+  sint64 default_sint64 = 307 [default = 1];
+  uint64 default_uint64 = 308 [default = 1];
+  sfixed32 default_sfixed32 = 309 [default = 1];
+  fixed32 default_fixed32 = 310 [default = 1];
+  float default_float = 311 [default = 3.14];
+  sfixed64 default_sfixed64 = 312 [default = 1];
+  fixed64 default_fixed64 = 313 [default = 1];
+  double default_double = 314 [default = 3.1415];
+  string default_string = 315 [default = "hello,\"world!\"\n"];
+  bytes default_bytes = 316 [default = "hello,\xde\xad\xbe\xef"];
+
+  string default_zero_string = 350 [default = ""];
+  bytes default_zero_bytes = 351 [default = ""];
+
+  float default_float_neginf = 400 [default = -inf];
+  float default_float_posinf = 401 [default = inf];
+  float default_float_nan = 402 [default = nan];
+  double default_double_neginf = 403 [default = -inf];
+  double default_double_posinf = 404 [default = inf];
+  double default_double_nan = 405 [default = nan];
+
+  map<int32, int64> map_int32_int64 = 500;
+  map<string, Message> map_string_message = 501;
+  map<fixed64, Enum> map_fixed64_enum = 502;
+
+  message OneofGroup {
+    string oneof_group_field = 619;
+  }
+
+  oneof oneof_field {
+    bool oneof_bool = 601;
+    Enum oneof_enum = 602;
+    int32 oneof_int32 = 603;
+    sint32 oneof_sint32 = 604;
+    uint32 oneof_uint32 = 605;
+    int64 oneof_int64 = 606;
+    sint64 oneof_sint64 = 607;
+    uint64 oneof_uint64 = 608;
+    sfixed32 oneof_sfixed32 = 609;
+    fixed32 oneof_fixed32 = 610;
+    float oneof_float = 611;
+    sfixed64 oneof_sfixed64 = 612;
+    fixed64 oneof_fixed64 = 613;
+    double oneof_double = 614;
+    string oneof_string = 615;
+    bytes oneof_bytes = 616;
+    Message oneof_Message = 617;
+    OneofGroup oneofgroup = 618 [features.message_encoding = DELIMITED];
+    int32 oneof_largest_tag = 536870911;
+  }
+
+  oneof oneof_two {
+    int32 oneof_two_1 = 700;
+    int64 oneof_two_2 = 701;
+  }
+
+  enum Enum {
+    ZERO = 0;
+    ONE = 1;
+  }
+  message Message {}
+
+  reserved 10000, 10001;
+  reserved TEN_THOUSAND, TEN_THOUSAND_AND_ONE;
+}

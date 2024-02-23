@@ -1,0 +1,61 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+// COMMENT: package goproto.protoc.comments;
+package goproto.protoc.comments;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/comments";
+
+// COMMENT: Enum1.Leading
+enum Enum1 {
+  // COMMENT: FOO.Leading
+  FOO = 0; // COMMENT: FOO.InlineTrailing
+  // COMMENT: BAR.Leading
+  BAR = 1;
+  // COMMENT: BAR.Trailing1
+  // COMMENT: BAR.Trailing2
+
+  // COMMENT: Enum1.EndBody
+}
+
+// COMMENT: Message1.Leading
+message Message1 {
+  // COMMENT: Message1A.Leading
+  message Message1A {
+  } // COMMENT: Message1A.Trailing
+
+  // COMMENT: Message1B
+  message Message1B {
+  }
+
+  // COMMENT: Field1A.Leading
+  optional string Field1A = 1; // COMMENT: Field1A.Trailing
+
+  // COMMENT: Oneof1A.Leading
+  oneof Oneof1a {
+    // COMMENT: Oneof1AField1.Leading
+    string Oneof1AField1 = 2; // COMMENT: Oneof1AField1.Trailing
+  } // COMMENT: Oneof1A.Trailing
+
+  extensions 100 to max;
+} // COMMENT: Message1.Trailing
+
+// COMMENT: Extend
+extend Message1 {
+  // COMMENT: Extension.Leading
+  optional Message1 extension = 100; // COMMENT: Extension.Trailing
+}
+
+// COMMENT: Message2
+message Message2 {
+  // COMMENT: Message2A
+  message Message2A {
+  }
+
+  // COMMENT: Message2B
+  message Message2B {
+  }
+}

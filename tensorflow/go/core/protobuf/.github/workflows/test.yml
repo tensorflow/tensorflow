@@ -1,0 +1,33 @@
+on: [push]
+name: Test
+jobs:
+  test:
+    strategy:
+      matrix:
+        # This is just a version to compile the integration_test.go; see
+        # golangVersions in that file for the list of actual Go versions used.
+        go-version: [1.x]
+        os: [ubuntu-latest] # TODO: Add [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      run: sudo apt-get -y install autoconf automake libtool curl make g++ unzip
+    - name: Checkout code
+      uses: actions/checkout@v3
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          .cache
+          ~/.cache/bazel
+        key: ${{ runner.os }}-${{ hashFiles('integration_test.go') }}
+    - name: Test
+      env:
+        # Protobuf 25 does not yet support Bazel 7
+        USE_BAZEL_VERSION: latest-1
+      run: go test -run='^TestIntegration$' -v -timeout=60m -count=1 -failfast "$@"

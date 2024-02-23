@@ -1,0 +1,108 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+import "cmd/protoc-gen-go/testdata/extensions/base/base.proto";
+import "cmd/protoc-gen-go/testdata/extensions/extra/extra.proto";
+
+package goproto.protoc.extension.ext;
+
+option go_package = "google.golang.org/protobuf/cmd/protoc-gen-go/testdata/extensions/ext";
+
+message Message {
+  optional bytes data = 1;
+
+  message M {}
+}
+
+enum Enum {
+  ZERO = 0;
+}
+
+// Extend with various types.
+extend goproto.protoc.extension.base.BaseMessage {
+  optional bool      extension_bool     = 101;
+  optional Enum      extension_enum     = 102;
+  optional int32     extension_int32    = 103;
+  optional sint32    extension_sint32   = 104;
+  optional uint32    extension_uint32   = 105;
+  optional int64     extension_int64    = 106;
+  optional sint64    extension_sint64   = 107;
+  optional uint64    extension_uint64   = 108;
+  optional sfixed32  extension_sfixed32 = 109;
+  optional fixed32   extension_fixed32  = 110;
+  optional float     extension_float    = 111;
+  optional sfixed64  extension_sfixed64 = 112;
+  optional fixed64   extension_fixed64  = 113;
+  optional double    extension_double   = 114;
+  optional string    extension_string   = 115;
+  optional bytes     extension_bytes    = 116;
+  optional Message   extension_Message  = 117;
+  optional Message.M extension_MessageM = 118;
+  optional group ExtensionGroup = 119 {
+    optional string extension_group = 120;
+  }
+}
+
+// Extend with a foreign message.
+extend goproto.protoc.extension.base.BaseMessage {
+  optional goproto.protoc.extension.extra.ExtraMessage extra_message = 9;
+}
+
+// Extend in the scope of another type.
+message ExtendingMessage {
+  extend goproto.protoc.extension.base.BaseMessage {
+    optional string extending_message_string = 200;
+    optional ExtendingMessageSubmessage extending_message_submessage = 201;
+  }
+  message ExtendingMessageSubmessage {}
+}
+
+// Extend with repeated fields.
+extend goproto.protoc.extension.base.BaseMessage {
+  repeated bool     repeated_x_bool     = 301;
+  repeated Enum     repeated_x_enum     = 302;
+  repeated int32    repeated_x_int32    = 303;
+  repeated sint32   repeated_x_sint32   = 304;
+  repeated uint32   repeated_x_uint32   = 305;
+  repeated int64    repeated_x_int64    = 306;
+  repeated sint64   repeated_x_sint64   = 307;
+  repeated uint64   repeated_x_uint64   = 308;
+  repeated sfixed32 repeated_x_sfixed32 = 309;
+  repeated fixed32  repeated_x_fixed32  = 310;
+  repeated float    repeated_x_float    = 311;
+  repeated sfixed64 repeated_x_sfixed64 = 312;
+  repeated fixed64  repeated_x_fixed64  = 313;
+  repeated double   repeated_x_double   = 314;
+  repeated string   repeated_x_string   = 315;
+  repeated bytes    repeated_x_bytes    = 316;
+  repeated Message  repeated_x_Message  = 317;
+  repeated group RepeatedGroup = 318 {
+    repeated string repeated_x_group = 319;
+  }
+}
+
+// An extension of an extension.
+message Extendable {
+  extensions 1 to max;
+}
+extend goproto.protoc.extension.base.BaseMessage {
+  optional Extendable extendable_field = 400;
+}
+extend Extendable {
+  optional string extendable_string_field = 1;
+}
+
+// Message set wire format.
+message MessageSetWireFormatExtension {
+  extend goproto.protoc.extension.base.MessageSetWireFormatMessage {
+    optional MessageSetWireFormatExtension message_set_extension = 100;
+  }
+}
+
+// Message set extension, not nested in a message.
+extend goproto.protoc.extension.base.MessageSetWireFormatMessage {
+  optional MessageSetWireFormatExtension message_set_extension = 101;
+}

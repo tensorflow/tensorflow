@@ -1,0 +1,50 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package goproto.proto.test3;
+
+import "google/protobuf/descriptor.proto";
+import "internal/testprotos/test3/test.proto";
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/test3";
+
+extend google.protobuf.MessageOptions {
+  int32         optional_int32    = 1001;
+  int64         optional_int64    = 1002;
+  uint32        optional_uint32   = 1003;
+  uint64        optional_uint64   = 1004;
+  sint32        optional_sint32   = 1005;
+  sint64        optional_sint64   = 1006;
+  fixed32       optional_fixed32  = 1007;
+  fixed64       optional_fixed64  = 1008;
+  sfixed32      optional_sfixed32 = 1009;
+  sfixed64      optional_sfixed64 = 1010;
+  float         optional_float    = 1011;
+  double        optional_double   = 1012;
+  bool          optional_bool     = 1013;
+  string        optional_string   = 1014;
+  bytes         optional_bytes    = 1015;
+  ForeignMessage optional_foreign_message = 1016;
+  ForeignEnum    optional_foreign_enum    = 1017;
+
+  optional int32         optional_optional_int32    = 2001;
+  optional int64         optional_optional_int64    = 2002;
+  optional uint32        optional_optional_uint32   = 2003;
+  optional uint64        optional_optional_uint64   = 2004;
+  optional sint32        optional_optional_sint32   = 2005;
+  optional sint64        optional_optional_sint64   = 2006;
+  optional fixed32       optional_optional_fixed32  = 2007;
+  optional fixed64       optional_optional_fixed64  = 2008;
+  optional sfixed32      optional_optional_sfixed32 = 2009;
+  optional sfixed64      optional_optional_sfixed64 = 2010;
+  optional float         optional_optional_float    = 2011;
+  optional double        optional_optional_double   = 2012;
+  optional bool          optional_optional_bool     = 2013;
+  optional string        optional_optional_string   = 2014;
+  optional bytes         optional_optional_bytes    = 2015;
+  optional ForeignMessage optional_optional_foreign_message = 2016;
+  optional ForeignEnum    optional_optional_foreign_enum    = 2017;
+}

@@ -1,0 +1,39 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto2";
+
+package goproto.proto.messageset;
+
+option go_package = "google.golang.org/protobuf/internal/testprotos/messageset/msetextpb";
+
+import "internal/testprotos/messageset/messagesetpb/message_set.proto";
+
+message Ext1 {
+  extend MessageSet {
+    optional Ext1 message_set_extension = 1000;
+  }
+  optional int32 ext1_field1 = 1;
+  optional int32 ext1_field2 = 2;
+}
+
+message Ext2 {
+  extend MessageSet {
+    optional Ext2 message_set_extension = 1001;
+  }
+  optional int32 ext2_field1 = 1;
+}
+
+message ExtRequired {
+  extend MessageSet {
+    optional ExtRequired message_set_extension = 1002;
+  }
+  required int32 required_field1 = 1;
+}
+
+message ExtLargeNumber {
+  extend MessageSet {
+    optional ExtLargeNumber message_set_extension = 536870912; // 1<<29
+  }
+}
