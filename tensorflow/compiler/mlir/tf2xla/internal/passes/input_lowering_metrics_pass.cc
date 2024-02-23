@@ -15,8 +15,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -24,8 +29,38 @@ namespace internal {
 
 namespace {
 
+using llvm::DenseSet;
+using mlir::Operation;
+using mlir::TypeID;
+using mlir::WalkResult;
+
 #define GEN_PASS_DEF_INPUTLOWERINGMETRICSPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/lowering_passes.h.inc"
+
+auto* dynamism_op_counter = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/api/v2/dynamism_op_counter",
+    "Counts how many ops are dynamic", "op_name");
+
+auto* dynamism_function_counter = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter",
+    "Counts how many functions are dynamic", "has_dynamism");
+
+constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
+constexpr char kDynamicFunctionName[] = "kDynamicFunction";
+
+// Returns ops that should use MLIR legalization.
+// All other ops not in this list should use XlaOpKernel.
+const llvm::DenseSet<mlir::TypeID>& DynamicTensorflowOps() {
+  // The static variable is a pointer in order to avoid destruction upon thread
+  // termination.
+  static const llvm::DenseSet<mlir::TypeID>* ops =
+      new llvm::DenseSet<mlir::TypeID>{
+          TypeID::get<mlir::TF::UniqueOp>(),
+          TypeID::get<mlir::TF::WhereOp>(),
+          TypeID::get<mlir::TF::XlaSetDynamicDimensionSizeOp>(),
+      };
+  return *ops;
+}
 
 class InputMetricsLoweringPass
     : public impl::InputLoweringMetricsPassBase<InputMetricsLoweringPass> {
@@ -33,7 +68,29 @@ class InputMetricsLoweringPass
   void runOnOperation() override;
 };
 
-void InputMetricsLoweringPass::runOnOperation() {}
+void InputMetricsLoweringPass::runOnOperation() {
+  bool has_dynamic_op = false;
+  Operation* func_op = getOperation();
+
+  func_op->walk([&](Operation* op) {
+    auto abstractOp = op->getRegisteredInfo();
+    if (!abstractOp) return WalkResult::advance();
+
+    if (DynamicTensorflowOps().contains(abstractOp->getTypeID())) {
+      has_dynamic_op = true;
+      dynamism_op_counter->GetCell(op->getName().getStringRef().str())
+          ->IncrementBy(1);
+    }
+
+    return WalkResult::advance();
+  });
+
+  if (has_dynamic_op) {
+    dynamism_function_counter->GetCell(kDynamicFunctionName)->IncrementBy(1);
+  } else {
+    dynamism_function_counter->GetCell(kNotDynamicFunctionName)->IncrementBy(1);
+  }
+}
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

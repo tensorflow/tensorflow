@@ -482,9 +482,13 @@ cc_library(
     ],
     deps = [
         ":lowering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -494,6 +498,7 @@ tf_cc_test(
     deps = [
         ":lowering_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

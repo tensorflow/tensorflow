@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/lowering_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -33,9 +35,17 @@ namespace internal {
 
 namespace {
 
-using mlir::LogicalResult;
-using mlir::ModuleOp;
-using mlir::mhlo::test::GetMlirModuleFromString;
+using ::mlir::LogicalResult;
+using ::mlir::ModuleOp;
+using ::mlir::mhlo::test::GetMlirModuleFromString;
+using ::tensorflow::monitoring::testing::CellReader;
+
+constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
+constexpr char kDynamicFunctionName[] = "kDynamicFunction";
+static constexpr char kDynamismOpCounterStreamzName[] =
+    "/tensorflow/core/tf2xla/api/v2/dynamism_op_counter";
+static constexpr char kDynamismFunctionCounterStreamzName[] =
+    "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter";
 
 class InputLoweringMetricsPassTest : public testing::Test {
  protected:
@@ -66,7 +76,7 @@ class InputLoweringMetricsPassTest : public testing::Test {
   std::unique_ptr<mlir::PassManager> pm_;
 };
 
-TEST_F(InputLoweringMetricsPassTest, RunsSuccessfully) {
+TEST_F(InputLoweringMetricsPassTest, CountsNoDynamicOps) {
   static constexpr char kMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
     func.func @main() -> tensor<1xi32> {
@@ -74,11 +84,38 @@ TEST_F(InputLoweringMetricsPassTest, RunsSuccessfully) {
       return %0 : tensor<1xi32>
     }
   })";
-  CreateModule(kMlirModuleStr);
 
+  CellReader<int64_t> dynamism_op_counter(kDynamismOpCounterStreamzName);
+  CellReader<int64_t> dynamism_function_counter(
+      kDynamismFunctionCounterStreamzName);
+
+  CreateModule(kMlirModuleStr);
   auto result = Run();
 
   EXPECT_TRUE(result.succeeded());
+  EXPECT_EQ(dynamism_function_counter.Delta(kNotDynamicFunctionName), 1);
+}
+
+TEST_F(InputLoweringMetricsPassTest, CountsDynamicOps) {
+  static constexpr char kMlirModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @main() -> () {
+      %cst0 = "tf.Const"(){ value = dense<0> : tensor<3x5xi1>} : () -> tensor<3x5xi1>
+      %0 = "tf.Where"(%cst0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+      func.return
+    }
+  })";
+
+  CellReader<int64_t> dynamism_counter(kDynamismOpCounterStreamzName);
+  CellReader<int64_t> dynamism_function_counter(
+      kDynamismFunctionCounterStreamzName);
+
+  CreateModule(kMlirModuleStr);
+  auto result = Run();
+
+  EXPECT_TRUE(result.succeeded());
+  EXPECT_EQ(dynamism_counter.Delta("tf.Where"), 1);
+  EXPECT_EQ(dynamism_function_counter.Delta(kDynamicFunctionName), 1);
 }
 
 }  // namespace
