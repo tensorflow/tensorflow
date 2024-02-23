@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
@@ -253,6 +254,17 @@ struct RewriteAllocateShared : mlir::OpRewritePattern<AllocateSharedOp> {
   }
 };
 
+struct RewriteSyncThreads : mlir::OpRewritePattern<SyncThreadsOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      SyncThreadsOp op, mlir::PatternRewriter& rewriter) const override {
+    rewriter.create<mlir::gpu::BarrierOp>(op.getLoc());
+    rewriter.replaceOp(op, op.getOperands());
+    return mlir::success();
+  }
+};
+
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
  public:
   void runOnOperation() override;
@@ -260,9 +272,8 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
 
 void LowerTensorsPass::runOnOperation() {
   mlir::RewritePatternSet tensor_patterns(&getContext());
-  tensor_patterns
-      .add<RewriteTensorExtract, RewriteTensorInsert, RewriteAllocateShared>(
-          &getContext());
+  tensor_patterns.add<RewriteAllocateShared, RewriteSyncThreads,
+                      RewriteTensorExtract, RewriteTensorInsert>(&getContext());
   if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
           getOperation(), std::move(tensor_patterns)))) {
     signalPassFailure();

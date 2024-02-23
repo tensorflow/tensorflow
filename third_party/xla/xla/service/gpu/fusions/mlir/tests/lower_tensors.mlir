@@ -186,7 +186,7 @@ module {
 // CHECK:          scf.for
 // CHECK:            %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
 // CHECK:            llvm.store {{.*}} %[[ELEM_ADDR]]
-// CHECK:        xla_gpu.sync_threads
+// CHECK:        gpu.barrier
 // CHECK:        scf.for
 // CHECK:          scf.for
 // CHECK:            %[[ELEM_ADDR:.*]] = llvm.getelementptr inbounds %[[CAST]]
