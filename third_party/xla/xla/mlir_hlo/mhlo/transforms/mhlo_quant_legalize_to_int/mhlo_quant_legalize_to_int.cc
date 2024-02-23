@@ -1278,9 +1278,10 @@ class ConvertGenericOp : public ConversionPattern {
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // This pattern only handle selected ops.
-    if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
-             mhlo::BitcastConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
-             mhlo::PadOp, mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
+    if (!isa<mhlo::BitcastConvertOp, mhlo::BroadcastInDimOp,
+             mhlo::ConcatenateOp, mhlo::ConstantOp, mhlo::DynamicReshapeOp,
+             mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp, mhlo::PadOp,
+             mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
              mhlo::SelectOp, mhlo::SliceOp, mhlo::TransposeOp,
              mhlo::GetDimensionSizeOp, mhlo::DynamicBroadcastInDimOp>(op)) {
       return failure();

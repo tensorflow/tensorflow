@@ -2026,6 +2026,21 @@ func.func @reshape(
 
 // -----
 
+// CHECK-LABEL: func @dynamic_reshape
+func.func @dynamic_reshape(
+    %arg0: tensor<?x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>,
+    %arg1: tensor<2xi32>
+  ) -> tensor<?x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>> {
+  // CHECK: mhlo.dynamic_reshape
+  // CHECK-SAME: (tensor<?x3xi8>, tensor<2xi32>) -> tensor<?x1xi8>
+  %0 = "mhlo.dynamic_reshape"(%arg0, %arg1) : (
+    tensor<?x3x!quant.uniform<i8:f32, 0.13170163023705575:-1>>, tensor<2xi32>
+  ) -> tensor<?x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+  return %0 : tensor<?x1x!quant.uniform<i8:f32, 0.13170163023705575:-1>>
+}
+
+// -----
+
 // CHECK-LABEL: func @select
 func.func @select(
     %arg0: tensor<1x3xi1>,

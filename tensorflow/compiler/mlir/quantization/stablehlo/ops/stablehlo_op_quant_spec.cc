@@ -70,7 +70,8 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
 std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
   auto scale_spec = std::make_unique<OpQuantScaleSpec>();
   if (llvm::isa<mlir::stablehlo::BroadcastInDimOp,
-                mlir::stablehlo::ConcatenateOp, mlir::stablehlo::GatherOp,
+                mlir::stablehlo::ConcatenateOp,
+                mlir::stablehlo::DynamicReshapeOp, mlir::stablehlo::GatherOp,
                 mlir::stablehlo::PadOp, mlir::stablehlo::ReduceWindowOp,
                 mlir::stablehlo::ReshapeOp, mlir::stablehlo::SelectOp,
                 mlir::stablehlo::SliceOp, mlir::stablehlo::TransposeOp>(op)) {

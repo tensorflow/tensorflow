@@ -216,6 +216,84 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
       testing.parameter_combinations([{
+          'same_scale_op': (
+              'reshape',  # This corresponds to stablehlo.dynamic_reshape
+              # TODO: b/326242075 - Support other same-scale ops.
+          ),
+          'dim_sizes': (([None, 1024], [1024, 3]),),
+          'rng_seed': (0, 11, 222, 3333),
+      }])
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_matmul_and_same_scale_ptq_model_dynamic(
+      self,
+      same_scale_op: str,
+      dim_sizes: Sequence[int],
+      rng_seed: int,
+  ):
+    input_dim_size, filter_dim_size = dim_sizes
+    input_shape = (*input_dim_size,)
+    filter_shape = (*filter_dim_size,)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+
+    model = self._create_matmul_and_same_scale_model(
+        input_shape,
+        filter_shape,
+        self._input_saved_model_path,
+        same_scale_op,
+    )
+
+    rng = np.random.default_rng(rng_seed)
+    input_data = ops.convert_to_tensor(
+        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
+            np.float32
+        )
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
+        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
+    )
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    expected_outputs = model.matmul_and_same_scale(input_data)
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(input_data)
+    )
+    # Tests that the quantized graph outputs similar values. The rtol and atol
+    # values are arbitrary.
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
+
+  @parameterized.parameters(
+      testing.parameter_combinations([{
           'bias_fn': (
               None,
               nn_ops.bias_add,
