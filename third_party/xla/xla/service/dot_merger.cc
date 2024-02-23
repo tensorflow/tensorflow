@@ -49,8 +49,8 @@ namespace {
 //  - `a` does not transitively depend on the value of `b`, and `b` does not
 //    transitively depend on the value of `a`.
 //
-StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
-                                              HloInstruction* b) {
+absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
+                                                    HloInstruction* b) {
   if (a->shape().layout() != b->shape().layout()) {
     VLOG(3) << "Can't merge dots because they have a different layout:\n"
             << "\t" << a->ToString() << "\n"
@@ -223,7 +223,8 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   return new_dot;
 }
 
-StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
+absl::StatusOr<bool> MergeDots(HloComputation* comp,
+                               int64_t max_size_to_merge) {
   auto is_merge_candidate = [&](HloInstruction* instr) {
     int64_t bytes = ShapeUtil::ByteSizeOfElements(instr->shape());
     for (const HloInstruction* operand : instr->operands()) {
@@ -373,7 +374,7 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
 
 }  // anonymous namespace
 
-StatusOr<bool> DotMerger::Run(
+absl::StatusOr<bool> DotMerger::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

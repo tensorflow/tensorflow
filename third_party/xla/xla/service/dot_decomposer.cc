@@ -208,7 +208,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
 
 }  // namespace
 
-StatusOr<bool> DotDecomposer::Run(
+absl::StatusOr<bool> DotDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Gather all Non-canonical Dot operations.

@@ -40,13 +40,13 @@ void Despecializer::AddReduceWindowToReduceBroadcastDeconstruct() {
   pipeline_.AddPass<DeconstructReduceWindowToReduceBroadcast>();
 }
 
-StatusOr<bool> Despecializer::Run(
+absl::StatusOr<bool> Despecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pipeline_.Run(module, execution_threads);
 }
 
-StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::Run(
+absl::StatusOr<bool> DeconstructReduceWindowToReduceBroadcast::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

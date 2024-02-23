@@ -125,7 +125,7 @@ class FloatNormalizationTest : public HloTestBase {
                  PrimitiveType high_precision_type = F32) {
     TestFloatSupport float_support(low_precision_type, high_precision_type);
     FloatNormalization normalization(&float_support);
-    StatusOr<bool> result = normalization.Run(module);
+    absl::StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
 
     HloVerifier verifier(/*layout_sensitive=*/false,
@@ -533,7 +533,7 @@ class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
                                             high_precision_type);
     FloatNormalization normalization(&float_support);
 
-    StatusOr<bool> result = normalization.Run(module);
+    absl::StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
 
     HloVerifier verifier(/*layout_sensitive=*/false,

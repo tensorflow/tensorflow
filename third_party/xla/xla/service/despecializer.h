@@ -43,7 +43,7 @@ class Despecializer : public HloModulePass {
   void AddReduceWindowToReduceBroadcastDeconstruct();
   absl::string_view name() const override { return "despecializer"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -58,7 +58,7 @@ class DeconstructReduceWindowToReduceBroadcast : public HloModulePass {
     return "ReduceWindowToReduceAndBroadcast";
   }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
@@ -70,9 +70,9 @@ class ControlDepRemover : public HloModulePass {
   absl::string_view name() const override { return "control-dep-remover"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     bool changed = false;
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {

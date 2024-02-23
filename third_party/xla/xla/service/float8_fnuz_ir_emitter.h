@@ -28,19 +28,19 @@ namespace float8_fnuz_ir_emitter {
 // Convert the given floating point input to the output type. input_type must
 // be one of BF16, F16, F32, and F64. output_type must be one of F8E4M3FNUZ and
 // F8E5M2FNUZ.
-StatusOr<llvm::Value*> EmitFloatingToF8fnuz(PrimitiveType input_type,
-                                            llvm::Value* input_value,
-                                            PrimitiveType output_type,
-                                            llvm::IRBuilder<>* b);
+absl::StatusOr<llvm::Value*> EmitFloatingToF8fnuz(PrimitiveType input_type,
+                                                  llvm::Value* input_value,
+                                                  PrimitiveType output_type,
+                                                  llvm::IRBuilder<>* b);
 
 // Convert the given floating point input to the output type. input_type must
 // be one of F8E4M3FNUZ and F8E5M2FNUZ. output_type must be one of BF16, F16,
 // F32, and F64.
-StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
-                                            llvm::Value* f8_value,
-                                            PrimitiveType output_type,
-                                            llvm::IRBuilder<>* b,
-                                            llvm::Module* module);
+absl::StatusOr<llvm::Value*> EmitF8fnuzToFloating(PrimitiveType input_type,
+                                                  llvm::Value* f8_value,
+                                                  PrimitiveType output_type,
+                                                  llvm::IRBuilder<>* b,
+                                                  llvm::Module* module);
 }  // namespace float8_fnuz_ir_emitter
 }  // namespace xla
 

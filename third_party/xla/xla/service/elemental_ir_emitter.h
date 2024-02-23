@@ -69,31 +69,30 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                       b_);
   }
 
-  virtual StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
-                                                   llvm::Value* lhs_value,
-                                                   llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitFloatBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value);
 
   virtual llvm::Value* EmitExtractReal(llvm::Value* value);
   virtual llvm::Value* EmitExtractImag(llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value);
+  virtual absl::StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value);
 
  private:
-  virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
-                                             llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
+                                                   llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitBinaryOp(const HloInstruction* op,
-                                              llvm::Value* lhs_value,
-                                              llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitBinaryOp(const HloInstruction* op,
+                                                    llvm::Value* lhs_value,
+                                                    llvm::Value* rhs_value);
 
-  virtual StatusOr<llvm::Value*> EmitIntegerUnaryOp(const HloInstruction* op,
-                                                    llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitIntegerUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitFloatUnaryOp(const HloInstruction* op,
-                                                  llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitFloatUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexUnaryOp(const HloInstruction* op,
-                                                    llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexUnaryOp(
+      const HloInstruction* op, llvm::Value* operand_value);
 
   llvm::Value* IsZero(llvm::Value* v);
   llvm::Value* IsIntMinDivisionOverflow(llvm::Value* lhs, llvm::Value* rhs);
@@ -109,18 +108,15 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitIntegerPow(llvm::Value* lhs, llvm::Value* rhs,
                               bool is_signed);
 
-  virtual StatusOr<llvm::Value*> EmitPredBinaryOp(const HloInstruction* op,
-                                                  llvm::Value* lhs_value,
-                                                  llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitPredBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value);
 
-  virtual StatusOr<llvm::Value*> EmitIntegerBinaryOp(const HloInstruction* op,
-                                                     llvm::Value* lhs_value,
-                                                     llvm::Value* rhs_value,
-                                                     bool is_signed);
+  virtual absl::StatusOr<llvm::Value*> EmitIntegerBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
+      bool is_signed);
 
-  virtual StatusOr<llvm::Value*> EmitComplexBinaryOp(const HloInstruction* op,
-                                                     llvm::Value* lhs_value,
-                                                     llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexBinaryOp(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value);
 
   virtual llvm::Value* EmitFloatMax(llvm::Value* lhs_value,
                                     llvm::Value* rhs_value,
@@ -136,94 +132,93 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitIntegralMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                                bool is_signed);
 
-  virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
-                                           llvm::Value* lhs, llvm::Value* rhs,
-                                           absl::string_view name);
+  virtual absl::StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
+                                                 llvm::Value* lhs,
+                                                 llvm::Value* rhs,
+                                                 absl::string_view name);
 
-  virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
-                                         llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
+                                               llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
-                                          llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                                llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitCbrt(PrimitiveType prim_type,
-                                          llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitCbrt(PrimitiveType prim_type,
+                                                llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
-                                           llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
+                                                 llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
-                                           llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
+                                                 llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
-                                         llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
+                                               llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
-                                         llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                               llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
-                                         llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
+                                               llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
-                                         llvm::Value* value,
-                                         absl::string_view name);
+  virtual absl::StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
+                                               llvm::Value* value,
+                                               absl::string_view name);
 
-  virtual StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
-                                           llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
+                                                 llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
-                                         llvm::Value* lhs, llvm::Value* rhs,
-                                         absl::string_view name);
+  virtual absl::StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
+                                               llvm::Value* lhs,
+                                               llvm::Value* rhs,
+                                               absl::string_view name);
 
-  virtual StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
-                                         llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitErf(PrimitiveType prim_type,
+                                               llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
-                                          llvm::Value* value);
+  virtual absl::StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
+                                                llvm::Value* value);
 
-  virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
-                                                     llvm::Value* x);
+  virtual absl::StatusOr<llvm::Value*> EmitReducePrecision(
+      const HloInstruction* hlo, llvm::Value* x);
 
-  virtual StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
+  virtual absl::StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
   EmitComplexAbsHelper(PrimitiveType prim_type, llvm::Value* real,
                        llvm::Value* imag, bool return_sqrt);
 
-  virtual StatusOr<llvm::Value*> EmitComplexAbs(PrimitiveType prim_type,
-                                                llvm::Value* operand_value);
-
-  virtual StatusOr<llvm::Value*> EmitSqrtComplexAbs(PrimitiveType prim_type,
-                                                    llvm::Value* operand_value);
-  virtual StatusOr<llvm::Value*> EmitRsqrtComplexAbs(
+  virtual absl::StatusOr<llvm::Value*> EmitComplexAbs(
       PrimitiveType prim_type, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexAdd(const HloInstruction* op,
-                                                llvm::Value* lhs_value,
-                                                llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitSqrtComplexAbs(
+      PrimitiveType prim_type, llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitRsqrtComplexAbs(
+      PrimitiveType prim_type, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexSubtract(const HloInstruction* op,
-                                                     llvm::Value* lhs_value,
-                                                     llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexAdd(const HloInstruction* op,
+                                                      llvm::Value* lhs_value,
+                                                      llvm::Value* rhs_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexMultiply(const HloInstruction* op,
-                                                     llvm::Value* lhs_value,
-                                                     llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexSubtract(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexDivide(const HloInstruction* op,
-                                                   llvm::Value* lhs_value,
-                                                   llvm::Value* rhs_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexMultiply(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexLog(const HloInstruction* op,
-                                                llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexDivide(
+      const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexSqrt(const HloInstruction* op,
-                                                 PrimitiveType prim_type,
-                                                 llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexLog(
+      const HloInstruction* op, llvm::Value* operand_value);
 
-  virtual StatusOr<llvm::Value*> EmitComplexRsqrt(const HloInstruction* op,
-                                                  PrimitiveType prim_type,
-                                                  llvm::Value* operand_value);
+  virtual absl::StatusOr<llvm::Value*> EmitComplexSqrt(
+      const HloInstruction* op, PrimitiveType prim_type,
+      llvm::Value* operand_value);
 
-  StatusOr<llvm::Value*> EmitAccumResult(
+  virtual absl::StatusOr<llvm::Value*> EmitComplexRsqrt(
+      const HloInstruction* op, PrimitiveType prim_type,
+      llvm::Value* operand_value);
+
+  absl::StatusOr<llvm::Value*> EmitAccumResult(
       absl::Span<llvm::Value* const> accumulator_addrs,
       llvm::ArrayRef<llvm::Type*> accumulator_types, bool is_variadic);
 
@@ -236,78 +231,78 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                           llvm::Value* accumulator,
                           xla::PrimitiveType primitive_type);
 
-  StatusOr<llvm::Value*> EmitElementalSelect(
+  absl::StatusOr<llvm::Value*> EmitElementalSelect(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
-  StatusOr<llvm::Value*> EmitElementalClamp(
+  absl::StatusOr<llvm::Value*> EmitElementalClamp(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
-  StatusOr<llvm::Value*> EmitElementalConcatenate(
+  absl::StatusOr<llvm::Value*> EmitElementalConcatenate(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& target_index);
 
-  StatusOr<llvm::Value*> EmitElementalDynamicSlice(
+  absl::StatusOr<llvm::Value*> EmitElementalDynamicSlice(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
-  StatusOr<llvm::Value*> EmitElementalGather(
+  absl::StatusOr<llvm::Value*> EmitElementalGather(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
-  StatusOr<llvm::Value*> EmitElementalDynamicUpdateSlice(
+  absl::StatusOr<llvm::Value*> EmitElementalDynamicUpdateSlice(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
-  StatusOr<llvm::Value*> EmitElementalPad(
+  absl::StatusOr<llvm::Value*> EmitElementalPad(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& padded_index);
 
-  StatusOr<llvm::Value*> EmitElementalDot(
+  absl::StatusOr<llvm::Value*> EmitElementalDot(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& dot_result_index);
 
-  virtual StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+  virtual absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
       absl::string_view name, bool is_reducer) = 0;
 
-  StatusOr<llvm::Value*> EmitElementalMap(
+  absl::StatusOr<llvm::Value*> EmitElementalMap(
       const HloMapInstruction* map_instr,
       absl::Span<llvm::Value* const> elemental_operands);
 
-  StatusOr<llvm::Value*> EmitElementalReduceWindow(
+  absl::StatusOr<llvm::Value*> EmitElementalReduceWindow(
       const HloReduceWindowInstruction* reduce_window,
       std::vector<llvm_ir::ElementGenerator> input_generators,
       std::vector<llvm_ir::ElementGenerator> initial_value_generators,
       const llvm_ir::IrArray::Index& index);
 
-  StatusOr<llvm::Value*> EmitElementalReduce(
+  absl::StatusOr<llvm::Value*> EmitElementalReduce(
       const HloReduceInstruction* reduce,
       std::vector<llvm_ir::ElementGenerator> input_generators,
       std::vector<llvm_ir::ElementGenerator> initial_value_generators,
       const llvm_ir::IrArray::Index& index);
 
-  virtual StatusOr<llvm::Value*> EmitConvolution(
+  virtual absl::StatusOr<llvm::Value*> EmitConvolution(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
   // Computes the complex power function.
-  StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
-                                          llvm::Value* lhs_value,
-                                          llvm::Value* rhs_value);
+  absl::StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
+                                                llvm::Value* lhs_value,
+                                                llvm::Value* rhs_value);
 
   // Evaluates a polynomial using Horner's method.
-  StatusOr<llvm::Value*> EvaluatePolynomial(
+  absl::StatusOr<llvm::Value*> EvaluatePolynomial(
       llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients);
 
   virtual bool fast_min_max() = 0;
