@@ -215,6 +215,8 @@ def _is_op_stateful(op):
     return False
   if op.type == "CollectiveGatherV2" and op.get_attr("is_stateless"):
     return False
+  if op.type == "CollectiveAllToAllV2" and op.get_attr("is_stateless"):
+    return False
   return op._is_stateful
 
 
