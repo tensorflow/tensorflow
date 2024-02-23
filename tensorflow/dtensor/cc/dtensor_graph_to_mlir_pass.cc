@@ -75,7 +75,7 @@ DTensorMlirPassRunner::DTensorMlirPassRunner()
   dtensor::CreateDTensorMLIRPass(pipeline_options, &pass_manager_);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 DTensorMlirPassRunner::ImportGraphToMlir(
     const DeviceSet& device_set, absl::string_view name, bool is_func,
     const dtensor::Mesh& default_mesh,
@@ -96,7 +96,7 @@ DTensorMlirPassRunner::ImportGraphToMlir(
   import_config.control_outputs = {"eager_operation"};
 
   // Imports GraphDef to TF MLIR.
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
       ConvertGraphToMlir(graph, debug_info, flib_def, import_config, &context_);
 
   // Adds DTensor attributes to ModuleOp.
