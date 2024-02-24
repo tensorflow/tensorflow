@@ -83,9 +83,12 @@ void AddStablehloQuantToIntPasses(OpPassManager& pm) {
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<func::FuncOp>(mhlo::createMhloQuantLegalizeToIntPass());
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  // Integer graph optimization relies on chlo broadcast ops for easier handling
+  // of dynamic shapes. Therefore we lower chlo ops after optimization.
+  pm.addNestedPass<func::FuncOp>(CreateOptimizeIntGraphPass());
   pm.addNestedPass<func::FuncOp>(mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  pm.addNestedPass<func::FuncOp>(CreateOptimizeIntGraphPass());
   pm.addPass(createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());
