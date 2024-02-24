@@ -251,8 +251,6 @@ class Stream {
 
   // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
   // The location must not be null.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenMemZero(DeviceMemoryBase *location, uint64_t size);
   absl::Status MemZero(DeviceMemoryBase *location, uint64_t size);
 
   // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
@@ -274,14 +272,12 @@ class Stream {
   internal::StreamInterface *implementation() { return implementation_.get(); }
 
   // Entrains onto the stream a callback to the host (from the device).
-  // Behaves as ThenDoHostCallbackWithStatus below, but the callback should
+  // Behaves as DoHostCallbackWithStatus below, but the callback should
   // never fail or its failure is inconsequential.
   //
   // This is kept for backward compatibility. Future code should use
-  // ThenDoHostCallbackWithStatus and explicitly return a success status.
+  // DoHostCallbackWithStatus and explicitly return a success status.
   // TODO(b/112125301): Eventually remove this method.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenDoHostCallback(absl::AnyInvocable<void() &&> callback);
   absl::Status DoHostCallback(absl::AnyInvocable<void() &&> callback);
 
   // Entrains onto the stream a callback to the host (from the device).
@@ -290,15 +286,8 @@ class Stream {
   // Whether the callback return status affects the result of BlockHostUntilDone
   // is platform-dependent.
   //
-  // Behavior is undefined when synchronizing using OpenCL user events.
-  // Behavior is undefined if host callbacks call device routines or insert
-  // them into any stream.
-  //
-  // On certain platforms, ThenDoHostCallback is expected to have significant
+  // On certain platforms, DoHostCallback is expected to have significant
   // negative effects on performance.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenDoHostCallbackWithStatus(
-      absl::AnyInvocable<absl::Status() &&> callback);
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback);
 
@@ -331,14 +320,8 @@ class Stream {
     return !status_.ok();
   }
 
-  // Sets the error state if operation_retcode is false.
-  // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
-
   // Checks the status and logs the error message, if any.
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
-
-  void SetError() { CheckError(false /* = operation_retcode */); }
 
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;

@@ -330,7 +330,8 @@ Stream &Stream::ThenWaitFor(Stream *other) {
   if (ok() && other->ok()) {
     CheckStatus(WaitFor(other));
   } else {
-    SetError();
+    absl::MutexLock lock(&mu_);
+    status_ = absl::InternalError("Unknown error");
     LOG(INFO) << DebugStreamPointers() << " did not wait for "
               << other->DebugStreamPointers();
   }
@@ -415,13 +416,6 @@ absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,
   return absl::InternalError("failed to memcpy");
 }
 
-Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64_t size) {
-  VLOG_CALL(PARAM(location), PARAM(size));
-
-  CheckStatus(MemZero(location, size));
-  return *this;
-}
-
 absl::Status Stream::MemZero(DeviceMemoryBase *location, uint64_t size) {
   return parent_->MemZero(this, location, size);
 }
@@ -431,30 +425,11 @@ absl::Status Stream::Memset32(DeviceMemoryBase *location, uint32_t pattern,
   return parent_->Memset32(this, location, pattern, size);
 }
 
-Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
-  return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
-    std::move(cb)();
-    return absl::OkStatus();
-  });
-}
-
 absl::Status Stream::DoHostCallback(absl::AnyInvocable<void() &&> callback) {
   return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
     std::move(cb)();
     return absl::OkStatus();
   });
-}
-
-Stream &Stream::ThenDoHostCallbackWithStatus(
-    absl::AnyInvocable<absl::Status() &&> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  if (!ok()) {
-    LOG(INFO) << DebugStreamPointers()
-              << " was in error state before adding host callback";
-  }
-  CheckStatus(DoHostCallbackWithStatus(std::move(callback)));
-  return *this;
 }
 
 absl::Status Stream::DoHostCallbackWithStatus(
@@ -463,14 +438,6 @@ absl::Status Stream::DoHostCallbackWithStatus(
     return absl::OkStatus();
   }
   return absl::InternalError("failed to host callback");
-}
-
-void Stream::CheckError(bool operation_retcode) {
-  if (operation_retcode) {
-    return;
-  }
-  absl::MutexLock lock(&mu_);
-  status_ = absl::InternalError("Unknown error");
 }
 
 absl::Status Stream::BlockHostUntilDone() {
@@ -485,10 +452,7 @@ absl::Status Stream::BlockHostUntilDone() {
     return status;
   }
 
-  absl::Status error = parent_->BlockHostUntilDone(this);
-  CheckError(error.ok());
-
-  return error;
+  return parent_->BlockHostUntilDone(this);
 }
 
 std::string Stream::DebugStreamPointers() const {
