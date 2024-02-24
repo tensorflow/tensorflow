@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -1509,6 +1508,12 @@ PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
   args->output_size_in_bytes = memory_stats.output_size_in_bytes;
   args->alias_size_in_bytes = memory_stats.alias_size_in_bytes;
   args->temp_size_in_bytes = memory_stats.temp_size_in_bytes;
+  args->host_generated_code_size_in_bytes =
+      memory_stats.host_generated_code_size_in_bytes;
+  args->host_argument_size_in_bytes = memory_stats.host_argument_size_in_bytes;
+  args->host_output_size_in_bytes = memory_stats.host_output_size_in_bytes;
+  args->host_alias_size_in_bytes = memory_stats.host_alias_size_in_bytes;
+  args->host_temp_size_in_bytes = memory_stats.host_temp_size_in_bytes;
   return nullptr;
 }
 

@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 42
+#define PJRT_API_MINOR 43
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1382,18 +1382,27 @@ struct PJRT_Executable_GetCompiledMemoryStats_Args {
   PJRT_Executable* executable;
 
   // Mirrors xla::CompiledMemoryStats.
+  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
   int64_t generated_code_size_in_bytes;  // out
   int64_t argument_size_in_bytes;        // out
   int64_t output_size_in_bytes;          // out
   // How much argument is reused for output.
   int64_t alias_size_in_bytes;  // out
   int64_t temp_size_in_bytes;   // out
+
+  // Host memory usage stats.
+  int64_t host_generated_code_size_in_bytes;  // out
+  int64_t host_argument_size_in_bytes;        // out
+  int64_t host_output_size_in_bytes;          // out
+  int64_t host_alias_size_in_bytes;           // out
+  int64_t host_temp_size_in_bytes;            // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompiledMemoryStats_Args,
-                          temp_size_in_bytes);
+                          host_temp_size_in_bytes);
 
-// Return memory stats that allow callers to estimate device memory usage
-// when running this executable.
+// Return memory stats that allow callers to estimate memory usage when running
+// this executable. The memory stats could contain usage info from different
+// memory spaces, like default memory (e.g., HBM for GPU/TPU) and host memory.
 typedef PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args);
 
