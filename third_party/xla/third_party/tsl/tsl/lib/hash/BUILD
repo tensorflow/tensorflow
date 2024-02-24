@@ -36,9 +36,10 @@ cc_library(
     deps = [
         "//tsl/platform",
         "//tsl/platform:cord",
-        "//tsl/platform:raw_coding",
         "//tsl/platform:types",
         "@com_google_absl//absl/crc:crc32c",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -70,5 +71,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
+        "//tsl/platform:types",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
