@@ -67,7 +67,7 @@ Status TransferManager::TransferLiteralFromDevice(
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
   TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
-  substream->ThenWaitFor(stream);
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   Status ret;
@@ -91,7 +91,7 @@ Status TransferManager::TransferLiteralToDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
-  substream->ThenWaitFor(stream);
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(TransferLiteralToDeviceAsync(
       substream, literal, device_buffer, transfer_metadata));
@@ -120,7 +120,7 @@ Status TransferManager::TransferArrayToDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   TF_ASSIGN_OR_RETURN(se::Stream * substream, stream->GetOrCreateSubStream());
-  substream->ThenWaitFor(stream);
+  TF_RETURN_IF_ERROR(substream->WaitFor(stream));
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(
       TransferArrayToDeviceAsync(substream, literal, dest, transfer_metadata));
