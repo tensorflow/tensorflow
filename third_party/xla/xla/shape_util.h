@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,15 +27,18 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/overflow_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -106,18 +109,44 @@ class ShapeUtil {
     Shape shape;
   };
 
+  // Returns the product of the statically bound dimensions.
+  template <bool kBoundedDynamicOk>
+  static inline std::pair<int64_t, bool> ExtentProduct(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    int64_t product = 1;
+    bool any_overflows = false;
+    for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
+      if constexpr (kBoundedDynamicOk) {
+        if (shape.is_unbounded_dynamic_dimension(dim)) {
+          continue;
+        }
+      } else {
+        DCHECK(!shape.is_unbounded_dynamic_dimension(dim));
+      }
+      bool overflow;
+      std::tie(product, overflow) =
+          OverflowSafeMultiply(product, shape.dimensions(dim));
+      any_overflows |= overflow;
+    }
+    return {product, any_overflows};
+  }
+
+  // Returns the product of the statically bound dimensions.
+  static inline int64_t StaticExtentProduct(const Shape& shape) {
+    auto [product, overflow] = ExtentProduct</*kBoundedDynamicOk=*/true>(shape);
+    DCHECK(!overflow);
+    return product;
+  }
+
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static inline int64_t ElementsIn(const Shape& shape) {
-    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-    DCHECK_EQ(shape.dimensions_size(), shape.rank());
-    if (shape.dimensions().empty()) {
-      return 1LL;
-    }
-    auto begin = shape.dimensions().begin();
-    return std::accumulate(std::next(begin), shape.dimensions().end(), *begin,
-                           std::multiplies<int64_t>());
+    auto [product, overflow] =
+        ExtentProduct</*kBoundedDynamicOk=*/false>(shape);
+    DCHECK(!overflow);
+    return product;
   }
 
   // As ElementsIn(), but recurses through tuples.
@@ -177,8 +206,8 @@ class ShapeUtil {
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static std::string HumanString(const ProgramShape& program_shape);
 
-  // Returns whether the LHS and RHS shapes have the same dimensions; note: does
-  // not check element type.
+  // Returns whether the LHS and RHS shapes have the same dimensions, ignoring
+  // the unbounded dimension sizes; note: does not check element type.
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
@@ -371,8 +400,9 @@ class ShapeUtil {
                          const std::vector<bool>& dynamic_dimensions);
 
   // Constructs a new shape with the given element type and sequence of
-  // dimensions. Method checks if the element type is valid and the shape's
-  // size fits in std::numeric_limits<int64_t>::max().
+  // dimensions. Method checks if the element type is valid, the shape's
+  // size fits in std::numeric_limits<int64_t>::max(), and dynamic size is not
+  // marked static.
   static StatusOr<Shape> MakeValidatedShape(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions);
   static StatusOr<Shape> MakeValidatedShape(
@@ -392,8 +422,9 @@ class ShapeUtil {
   static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
-      int64_t memory_space = 0);
+      absl::Span<const Tile> tiles = {},
+      int64_t tail_padding_alignment_in_elements = 1,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0);
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that
@@ -406,6 +437,7 @@ class ShapeUtil {
       absl::Span<const bool> dim_ordered = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t tail_padding_alignment_in_elements = 1,
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
@@ -543,6 +575,23 @@ class ShapeUtil {
     }).IgnoreError();
   }
 
+  // Calls the given visitor function for each leaf subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index)
+  template <typename Fn>
+  static void ForEachLeafShape(const Shape& shape, Fn&& fn) {
+    ForEachSubshape(shape,
+                    [&](const Shape& sub_shape, const ShapeIndex& index) {
+                      if (IsLeafIndex(shape, index)) {
+                        fn(sub_shape, index);
+                      }
+                    });
+  }
+
   // Variants of ForEach(Mutable)Subshape which propagate Status from the
   // visitor function.
   //
@@ -563,6 +612,57 @@ class ShapeUtil {
   static Status ForEachMutableSubshapeWithStatus(Shape* shape, Fn&& fn) {
     ShapeIndex index;
     return ForEachMutableSubshapeWithStatusHelper(shape, fn, &index);
+  }
+
+  // Calls the given visitor function for each subshape of the given shape.
+  // Subshapes are visited in DFS post-order starting with the entire shape
+  // (index {}).
+  //
+  // The visitor function must have the signature
+  //
+  //   void fn(const Shape& subshape, const ShapeIndex& index), or
+  //   void fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  template <typename Fn>
+  static void ForEachSubshapePostOrder(const Shape& shape, Fn&& fn) {
+    ForEachSubshapePostOrderWithStatus(shape, [&](const Shape& subshape,
+                                                  const ShapeIndex& index) {
+      fn(subshape, index);
+      return OkStatus();
+    }).IgnoreError();
+  }
+  template <typename Fn>
+  static void ForEachMutableSubshapePostOrder(Shape* shape, Fn&& fn) {
+    ForEachMutableSubshapePostOrderWithStatus(
+        shape,
+        [&](Shape* subshape, const ShapeIndex& index) {
+          fn(subshape, index);
+          return OkStatus();
+        })
+        .IgnoreError();
+  }
+
+  // Variants of ForEach(Mutable)SubshapePostOrder which propagate Status from
+  // the visitor function.
+  //
+  // Visitor function must have the signature
+  //
+  //   Status fn(const Shape& subshape, const ShapeIndex& index), or
+  //   Status fn(Shape* subshape, const ShapeIndex& index) (mutable version)
+  //
+  template <typename Fn>
+  static Status ForEachSubshapePostOrderWithStatus(const Shape& shape,
+                                                   Fn&& fn) {
+    return ForEachMutableSubshapePostOrderWithStatus(
+        const_cast<Shape*>(&shape),
+        [&](Shape* subshape, const ShapeIndex& index) -> Status {
+          return fn(*const_cast<const Shape*>(subshape), index);
+        });
+  }
+  template <typename Fn>
+  static Status ForEachMutableSubshapePostOrderWithStatus(Shape* shape,
+                                                          Fn&& fn) {
+    ShapeIndex index;
+    return ForEachMutableSubshapePostOrderWithStatusHelper(shape, fn, &index);
   }
 
   // Returns true if `shape` (which must be an array) with degenerate dimensions
@@ -893,6 +993,9 @@ class ShapeUtil {
   // layout. Ignores tiling. `strides` must have size equal to the number of
   // dimensions of `shape`.
   static Status ByteStrides(const Shape& shape, absl::Span<int64_t> strides);
+  // Same as above but returns the stride array, or std::nullopt if error.
+  static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
+      const Shape& shape);
 
   // Returns the array size in bytes (layout/tiling required), all paddings are
   // included.
@@ -903,7 +1006,7 @@ class ShapeUtil {
   static int64_t ArrayDataSize(const Shape& shape);
 
  private:
-  // Fills *shape. Returns true on success.
+  // Fills *shape ignoring dynamic dimensions. Returns true on success.
   // REQUIRES: *shape is empty.
   static bool FillNewShape(PrimitiveType element_type,
                            absl::Span<const int64_t> dimensions, Shape* shape);
@@ -930,6 +1033,23 @@ class ShapeUtil {
         index->pop_back();
       }
     }
+    return OkStatus();
+  }
+
+  // Helper for ForEachSubshapePost which visits the subshapes of the given
+  // shape in DFS post-order.
+  template <typename Fn>
+  static Status ForEachMutableSubshapePostOrderWithStatusHelper(
+      Shape* shape, Fn&& fn, ShapeIndex* index) {
+    if (shape->IsTuple()) {
+      for (int64_t i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
+        index->push_back(i);
+        TF_RETURN_IF_ERROR(ForEachMutableSubshapePostOrderWithStatusHelper(
+            shape->mutable_tuple_shapes(i), fn, index));
+        index->pop_back();
+      }
+    }
+    TF_RETURN_IF_ERROR(fn(shape, *index));
     return OkStatus();
   }
 

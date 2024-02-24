@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ class BFloat16PropagationTest : public HloTestBase {
   bool PropagatePrecision(HloModule* module) {
     TestBFloat16Support bfloat16_support;
     BFloat16Propagation propagation(&bfloat16_support);
-    StatusOr<bool> result = propagation.Run(module);
+    absl::StatusOr<bool> result = propagation.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
   }

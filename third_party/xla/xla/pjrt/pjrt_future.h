@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
-#include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/support/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/async_value.h"
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -58,8 +58,7 @@ class ScopedAsyncTrackingEvent {
 
   // Indicates that the ScopedAsyncTrackingEvent won't complete until dependency
   // becomes available. Called only by PjRtFuture.
-  virtual void AddDependency(
-      tfrt::RCReference<tfrt::AsyncValue> dependency) = 0;
+  virtual void AddDependency(tsl::RCReference<tsl::AsyncValue> dependency) = 0;
 };
 
 // Helpers for using PjRtFutures.
@@ -127,9 +126,9 @@ class PjRtFuture {
 
    private:
     friend class PjRtFuture<T>;
-    explicit Promise(tfrt::AsyncValueRef<T> ref) : avr(std::move(ref)) {}
+    explicit Promise(tsl::AsyncValueRef<T> ref) : avr(std::move(ref)) {}
     // The underlying TFRT value that can be waited on.
-    tfrt::AsyncValueRef<T> avr;
+    tsl::AsyncValueRef<T> avr;
   };
 
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
@@ -137,7 +136,7 @@ class PjRtFuture {
   //
   // Used by clients that do not use TFRT natively.
   static Promise CreatePromise() {
-    return Promise(tfrt::MakeUnconstructedAsyncValueRef<T>());
+    return Promise(tsl::MakeUnconstructedAsyncValueRef<T>());
   }
 
   PjRtFuture() = default;
@@ -149,7 +148,7 @@ class PjRtFuture {
   // Typically used to eagerly return error values when async work will not
   // be enqueued, e.g., due to invalid arguments.
   explicit PjRtFuture(T t)
-      : promise_ref_(tfrt::MakeAvailableAsyncValueRef<T>(std::move(t))),
+      : promise_ref_(tsl::MakeAvailableAsyncValueRef<T>(std::move(t))),
         on_block_start_([]() { return PjRtFutureHelpers::ProfilingKeys(); }),
         on_block_end_([](PjRtFutureHelpers::ProfilingKeys) {}) {}
 
@@ -159,7 +158,7 @@ class PjRtFuture {
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
-      tfrt::AsyncValueRef<T> async_value,
+      tsl::AsyncValueRef<T> async_value,
       PjRtFutureHelpers::OnBlockStartFn on_block_start =
           []() { return PjRtFutureHelpers::ProfilingKeys(); },
       PjRtFutureHelpers::OnBlockEndFn on_block_end =
@@ -257,7 +256,7 @@ class PjRtFuture {
 
  private:
   // Wrapped object to wait on.
-  tfrt::AsyncValueRef<T> promise_ref_;
+  tsl::AsyncValueRef<T> promise_ref_;
   // Function that is called before a thread starts blocking on the promise.
   PjRtFutureHelpers::OnBlockStartFn on_block_start_;
   // Function that is called after a thread finishes blocking on the promise.

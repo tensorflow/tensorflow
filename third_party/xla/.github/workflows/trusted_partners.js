@@ -53,7 +53,7 @@ const get_email_domain = async ({github, username}) => {
 const filter_action = async ({github, context, domain}) => {
   const labels = ['kokoro:force-run'];
 
-  let assignees = ['radhakrishnaba', 'xla-rotation'];
+  let assignees = ['kamaljeeti', 'xla-rotation'];
   const title =
       context.payload.pull_request && context.payload.pull_request.title;
   const lowercased_title = (title || '').toLowerCase();
@@ -76,8 +76,7 @@ const filter_action = async ({github, context, domain}) => {
       assignees.push('hawkinsp', 'yashk2810', 'skye');
     }
     if (lowercased_title.includes('xla') || lowercased_title.includes('gpu')) {
-      assignees.push(
-          'cheshire', 'gcforster', 'reedwm', 'chsigg', 'xla-rotation');
+      assignees.push('cheshire', 'reedwm', 'xla-rotation');
     }
     if (lowercased_title.includes('tf')) {
       assignees.push('rohan100jain', 'bfontain');

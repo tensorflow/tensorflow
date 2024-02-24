@@ -55,7 +55,7 @@ static Status ValidateKernelSizes(const T& ksizes) {
           " must be positive but is ", ksizes[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -67,7 +67,7 @@ static Status ValidateStrides(const T& strides) {
           " must be positive but is ", strides[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Superclass of pooling ops.

@@ -277,7 +277,7 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
       Writer(value, output);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Writes a possibly repeated string, bytes, or message field.
@@ -293,7 +293,7 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
     // small speedup.
     Writer(field_desc.number(), value, output);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static void WriteStringAdapter(int field_number, const tstring& value,
@@ -331,7 +331,7 @@ Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
     WireFormatLite::WriteTag(field_desc.number(),
                              WireFormatLite::WIRETYPE_END_GROUP, output);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Writes a (possibly repeated) field into an output stream. It is the caller's
@@ -636,7 +636,8 @@ class EncodeProtoOp : public OpKernel {
   // order of writing.
   std::vector<int> sorted_field_index_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EncodeProtoOp);
+  EncodeProtoOp(const EncodeProtoOp&) = delete;
+  void operator=(const EncodeProtoOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("EncodeProto").Device(DEVICE_CPU), EncodeProtoOp);

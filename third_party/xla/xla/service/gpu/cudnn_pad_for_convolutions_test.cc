@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/status_macros.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace gpu {

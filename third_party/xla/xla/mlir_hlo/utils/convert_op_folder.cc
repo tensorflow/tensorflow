@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,8 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
                                        mlir::Type newType) {
   auto oldType = getElementTypeOrSelf(elements);
   // TODO(kramerb): Add support when MLIR can represent const complex tensors.
-  if (oldType.isa<mlir::ComplexType>() || newType.isa<mlir::ComplexType>()) {
+  if (!oldType.isa<mlir::IntegerType, mlir::FloatType>() ||
+      !newType.isa<mlir::IntegerType, mlir::FloatType>()) {
     return {};
   }
 

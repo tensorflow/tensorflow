@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/service/graphcycles/graphcycles.h"
@@ -48,8 +49,8 @@ namespace {
 //  - `a` does not transitively depend on the value of `b`, and `b` does not
 //    transitively depend on the value of `a`.
 //
-StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
-                                              HloInstruction* b) {
+absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
+                                                    HloInstruction* b) {
   if (a->shape().layout() != b->shape().layout()) {
     VLOG(3) << "Can't merge dots because they have a different layout:\n"
             << "\t" << a->ToString() << "\n"
@@ -222,7 +223,8 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   return new_dot;
 }
 
-StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
+absl::StatusOr<bool> MergeDots(HloComputation* comp,
+                               int64_t max_size_to_merge) {
   auto is_merge_candidate = [&](HloInstruction* instr) {
     int64_t bytes = ShapeUtil::ByteSizeOfElements(instr->shape());
     for (const HloInstruction* operand : instr->operands()) {
@@ -304,10 +306,18 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
   // them earlier because removing an instruction deletes it; we'd then have
   // dangling pointers in our hashtable!)
   absl::flat_hash_set<HloInstruction*> dead_instrs;
+  std::vector<HloInstruction*> keys;
+  keys.reserve(equivalence_classes.size());
   for (auto& kv : equivalence_classes) {
+    keys.push_back(kv.first);
+  }
+  absl::c_sort(keys, [](const HloInstruction* a, const HloInstruction* b) {
+    return a->unique_id() < b->unique_id();
+  });
+  for (auto key : keys) {
+    const auto& values = equivalence_classes[key];
     // For determinism, iterate in order of the instructions' IDs.
-    absl::InlinedVector<HloInstruction*, 16> dots(kv.second.begin(),
-                                                  kv.second.end());
+    absl::InlinedVector<HloInstruction*, 16> dots(values.begin(), values.end());
     absl::c_sort(dots, [](const HloInstruction* a, const HloInstruction* b) {
       return a->unique_id() < b->unique_id();
     });
@@ -364,7 +374,7 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
 
 }  // anonymous namespace
 
-StatusOr<bool> DotMerger::Run(
+absl::StatusOr<bool> DotMerger::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

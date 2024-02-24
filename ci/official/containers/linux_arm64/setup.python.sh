@@ -51,7 +51,8 @@ if [[ ! -f "/usr/local/include/$VERSION" ]]; then
 fi
 
 # Install pip
-curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+
+wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 https://bootstrap.pypa.io/get-pip.py
 /usr/bin/$VERSION get-pip.py
 /usr/bin/$VERSION -m pip install --no-cache-dir --upgrade pip
 

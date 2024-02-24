@@ -91,7 +91,7 @@ static Status MatchFiles(const string& patterns,
                       std::make_move_iterator(tmp_filenames.begin()),
                       std::make_move_iterator(tmp_filenames.end()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordYielder::MainLoop() {
@@ -200,7 +200,7 @@ void RecordYielder::ShardLoop(Shard* shard) {
   const int64_t kRecords = 16;
   for (const string& filename : shard->filenames) {
     std::unique_ptr<RandomAccessFile> file;
-    if (ShouldFinish(OkStatus())) break;
+    if (ShouldFinish(absl::OkStatus())) break;
     Status s = Env::Default()->NewRandomAccessFile(filename, &file);
     if (!s.ok()) {
       shard->status = errors::InvalidArgument("Can't open ", filename);

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <ostream>
 #include <random>
 #include <string>
@@ -75,6 +76,8 @@ class LiteralUtil {
   // literal's linear representation in memory.
   template <typename NativeT>
   static Literal CreateR0(NativeT value);
+  template <typename T>
+  static Literal CreateR0(PrimitiveType primitive_type, T value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
   static Literal CreateR1(const tsl::core::Bitmap& values);
@@ -278,6 +281,12 @@ class LiteralUtil {
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
   static std::string MultiIndexAsString(absl::Span<const int64_t> multi_index);
+
+  // Converts the given literal to a scalar int64_t, if possible.
+  //
+  // Fails if the literal is not an integral type or if the value it contains
+  // cannot be represented as an int64_t.
+  static std::optional<int64_t> LiteralAsScalarInt64(const Literal& l);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);
@@ -288,6 +297,17 @@ template <typename NativeT>
       primitive_util::NativeToPrimitiveType<NativeT>(), {}));
   literal.Set({}, value);
   return literal;
+}
+
+template <typename T>
+/* static */ Literal LiteralUtil::CreateR0(PrimitiveType primitive_type,
+                                           T value) {
+  return primitive_util::ArrayTypeSwitch<Literal>(
+      [&value](auto type) {
+        using NativeT = primitive_util::NativeTypeOf<type>;
+        return CreateR0(static_cast<NativeT>(value));
+      },
+      primitive_type);
 }
 
 template <typename NativeT>

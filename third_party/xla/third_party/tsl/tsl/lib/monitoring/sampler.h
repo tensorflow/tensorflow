@@ -46,7 +46,8 @@ class SamplerCell {
   HistogramProto value() const { return HistogramProto(); }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SamplerCell);
+  SamplerCell(const SamplerCell&) = delete;
+  void operator=(const SamplerCell&) = delete;
 };
 
 // Buckets which has a null implementation.
@@ -73,7 +74,8 @@ class Buckets {
  private:
   std::vector<double> explicit_bounds_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Buckets);
+  Buckets(const Buckets&) = delete;
+  void operator=(const Buckets&) = delete;
 };
 
 // Sampler which has a null implementation.
@@ -102,7 +104,8 @@ class Sampler {
   SamplerCell default_sampler_cell_;
   std::unique_ptr<Buckets> buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
+  Sampler(const Sampler&) = delete;
+  void operator=(const Sampler&) = delete;
 };
 
 }  // namespace monitoring
@@ -156,7 +159,8 @@ class SamplerCell {
  private:
   histogram::ThreadSafeHistogram histogram_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SamplerCell);
+  SamplerCell(const SamplerCell&) = delete;
+  void operator=(const SamplerCell&) = delete;
 };
 
 // Bucketing strategies for the samplers.
@@ -275,7 +279,8 @@ class Sampler {
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Sampler);
+  Sampler(const Sampler&) = delete;
+  void operator=(const Sampler&) = delete;
 };
 
 ////

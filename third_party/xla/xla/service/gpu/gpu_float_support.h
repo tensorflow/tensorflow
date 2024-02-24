@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,8 +27,9 @@ namespace gpu {
 
 class GpuFloatSupport : public FloatSupport {
  public:
-  explicit GpuFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit GpuFloatSupport(PrimitiveType low_precision_type,
+                           PrimitiveType high_precision_type = F32)
+      : FloatSupport(low_precision_type, high_precision_type) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {

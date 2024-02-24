@@ -27,7 +27,7 @@ load(
     "onednn_v3_define",
 )
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
     "cc_shared_library",
@@ -36,6 +36,11 @@ load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
+
+# buildifier: disable=out-of-order-load
+# Internally this loads a macro, but in OSS this is a function
+def register_extension_info(**kwargs):
+    pass
 
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -95,6 +100,14 @@ def if_google(google_value, oss_value = []):
     compute elements of list attributes.
     """
     return oss_value  # copybara:comment_replace return google_value
+
+def internal_visibility(internal_targets):
+    """Returns internal_targets in g3, but returns public in OSS.
+
+    Useful for targets that are part of the XLA/TSL API surface but want finer-grained visibilites
+    internally.
+    """
+    return if_google(internal_targets, ["//visibility:public"])
 
 # TODO(jakeharmon): Use this to replace if_static
 def if_tsl_link_protobuf(if_true, if_false = []):
@@ -186,6 +199,7 @@ def if_nccl(if_true, if_false = []):
     return select({
         clean_dep("//tsl:no_nccl_support"): if_false,
         clean_dep("//tsl:windows"): if_false,
+        clean_dep("//tsl:arm"): if_false,
         "//conditions:default": if_true,
     })
 
@@ -349,6 +363,8 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         **kwargs
     )
 
+register_extension_info(extension = tsl_gpu_library, label_regex_for_dep = "{extension_name}")
+
 # Traverse the dependency graph along the "deps" attribute of the
 # target and return a struct with one field called 'tf_collected_deps'.
 # tf_collected_deps will be the union of the deps of the current target
@@ -424,6 +440,9 @@ check_deps = rule(
 def get_compatible_with_portable():
     return []
 
+def get_compatible_with_libtpu_portable():
+    return []
+
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
 
@@ -458,7 +477,7 @@ _transitive_hdrs = rule(
 
 def transitive_hdrs(name, deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
-    native.filegroup(name = name, srcs = [":" + name + "_gather"])
+    native.filegroup(name = name, srcs = [":" + name + "_gather"], **kwargs)
 
 # Create a header only library that includes all the headers exported by
 # the libraries in deps.
@@ -562,6 +581,7 @@ def tsl_pybind_extension_opensource(
         data = [],
         defines = [],
         deprecation = None,
+        enable_stub_generation = False,  # @unused
         features = [],
         licenses = None,
         linkopts = [],
@@ -584,8 +604,6 @@ def tsl_pybind_extension_opensource(
     filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
-        "init%s" % sname,
-        "init_%s" % sname,
         "PyInit_%s" % sname,
     ] + additional_exported_symbols
 
@@ -754,10 +772,5 @@ def tsl_pybind_extension_opensource(
         compatible_with = compatible_with,
     )
 
-# Export open source version of pybind_extension under base name as well.
-tsl_pybind_extension = tsl_pybind_extension_opensource
-
-# Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
-# public, but monorepos can have more precise constraints.
-def set_external_visibility(monorepo_paths):
-    return if_oss(["//visibility:public"], monorepo_paths)
+def nvtx_headers():
+    return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])

@@ -230,14 +230,12 @@ Status GetReplacedFromExistingWorkers(
   return OkStatus();
 }
 
-Status CreateRemoteContexts(EagerContext* context,
-                            const std::vector<string>& remote_workers,
-                            uint64 context_id, uint64 context_view_id,
-                            int keep_alive_secs, const ServerDef& server_def,
-                            eager::EagerClientCache* remote_eager_workers,
-                            bool async,
-                            const eager::CreateContextRequest& base_request,
-                            int64_t init_timeout_in_ms, int retries) {
+Status CreateRemoteContexts(
+    EagerContext* context, const std::vector<string>& remote_workers,
+    uint64 context_id, uint64 context_view_id, int keep_alive_secs,
+    const ServerDef& server_def, eager::EagerClientCache* remote_eager_workers,
+    bool async, const eager::CreateContextRequest& base_request,
+    int64_t init_timeout_in_ms, int retries, bool clear_existing_contexts) {
   int num_remote_workers = remote_workers.size();
   BlockingCounter counter(num_remote_workers);
   std::vector<Status> statuses(num_remote_workers);
@@ -271,6 +269,7 @@ Status CreateRemoteContexts(EagerContext* context,
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.mutable_server_def()->mutable_default_session_config()->MergeFrom(
         server_def.default_session_config());
+    request.set_clear_existing_contexts(clear_existing_contexts);
 
     std::vector<bool> filtered_device_mask;
     context->FilterDevicesForRemoteWorkers(
@@ -415,7 +414,8 @@ Status UpdateRemoteContexts(EagerContext* context,
 Status UpdateContextWithServerDef(EagerContext* context,
                                   const ServerDef& server_def,
                                   bool reset_context, int keep_alive_secs,
-                                  int64_t init_timeout_in_ms, int retries) {
+                                  int64_t init_timeout_in_ms, int retries,
+                                  bool clear_existing_contexts = false) {
   // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
   // server object (which currently CHECK-fails) and we miss the error, instead,
   // we log the error, and then return to allow the user to see the error
@@ -578,7 +578,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     reset_context_status = CreateRemoteContexts(
         context, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
-        base_request, init_timeout_in_ms, retries);
+        base_request, init_timeout_in_ms, retries, clear_existing_contexts);
     // NOTE: the remote tasks could fail after `GetAllRemoteDevices` and cause
     // the CreateRemoteContexts to fail. We currently only log instead of
     // directly returning the error, since returning here will cause the server
@@ -604,7 +604,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
           context, added_workers, context_id, context_view_id + 1,
           keep_alive_secs, server_def, remote_eager_workers.get(),
           context->Executor().Async(), base_request, init_timeout_in_ms,
-          /*retries=*/0));
+          /*retries=*/0, /*clear_existing_contexts=*/false));
     }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
@@ -672,7 +672,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
 
 Status EagerContextDistributedManager::SetOrUpdateServerDef(
     const ServerDef& server_def, bool reset_context, int keep_alive_secs,
-    int64_t init_timeout_in_ms, int retries) {
+    int64_t init_timeout_in_ms, int retries, bool clear_existing_contexts) {
   if (server_def.has_cluster_device_filters()) {
     if (reset_context) {
       const auto& cdf = server_def.cluster_device_filters();
@@ -696,9 +696,9 @@ Status EagerContextDistributedManager::SetOrUpdateServerDef(
                       "when updating the server def.";
     }
   }
-  Status s =
-      UpdateContextWithServerDef(context_, server_def, reset_context,
-                                 keep_alive_secs, init_timeout_in_ms, retries);
+  Status s = UpdateContextWithServerDef(context_, server_def, reset_context,
+                                        keep_alive_secs, init_timeout_in_ms,
+                                        retries, clear_existing_contexts);
   // If context is reset, make sure pointer is set to the new agent.
   coordination_service_agent_ =
       context_->GetServer()

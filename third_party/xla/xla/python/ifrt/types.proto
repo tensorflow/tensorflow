@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,4 +28,17 @@ message DeviceListProto {
 // sizes greater than or equal to 0.
 message ShapeProto {
   repeated int64 dims = 1;
+}
+
+// Wire format for `BoundedDynamicShapeTag`.
+message BoundedDynamicShapeTagProto {
+  repeated bool is_dynamic_dims = 1;
+}
+
+// Wire format for `DynamicShape`. Currently only support bounded dynamic shape.
+message DynamicShapeProto {
+  ShapeProto shape = 1;
+  oneof tag {
+    BoundedDynamicShapeTagProto bounded_dynamic_shape_tag = 2;
+  }
 }

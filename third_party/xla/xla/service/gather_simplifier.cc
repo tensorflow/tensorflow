@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
     HloInstruction* inst) {
   auto* gather = DynCast<HloGatherInstruction>(inst);
 

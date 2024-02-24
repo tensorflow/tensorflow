@@ -143,7 +143,7 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
                         GetOrCreatePjRtClient(DeviceType(DEVICE_CPU_XLA_JIT)));
     pjrt_compiler_client_ =
         std::make_unique<PjRtDeviceCompilerClient>(pjrt_client);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;

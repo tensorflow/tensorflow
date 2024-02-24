@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,31 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
+
+//===----------------------------------------------------------------------===//
+// ModuleHandle
+//===----------------------------------------------------------------------===//
+
+// An opaque handle to a loaded module.
+//
+// An instance of this is returned from StreamExecutor::GetModule.
+class ModuleHandle {
+ public:
+  explicit ModuleHandle(void* id = nullptr) : id_(id) {}
+
+  // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
+  // null pointer.
+  void* id() const { return id_; }
+
+  explicit operator bool() const { return id() != nullptr; }
+
+ private:
+  void* id_;
+};
+
+//===----------------------------------------------------------------------===//
+// MultiModuleLoaderSpec
+//===----------------------------------------------------------------------===//
 
 // Describes how to load a module on a target platform.
 //

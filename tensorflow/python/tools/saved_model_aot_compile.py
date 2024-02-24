@@ -228,9 +228,6 @@ def freeze_model(checkpoint_path: str,
     ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
       missing or has empty outputs.
   """
-  if _pywrap_tfcompile_import_error:
-    raise _pywrap_tfcompile_import_error  # pylint: disable=raising-bad-type
-
   signature_def_map = meta_graph_def.signature_def
   if signature_def_key not in signature_def_map:
     raise ValueError(

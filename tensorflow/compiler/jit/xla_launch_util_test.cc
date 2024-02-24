@@ -186,7 +186,7 @@ class PjRtExecutionUtilTest : public OpsTestBase {
 
   // Runs a PjRtLoadedExecutable with the given inputs, variables. Requires the
   // XlaCompiler::CompilationResult that was used to build the executable.
-  StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunExecutable(
+  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunExecutable(
       const std::vector<const Tensor*>& inputs,
       const std::vector<VariableInfo>& variables,
       const XlaCompiler::CompilationResult* result,

@@ -1,11 +1,12 @@
 # Description:
 #   XLA client libraries.
 
+load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -24,14 +25,12 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
     hdrs = ["global_data.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:service_interface",
         "//xla:types",
@@ -40,7 +39,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -48,7 +46,6 @@ cc_library(
     name = "padding",
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla:types",
@@ -73,7 +70,6 @@ cc_library(
     name = "client",
     srcs = ["client.cc"],
     hdrs = ["client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":global_data",
         ":xla_computation",
@@ -87,7 +83,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -100,19 +95,23 @@ cc_library(
     name = "executable_build_options",
     srcs = ["executable_build_options.cc"],
     hdrs = ["executable_build_options.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:execution_options_util",
         "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/service:compilation_environments",
         "//xla/service:computation_placer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -121,7 +120,6 @@ cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":client",
         ":executable_build_options",
@@ -150,7 +148,6 @@ cc_library(
     name = "compile_only_client",
     srcs = ["compile_only_client.cc"],
     hdrs = ["compile_only_client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":client",
         ":xla_computation",
@@ -171,7 +168,6 @@ cc_library(
     name = "client_library",
     srcs = ["client_library.cc"],
     hdrs = ["client_library.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":compile_only_client",
         ":local_client",
@@ -186,7 +182,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -195,7 +190,6 @@ cc_library(
     name = "sharding_builder",
     srcs = ["sharding_builder.cc"],
     hdrs = ["sharding_builder.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:array",
         "//xla:shape_tree",
@@ -217,7 +211,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -256,6 +249,10 @@ cc_library(
         ":padding",
         ":sharding_builder",
         ":xla_computation",
+        "//xla:array",
+        "//xla:array2d",
+        "//xla:array3d",
+        "//xla:array4d",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
@@ -274,12 +271,16 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:stacktrace",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -287,20 +288,28 @@ xla_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
     deps = [
+        ":padding",
         ":sharding_builder",
         ":value_inference",
         ":xla_builder",
         ":xla_computation",
         "//xla:debug_options_flags",
         "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:test",
         "//xla:test_helpers",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

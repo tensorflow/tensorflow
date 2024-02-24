@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,42 +29,7 @@ namespace stream_executor {
 namespace gpu {
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:
-string ToString(hipError_t result) {
-#define OSTREAM_ROCM_ERROR(__name) \
-  case hipError##__name:           \
-    return "HIP_ERROR_" #__name;
-
-  switch (result) {
-    OSTREAM_ROCM_ERROR(InvalidValue)
-    OSTREAM_ROCM_ERROR(OutOfMemory)
-    OSTREAM_ROCM_ERROR(NotInitialized)
-    OSTREAM_ROCM_ERROR(Deinitialized)
-    OSTREAM_ROCM_ERROR(NoDevice)
-    OSTREAM_ROCM_ERROR(InvalidDevice)
-    OSTREAM_ROCM_ERROR(InvalidImage)
-    OSTREAM_ROCM_ERROR(InvalidContext)
-    OSTREAM_ROCM_ERROR(InvalidHandle)
-    OSTREAM_ROCM_ERROR(NotFound)
-    OSTREAM_ROCM_ERROR(NotReady)
-    OSTREAM_ROCM_ERROR(NoBinaryForGpu)
-
-    // Encountered an uncorrectable ECC error during execution.
-    OSTREAM_ROCM_ERROR(ECCNotCorrectable)
-
-    // Load/store on an invalid address. Must reboot all context.
-    case 700:
-      return "ROCM_ERROR_ILLEGAL_ADDRESS";
-    // Passed too many / wrong arguments, too many threads for register count.
-    case 701:
-      return "ROCM_ERROR_LAUNCH_OUT_OF_RESOURCES";
-
-      OSTREAM_ROCM_ERROR(ContextAlreadyInUse)
-      OSTREAM_ROCM_ERROR(PeerAccessUnsupported)
-      OSTREAM_ROCM_ERROR(Unknown)  // Unknown internal error to ROCM.
-    default:
-      return absl::StrCat("hipError_t(", static_cast<int>(result), ")");
-  }
-}
+string ToString(hipError_t result);
 
 // GpuContext wraps the device_ordinal and hipCtx_t handle.
 class GpuContext {
@@ -176,6 +141,12 @@ namespace rocm {
 
 using MemorySpace = gpu::MemorySpace;
 using ScopedActivateContext = gpu::ScopedActivateContext;
+
+// TODO: this function shall be added to the GpuDriver API as well
+absl::Status OccupancyGetMaxPotentialBlockSize(int* gridSize, int* blockSize,
+                                               hipFunction_t func,
+                                               size_t dynSharedMemPerBlk,
+                                               int blockSizeLimit);
 
 // Returns the current context set in ROCm. This is done by calling ROCm
 // driver (e.g., this value is not our cached view of the current context).

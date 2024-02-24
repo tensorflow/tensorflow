@@ -152,7 +152,7 @@ class ExecutorImpl : public Executor {
   Status Initialize(const Graph& graph) {
     TF_RETURN_IF_ERROR(immutable_state_.Initialize(graph));
     kernel_stats_.Initialize(immutable_state_.graph_view());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -226,7 +226,8 @@ class ExecutorImpl : public Executor {
   ImmutableExecutorState immutable_state_;
   KernelStats kernel_stats_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorImpl);
+  ExecutorImpl(const ExecutorImpl&) = delete;
+  void operator=(const ExecutorImpl&) = delete;
 };
 
 // The state associated with one invocation of ExecutorImpl::Run.
@@ -506,7 +507,7 @@ void ExecutorState<PropagatorStateType>::RunAsync(Executor::DoneCallback done) {
   num_outstanding_ops_ = ready.size();
   if (ready.empty()) {
     delete this;
-    done(OkStatus());
+    done(absl::OkStatus());
   } else {
     done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
@@ -1076,7 +1077,7 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class PropagatorStateType>
@@ -1564,7 +1565,7 @@ class DefaultExecutorRegistrar {
       Executor* ret = nullptr;
       TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(graph), &ret));
       out_executor->reset(ret);
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 };

@@ -229,6 +229,14 @@ class Subgraph {
   // Return read-only vector of node indices in the order of execution.
   const std::vector<int>& execution_plan() const { return execution_plan_; }
 
+  // Return read-only vector of node indices in the order of execution before
+  // any delegate was applied.
+  //
+  // Note: if no delegate is applied, this vector will be empty.
+  const std::vector<int>& pre_delegation_execution_plan() const {
+    return pre_delegation_execution_plan_;
+  }
+
   const std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
   nodes_and_registration() const {
     return nodes_and_registration_;
@@ -422,7 +430,17 @@ class Subgraph {
 
   // WARNING: This is an experimental API and subject to change.
   // Set the given `InterpreterOptions` object.
-  void SetOptions(InterpreterOptions* options) { options_ = options; }
+  void SetOptions(InterpreterOptions* options) {
+    options_ = options;
+    if (options && options->GetDynamicAllocationForLargeTensors() > 0) {
+      // Note: this operation cannot be reversed.
+      OptimizeMemoryForLargeTensors(
+          options->GetDynamicAllocationForLargeTensors());
+    }
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  const InterpreterOptions* GetOptions() const { return options_; }
 
   // WARNING: This is an experimental API and subject to change.
   // True if all intermediates tensors should be preserved for debugging.

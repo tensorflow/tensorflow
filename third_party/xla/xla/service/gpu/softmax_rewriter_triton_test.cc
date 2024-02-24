@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,22 +13,26 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/gpu_types.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
@@ -36,11 +40,13 @@ namespace {
 
 namespace m = ::xla::match;
 
+using ::testing::HasSubstr;
+
 // Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
 // and fuses as many diamond chains as possible without invoking any kind of
 // cost analysis.
-StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(GpuVersion gpu_version,
-                                                    HloModule* module) {
+absl::StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
+    se::GpuComputeCapability gpu_version, HloModule* module) {
   CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
   std::vector<DiamondChainDescriptor> diamond_chains =
@@ -61,12 +67,12 @@ class SoftmaxRewriterTritonTest
       public ::testing::WithParamInterface<PrimitiveType> {
  public:
   void SetUp() override {
-    gpu_version_ = GpuVersion{
+    gpu_version_ = se::GpuComputeCapability{
         se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
   }
 
  protected:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 TEST_P(SoftmaxRewriterTritonTest, CanFuseExactSoftmax) {
@@ -1036,7 +1042,7 @@ ENTRY main {
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
 }
 
-TEST_P(SoftmaxRewriterTritonTest, DoNotFuseSoftmaxWithSmallRows) {
+TEST_P(SoftmaxRewriterTritonTest, CanFuseSoftmaxDiamondWithSmallRows) {
   PrimitiveType data_type = GetParam();
   const std::string hlo_string_template = R"(
 HloModule softmax
@@ -1046,11 +1052,11 @@ max_computation {
   ROOT maximum = $0[] maximum(arg_0, arg_1)
 }
 ENTRY main {
-  param_0 = $0[127,50]{1,0} parameter(0)
+  param_0 = $0[127,7]{1,0} parameter(0)
   constant_neg_inf = $0[] constant(-inf)
   reduce = $0[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = $0[127,50]{1,0} broadcast(reduce), dimensions={0}
-  ROOT subtract = $0[127,50]{1,0} subtract(param_0, broadcast)
+  broadcast = $0[127,7]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = $0[127,7]{1,0} subtract(param_0, broadcast)
 }
 )";
   const std::string hlo_string =
@@ -1058,8 +1064,12 @@ ENTRY main {
                        primitive_util::LowercasePrimitiveTypeName(data_type));
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(
-      SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+  EXPECT_THAT(SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()),
+              tsl::testing::IsOkAndHolds(true));
+  TF_EXPECT_OK(verifier().Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
 }
 
 TEST_P(
@@ -1728,6 +1738,47 @@ ENTRY main {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   EXPECT_FALSE(
       SoftmaxRewriterTritonMatchAndRewrite(gpu_version_, module.get()).value());
+}
+
+TEST_F(SoftmaxRewriterTritonTest, FusionDecisionIsCapturedExplicitly) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  identity = f32[] parameter(1)
+  reduce = f32[127]{0} reduce(param_0, identity), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+}
+)";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version_);
+  int unmatched = 0, matched = 0;
+  for (HloInstruction* instruction :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    DiamondMatchingDecision decision =
+        softmax_rewriter_triton.MatchesTritonCompatibleClosedReductionDiamond(
+            instruction);
+    if (std::holds_alternative<FusionDecision>(decision)) {
+      std::string actual_decision =
+          std::get<FusionDecision>(decision).Explain();
+      EXPECT_THAT(actual_decision,
+                  AnyOf(HasSubstr("Root is not elementwise binary"),
+                        HasSubstr("Reduce has a non-constant second operand "
+                                  "and/or is variadic")));
+      unmatched++;
+    } else {
+      matched++;
+    }
+  }
+  EXPECT_EQ(unmatched, 5);
+  EXPECT_EQ(matched, 0);
 }
 
 INSTANTIATE_TEST_SUITE_P(SoftmaxRewriterTritonTestSuite,

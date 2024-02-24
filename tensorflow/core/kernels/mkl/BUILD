@@ -323,6 +323,7 @@ tf_cc_test_mkl(
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_dequantize_op",
+        ":mkl_kernel_util",
         ":mkl_tfconv_op",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -367,8 +368,8 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_tmp_bf16_ops",
-    prefix = "mkl_tmp_bf16_ops",
+    name = "mkl_tmp_ops",
+    prefix = "mkl_tmp_ops",
     deps = MKL_DEPS,
 )
 

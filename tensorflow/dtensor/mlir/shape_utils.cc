@@ -239,7 +239,7 @@ Status InferSPMDExpandedLocalShapeForResourceOutput(
             mlir::ArrayRef<mlir::TensorType>{local_variable_subtype}, context));
     op_result->setType(new_var_type);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::Operation* InferSPMDExpandedLocalShape(mlir::Operation* op) {

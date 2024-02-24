@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -43,7 +44,8 @@ absl::Status PreprocessAndFreezeGraph(
     absl::string_view mlir_dump_file_prefix, bool is_inliner_run,
     const absl::flat_hash_set<std::string>& noinline_functions,
     mlir::ModuleOp module_op, mlir::MLIRContext* context,
-    std::optional<Session*> session, bool run_tf_to_stablehlo);
+    std::optional<Session*> session, bool run_tf_to_stablehlo,
+    bool deserialize_xla_call_module);
 
 // Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
 // prefix.
@@ -53,8 +55,11 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
   return PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true, /*noinline_functions=*/{}, module_op, context,
-      session, /*run_tf_to_stablehlo=*/false);
+      session, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false);
 }
+
+void AddTFToStablehloPasses(mlir::PassManager& pm);
 
 }  // namespace quantization
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,13 +20,17 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/span.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "xla/pjrt/lru_cache.h"
-#include "xla/python/python_ref_manager.h"
 
 namespace jax {
 namespace {
@@ -96,10 +100,6 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     pybind11::object result;
     absl::Notification completed;
     std::thread::id thread_id = std::this_thread::get_id();
-
-    ~CacheEntry() {
-      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&result, 1));
-    }
   };
 
   struct CacheInfo {
@@ -166,9 +166,12 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
           if (cache == nullptr) {
             return;
           }
-          cache->entries_.erase(WeakrefCacheEntry{
+          auto it = cache->entries_.find(WeakrefCacheEntry{
               pybind11::reinterpret_borrow<pybind11::weakref>(weakref),
               cached_hash});
+          // Create temp-var to avoid re-entrant erase.
+          auto tmp = std::move(it->second);
+          cache->entries_.erase(it);
         }));
     return (entries_
                 .emplace(WeakrefCacheEntry{std::move(weakref), key.cached_hash},
@@ -226,6 +229,22 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       return fn_(weakref_key, *args, **kwargs);
     }
   }
+  std::vector<pybind11::object> GetKeys() {
+    std::vector<pybind11::object> results;
+    mu_.Lock();
+    for (const auto& wr_key : entries_) {
+      for (const auto& rest : *wr_key.second) {
+        pybind11::tuple result(4);
+        result[0] = wr_key.first.weakref;
+        result[1] = rest.first.context;
+        result[2] = rest.first.args;
+        result[3] = rest.first.kwargs;
+        results.push_back(std::move(result));
+      }
+    }
+    mu_.Unlock();
+    return results;
+  }
   CacheInfo GetCacheInfo() const {
     CacheInfo result;
     result.hits = total_queries_ - misses_;
@@ -236,7 +255,12 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   }
   void Clear() {
     total_queries_ = misses_ = 0;
+    std::vector<std::shared_ptr<Cache>> deferred_deletes;
+    for (auto& entry : entries_) {
+      deferred_deletes.push_back(std::move(entry.second));
+    }
     entries_.clear();
+    deferred_deletes.clear();
   }
 
   pybind11::function cache_context_fn_;
@@ -259,6 +283,7 @@ void BuildWeakrefLRUCacheAPI(pybind11::module& m) {
       py::class_<WeakrefLRUCache, std::shared_ptr<WeakrefLRUCache>>(
           m, "WeakrefLRUCache")
           .def("__call__", &WeakrefLRUCache::Call)
+          .def("cache_keys", &WeakrefLRUCache::GetKeys)
           .def("cache_info", &WeakrefLRUCache::GetCacheInfo)
           .def("cache_clear", &WeakrefLRUCache::Clear);
   py::class_<WeakrefLRUCache::CacheInfo>(weakref_lru_cache,

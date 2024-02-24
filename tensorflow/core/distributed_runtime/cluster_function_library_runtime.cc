@@ -169,7 +169,7 @@ Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
   // from the library.
   *(gdef->mutable_library()) = flib_def.ReachableDefinitions(*gdef).ToProto();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
@@ -209,7 +209,7 @@ void ClusterFunctionLibraryRuntime::Instantiate(
     const OpDef& sig = fdef->signature();
     TF_RETURN_IF_ERROR(ConstructFunctionGraph(sig, attrs, options, *lib_def,
                                               &gdef, send_keys, recv_keys));
-    return OkStatus();
+    return absl::OkStatus();
   };
   Status s;
   if (options.lib_def) {

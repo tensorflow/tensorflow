@@ -53,7 +53,8 @@ class FakeTask : public BatchTask {
  private:
   const size_t size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FakeTask);
+  FakeTask(const FakeTask&) = delete;
+  void operator=(const FakeTask&) = delete;
 };
 
 using Queue = BatchScheduler<FakeTask>;
@@ -171,7 +172,7 @@ class SharedBatchSchedulerTest
               (*output_tasks)[i] = std::make_unique<FakeTask>(task_sizes[i]);
             }
 
-            return OkStatus();
+            return absl::OkStatus();
           };
     }
     return nullptr;
@@ -839,7 +840,7 @@ void CreateQueues() {
     });
     busy_waiter.join();
     notifier.join();
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback =

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -637,6 +637,9 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
         "PyTree registries of PyTreeDefs passed to Compose() must match.");
   }
   auto out = std::make_unique<PyTreeDef>(registry_->shared_from_this());
+  out->traversal_.reserve(static_cast<size_t>(num_leaves()) *
+                              inner.num_nodes() +
+                          num_nodes() - num_leaves());
   for (const Node& n : traversal_) {
     if (n.kind == PyTreeKind::kLeaf) {
       absl::c_copy(inner.traversal_, std::back_inserter(out->traversal_));
@@ -644,13 +647,7 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
       out->traversal_.push_back(n);
     }
   }
-  const auto& root = traversal_.back();
-  const auto& inner_root = inner.traversal_.back();
-  // TODO(tomhennigan): This should update all nodes in the traversal.
-  auto& out_root = out->traversal_.back();
-  out_root.num_nodes = (root.num_nodes - root.num_leaves) +
-                       (inner_root.num_nodes * root.num_leaves);
-  out_root.num_leaves *= inner_root.num_leaves;
+  out->SetNumLeavesAndNumNodes();
   return out;
 }
 

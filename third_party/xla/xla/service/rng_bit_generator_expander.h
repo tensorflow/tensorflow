@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,11 +57,11 @@ class RngBitGeneratorExpander : public OpExpanderPass {
   };
 
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* hlo) override;
-  StatusOr<HloComputation*> GetGeneratorComputation(const Shape& data_shape,
-                                                    const Shape& state_shape,
-                                                    RandomAlgorithm algorithm,
-                                                    HloModule* module);
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* hlo) override;
+  absl::StatusOr<HloComputation*> GetGeneratorComputation(
+      const Shape& data_shape, const Shape& state_shape,
+      RandomAlgorithm algorithm, HloModule* module);
 
   const RandomAlgorithm default_algorithm_;
   absl::flat_hash_map<RngGeneratorKey, HloComputation*> computation_cache_;

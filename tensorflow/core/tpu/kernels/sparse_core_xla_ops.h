@@ -39,7 +39,9 @@ class UseSparseCoreFrontendAttributes {
   xla::XlaBuilder* builder_;
   const xla::FrontendAttributes original_frontend_attributes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(UseSparseCoreFrontendAttributes);
+  UseSparseCoreFrontendAttributes(const UseSparseCoreFrontendAttributes&) =
+      delete;
+  void operator=(const UseSparseCoreFrontendAttributes&) = delete;
 };
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_

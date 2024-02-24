@@ -52,7 +52,7 @@ ln -s "/usr/include/aarch64-linux-gnu/asm" "${TARGET}/usr/include/asm"
 mkdir -p glibc-src
 mkdir -p glibc-build
 cd glibc-src
-wget "https://vault.centos.org/centos/7/os/Source/SPackages/glibc-2.17-317.el7.src.rpm"
+wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 "https://vault.centos.org/centos/7/os/Source/SPackages/glibc-2.17-317.el7.src.rpm"
 rpm2cpio "glibc-2.17-317.el7.src.rpm" |cpio -idmv
 tar -xvzf "glibc-2.17-c758a686.tar.gz" --strip 1
 tar -xvzf "glibc-2.17-c758a686-releng.tar.gz" --strip 1
@@ -77,7 +77,7 @@ sed -i '54i#define TCP_USER_TIMEOUT 18' "/${TARGET}/usr/include/netinet/tcp.h"
 # Download specific version of libstdc++ shared library based on the value of
 # the `VERSION` parameter
   # Download binary libstdc++ 4.8 shared library release
-wget "http://old-releases.ubuntu.com/ubuntu/pool/main/g/gcc-4.8/libstdc++6_4.8.1-10ubuntu8_arm64.deb" && \
+wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 "http://old-releases.ubuntu.com/ubuntu/pool/main/g/gcc-4.8/libstdc++6_4.8.1-10ubuntu8_arm64.deb" && \
     unar "libstdc++6_4.8.1-10ubuntu8_arm64.deb" && \
     tar -C "${TARGET}" -xvzf "libstdc++6_4.8.1-10ubuntu8_arm64/data.tar.gz" "./usr/lib/aarch64-linux-gnu/libstdc++.so.6.0.18"  && \
     rm -rf "libstdc++6_4.8.1-10ubuntu8_arm64.deb" "libstdc++6_4.8.1-10ubuntu8_arm64"
@@ -88,12 +88,12 @@ cd "${TARGET}-src"
 # Build a devtoolset cross-compiler based on our glibc 2.12/glibc 2.17 sysroot setup.
 case "${VERSION}" in
 devtoolset-9)
-  wget "https://vault.centos.org/centos/7/sclo/Source/rh/devtoolset-9-gcc-9.3.1-2.2.el7.src.rpm"
+  wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 "https://vault.centos.org/centos/7/sclo/Source/rh/devtoolset-9-gcc-9.3.1-2.2.el7.src.rpm"
   rpm2cpio "devtoolset-9-gcc-9.3.1-2.2.el7.src.rpm" |cpio -idmv
   tar -xvf "gcc-9.3.1-20200408.tar.xz" --strip 1
   ;;
 devtoolset-10)
-  wget "https://vault.centos.org/centos/7/sclo/Source/rh/devtoolset-10-gcc-10.2.1-11.2.el7.src.rpm"
+  wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 "https://vault.centos.org/centos/7/sclo/Source/rh/devtoolset-10-gcc-10.2.1-11.2.el7.src.rpm"
   rpm2cpio "devtoolset-10-gcc-10.2.1-11.2.el7.src.rpm" |cpio -idmv
   tar -xvf "gcc-10.2.1-20210130.tar.xz" --strip 1
   ;;

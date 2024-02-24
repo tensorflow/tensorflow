@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/buffer_desc.h"
@@ -48,28 +47,18 @@ namespace xla {
 namespace cpu {
 
 class XlaRuntimeCpuExecutable {
-  using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
-
  public:
   explicit XlaRuntimeCpuExecutable(
       std::unique_ptr<runtime::JitExecutable> jit_executable,
-      const XlaFrameworkMapping& xla_framework_mapping,
-      FfiModulesState ffi_modules_state)
+      const XlaFrameworkMapping& xla_framework_mapping)
       : executable_(std::move(jit_executable)),
-        xla_framework_mapping_(xla_framework_mapping),
-        ffi_modules_state_(std::move(ffi_modules_state)) {
-    runtime::ffi::ExportFfiModules(dynamic_custom_calls_);
-  }
+        xla_framework_mapping_(xla_framework_mapping) {}
 
   explicit XlaRuntimeCpuExecutable(
       std::unique_ptr<runtime::Executable> executable,
-      const XlaFrameworkMapping& xla_framework_mapping,
-      FfiModulesState ffi_modules_state)
+      const XlaFrameworkMapping& xla_framework_mapping)
       : executable_(std::move(executable)),
-        xla_framework_mapping_(xla_framework_mapping),
-        ffi_modules_state_(std::move(ffi_modules_state)) {
-    runtime::ffi::ExportFfiModules(dynamic_custom_calls_);
-  }
+        xla_framework_mapping_(xla_framework_mapping) {}
 
   Status Execute(const std::vector<BufferDesc>& descriptor_table,
                  const ExecutableRunOptions* run_options);
@@ -90,7 +79,7 @@ class XlaRuntimeCpuExecutable {
   StatusOr<std::string_view> GetObjFile() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
-      return InternalError("No JitExecutable");
+      return Internal("No JitExecutable");
     }
 
     runtime::JitExecutable* jit_executable =
@@ -98,7 +87,7 @@ class XlaRuntimeCpuExecutable {
     std::unique_ptr<llvm::MemoryBuffer> obj_file =
         jit_executable->DefaultExecutable()->obj_file();
     if (!obj_file)
-      return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
+      return Internal("XlaRuntimeCpuExecutable didn't save the obj file");
 
     return std::string_view(obj_file->getBuffer());
   }
@@ -106,7 +95,7 @@ class XlaRuntimeCpuExecutable {
   StatusOr<std::string_view> GetMlirModule() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
-      return InternalError("No JitExecutable");
+      return Internal("No JitExecutable");
     }
 
     runtime::JitExecutable* jit_executable =
@@ -124,9 +113,6 @@ class XlaRuntimeCpuExecutable {
       executable_;
 
   XlaFrameworkMapping xla_framework_mapping_;
-
-  // Keeps an executable state for all registered FFI modules.
-  FfiModulesState ffi_modules_state_;
 
   // Dynamic custom calls exported from XLA runtime modules (and FFI modules).
   runtime::DynamicCustomCallRegistry dynamic_custom_calls_;
@@ -184,12 +170,20 @@ class CpuExecutable : public Executable {
       XlaFrameworkMapping xla_framework_mapping,
       runtime::JitExecutable::Options opts);
 
+  absl::Span<const std::string> obj_files() const { return obj_files_; }
+
+  void set_obj_files(std::vector<std::string> obj_files) {
+    obj_files_ = std::move(obj_files);
+  }
+
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
 
   void set_ir_module_string(const std::string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
+
+  const std::string& module_name() const { return module_name_; }
 
   static int64_t ShapeSizeBytes(const Shape& shape);
 
@@ -260,10 +254,13 @@ class CpuExecutable : public Executable {
   // The JIT containing compiled modules.
   std::unique_ptr<SimpleOrcJIT> jit_;
 
+  // Object files (machine code) compiled from an HLO module by the JIT
+  // compiler. We capture all object files created by SimpleOrcJIT so we can
+  // export them to AOT compilation result.
+  std::vector<std::string> obj_files_;
+
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
-
-  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving

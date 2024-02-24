@@ -28,10 +28,11 @@ py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":common_transformers",
+        "@pypi_gast//:pkg",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/platform:client_testlib",
-        "@pypi_gast//:pkg",
     ],
 )

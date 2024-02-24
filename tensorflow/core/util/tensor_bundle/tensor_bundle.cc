@@ -916,7 +916,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   if (DataTypeCanUseMemcpy(entry.dtype())) {
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
     size_t unused_bytes_read;
-    if (entry.size() > kBufferSize) {
+    if (entry.size() > kBufferSize || enable_multi_threading_for_testing_) {
       StringPiece sp;
       if (!enable_multi_threading_for_testing_ &&
           entry.size() < kLargeTensorThreshold) {
@@ -964,6 +964,8 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
             statuses[i] = std::move(status);
           });
         }
+        reader_pool = nullptr;  // Wait for reads to finish
+
         for (const auto& status : statuses) {
           TF_RETURN_IF_ERROR(status);
         }

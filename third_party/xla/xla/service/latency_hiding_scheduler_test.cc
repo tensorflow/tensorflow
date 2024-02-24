@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -996,9 +996,9 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
     ENTRY after_optimizations_test {
     %parameter.1 = bf16[8]{0} parameter(0)
     %collective-permute.2 = bf16[8]{0} collective-permute(bf16[8]{0} parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
-    %constant.3 = bf16[] constant(1)
-    %broadcast.4 = bf16[8]{0} broadcast(bf16[] %constant.3), dimensions={}
-    %add.5 = bf16[8]{0} add(%collective-permute.2, %broadcast.4)
+    %add.3 = bf16[8]{0} add(%parameter.1, %parameter.1)
+    %add.4 = bf16[8]{0} add(%add.3, parameter.1)
+    %add.5 = bf16[8]{0} add(%collective-permute.2, %add.4)
     %collective-permute.6 = bf16[8]{0} collective-permute(bf16[8]{0} add.5), source_target_pairs={{1,0},{0,3},{3,2}}
   }
 )";
@@ -1035,7 +1035,7 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
                              original_instruction_sequence[3]),
             PositionInVector(new_instruction_sequence,
                              original_instruction_sequence[4]));
-  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 1);
+  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 3);
   EXPECT_EQ(original_instruction_sequence[0]->users()[0]->opcode(),
             HloOpcode::kCollectivePermuteStart);
   HloInstruction* collective_permute_start_1 =
@@ -2874,4 +2874,179 @@ TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
   EXPECT_LT(PositionInVector(new_instruction_sequence, g),
             PositionInVector(new_instruction_sequence, f));
 }
+
+TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
+  absl::string_view hlo_string = R"(
+    HloModule rerun_scheduler_test, is_scheduled=true
+    ENTRY main {
+     p0 = bf16[8]{0} parameter(0)
+     c = bf16[] constant(0)
+     b = bf16[43]{0} broadcast(c), dimensions={}
+     s = bf16[1]{0} slice(b), slice={[0:1]}
+     cp = bf16[8]{0} collective-permute(p0), source_target_pairs={{0,1},{1,2},{2,3}}
+    ROOT tuple = (bf16[8]{0}, bf16[1]{0}) tuple(cp, s)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 140;
+  sched_config.rerun = 1;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  // LatencyHidingScheduler runs an additional "rerun" iteration because the
+  // peak memory usage after the first run was 152 bytes (> 140 bytes), so it
+  // sets the new limit to 126 and obtains a peak memory usage of 104 bytes at
+  // the end of the rerun. In the first run, collective-permute overlaps the
+  // slice op, whereas in the rerun, it does not overlap anything.
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  const HloInstruction* s = FindInstruction(hlo_module.get(), "s");
+  const HloInstruction* cps =
+      FindInstruction(hlo_module.get(), "collective-permute-start");
+  EXPECT_LT(PositionInVector(new_instruction_sequence, s),
+            PositionInVector(new_instruction_sequence, cps));
+}
+
+TEST_F(LatencyHidingSchedulerTest, MultipleAsyncDoneOperationsDoNotCreateLoop) {
+  absl::string_view hlo_string = R"(
+HloModule multiple_async_done_scheduler_test, is_scheduled=true
+
+called_computation {
+  ROOT %param = s32[<=4096]{0:T(8)M(1024)} parameter(0)
+}
+
+ENTRY main {
+  %while_body_forward_pass_input_tuple = (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}) parameter(0), backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+
+  %get-tuple-element.0 = s32[<=4096]{0:T(8)M(1024)} get-tuple-element(
+      (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}) %while_body_forward_pass_input_tuple),
+      index=0, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+
+  %get-tuple-element.1 = s32[<=4096]{0:T(8)M(1024)} get-tuple-element(
+      (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}) %while_body_forward_pass_input_tuple),
+      index=1, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+
+  %call-start.1 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
+    call-start(s32[<=4096]{0:T(8)M(1024)} %get-tuple-element.1),
+      async_execution_thread="sparsecore", to_apply=%called_computation
+
+  %call-done.1 = s32[<=4096]{0:T(8)M(1024)}
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.1)
+
+  %call-start.2 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
+    call-start(s32[<=4096]{0:T(8)M(1024)} %call-done.1),
+      async_execution_thread="sparsecore", to_apply=%called_computation
+
+  %call-done.2 = s32[<=4096]{0:T(8)M(1024)}
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.2)
+
+  %call-start.3 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
+    call-start(s32[<=4096]{0:T(8)M(1024)} %get-tuple-element.0),
+      async_execution_thread="sparsecore", to_apply=%called_computation
+
+  %call-done.3 = s32[<=4096]{0:T(8)M(1024)}
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.3)
+
+  ROOT %tuple.6 = (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)})
+    tuple(s32[<=4096]{0:T(8)M(1024)} %call-done.2, s32[<=4096]{0:T(8)M(1024)} %call-done.3),
+      backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  // The double indirection of the buffer aliasing in the module above should
+  // not create a failure of scheduling by the async done checks.
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+}
+
+TEST_F(LatencyHidingSchedulerTest, CopyScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule EinsumTest, is_scheduled=true
+ENTRY AddR2 {
+  y_host = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(1)
+  z = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(2)
+  x = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(0)
+  convolution = bf16[12800,12800]{1,0:T(8,128)(2,1)} convolution(x, z), dim_labels=bf_io->bf
+  copy-start = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)}, u32[]{:S(2)}) copy-start(y_host)
+  copy-done = bf16[12800,12800]{1,0:T(8,128)(2,1)} copy-done(copy-start)
+  ROOT convolution.1 = bf16[12800,12800]{1,0:T(8,128)(2,1)} convolution(convolution, copy-done), dim_labels=bf_io->bf
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  const HloInstruction* conv = FindInstruction(hlo_module.get(), "convolution");
+  const HloInstruction* cps = FindInstruction(hlo_module.get(), "copy-start");
+  const HloInstruction* cpd = FindInstruction(hlo_module.get(), "copy-done");
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  EXPECT_LT(PositionInVector(new_instruction_sequence, cps),
+            PositionInVector(new_instruction_sequence, conv));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, conv),
+            PositionInVector(new_instruction_sequence, cpd));
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+}
+
+TEST_F(LatencyHidingSchedulerTest, MaxCopyScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule EinsumTest, is_scheduled=true
+ENTRY AddR2 {
+  y_host = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(1)
+  q_host = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(3)
+  z = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(2)
+  x = bf16[12800,12800]{1,0:T(8,128)(2,1)} parameter(0)
+  convolution = bf16[12800,12800]{1,0:T(8,128)(2,1)} convolution(x, z), dim_labels=bf_io->bf
+  copy-start = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)}, u32[]{:S(2)}) copy-start(y_host)
+  copy-done = bf16[12800,12800]{1,0:T(8,128)(2,1)} copy-done(copy-start)
+  copy-start2 = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)}, u32[]{:S(2)}) copy-start(q_host)
+  copy-done2 = bf16[12800,12800]{1,0:T(8,128)(2,1)} copy-done(copy-start2)
+  ROOT t = (bf16[12800,12800]{1,0:T(8,128)(2,1)}, bf16[12800,12800]{1,0:T(8,128)(2,1)})  tuple(copy-done2, copy-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  const HloInstruction* conv = FindInstruction(hlo_module.get(), "convolution");
+  const HloInstruction* cps = FindInstruction(hlo_module.get(), "copy-start");
+  const HloInstruction* cps2 = FindInstruction(hlo_module.get(), "copy-start2");
+  const HloInstruction* cpd2 = FindInstruction(hlo_module.get(), "copy-done2");
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  EXPECT_LT(PositionInVector(new_instruction_sequence, cps2),
+            PositionInVector(new_instruction_sequence, conv));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, conv),
+            PositionInVector(new_instruction_sequence, cpd2));
+  EXPECT_LT(PositionInVector(new_instruction_sequence, cps),
+            PositionInVector(new_instruction_sequence, cpd2));
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+}
+
 }  // namespace xla

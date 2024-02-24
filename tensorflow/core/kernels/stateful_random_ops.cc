@@ -65,7 +65,7 @@ Status CheckState(const Tensor& state) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", state.dims());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
@@ -80,7 +80,7 @@ Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
         " must be at least ",
         min_size, "; got ", state.NumElements());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename AlgEnumType>
@@ -149,7 +149,7 @@ Status UpdateVariableAndFill(
       arg.state_tensor = var_tensor;
       functor::UpdateVariableAndFill_Philox<Device, Distribution>()(
           ctx, ctx->eigen_device<Device>(), dist, &arg, output_data);
-      return OkStatus();
+      return absl::OkStatus();
     case ConcreteRngAlgorithm::RNG_ALG_THREEFRY:
       return errors::Unimplemented(
           "Non-XLA devices don't support the ThreeFry algorithm.");
@@ -202,7 +202,7 @@ Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
                                    ", not ", DataTypeString(tensor.dtype()));
   }
   *result = tensor.flat<T>()(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename Device, class Distribution>

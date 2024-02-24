@@ -1,12 +1,15 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/python/ifrt:friends"],
     licenses = ["notice"],
 )
 
 gentbl_cc_library(
     name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -31,7 +34,7 @@ cc_library(
         "spmd_expansion_pass.cc",
     ],
     hdrs = ["passes.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":constants",
         ":passes_inc_gen",
@@ -53,7 +56,7 @@ cc_library(
     name = "built_in_spmd_expansions",
     srcs = ["built_in_spmd_expansions.cc"],
     hdrs = ["built_in_spmd_expansions.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/python/ifrt/ir/transforms/spmd_expanders:spmd_expander",
         "@llvm-project//mlir:FuncDialect",
@@ -64,6 +67,6 @@ cc_library(
 cc_library(
     name = "constants",
     hdrs = ["constants.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
     deps = ["@llvm-project//llvm:Support"],
 )

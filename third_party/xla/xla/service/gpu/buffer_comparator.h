@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // A device-side comparator that compares buffers.
 class BufferComparator {
@@ -40,15 +40,28 @@ class BufferComparator {
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  StatusOr<bool> CompareEqual(se::Stream* stream, se::DeviceMemoryBase current,
-                              se::DeviceMemoryBase expected) const;
+  absl::StatusOr<bool> CompareEqual(se::Stream* stream,
+                                    se::DeviceMemoryBase current,
+                                    se::DeviceMemoryBase expected) const;
 
  private:
   Shape shape_;
   HloModuleConfig config_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+namespace buffer_comparator {
+
+// Returns a pointer to CUDA C++ device function implementing comparison.
+void* fp8_e4m3fn_comparison();
+void* fp8_e5m2_comparison();
+void* fp16_comparison();
+void* bf16_comparison();
+void* fp32_comparison();
+void* fp64_comparison();
+void* int8_comparison();
+void* int32_comparison();
+
+}  // namespace buffer_comparator
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_

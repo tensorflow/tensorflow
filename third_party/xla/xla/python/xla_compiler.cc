@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -39,14 +41,18 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/py_client.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/computation_placer.h"
@@ -246,18 +252,32 @@ StatusOr<HloSharding> IotaTileHelper(
 // 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
 // with name "xla._CUSTOM_CALL_TARGET".
 // 'platform' is an XLA platform name, e.g., "Host" or "CUDA".
-Status PyRegisterCustomCallTarget(const std::string& fn_name,
-                                  py::capsule capsule,
-                                  const std::string& platform) {
+absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
+                                        py::capsule capsule,
+                                        const std::string& platform,
+                                        int api_version) {
   static const char* const kName = "xla._CUSTOM_CALL_TARGET";
   if (absl::string_view(capsule.name()) != kName) {
     return InvalidArgument(
-        "Argument to RegisterCustomCallTargetRegistry was not a "
+        "Argument to RegisterCustomCallTarget was not a "
         "xla._CUSTOM_CALL_TARGET capsule.");
   }
-  CustomCallTargetRegistry::Global()->Register(
-      fn_name, static_cast<void*>(capsule), platform);
-  return OkStatus();
+  switch (api_version) {
+    case 0:
+      CustomCallTargetRegistry::Global()->Register(
+          fn_name, static_cast<void*>(capsule), platform);
+      return absl::OkStatus();
+    case 1:
+      ffi::Ffi::RegisterStaticHandler(
+          xla::ffi::GetXlaFfiApi(), fn_name, platform,
+          reinterpret_cast<XLA_FFI_Handler*>(static_cast<void*>(capsule)));
+      return absl::OkStatus();
+    default:
+      return absl::UnimplementedError(absl::StrFormat(
+          "API version %d is not supported by RegisterCustomCallTarget. "
+          "Supported versions are 0 and 1.",
+          api_version));
+  }
 }
 
 template <typename T, typename Container>
@@ -288,6 +308,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   // Shapes
   py::class_<Layout> layout_class(m, "Layout");
   layout_class
+      .def(py::init([](absl::Span<const int64_t> minor_to_major) {
+        return std::make_unique<Layout>(minor_to_major);
+      }))
       .def("minor_to_major",
            [](Layout layout) { return SpanToTuple(layout.minor_to_major()); })
       .def("__eq__", [](const Layout& layout,
@@ -296,7 +319,24 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const Layout& other) { return layout != other; })
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
-      .def("to_string", &Layout::ToString);
+      .def("to_string", &Layout::ToString)
+      .def(py::pickle(
+          [](const Layout& self) -> py::tuple {
+            auto proto = self.ToProto();
+            std::string result;
+            if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+              // throw converted by PyBind to a Python RuntimeError.
+              throw XlaRuntimeError(
+                  absl::StrCat("Layout.py_pickle: ",
+                               "SerializeToStringDeterministic failed"));
+            }
+            return py::make_tuple(py::bytes(result));
+          },
+          [](py::tuple t) {
+            LayoutProto result;
+            result.ParseFromString(t[0].cast<std::string>());
+            return Layout::CreateFromProto(result);
+          }));
 
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
@@ -533,6 +573,40 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &HloPrintOptions::is_in_nested_computation,
                     &HloPrintOptions::set_is_in_nested_computation);
 
+  // HloModule.computations() returns raw pointers.
+  // pybind seems to prefer smart pointers.
+  // We give pybind a smart pointer to a wrapper around a raw pointer to satisfy
+  // pybind and avoid double frees.
+  class ComputationWrapper {
+   public:
+    ComputationWrapper(const HloComputation* comp,
+                       const std::shared_ptr<HloModule> module)
+        : comp{comp}, module{module} {}
+    absl::string_view name() const { return comp->name(); }
+    void render_html(const std::string& filename) {
+      std::string html = xla::ValueOrThrow(RenderGraph(
+          *comp, /*label=*/"", comp->parent()->config().debug_options(),
+          RenderedGraphFormat::kHtml, HloRenderOptions()));
+      xla::ThrowIfError(tsl::WriteStringToFile(
+          tsl::Env::Default(), absl::StrCat(filename, ".html"), html));
+    }
+
+   private:
+    const HloComputation* comp;
+    // The module owns the computations: if its destructor is called, the
+    // computations are freed. To prevent that from happening in cases where the
+    // module Python object goes out of scope and gets garbage collected before
+    // the computations, we keep a shared_ptr to the module that originated the
+    // computation.
+    const std::shared_ptr<HloModule> module;
+  };
+
+  py::class_<ComputationWrapper, std::shared_ptr<ComputationWrapper>>
+      hlo_computation_class(m, "HloComputation");
+
+  hlo_computation_class.def_property_readonly("name", &ComputationWrapper::name)
+      .def("render_html", &ComputationWrapper::render_html);
+
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
   hlo_module_class.def_property_readonly("name", &HloModule::name)
@@ -545,6 +619,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            xla::ValueOrThrowWrapper(GetHloModuleSerializedProto))
       .def("from_serialized_hlo_module_proto",
            xla::ValueOrThrowWrapper(HloModuleFromSerializedProto))
+      .def("computations",
+           [](const std::shared_ptr<HloModule> m)
+               -> std::vector<std::shared_ptr<ComputationWrapper>> {
+             std::vector<std::shared_ptr<ComputationWrapper>> computations;
+             for (HloComputation* comp : m->computations())
+               computations.push_back(
+                   std::make_shared<ComputationWrapper>(comp, m));
+             return computations;
+           })
       .def_property_readonly(
           "spmd_output_sharding",
           [](const HloModule& m) -> std::optional<xla::OpSharding> {
@@ -801,12 +884,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           });
 
   // Custom-call targets.
-  m.def("register_custom_call_target",
-        [](const std::string& fn_name, py::capsule capsule,
-           const std::string& platform) {
-          xla::ThrowIfError(PyRegisterCustomCallTarget(
-              fn_name, std::move(capsule), platform));
-        });
+  m.def(
+      "register_custom_call_target",
+      [](const std::string& fn_name, py::capsule capsule,
+         const std::string& platform, const int api_version) {
+        xla::ThrowIfError(PyRegisterCustomCallTarget(
+            fn_name, std::move(capsule), platform, api_version));
+      },
+      py::arg("fn_name"), py::arg("capsule"), py::arg("platform"),
+      py::arg("api_version") = 0);
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
@@ -831,12 +917,23 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_cpu_fast_math_honor_functions",
                     &DebugOptions::xla_cpu_fast_math_honor_functions,
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
-      .def_property("xla_detailed_logging_and_dumping",
-                    &DebugOptions::xla_detailed_logging_and_dumping,
-                    &DebugOptions::set_xla_detailed_logging_and_dumping)
+      .def_property("xla_detailed_logging", &DebugOptions::xla_detailed_logging,
+                    &DebugOptions::set_xla_detailed_logging)
+      .def_property("xla_enable_dumping", &DebugOptions::xla_enable_dumping,
+                    &DebugOptions::set_xla_enable_dumping)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
+      .def_property("xla_gpu_dump_autotune_results_to",
+                    &DebugOptions::xla_gpu_dump_autotune_results_to,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_dump_autotune_results_to(value);
+                    })
+      .def_property("xla_gpu_load_autotune_results_from",
+                    &DebugOptions::xla_gpu_load_autotune_results_from,
+                    [](DebugOptions* self, std::string value) {
+                      self->set_xla_gpu_load_autotune_results_from(value);
+                    })
       .def_property("xla_gpu_cuda_data_dir",
                     &DebugOptions::xla_gpu_cuda_data_dir,
                     [](DebugOptions* self, std::string value) {
@@ -924,7 +1021,22 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &DebugOptions::xla_dump_hlo_pipeline_re,
                     [](DebugOptions* self, std::string value) {
                       self->set_xla_dump_hlo_pipeline_re(value);
-                    });
+                    })
+      .def_property("xla_gpu_enable_async_all_reduce",
+                    &DebugOptions::xla_gpu_enable_async_all_reduce,
+                    &DebugOptions::set_xla_gpu_enable_async_all_reduce)
+      .def_property("xla_gpu_enable_async_all_gather",
+                    &DebugOptions::xla_gpu_enable_async_all_gather,
+                    &DebugOptions::set_xla_gpu_enable_async_all_gather)
+      .def_property("xla_gpu_enable_async_collective_permute",
+                    &DebugOptions::xla_gpu_enable_async_collective_permute,
+                    &DebugOptions::set_xla_gpu_enable_async_collective_permute)
+      .def_property("xla_gpu_enable_async_all_to_all",
+                    &DebugOptions::xla_gpu_enable_async_all_to_all,
+                    &DebugOptions::set_xla_gpu_enable_async_all_to_all)
+      .def_property("xla_gpu_enable_async_reduce_scatter",
+                    &DebugOptions::xla_gpu_enable_async_reduce_scatter,
+                    &DebugOptions::set_xla_gpu_enable_async_reduce_scatter);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -970,6 +1082,17 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           "auto_spmd_partitioning_mesh_ids",
           &ExecutableBuildOptions::auto_spmd_partitioning_mesh_ids,
           &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
+      .def_property(
+          "allow_spmd_sharding_propagation_to_parameters",
+          [](const ExecutableBuildOptions& options) -> std::vector<bool> {
+            return std::vector<bool>(
+                options.allow_spmd_sharding_propagation_to_parameters().begin(),
+                options.allow_spmd_sharding_propagation_to_parameters().end());
+          },
+          [](ExecutableBuildOptions& options, std::vector<bool> values) {
+            absl::InlinedVector<bool, 1> v(values.begin(), values.end());
+            options.set_allow_spmd_sharding_propagation_to_parameters(v);
+          })
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           [](const ExecutableBuildOptions& options) -> std::vector<bool> {

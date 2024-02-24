@@ -52,7 +52,7 @@ class ListDatasetParams : public DatasetParams {
     for (int i = 0; i < tensors_.size(); ++i) {
       input_names->emplace_back(absl::StrCat("tensors_", i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -60,7 +60,7 @@ class ListDatasetParams : public DatasetParams {
                     {"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return "List"; }

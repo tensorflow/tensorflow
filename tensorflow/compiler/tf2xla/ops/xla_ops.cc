@@ -42,7 +42,7 @@ Status UnchangedRank(shape_inference::InferenceContext* c) {
   } else {
     c->set_output(0, c->input(0));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaBroadcastHelper")
@@ -294,7 +294,7 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(output_dims));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaDot")
@@ -398,7 +398,7 @@ REGISTER_OP("XlaDynamicSlice")
         return UnchangedRank(c);
       }
       c->set_output(0, size_indices_value);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
@@ -556,7 +556,7 @@ REGISTER_OP("XlaPad")
       }
 
       c->set_output(0, c->MakeShape(output_dims));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Pad operator, documented at
@@ -587,7 +587,7 @@ REGISTER_OP("XlaRecv")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Receives the named tensor from another XLA computation. Wraps the XLA Recv
@@ -630,7 +630,7 @@ REGISTER_OP("XlaReduce")
       } else {
         c->set_output(0, c->input(0));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Reduce operator, documented at
@@ -684,7 +684,7 @@ REGISTER_OP("XlaVariadicReduce")
           c->set_output(i, c->input(i));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -768,7 +768,7 @@ REGISTER_OP("XlaVariadicReduceV2")
       for (int i = 0; i < nr_inputs; ++i) {
         c->set_output(i, output_shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -816,7 +816,7 @@ REGISTER_OP("XlaRngBitGenerator")
     .Input("shape: Tshape")
     .Output("output_key: uint64")
     .Output("output: dtype")
-    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("dtype: {uint8, int8, int32, int64, uint32, uint64} = DT_UINT64")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle algorithm;
@@ -828,7 +828,7 @@ REGISTER_OP("XlaRngBitGenerator")
       shape_inference::ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
       c->set_output(1, output);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Stateless PRNG bit generator.
@@ -912,7 +912,7 @@ REGISTER_OP("XlaKeyValueSort")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -938,7 +938,7 @@ REGISTER_OP("XlaVariadicSort")
       std::vector<shape_inference::ShapeHandle> input_shapes;
       TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
       TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -1066,7 +1066,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         dims.push_back(c->MakeDim(dim));
       }
       c->set_output(0, c->MakeShape(dims));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from automatic partitioning to
@@ -1092,7 +1092,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from manual partitioning to
@@ -1119,7 +1119,7 @@ REGISTER_OP("XlaReplicaId")
     .Output("id: int32")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       context->set_output(0, context->MakeShape({}));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc("Replica ID.");
 
@@ -1212,7 +1212,7 @@ Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     c->set_output(i, c->input(i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("XlaOptimizationBarrier")
@@ -1258,7 +1258,7 @@ REGISTER_OP("XlaCustomCall")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA CustomCall operator
@@ -1293,7 +1293,7 @@ REGISTER_OP("XlaCustomCallV2")
         TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shapes[i], &shape));
         c->set_output(i, shape);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Emits an HLO `CustomCall` operation with multiple outputs.
@@ -1346,7 +1346,7 @@ REGISTER_OP("XlaCallModule")
                 << "] : " << c->DebugString(s);
         c->set_output(i, s);
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Invokes a StableHLO module.
@@ -1365,7 +1365,7 @@ version: Tracks changes the semantics of the op, to support backwards
   the op carries a StableHLO module with compatibility guarantees. From version
   5, XLACallModule can include `stablehlo.custom_call` op to execute tf
   functions. From version 6 the op supports the `disabled_checks` attribute.
-  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+VERSION_MAXIMUM_SUPPORTED%22&type=code.
+  See more versioning details at https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_call_module+%22int+kVersionMaximumSupported%22&type=code.
 module: A serialized computation, a text or bytecode representation of
   an mlir.Module. The return type must be a tuple if and only if the `Sout` is
   a list with 0 or more than 1 elements. The length of `Tout` and
@@ -1383,17 +1383,7 @@ platforms: the list of platforms supported by `module`. The list can contain
   if the plaform is not among `platforms` and the check has been disabled.
   The list can be empty in old versions (earlier than 6) to denote that no
   platform checking must be performed at loading time.
-dim_args_spec: in presence of dynamic shapes, this is the specification for the
-  dimension arguments. In absence of dynamic shapes this list is empty. The
-  `module` takes one 0-dimensional integer tensor dimension argument for each
-  element of `dim_spec_args`. The dimension arguments come after the platform
-  index argument and before the actual arguments. Each specification is a
-  string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
-  the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
-  where "args" are the actual array arguments.
-  This attribute is not used anymore in modules serialized with version 5
-  after March 28th, 2023 and JAX OSS versions higher than 0.4.6.
-  TODO(b/283439649): remove support for dim_args_spec.
+dim_args_spec: this attribute is not supported anymore.
 function_list: This list contains the TensorFlow FunctionDefs that are used by
   the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
   operations, they can call TensorFlow graph functions outside of the
@@ -1402,7 +1392,10 @@ function_list: This list contains the TensorFlow FunctionDefs that are used by
 has_token_input_output: If true, the embedded StableHLO module's main function
   must take a `!stablehlo.token` as its first argument and returns a token as
   its first result. This can be used in conjunction with the TF2XLA's side
-  effect mechanism in order to model side effects.
+  effect mechanism in order to model side effects. This is used only in versions
+  prior to version 9. After that, the number and position of tokens among
+  the arguments and results are obtained from the main function type. This
+  allows us to support more than one token and not necessarily at the start.
 disabled_checks: A list of strings describing the safety checks that were
   disabled at serialization time. This attribute was added in version 6.
   For more details see

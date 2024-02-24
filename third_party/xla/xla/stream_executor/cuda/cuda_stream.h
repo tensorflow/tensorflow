@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
 namespace stream_executor {

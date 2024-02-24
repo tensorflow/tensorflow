@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -101,7 +101,8 @@ bool IsFrameNameLocation(mlir::Location location) {
          isa<mlir::FileLineColLoc>(cast<mlir::NameLoc>(location).getChildLoc());
 }
 
-int StackFrameIndexBuilder::AddCallStackAndGetFirstFrameId(
+StackFrameIndexBuilder::AddStackFrameResult
+StackFrameIndexBuilder::AddCallStackAndGetFirstFrameId(
     const mlir::Location &root_loc) {
   std::stack<mlir::NameLoc> locations;
   mlir::CallSiteLoc call_site;
@@ -130,7 +131,16 @@ int StackFrameIndexBuilder::AddCallStackAndGetFirstFrameId(
     parent_frame_id = AddStackFrameLocation(name_location, parent_frame_id);
   }
 
-  return parent_frame_id;
+  if (parent_frame_id == StackFrameIndexBuilder::kInvalidIndex) {
+    return {StackFrameIndexBuilder::kInvalidIndex, "", 0};
+  }
+
+  auto stack_frame = indexes_.stack_frames(parent_frame_id - 1);
+  auto file_location =
+      indexes_.file_locations(stack_frame.file_location_id() - 1);
+  return {parent_frame_id,
+          indexes_.file_names(file_location.file_name_id() - 1),
+          file_location.line()};
 }
 
 xla::StackFrameIndexProto StackFrameIndexBuilder::Build() const {

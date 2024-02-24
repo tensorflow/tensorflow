@@ -61,8 +61,12 @@ _TENSORFLOW_DOC_SOURCES = {
         DocSource(docstring_module_name='ops.linalg_ops'),
     'logging':
         DocSource(docstring_module_name='ops.logging_ops'),
-    'losses':
-        DocSource(docstring_module_name='ops.losses.losses'),
+    'losses': DocSource(
+        docstring=(
+            'Loss operations for use in neural networks. Note: All the losses'
+            ' are added to the `GraphKeys.LOSSES` collection by default.'
+        )
+    ),
     'manip':
         DocSource(docstring_module_name='ops.manip_ops'),
     'math':
@@ -135,8 +139,6 @@ def get_doc_sources(api_name):
   """
   if api_name == tf_export.TENSORFLOW_API_NAME:
     return _TENSORFLOW_DOC_SOURCES
-  if api_name == tf_export.ESTIMATOR_API_NAME:
-    return _ESTIMATOR_DOC_SOURCES
   if api_name == tf_export.KERAS_API_NAME:
     return _KERAS_DOC_SOURCES
   return {}

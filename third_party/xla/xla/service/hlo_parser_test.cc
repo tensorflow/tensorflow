@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/window_util.h"
@@ -1331,21 +1333,8 @@ R"(HloModule AsyncOpsWithSyntaxSugar, entry_computation_layout={(f32[10]{0})->f3
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
-}
-
-)"
-},
-{
-"AsyncOpsWithSyntaxSugarAndGroupId",
-R"(HloModule AsyncOpsWithSyntaxSugarAndGroupId, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
-
-ENTRY %Entry (p0: f32[10]) -> f32[20] {
-  %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_group_id=3, custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_group_id=3, custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_group_id=3, custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
 }
 
 )"
@@ -1358,8 +1347,8 @@ R"(HloModule AsyncOpsWithSyntaxSugarAndThreadName, entry_computation_layout={(f3
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
 }
 
 )"
@@ -1372,8 +1361,8 @@ R"(HloModule HloComputationWithParallelThreadName, entry_computation_layout={(f3
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
 }, execution_thread="main_thread"
 
 )"
@@ -1643,15 +1632,9 @@ ENTRY Sort {
 "TopK",
 R"(HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1}, s32[10,2]{0,1})}
 
-compare {
-  p.0.lhs = f32[] parameter(0)
-  p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
-}
-
 ENTRY TopK {
   x = f32[10,10]{0,1} parameter(0)
-  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, largest=true
 }
 
 )"
@@ -1815,7 +1798,7 @@ ENTRY CRS {
 // all-reduce with subgroups
 {
 "AllReduceWithSubgroups",
-R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 add {
   lhs = f32[] parameter(0)
@@ -1932,7 +1915,7 @@ ENTRY AllGather {
 // all-gather with subgroups
 {
 "AllGatherWithSubgroups",
-R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}
+R"(HloModule AllGatherWithSubgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,64]{0,1}}, replica_count=4
 
 ENTRY AllGatherWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
@@ -1957,7 +1940,7 @@ ENTRY AllToAll {
 // all-to-all with subgroups
 {
 "AllToAllWithSubgroups",
-R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}
+R"(HloModule AllToAllWithSubgroups, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
 
 ENTRY AllToAllWithSubgroups {
   p0 = f32[128,32]{0,1} parameter(0)
@@ -1971,7 +1954,7 @@ ENTRY AllToAllWithSubgroups {
 // collective-permute
 {
 "CollectivePermute",
-R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CollectivePermute, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 ENTRY CollectivePermute {
   input = f32[128,32]{0,1} parameter(0)
@@ -1984,7 +1967,7 @@ ENTRY CollectivePermute {
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
-R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
+R"(HloModule CollectivePermuteInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -2003,7 +1986,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute with in-place updates with multiple targets per source
 {
 "CollectivePermuteInPlaceUpdateMultipleReadWrite",
-R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}
+R"(HloModule CollectivePermuteInPlaceUpdateMultipleReadWrite, entry_computation_layout={(f32[8,8,128]{2,1,0})->f32[8,8,128]{2,1,0}}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   constant.3 = s32[] constant(2)
@@ -2027,7 +2010,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 },
 {
 "CollectivePermuteInPlaceUpdateTupleMultipleReadWrite",
-R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}
+R"(HloModule hlo_runner_test_0.1, entry_computation_layout={()->(u32[2,8,128]{2,1,0:T(2,128)}, u32[4,8,128]{2,1,0:T(2,128)})}, replica_count=4
 
 ENTRY hlo_runner_test_0.1 {
   replica_id = u32[] replica-id()
@@ -2058,7 +2041,7 @@ ENTRY hlo_runner_test_0.1 {
 // collective-permute tuple with in-place updates
 {
 "CollectivePermuteTupleInPlaceUpdate",
-R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}
+R"(HloModule CollectivePermuteTupleInPlaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->(f32[128,128]{0,1}, f32[128,128]{0,1})}, replica_count=4
 
 ENTRY CollectivePermuteInPlaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -2083,7 +2066,7 @@ ENTRY CollectivePermuteInPlaceUpdate {
 // collective-permute-start and -done with inplace update
 {
 "CollectivePermuteStartAndDone",
-R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}
+R"(HloModule CollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
@@ -2097,7 +2080,7 @@ ENTRY CollectivePermuteStartAndDone {
 // collective-permute-start and -done
 {
 "CollectivePermuteStartAndDoneInplaceUpdate",
-R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}
+R"(HloModule CollectivePermuteStartAndDoneInplaceUpdate, entry_computation_layout={(f32[128,32]{0,1})->f32[128,128]{0,1}}, replica_count=4
 
 ENTRY CollectivePermuteStartAndDoneInplaceUpdate {
   input = f32[128,32]{0,1} parameter(0)
@@ -4068,6 +4051,16 @@ TEST_F(HloParserTest, ParseShapeStringR2F32) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringUnbounded) {
+  std::string shape_string = "f32[?,784]";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected =
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
 TEST_F(HloParserTest, ParseShapeStringTupleOfArrays) {
   std::string shape_string = "(f32[1572864],s8[5120,1024])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -4145,7 +4138,7 @@ TEST_F(HloParserTest, ParseShapeStringWithElementSizeInBits) {
   std::string shape_string = "s4[123,456]{1,0:T(2,128)E(4)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithDenseLayout(S4, {123, 456}, {1, 0},
-                                                       {Tile({2, 128})}, 4);
+                                                       {Tile({2, 128})}, 1, 4);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4155,8 +4148,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0},
-                                                       {Tile({2, 128})}, 0, 3);
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {Tile({2, 128})}, 1, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4164,8 +4157,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Element size and memory space.
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {},
+                                                 1, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4173,8 +4166,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Memory space only.
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
+  expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {},
+                                                 1, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4403,6 +4396,19 @@ ENTRY InferTernaryShape {
       ShapeUtil::MakeScalarShape(S32)));
 }
 
+TEST_F(HloParserTest, TupleTypo) {
+  constexpr char text[] = R"(HloModule TupleTypoTest
+ENTRY TupleTypo {
+  pow = s32[] constant(42)
+  ROOT v = (s32[]) tuple(power)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(text);
+  EXPECT_THAT(result.status(),
+              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                                     HasSubstr("instruction does not exist")));
+}
+
 TEST_F(HloParserTest, InferDotShape) {
   constexpr char text[] = R"(HloModule InferDotShapeTest
 ENTRY InferDotShape {
@@ -4471,6 +4477,100 @@ ENTRY TestComputation {
   auto result = ParseAndReturnVerifiedModule(hlo_string);
   TF_EXPECT_OK(result.status());
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
+}
+
+TEST_F(HloParserTest, CheckReplicaCount) {
+  const char* const hlo_string = R"(
+HloModule TestModule, replica_count=5
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->config().replica_count(), 5);
+}
+
+TEST_F(HloParserTest, CheckNumPartitions) {
+  const char* const hlo_string = R"(
+HloModule TestModule, num_partitions=3
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->config().num_partitions(), 3);
+  EXPECT_TRUE(result.value()->config().use_spmd_partitioning());
+}
+
+TEST_F(HloParserTest, CheckFrontendAttributes) {
+  const char* const hlo_string = R"(
+HloModule TestModule, frontend_attributes={attr_name="attr_value"}
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ(result.value()->frontend_attributes().map().size(), 1);
+  EXPECT_EQ(result.value()->frontend_attributes().map().begin()->first,
+            "attr_name");
+  EXPECT_EQ(result.value()->frontend_attributes().map().begin()->second,
+            "attr_value");
+}
+
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToParameters) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_parameters=true
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ((*result)
+                ->config()
+                .allow_spmd_sharding_propagation_to_parameters()
+                .size(),
+            1);
+  EXPECT_TRUE(
+      (*result)->config().allow_spmd_sharding_propagation_to_parameters()[0]);
+}
+
+TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToParametersVec) {
+  const char* const hlo_string = R"(
+HloModule TestModule, allow_spmd_sharding_propagation_to_parameters={true,false}
+
+ENTRY TestComputation {
+    p0 = f16[2048,1024] parameter(0)
+    p1 = f16[2048,1024] parameter(1)
+    ROOT root = (f16[2048,1024], f16[2048,1024]) tuple(p0, p1)
+}
+)";
+  auto result = ParseAndReturnVerifiedModule(hlo_string);
+  TF_EXPECT_OK(result.status());
+  EXPECT_EQ((*result)
+                ->config()
+                .allow_spmd_sharding_propagation_to_parameters()
+                .size(),
+            2);
+  EXPECT_TRUE(
+      (*result)->config().allow_spmd_sharding_propagation_to_parameters()[0]);
+  EXPECT_FALSE(
+      (*result)->config().allow_spmd_sharding_propagation_to_parameters()[1]);
 }
 
 TEST_F(HloParserTest, CheckAllowSpmdShardingPropagationToOutput) {
@@ -4702,8 +4802,8 @@ ENTRY %main {
   %input.5 = s32[] parameter(1)
   %broadcast = s32[1024]{0} broadcast(s32[] %input.5), dimensions={}
   %input.0 = s32[256]{0} parameter(0)
-  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), async_group_id=0, calls=%async_wrapped
-  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), calls=%async_wrapped
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4732,6 +4832,343 @@ TEST_F(HloParserTest, LexesAsJsonDict) {
   EXPECT_FALSE(LexesAsJsonDict("{}a"));
   EXPECT_FALSE(LexesAsJsonDict("a{}"));
   EXPECT_FALSE(LexesAsJsonDict("{{{{}}}"));
+}
+
+TEST_F(HloParserTest, AsyncStartMissingOperandWrapper) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY AsyncStartMissingOperandWrapper {
+  p0 = f32[2,3] parameter(0)
+  async-start = (f32[2,3], f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-update = ((f32[2,3]), f32[3,2], s32[]) async-update(async-start), calls=async_computation
+  ROOT async-done = f32[3,2] async-done(async-update), calls=async_computation
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
+                    "in the form of "
+                    "((async-operands), async-outputs, state).")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateMissingOperandWrapper) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY AsyncUpdateMissingOperandWrapper {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-update = (f32[2,3], f32[3,2], s32[]) async-update(async-start), calls=async_computation
+  ROOT async-done = f32[3,2] async-done(async-update), calls=async_computation
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
+                    "in the form of "
+                    "((async-operands), async-outputs, state).")));
+}
+
+TEST_F(HloParserTest, AsyncOpTupleWrongType) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY AsyncStartAndAsyncDone {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3])) async-start(p0), calls=async_computation
+  ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
+                    "in the form of "
+                    "((async-operands), async-outputs, state).")));
+}
+
+TEST_F(HloParserTest, AsyncDoneNoAsyncStart) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY AsyncStartAndAsyncDone {
+  p0 = f32[2,3] parameter(0)
+  p1 = u32[] parameter(1)
+  tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
+  ROOT async-done = f32[2,3] custom-call-done(tuple)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
+                    "the previous async op.")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY AsyncStartAndAsyncDone {
+  p0 = f32[2,3] parameter(0)
+  p1 = u32[] parameter(1)
+  tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
+  async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(tuple)
+  ROOT async-done = f32[2,3] custom-call-done(tuple)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
+                    "the previous async op.")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWithSyntaxSugarWrongOp
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) add-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async wrapped opcode to be custom-call, "
+                            "but got add")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWithSyntaxSugarWrongOp) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWithSyntaxSugarWrongOp
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} add-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async wrapped opcode to be custom-call, "
+                            "but got add")));
+}
+
+TEST_F(HloParserTest, AsyncOpSharedComputation) {
+  const char* const hlo_string = R"(
+HloModule AsyncOpSharedComputation
+
+%async_wrapped (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start.0 = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped
+  %async-done.0 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.0)
+  %async-start.1 = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped
+  ROOT %async-done.1 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.1)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Computation async_wrapped is already referenced "
+                            "by another async op")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWrongComputation) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWrongComputation
+
+%async_wrapped.0 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+%async_wrapped.1 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped.0
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), calls=%async_wrapped.1
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
+                    "but got async_wrapped.1")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWrongComputation) {
+  const char* const hlo_string = R"(
+HloModule AsyncDoneWrongComputation
+
+%async_wrapped.0 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+%async_wrapped.1 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped.0
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), calls=%async_wrapped.1
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
+                    "but got async_wrapped.1")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWrongDefaultThread) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWrongDefaultThread
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="foo_thread"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async_execution_thread to be main, "
+                            "but got foo_thread")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWrongDefaultThread) {
+  const char* const hlo_string = R"(
+HloModule AsyncDoneWrongDefaultThread
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="foo_thread"
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async_execution_thread to be main, "
+                            "but got foo_thread")));
+}
+
+TEST_F(HloParserTest, PipelinedSendRecv) {
+  const std::string hlo_string = R"(
+  HloModule test
+  cond {
+    param = (u32[], u32[2], (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(1)
+    ROOT result = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (u32[], u32[2], (u32[2], u32[], token[])) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    after-all.0 = token[] after-all()
+    send.0 = (u32[2], u32[], token[]) send(send-data, after-all.0),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    recv.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=2
+    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1
+    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    after-all.0.n = token[] after-all()
+    recv.0.n = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    send-done.0 = token[] send-done(send.0), channel_id=1
+
+    ROOT result = (u32[], u32[2], (u32[2], u32[], token[])) tuple(new_count, recv-data.0, recv.0.n)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    init = u32[2] broadcast(c0), dimensions={}
+    after-all.0.p = token[] after-all()
+    recv.0.p = (u32[2], u32[], token[]) recv(after-all.0.p), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    while_init = (u32[], u32[2], (u32[2], u32[], token[])) tuple(c0, init, recv.0.p)
+    while_result = (u32[], u32[2], (u32[2], u32[], token[])) while(while_init), body=body, condition=cond
+
+    send-data.q = u32[2] get-tuple-element(while_result), index=1
+    after-all.0.q = token[] after-all()
+    send.0.q = (u32[2], u32[], token[]) send(send-data.q, after-all.0.q),
+      channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_source_target_pairs="{{1,0}}"
+      }
+
+    recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=2
+    recv-done.0.q = (u32[2], token[]) recv-done(recv.0.q), channel_id=1
+    send-done.0.q = token[] send-done(send.0.q), channel_id=1
+
+    ROOT recv-data.0.q = u32[2] get-tuple-element(recv-done.0.q), index=0
+      })";
+  auto result = ParseAndReturnUnverifiedModule(hlo_string);
+  EXPECT_EQ(OkStatus(), result.status());
 }
 
 }  // namespace

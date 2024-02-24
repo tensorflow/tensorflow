@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,10 +29,10 @@ class CholeskyExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
-  virtual StatusOr<std::pair<XlaOp, XlaOp>> CholeskyUnblocked(
+  virtual absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyUnblocked(
       XlaOp a, PrecisionConfig::Precision precision);
 
  private:

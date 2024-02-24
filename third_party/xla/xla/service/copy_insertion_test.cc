@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,34 @@ limitations under the License.
 
 #include "xla/service/copy_insertion.h"
 
+#include <cstdint>
 #include <memory>
-#include <set>
+#include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_runner.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -42,6 +51,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
+using ::testing::NotNull;
 using ::testing::UnorderedElementsAre;
 
 int64_t CountCopies(const HloComputation& computation) {
@@ -3160,6 +3170,113 @@ ENTRY TestComputation {
   CHECK_EQ(tuple6->opcode(), HloOpcode::kParameter);
 }
 
+TEST_F(CopyInsertionTest, ConditionalWithMultiOutputFusion) {
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+branch_0 {
+  param_0 = f64[] parameter(0)
+  negate.2 = f64[] negate(f64[] param_0)
+  ROOT tuple = (f64[], f64[]) tuple(f64[] negate.2, f64[] negate.2)
+}
+
+fused_computation {
+  param_0.1 = f64[] parameter(0)
+  abs.2 = f64[] abs(f64[] param_0.1)
+  negate.1 = f64[] negate(f64[] param_0.1)
+  ROOT %tuple.2 = (f64[], f64[]) tuple(f64[] negate.1, f64[] abs.2)
+}
+
+branch_1 {
+  param_0.2 = f64[] parameter(0)
+  ROOT fusion = (f64[], f64[]) fusion(f64[] param_0.2), kind=kLoop, calls=%fused_computation
+}
+
+ENTRY main {
+  pred.0 = s32[] parameter(0)
+  param_1 = f64[] parameter(1)
+  param_2 = f64[] parameter(2)
+  ROOT conditional.0 = (f64[], f64[]) conditional(s32[] pred.0, f64[] param_1, f64[] param_2), branch_computations={%branch_0, %branch_1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+
+  // `branch_0` returns the same result of `negate.2` twice. Normally the result
+  // would be put into one buffer and tuple would return two pointers to the
+  // same buffer.
+  // `branch_1` returns two results of multi-output fusion that should be put
+  // into different buffers.
+  // One copy is inserted in `branch_0` to ensure that result are put into two
+  // different buffers.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_0")), 1);
+
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_1")), 0);
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("main")), 0);
+}
+
+TEST_F(CopyInsertionTest, ConditionalWithVariadicReduce) {
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+branch_0 {
+  empty_tuple.0 = () parameter(0)
+  c_0 = f64[] constant(0)
+  ROOT tuple.3 = (f64[], f64[]) tuple(c_0, c_0)
+}
+
+fused_computation {
+  param_0.1 = f64[] parameter(0)
+  abs.2 = f64[] abs(f64[] param_0.1)
+  negate.1 = f64[] negate(f64[] param_0.1)
+  ROOT %tuple.2 = (f64[], f64[]) tuple(f64[] negate.1, f64[] abs.2)
+}
+
+reduce_region {
+  param_0.0 = f64[] parameter(0)
+  param_2.0 = f64[] parameter(2)
+  add.1.0 = f64[] add(param_0.0, param_2.0)
+  param_1.0 = f64[] parameter(1)
+  param_3.0 = f64[] parameter(3)
+  multiply.1.0 = f64[] multiply(param_1.0, param_3.0)
+  ROOT tuple.0.0 = (f64[], f64[]) tuple(add.1.0, multiply.1.0)
+}
+
+branch_1 {
+  c_0 = f64[] constant(0)
+  param_0.1 = f64[128]{0} parameter(0)
+  ROOT reduce = (f64[], f64[]) reduce(param_0.1, param_0.1, c_0, c_0), dimensions={0}, to_apply=reduce_region
+}
+
+ENTRY main {
+  pred.0 = s32[] parameter(0)
+  empty_tuple = () tuple()
+  param_2 = f64[128] parameter(1), sharding={replicated}
+  ROOT conditional.0 = (f64[], f64[]) conditional(s32[] pred.0, () empty_tuple, f64[128] param_2), branch_computations={%branch_0, %branch_1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+
+  // `branch_0` returns the same constant twice. Without copies it would return
+  // pointers to read-only buffer for constant.
+  // `branch_1` returns two results of a that should be put into different
+  // buffers.
+  // `conditional` needs to buffers for results, so the constant in `branch_0`
+  // should be copied twice.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_0")), 2);
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_1")), 0);
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("main")), 0);
+}
+
 TEST_F(CopyInsertionTest, RootInstructionNotLast) {
   // This is a test for b/189219227. When the root instruction is scheduled not
   // as the last instruction, it still lives out. So, we make sure that the copy
@@ -3441,8 +3558,8 @@ HloModule async_call
 ENTRY %main {
   %input.1 = s32[1024]{0} parameter(0)
   %buf = s32[1024]{0} custom-call(), custom_call_target="AllocateBuffer"
-  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %buf), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
-  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %buf), async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_execution_thread="foobar", calls=%async_wrapped
 }
 )";
 
@@ -3480,8 +3597,8 @@ HloModule async_call
 ENTRY %main {
   %input.1 = s32[1024]{0} parameter(0)
   %input.2 = s32[1024]{0} parameter(1)
-  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %input.2), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
-  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_group_id=0, async_execution_thread="foobar", calls=%async_wrapped
+  %async-start = ((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) async-start(s32[1024]{0} %input.1, s32[1024]{0} %input.2), async_execution_thread="foobar", calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[1024]{0}), s32[1024]{0}, u32[]) %async-start), async_execution_thread="foobar", calls=%async_wrapped
 }
 )";
 
@@ -3647,6 +3764,109 @@ ENTRY main {
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kAdd);
   EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kAdd);
   EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kGetTupleElement);
+}
+
+TEST_F(CopyInsertionTest, DontInsertCopiesInAsyncComputation) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule test
+
+%async_computation {
+  %param_0 = f32[10,32,512]{2,1,0:T(8,128)S(5)} parameter(0)
+  %param_1 = f32[1,32,512]{2,1,0:T(8,128)} parameter(1)
+  %param_2 = s32[]{:T(128)} parameter(2)
+  %param_3 = s32[]{:T(128)} parameter(3)
+  %param_4 = s32[]{:T(128)} parameter(4)
+  ROOT %dynamic-update-slice.1 = f32[10,32,512]{2,1,0:T(8,128)S(5)}
+    dynamic-update-slice(%param_0, %param_1, %param_2, %param_3, %param_4)
+}
+
+ENTRY %main {
+  %param.1 = (s32[]{:T(128)}, f32[32,512]{1,0:T(8,128)},
+              f32[10,32,512]{2,1,0:T(8,128)S(5)}) parameter(0)
+  %get-tuple-element.132 = f32[10,32,512]{2,1,0:T(8,128)S(5)} get-tuple-element(
+    %param.1), index=2
+  %get-tuple-element.131 = f32[32,512]{1,0:T(8,128)} get-tuple-element(
+    %param.1), index=1
+  %cosine.0 = f32[32,512]{1,0:T(8,128)} cosine(%get-tuple-element.131)
+  %reshape.6 = f32[1,32,512]{2,1,0:T(8,128)} reshape(%cosine.0)
+  %get-tuple-element.130 = s32[]{:T(128)} get-tuple-element(%param.1), index=0
+  %constant.49 = s32[]{:T(128)} constant(0)
+  %compare.13 = pred[]{:T(512)} compare(
+      %get-tuple-element.130, %constant.49), direction=LT
+  %constant.50 = s32[]{:T(128)} constant(10)
+  %add.22 = s32[]{:T(128)} add(%get-tuple-element.130, %constant.50)
+  %select.6 = s32[]{:T(128)} select(
+      %compare.13, %add.22, %get-tuple-element.130)
+  %dynamic-update-slice-start = (
+    (f32[10,32,512]{2,1,0:T(8,128)S(5)}, f32[1,32,512]{2,1,0:T(8,128)},
+     s32[]{:T(128)}, s32[]{:T(128)}, s32[]{:T(128)}),
+     f32[10,32,512]{2,1,0:T(8,128)S(5)}, u32[]) async-start(
+      %get-tuple-element.132, %reshape.6, %select.6,
+      %constant.49, %constant.49), calls=%async_computation
+  ROOT %dynamic-update-slice-done = f32[10,32,512]{2,1,0:T(8,128)S(5)}
+    async-done(%dynamic-update-slice-start), calls=%async_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion;
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  LOG(INFO) << module->ToString();
+
+  auto* async_computation = module->GetComputationWithName("async_computation");
+  ASSERT_THAT(async_computation, NotNull());
+  EXPECT_EQ(CountCopies(*async_computation), 0);
+
+  auto* main_computation = module->GetComputationWithName("main");
+  ASSERT_THAT(main_computation, NotNull());
+  EXPECT_EQ(CountCopies(*main_computation), 1);
+}
+
+TEST_F(CopyInsertionTest, AsyncDUSInLoop) {
+  constexpr absl::string_view kModuleString = R"(
+HloModule module
+
+async_wrapped {
+  async_param.1 = s32[1024]{0} parameter(0)
+  async_param.2 = s32[256]{0} parameter(1)
+  async_param.3 = s32[] parameter(2)
+  ROOT dus = s32[1024]{0} dynamic-update-slice(async_param.1, async_param.2, async_param.3)
+}
+
+condition {
+  input_tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) parameter(0)
+  ROOT cond = pred[] get-tuple-element(input_tuple), index=3
+}
+
+body {
+  input_tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) parameter(0)
+  input.1 = s32[1024]{0} get-tuple-element(input_tuple), index=0
+  input.2 = s32[256]{0} get-tuple-element(input_tuple), index=1
+  input.3 = s32[] get-tuple-element(input_tuple), index=2
+  input.4 = pred[] get-tuple-element(input_tuple), index=3
+  async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(input.1, input.2, input.3), calls=%async_wrapped
+  async-done = s32[1024]{0} async-done(async-start), calls=async_wrapped
+  ROOT tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) tuple(async-done, input.2, input.3, input.4)
+}
+
+ENTRY main {
+  input.1 = s32[256]{0} parameter(0)
+  input.2 = s32[] parameter(1)
+  input.3 = pred[] parameter(2)
+  broadcast = s32[1024]{0} broadcast(input.2), dimensions={}
+  while_tuple = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) tuple(broadcast, input.1, input.2, input.3)
+  while = (s32[1024]{0}, s32[256]{0}, s32[], pred[]) while(while_tuple), condition=condition, body=body
+  ROOT gte = s32[1024]{0} get-tuple-element(while), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 0);
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -31,20 +32,31 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/client/padding.h"
 #include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/core/bitmap.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -61,21 +73,11 @@ struct XlaBuilderFriend {
 
   static std::pair<XlaOp, int64_t> BuildAsyncStart(
       XlaBuilder* builder, absl::Span<const XlaOp> operands,
-      std::string execution_thread, int64_t group_id,
-      const XlaComputation& called_computation, const Shape& shape);
-  static std::pair<XlaOp, int64_t> BuildAsyncStart(
-      XlaBuilder* builder, absl::Span<const XlaOp> operands,
       std::string execution_thread, const XlaComputation& called_computation,
       const Shape& shape);
   static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
-                                std::string execution_thread, int64_t group_id,
-                                int64_t called_computation, const Shape& shape);
-  static XlaOp BuildAsyncUpdate(XlaBuilder* builder, XlaOp operands,
                                 std::string execution_thread,
                                 int64_t called_computation, const Shape& shape);
-  static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,
-                              std::string execution_thread, int64_t group_id,
-                              int64_t called_computation, const Shape& shape);
   static XlaOp BuildAsyncDone(XlaBuilder* builder, XlaOp operands,
                               std::string execution_thread,
                               int64_t called_computation, const Shape& shape);
@@ -510,6 +512,14 @@ class XlaBuilder {
   XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
                        absl::Span<const int64_t> broadcast_dimensions);
 
+  // This is an experimental API for creating the mhlo.dynamic_broadcast_in_dim
+  // op from the XlaBuilder. This is only intended for export to MHLO or
+  // StableHLO, and cannot be compiled. Only static output_dimensions are
+  // allowed, and broadcast_dimensions is verified.
+  XlaOp DynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
+                              absl::Span<const int64_t> broadcast_dimensions,
+                              const Shape& output_shape);
+
   XlaOp Pad(XlaOp operand, XlaOp padding_value,
             const PaddingConfig& padding_config);
   XlaOp PadInDim(XlaOp operand, XlaOp padding_value, int64_t dimno,
@@ -889,6 +899,10 @@ class XlaBuilder {
                                        const XlaComputation& comparator,
                                        int64_t dimension, bool is_stable);
 
+  XlaOp TopK(XlaOp operand, int64_t k, bool largest);
+  virtual StatusOr<XlaOp> TopKInternal(const Shape& shape, XlaOp operand,
+                                       int64_t k, bool largest);
+
   XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
 
   XlaOp Map(absl::Span<const XlaOp> operands, const XlaComputation& computation,
@@ -1050,6 +1064,9 @@ class XlaBuilder {
 
   // Internal helper method that creates a sequence of instructions that
   // performs an explicit broadcast of the operand to the target shape.
+  // All dimensions of the operand must either be equal to the corresponding
+  // output shape dimension, or be exactly 1.  (Such dimensions are the
+  // degenerate dimensions.)
   StatusOr<XlaOp> AddBroadcastSequence(const Shape& output_shape,
                                        XlaOp operand);
 
@@ -1167,6 +1184,11 @@ class XlaBuilder {
   friend XlaOp BroadcastInDim(XlaOp operand,
                               absl::Span<const int64_t> out_dim_size,
                               absl::Span<const int64_t> broadcast_dimensions);
+
+  friend XlaOp DynamicBroadcastInDim(
+      XlaOp operand, XlaOp output_dimensions,
+      absl::Span<const int64_t> broadcast_dimensions,
+      const Shape& output_shape);
 
   friend XlaOp Copy(XlaOp operand);
 
@@ -1428,6 +1450,12 @@ class XlaBuilder {
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Layout>& layout,
                          std::optional<bool> use_global_device_ids);
+  friend XlaOp AllGatherTuple(absl::Span<const XlaOp> operands,
+                              int64_t all_gather_dimension, int64_t shard_count,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              const std::optional<ChannelHandle>& channel_id,
+                              const std::optional<Layout>& layout,
+                              std::optional<bool> use_global_device_ids);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
@@ -1479,6 +1507,7 @@ class XlaBuilder {
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
+  friend XlaOp Erf(XlaOp operand);
   friend XlaOp Exp(XlaOp operand);
   friend XlaOp Expm1(XlaOp operand);
   friend XlaOp Floor(XlaOp operand);
@@ -1517,6 +1546,7 @@ class XlaBuilder {
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
                     const XlaComputation& comparator, int64_t dimension,
                     bool is_stable);
+  friend XlaOp TopK(XlaOp operand, int64_t k, bool largest);
   friend XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -1842,6 +1872,15 @@ XlaOp Broadcast(XlaOp operand, absl::Span<const int64_t> broadcast_sizes);
 //    {2 , 2}}
 XlaOp BroadcastInDim(XlaOp operand, absl::Span<const int64_t> out_dim_size,
                      absl::Span<const int64_t> broadcast_dimensions);
+
+// This is an experimental API for creating the mhlo.dynamic_broadcast_in_dim
+// op from the XlaBuilder. This is only intended for export to MHLO or
+// StableHLO, and cannot be compiled. See
+// https://www.tensorflow.org/mlir/hlo_ops#mhlodynamic_broadcast_in_dim_mhlodynamicbroadcastindimop.
+// for the op semantics.
+XlaOp DynamicBroadcastInDim(XlaOp operand, XlaOp output_dimensions,
+                            absl::Span<const int64_t> broadcast_dimensions,
+                            const Shape& output_shape);
 
 // Copies the input operand to the output. This operation is for internal
 // purpose and is only used by the compiler for optimization purposes or to
@@ -2421,6 +2460,13 @@ XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
                 const std::optional<Layout>& layout = std::nullopt,
                 std::optional<bool> use_global_device_ids = std::nullopt);
 
+XlaOp AllGatherTuple(
+    absl::Span<const XlaOp> operands, int64_t all_gather_dimension,
+    int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Layout>& layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
+
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then
 // broadcasting the reduction result to those cores. The reduction function is
@@ -2521,6 +2567,9 @@ XlaOp Abs(XlaOp operand);
 // Enqueues a atan2 instruction onto the computation.
 XlaOp Atan2(XlaOp y, XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions = {});
+
+// Enqueues an erf instruction onto the computation.
+XlaOp Erf(XlaOp operand);
 
 // Enqueues an exp instruction onto the computation.
 XlaOp Exp(XlaOp operand);
@@ -2658,6 +2707,26 @@ XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
 // Default comparator computations can be found in lib/comparators.h
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64_t dimension = -1, bool is_stable = false);
+
+// Enqueues a topk instruction onto the computation. TopK returns the largest
+// 'k' values and their indices along the last dimension of the 'operand' if
+// `lagest=true` or the smallest `k` values if `largest=false`.
+//
+// * If the operand is a rank-1 tensor (an array), the result is a tuple that
+//   consists of:
+//   * a sorted array with the top 'k' elements.
+//   * an array containing the indices of the k elements.
+//   For example, if the input is [0.1, 0.3, 0.2] and k == 2, the output tuple
+//   is ([0.3, 0.2], [1, 2]).
+// * If the operand has higher rank, the result is a tuple that consists of:
+//   * a tensor equivalent to one produced by sorting the operand along the last
+//     dimension and slicing that dimension to only the top 'k' values. The last
+//     dimension is sorted as in the rank-1 case.
+//   * a tensor containing the indices of the top 'k' values along the last
+//     dimension.
+//   For example, if the input is [0.1, 0.3, 0.2][0.5, 0.4, 0.6] and k == 1, the
+//   output tuple is ([0.3][0.6], [1][2]).
+XlaOp TopK(XlaOp operand, int64_t k, bool largest);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);

@@ -878,11 +878,12 @@ def retrieve_clang_version(clang_executable):
 
 # Disable clang extension that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
+# Still required for clang-17.
 # Can be removed once upb is updated, since a type definition is used within
 # offset of in the current version of ubp. See
 # https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
-def disable_clang16_offsetof_extension(clang_version):
-  if int(clang_version.split('.')[0]) == 16:
+def disable_clang_offsetof_extension(clang_version):
+  if int(clang_version.split('.')[0]) in (16, 17):
     write_to_bazelrc('build --copt=-Wno-gnu-offsetof-extensions')
 
 
@@ -1399,7 +1400,7 @@ def main():
       # Set up which clang we should use as the cuda / host compiler.
       clang_cuda_compiler_path = set_clang_cuda_compiler_path(environ_cp)
       clang_version = retrieve_clang_version(clang_cuda_compiler_path)
-      disable_clang16_offsetof_extension(clang_version)
+      disable_clang_offsetof_extension(clang_version)
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1413,7 +1414,7 @@ def main():
       if environ_cp.get('TF_NEED_CLANG') == '1':
         clang_compiler_path = set_clang_compiler_path(environ_cp)
         clang_version = retrieve_clang_version(clang_compiler_path)
-        disable_clang16_offsetof_extension(clang_version)
+        disable_clang_offsetof_extension(clang_version)
 
   # ROCm / CUDA are mutually exclusive.
   # At most 1 GPU platform can be configured.

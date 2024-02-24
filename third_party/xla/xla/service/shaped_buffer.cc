@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
 
 ShapedBuffer::~ShapedBuffer() {}
 
-StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
+absl::StatusOr<ShapedBuffer> ShapedBuffer::SubShapedBuffer(
     const ShapeIndex& index) const {
   TF_ASSIGN_OR_RETURN(const Shape* device_sub_shape,
                       ShapeUtil::TryGetSubshape(on_device_shape(), index));

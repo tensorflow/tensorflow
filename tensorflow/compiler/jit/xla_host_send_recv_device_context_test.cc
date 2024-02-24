@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -65,7 +65,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
   Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
 
   stream_executor::Platform* platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+      stream_executor::PlatformManager::PlatformWithName("CUDA").value();
   stream_executor::StreamExecutor* executor =
       platform->ExecutorForDevice(0).value();
   stream_executor::Stream stream(executor);
@@ -77,7 +77,8 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
 
   // Copy the cpu_tensor to the GPU first before trying to copy it back.
-  stream.ThenMemcpy(&gpu_dst, origin_cpu_tensor.data(), gpu_dst.size());
+  TF_ASSERT_OK(
+      stream.Memcpy(&gpu_dst, origin_cpu_tensor.data(), gpu_dst.size()));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   tsl::AsyncValueRef<se::Event> done_event =
@@ -100,7 +101,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
   Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
 
   stream_executor::Platform* platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+      stream_executor::PlatformManager::PlatformWithName("CUDA").value();
   stream_executor::StreamExecutor* executor =
       platform->ExecutorForDevice(0).value();
   stream_executor::Stream stream(executor);
@@ -120,7 +121,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
       &origin_cpu_tensor, device_.get(), &device_tensor));
 
   // Copy the GPU tensor back to CPU to check that copy worked.
-  stream.ThenMemcpy(dest_cpu_tensor.data(), gpu_dst, gpu_dst.size());
+  TF_ASSERT_OK(stream.Memcpy(dest_cpu_tensor.data(), gpu_dst, gpu_dst.size()));
   TF_ASSERT_OK(stream.BlockHostUntilDone());
 
   tensorflow::test::ExpectClose(origin_cpu_tensor, dest_cpu_tensor);
@@ -135,7 +136,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, RoundTrip) {
   Tensor dest_cpu_tensor(host_allocator_, DT_FLOAT, TensorShape({2, 2}));
 
   stream_executor::Platform* platform =
-      stream_executor::MultiPlatformManager::PlatformWithName("CUDA").value();
+      stream_executor::PlatformManager::PlatformWithName("CUDA").value();
   stream_executor::StreamExecutor* executor =
       platform->ExecutorForDevice(0).value();
   stream_executor::Stream stream(executor);

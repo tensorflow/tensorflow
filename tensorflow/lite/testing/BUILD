@@ -1,6 +1,11 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
-
-# copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+    "tf_features_nolayering_check_if_ios",
+)
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_custom_android_library",
@@ -15,13 +20,7 @@ load(
     "generated_test_models_all",
 )
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_binary",
-    "tf_cc_test",
-    "tf_features_nolayering_check_if_ios",
-)
+# copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -96,14 +95,18 @@ _test_size_override = {
         ":util",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_googlesource_code_re2//:re2",
     ] + select({
         "//conditions:default": [
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:test",
+            "@local_tsl//tsl/platform:env",
+            "@local_tsl//tsl/platform:status",
+            "@local_tsl//tsl/platform:subprocess",
+            "@local_tsl//tsl/util:command_line_flags",
         ],
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib",
@@ -482,8 +485,6 @@ cc_library(
         # "//learning/brain/mobile/lite/brella_benchmark:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/java/src/main/native:__subpackages__",
-        "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",
     ],
     deps = select({
@@ -651,7 +652,14 @@ pybind_extension(
         "string_util_wrapper.cc",
     ],
     hdrs = ["string_util.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     features = ["-use_header_modules"],
+    pytype_srcs = [
+        "_pywrap_string_util.pyi",
+    ],
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/cpu/xla_framework.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -40,11 +41,14 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
+namespace mlir {
+class DialectRegistry;
+}  // namespace mlir
+
 namespace xla {
 namespace cpu {
 
 class CpuExecutable;
-class XlaFrameworkMapping;
 
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
@@ -96,44 +100,12 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   bool use_mlir_hlo_lowering_ = false;
 };
 
-class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
- public:
-  CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                    std::string_view obj_file,
-                                    std::string_view mlir_module,
-                                    XlaFrameworkMapping xla_framework_mapping);
-
-  explicit CpuXlaRuntimeAotCompilationResult(
-      XlaRuntimeCpuExecutableProto executable)
-      : xla_runtime_cpu_executable_(executable) {}
-
-  StatusOr<std::string> SerializeAsString() const override {
-    return xla_runtime_cpu_executable_.SerializeAsString();
-  }
-
-  static StatusOr<std::unique_ptr<CpuXlaRuntimeAotCompilationResult>>
-  FromString(const std::string& serialized) {
-    XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
-    if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
-      return InternalError("Failed to parse serialized JitRtExecutableProto.");
-    }
-    return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
-        xla_runtime_cpu_executable);
-  }
-
-  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, se::StreamExecutor* executor) const override;
-
- private:
-  XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable_;
-};
-
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
   CpuAotCompilationResult(
       ObjectFileData object_file_data,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
-      int64_t result_buffer_index,
+      int64_t result_buffer_index, std::unique_ptr<HloModule> module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
   ~CpuAotCompilationResult() override = default;
 
@@ -147,6 +119,9 @@ class CpuAotCompilationResult : public AotCompilationResult {
   }
   int64_t result_buffer_index() const { return result_buffer_index_; }
 
+  const HloModule* optimized_module() const override;
+  std::unique_ptr<HloModule> consume_optimized_module() override;
+
  private:
   // Contains the compiled computation: an object file.
   const ObjectFileData object_file_data_;
@@ -159,6 +134,9 @@ class CpuAotCompilationResult : public AotCompilationResult {
   // result of the computation.  This buffer should be passed into the output
   // parameter when calling the compiled computation.
   const int64_t result_buffer_index_;
+
+  // Contains the optimized HLO module.
+  std::unique_ptr<HloModule> module_;
 
   // Contains an instance of HloProfilePrinterData if HLO profiling is enabled,
   // otherwise is nullptr.
@@ -186,7 +164,7 @@ class CpuCompiler : public LLVMCompiler {
       const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module, se::StreamExecutor* stream_exec) override;
+      HloModule* module, const se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -206,12 +184,14 @@ class CpuCompiler : public LLVMCompiler {
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
   StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
-      const std::string& serialized_aot_result) override {
-    return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
-  }
+      const std::string& serialized_aot_result) override;
 
+  // The optional `registry` supports MLIR dialects and plugins to be loaded
+  // during optimization. If non-null, it will be used to construct relevant
+  // MLIR contexts.
   StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
-      std::unique_ptr<HloModule> module);
+      std::unique_ptr<HloModule> module,
+      mlir::DialectRegistry* registry = nullptr);
 
  private:
   // Initialize the LLVM target.
@@ -221,6 +201,7 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   Status RunHloPasses(HloModule* module, bool is_aot_compile,
                       llvm::TargetMachine* target_machine,
+                      const CompileOptions& compile_options,
                       bool is_mlir_compile = false);
 
   // Runs HLO passes up to and including layout assignment.
@@ -232,7 +213,8 @@ class CpuCompiler : public LLVMCompiler {
   // Runs HLO passes after layout assignment.
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
+      LLVMTargetMachineFeatures* target_machine_features,
+      const CompileOptions& compile_options, bool is_mlir_compile);
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
       std::unique_ptr<HloModule> module);

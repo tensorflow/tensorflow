@@ -108,7 +108,8 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   tensorflow::grpc::CoordinationService::AsyncService service_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcCoordinationServiceImpl);
+  GrpcCoordinationServiceImpl(const GrpcCoordinationServiceImpl&) = delete;
+  void operator=(const GrpcCoordinationServiceImpl&) = delete;
 };
 
 }  // namespace tsl

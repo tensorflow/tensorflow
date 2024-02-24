@@ -77,7 +77,7 @@ int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
 Status TakeDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TakeDataset::CheckExternalState() const {
@@ -100,7 +100,7 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     *end_of_sequence = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -112,12 +112,12 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
 
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -137,20 +137,20 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
     if (!input_impl_) {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
     while (dataset()->count_ < 0 || i_ < dataset()->count_) {
       TF_RETURN_IF_ERROR(
           input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
       if (!*end_of_sequence) {
         ++i_;
-        return OkStatus();
+        return absl::OkStatus();
       }
       break;
     }
     *end_of_sequence = true;
     input_impl_.reset();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  protected:
@@ -169,7 +169,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     if (input_impl_) {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
@@ -184,7 +184,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     } else {
       input_impl_.reset();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -214,7 +214,7 @@ Status TakeDataset::AsGraphDefInternal(SerializationContext* ctx,
   Node* count = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
   TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TakeDatasetOp::TakeDatasetOp(OpKernelConstruction* ctx)

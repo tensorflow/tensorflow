@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -284,8 +284,8 @@ HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
     *scalar->mutable_shape() = base->shape();
     return scalar;
   }
-  return base->AddInstruction(
-      HloInstruction::CreateBroadcast(base->shape(), scalar, {}));
+  return base->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
 }
 
 // Creates a fusion instruction and fuses `fused` into the created fusion

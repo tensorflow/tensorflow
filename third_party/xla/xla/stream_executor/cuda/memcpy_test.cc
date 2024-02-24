@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,26 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 #if GOOGLE_CUDA
-#include "absl/memory/memory.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 
 TEST(MemcpyTest, PinnedHostMemory) {
-  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   Stream stream(executor);
-  stream.Init();
+  TF_ASSERT_OK(stream.Initialize());
   ASSERT_TRUE(stream.ok());
 
-  void* d_ptr = executor->HostMemoryAllocate(sizeof(int));
-  DeviceMemoryBase d_mem(d_ptr, sizeof(int));
+  TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
+                          executor->HostMemoryAllocate(sizeof(int)));
+  DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
+
   int h_ptr;
-  stream.ThenMemcpy(&h_ptr, d_mem, d_mem.size());
+  TF_ASSERT_OK(stream.Memcpy(&h_ptr, d_mem, d_mem.size()));
   EXPECT_TRUE(stream.BlockHostUntilDone().ok());
 }
 

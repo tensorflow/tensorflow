@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -92,6 +91,14 @@ struct PassConfig {
   // have side effects e.g. reduced flatbuffer size. Only certain type
   // conversions are supported.
   bool reduce_type_precision = false;
+  // Whether to consider this model a quantized model with quantize/dequantize
+  // ops and to convert kernels to quantized kernels wherever appropriate.
+  quant::QDQConversionMode qdq_conversion_mode =
+      quant::QDQConversionMode::kQDQNone;
+
+  // When set to true, StableHLO Quantizer is run. The full configuration for
+  // the quantizer is at `TocoFlags::quantization_config`.
+  bool enable_stablehlo_quantizer = false;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -121,7 +128,8 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nlegalize_custom_tensor_list_ops: "
             << pass_config.legalize_custom_tensor_list_ops
             << "\nreduce_type_precision: " << pass_config.reduce_type_precision
-            << "\n";
+            << "\nconvert_qdq_format: "
+            << GetQDQQuantModeString(pass_config.qdq_conversion_mode) << "\n";
 }
 
 }  // namespace TFL

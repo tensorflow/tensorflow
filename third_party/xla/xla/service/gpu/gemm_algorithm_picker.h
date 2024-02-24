@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,16 +32,15 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #endif
 
 namespace xla {
 namespace gpu {
 
-StatusOr<AutotuneResult> GetBestBlasAlgorithm(
+absl::StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     std::optional<std::string_view> gemm_str,
     const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
@@ -49,7 +48,7 @@ StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     absl::Span<const se::blas::AlgorithmType> algorithms,
     const Shape& output_shape, const HloModuleConfig& hlo_module_config,
     double beta,
-    const std::function<StatusOr<se::blas::ProfileResult>(
+    const std::function<absl::StatusOr<se::blas::ProfileResult>(
         const se::blas::AlgorithmType&)>& run_benchmark);
 
 // GemmAlgorithmPicker supports two modes: device and deviceless.
@@ -64,7 +63,7 @@ class GemmAlgorithmPicker : public HloModulePass {
   absl::string_view name() const override { return "gemm-algorithm-picker"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

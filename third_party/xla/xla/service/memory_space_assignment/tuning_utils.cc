@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ void CustomizeSortedBufferInterval(
 
     // Update the memory space assignment auto-tuning config of a module with a
     // given config.
-    module->config().mutable_memory_space_assignment_config()->assign(
+    module->mutable_config().mutable_memory_space_assignment_config()->assign(
         config.begin(), config.end());
   }
 }

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
@@ -46,8 +48,9 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
-  device_ordinal_ =
-      device_ordinal != -1 ? device_ordinal : executor->device_ordinal();
+  local_hardware_id_ = executor_->device_ordinal();
+  local_device_id_ =
+      device_ordinal != -1 ? device_ordinal : executor_->device_ordinal();
 
   int num_device_to_host_streams =
       stream_options.has_value() ? stream_options->num_device_to_host_streams
@@ -57,12 +60,11 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                  : kNumDeviceToDeviceStreams;
   compute_stream_ = std::make_unique<se::Stream>(executor);
   if (stream_options.has_value()) {
-    compute_stream_->implementation()->SetPriority(stream_options->priority);
+    compute_stream_->SetPriority(stream_options->priority);
   }
   host_to_device_stream_ = std::make_unique<se::Stream>(executor);
   if (stream_options.has_value()) {
-    host_to_device_stream_->implementation()->SetPriority(
-        stream_options->priority);
+    host_to_device_stream_->SetPriority(stream_options->priority);
   }
   compute_stream_->Init();
   host_to_device_stream_->Init();
@@ -74,7 +76,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_host_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     device_to_host_streams_.push_back(std::move(stream));
@@ -83,7 +85,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_device_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
@@ -92,7 +94,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     external_ready_event_streams_.push_back(std::move(stream));
@@ -119,6 +121,7 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
   if (callback_stream_map_.has_value()) {
+    absl::MutexLock lock(&callback_stream_map_mu_);
     for (auto& callback_stream : callback_stream_map_.value()) {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
@@ -136,32 +139,32 @@ Status LocalDeviceState::SynchronizeAllActivity() {
 Status LocalDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
     se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
-  // The default implementation simply calls ThenMemcpyD2D, and assumes that
+  // The default implementation simply calls MemcpyD2D, and assumes that
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
-  transfer_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return OkStatus();
+  return transfer_stream->MemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
 }
 
-void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
-                                           std::function<void()> callback) {
+absl::Status LocalDeviceState::ThenExecuteCallback(
+    se::Stream* stream, std::function<void()> callback) {
   tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(&callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
       auto new_stream = std::make_unique<se::Stream>(executor_);
-      new_stream->Init();
+      TF_RETURN_IF_ERROR(new_stream->Initialize());
       callback_stream =
           callback_stream_map_->insert({stream, std::move(new_stream)}).first;
     }
-    callback_stream->second->ThenWaitFor(stream);
+    TF_RETURN_IF_ERROR(callback_stream->second->WaitFor(stream));
     stream = callback_stream->second.get();
   }
-  stream->ThenDoHostCallback([this, callback{std::move(callback)}]() mutable {
-    callback_thread_->Schedule(std::move(callback));
-  });
+  return stream->DoHostCallback(
+      [this, callback{std::move(callback)}]() mutable {
+        callback_thread_->Schedule(std::move(callback));
+      });
 }
 
 se::Stream* LocalDeviceState::GetDeviceToHostStream() {
@@ -195,7 +198,7 @@ StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
   for (const std::unique_ptr<se::Stream>& se_stream :
        external_ready_event_streams_) {
     if (absl::bit_cast<std::intptr_t>(
-            se_stream->implementation()->GpuStreamHack()) == stream) {
+            se_stream->platform_specific_handle().stream) == stream) {
       return se_stream.get();
     }
   }
@@ -215,21 +218,24 @@ std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {
 }
 
 std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
-  absl::MutexLock lock(&mu_);
-  if (usage_stream_pool_.empty()) {
-    auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
-    stream->Init();
-    return stream;
-  } else {
-    std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
-    usage_stream_pool_.pop();
-    auto status = stream->RefreshStatus();  // Can return error::Unimplemented
-    // Stream may fail with "ABORTED: Bad connection".
-    if (status.code() != tsl::error::ABORTED) {
-      CHECK(stream->ok()) << status;
+  {
+    absl::MutexLock lock(&stream_pool_mu_);
+    if (!usage_stream_pool_.empty()) {
+      std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
+      usage_stream_pool_.pop();
+      auto status = stream->RefreshStatus();  // Can return error::Unimplemented
+      // Stream may fail with "ABORTED: Bad connection".
+      if (status.code() != tsl::error::ABORTED) {
+        CHECK(stream->ok()) << status;
+      }
+      return stream;
     }
-    return stream;
   }
+
+  // The stream pool is empty, create a new stream.
+  auto stream = std::make_unique<se::Stream>(compute_stream_->parent());
+  CHECK(stream->Initialize().ok());
+  return stream;
 }
 
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
@@ -238,7 +244,7 @@ void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   if (status.code() != tsl::error::ABORTED) {
     CHECK(stream->ok()) << status;
   }
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(&stream_pool_mu_);
   usage_stream_pool_.push(std::move(stream));
 }
 

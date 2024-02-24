@@ -1,13 +1,13 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -155,7 +155,6 @@ cc_library(
         "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:gml_st",
         "@local_xla//xla/mlir_hlo:lhlo",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:type_conversion",
@@ -218,7 +217,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo:gml_st",
         "@local_xla//xla/mlir_hlo:lhlo",
         "@local_xla//xla/mlir_hlo:transforms_passes",
     ],

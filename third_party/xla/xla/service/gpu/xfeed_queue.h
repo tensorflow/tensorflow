@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ class XfeedQueue {
     before_get_next_dest_callbacks_.push_back(std::move(callback));
   }
 
-  virtual ~XfeedQueue() {}
+  virtual ~XfeedQueue() = default;
 
  protected:
   virtual void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {}

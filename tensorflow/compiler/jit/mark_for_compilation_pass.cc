@@ -257,7 +257,8 @@ class MarkForCompilationPassImpl {
     std::optional<string> xla_scope_;
     std::vector<int> resource_var_operation_node_ids_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Cluster);
+    Cluster(const Cluster&) = delete;
+    void operator=(const Cluster&) = delete;
   };
 
   // If `cluster` has only a single node then returns that, otherwise returns
@@ -281,7 +282,7 @@ class MarkForCompilationPassImpl {
   // If this returns false then Initialize exited early (either because there is
   // nothing to do or we saw a graph that we can't handle) and not all the
   // fields in this MarkForCompilationPassImpl instance are set up.
-  StatusOr<bool> Initialize();
+  absl::StatusOr<bool> Initialize();
 
   // Runs through the entire cluster graph in post-order and calls `fn(from,
   // to)` on each edge.  `fn(from, to)` is expected to return true if it was
@@ -289,7 +290,7 @@ class MarkForCompilationPassImpl {
   //
   // Returns true if `fn` returned true for any edge.
   template <typename FnTy>
-  StatusOr<bool> ForEachEdgeInPostOrder(FnTy fn);
+  absl::StatusOr<bool> ForEachEdgeInPostOrder(FnTy fn);
 
   // Contracts as many edges as possible to create XLA clusters.  After this
   // finishes the clustering decisions made are implicitly stored in
@@ -318,7 +319,7 @@ class MarkForCompilationPassImpl {
 
   // Tries to contract the edge from cluster `from` to cluster `to`.  Returns
   // true if successful.
-  StatusOr<bool> TryToContractEdge(Cluster* from, Cluster* to);
+  absl::StatusOr<bool> TryToContractEdge(Cluster* from, Cluster* to);
 
   // Nodes that XLA can compile are put in `compilation_candidates_`.
   Status FindCompilationCandidates();
@@ -328,11 +329,11 @@ class MarkForCompilationPassImpl {
   // Populates `clusters_`.
   Status BuildInitialClusterSet();
 
-  StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
+  absl::StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
 
-  StatusOr<bool> ShouldCompileCluster(const Cluster& cluster);
+  absl::StatusOr<bool> ShouldCompileCluster(const Cluster& cluster);
 
-  StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
+  absl::StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
       const Cluster& from, const Cluster& to);
 
   bool ShouldCompile(bool is_xla_compile_attr_true,
@@ -351,8 +352,8 @@ class MarkForCompilationPassImpl {
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
   // cluster.
-  StatusOr<bool> AreDevicesCompatible(const Cluster& cluster_a,
-                                      const Cluster& cluster_b);
+  absl::StatusOr<bool> AreDevicesCompatible(const Cluster& cluster_a,
+                                            const Cluster& cluster_b);
 
   void DumpPostClusteringGraphs();
   void VLogClusteringSummary();
@@ -636,7 +637,7 @@ Status IgnoreResourceOpForSafetyAnalysis(
 
   if (n.assigned_device_name().empty()) {
     *ignore = false;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -648,10 +649,10 @@ Status IgnoreResourceOpForSafetyAnalysis(
   } else {
     *ignore = registration->cluster_resource_variable_ops_unsafely;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
+absl::StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
   TF_RET_CHECK(!initialized_ && !edges_contracted_ && !clusters_created_);
   initialized_ = true;
 
@@ -689,7 +690,8 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
 }
 
 template <typename FnTy>
-StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
+absl::StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(
+    FnTy fn) {
   bool changed = false;
   for (int32_t node : cycles_graph_.AllNodesInPostOrder()) {
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
@@ -798,7 +800,8 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
 
   VLOG(4) << "Running phase 0";
   TF_RETURN_IF_ERROR(
-      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
+      ForEachEdgeInPostOrder([&](Cluster* from,
+                                 Cluster* to) -> absl::StatusOr<bool> {
         // Shape consuming operations are desirable to cluster with their
         // operands because they return a small set of scalar values after
         // consuming a large amount of data.  For example, given a graph X -> Y
@@ -821,7 +824,8 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
 
   VLOG(4) << "Running phase 1";
   TF_RETURN_IF_ERROR(
-      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
+      ForEachEdgeInPostOrder([&](Cluster* from,
+                                 Cluster* to) -> absl::StatusOr<bool> {
         // We split out this phase to get good clustering in the presence of a
         // specific pattern seen in some graphs:
         //
@@ -891,7 +895,7 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
                       }));
   TF_RET_CHECK(!changed);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MarkForCompilationPassImpl::DeclusterNodes() {
@@ -921,7 +925,7 @@ Status MarkForCompilationPassImpl::DeclusterNodes() {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Tracks monotonic sequence numbers for graphs.
@@ -1009,7 +1013,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MarkForCompilationPassImpl::DumpDebugInfo() {
@@ -1021,10 +1025,10 @@ Status MarkForCompilationPassImpl::DumpDebugInfo() {
 
   VLogClusteringSummary();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool>
+absl::StatusOr<bool>
 MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
     const Cluster& cluster_from, const Cluster& cluster_to) {
   // If any of the consumer's producers are on a different device, do not
@@ -1180,10 +1184,10 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     cluster_for_node_[node->id()].Get() = new_cluster;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
+absl::StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   if (!node->IsIdentity()) {
     return false;
   }
@@ -1474,7 +1478,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "compilation_candidates_.size() = "
           << compilation_candidates_.size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
@@ -1512,8 +1516,8 @@ bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
   return false;
 }
 
-StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
-                                                             Cluster* to) {
+absl::StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(
+    Cluster* from, Cluster* to) {
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
@@ -1595,7 +1599,7 @@ Status MarkForCompilationPassImpl::Run() {
   if (!initialized) {
     // Initialization exited early which means this instance of
     // MarkForCompilationPassImpl is not set up to run the subsequent phases.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RETURN_IF_ERROR(RunEdgeContractionLoop());
@@ -1603,7 +1607,7 @@ Status MarkForCompilationPassImpl::Run() {
   TF_RETURN_IF_ERROR(CreateClusters());
   TF_RETURN_IF_ERROR(DumpDebugInfo());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MarkForCompilationPassImpl::DumpPostClusteringGraphs() {
@@ -1755,7 +1759,7 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
   }
 }
 
-StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
+absl::StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
     const Cluster& cluster_a, const Cluster& cluster_b) {
   DeviceSet devices = cluster_a.devices();
   devices.UnionWith(cluster_b.devices());
@@ -1786,7 +1790,7 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
 }
 
 // Returns `true` iff we should compile `cluster`.
-StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
+absl::StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
     const Cluster& cluster) {
   TF_ASSIGN_OR_RETURN(DeviceId chosen_device,
                       PickDeviceForXla(device_info_cache_, cluster.devices(),
@@ -1837,7 +1841,7 @@ proper command-line flag, not via TF_XLA_FLAGS).)";
   return should_compile;
 }
 
-StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileCluster(
+absl::StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileCluster(
     const Cluster& cluster) {
   auto it = should_compile_cluster_cache_.find(&cluster);
   if (it != should_compile_cluster_cache_.end()) {
@@ -1863,14 +1867,14 @@ Status MarkForCompilation(
   for (Node* n : graph->nodes()) {
     // See explanation on `kXlaAlreadyClustered`.
     if (n->attrs().Find(kXlaAlreadyClustered)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // Skip the pass if we found TPUExecute or TPUExecuteAndUpdateVariables ops
     // in the graph, which indicates the graph is produced by TPU TF-XLA bridge
     // and doesn't require auto clustering.
     if (n->type_string() == "TPUExecute" ||
         n->type_string() == "TPUExecuteAndUpdateVariables") {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -2276,6 +2280,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "VariableShape",
       "Where",
       "While",
+      "XlaAllReduce",
       "XlaBroadcastHelper",
       "XlaCallModule",
       "XlaConcatND",
@@ -2297,6 +2302,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaRecv",
       "XlaReduce",
       "XlaReducePrecision",
+      "XlaReduceScatter",
       "XlaReduceWindow",
       "XlaRemoveDynamicDimensionSize",
       "XlaReplicaId",

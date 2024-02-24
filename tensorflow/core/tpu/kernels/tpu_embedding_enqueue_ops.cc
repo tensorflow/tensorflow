@@ -200,7 +200,9 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
   bool device_ordinal_set_ = false;
   TpuEmbedding_TensorBatchFixedState* fixed_state_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EnqueueTPUEmbeddingArbitraryTensorBatchOp);
+  EnqueueTPUEmbeddingArbitraryTensorBatchOp(
+      const EnqueueTPUEmbeddingArbitraryTensorBatchOp&) = delete;
+  void operator=(const EnqueueTPUEmbeddingArbitraryTensorBatchOp&) = delete;
 };
 
 #ifdef LIBTPU_ON_GCE

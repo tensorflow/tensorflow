@@ -1,6 +1,6 @@
 # Placeholder: load py_proto_library
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
-load("//tsl:tsl.bzl", "set_external_visibility")
+load("//tsl:tsl.bzl", "internal_visibility")
 load("//tsl/platform:build_config.bzl", "tf_proto_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
@@ -17,7 +17,7 @@ tf_proto_library(
     srcs = ["xplane.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([":friends"]),
 )
 
 tf_proto_library(
@@ -71,7 +71,7 @@ tf_proto_library(
     name = "trace_events_proto",
     srcs = ["trace_events.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([":friends"]),
 )
 
 # copybara:uncomment_begin(google-only)
@@ -86,14 +86,20 @@ tf_proto_library(
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
 exports_files(
     srcs = ["xplane.proto"],
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "//tensorflow/core:__pkg__",
+        "//tsl:__pkg__",
+    ]),
 )
 
 tf_proto_library(
     name = "profile_proto",
     srcs = ["profile.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([
+        "@local_xla//xla/python:__pkg__",
+        "//tsl/profiler:internal",
+    ]),
 )
 
 tf_proto_library(
@@ -113,7 +119,7 @@ tf_proto_library(
 # py_proto_library(
 #     name = "xplane_py_pb2",
 #     api_version = 2,
-#     visibility = set_external_visibility([":friends"]),
+#     visibility = internal_visibility([":friends"]),
 #     deps = [":xplane_proto"],
 # )
 # copybara:uncomment_end
@@ -123,5 +129,5 @@ tf_proto_library(
     srcs = ["profiled_instructions.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
+    visibility = internal_visibility([":friends"]),
 )

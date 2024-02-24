@@ -19,7 +19,7 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.training import gen_training_ops
+from tensorflow.python.ops import gen_training_ops
 
 
 class SGD(optimizer_v2.OptimizerV2):

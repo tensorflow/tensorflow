@@ -26,7 +26,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime.h"
-#include "tensorflow/core/profiler/backends/gpu/cupti_collector.h"
+#include "xla/backends/profiler/gpu/cupti_collector.h"
 #endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/direct_session.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -439,13 +439,13 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
           if (addr == reinterpret_cast<size_t>(devptr) &&
               num_bytes == size_in_bytes) {
             found_activity_memory_device = true;
-            EXPECT_EQ(kind,
-                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+            EXPECT_EQ(kind, xla::profiler::GetMemoryKindName(
+                                CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
           } else if (addr == reinterpret_cast<size_t>(hostptr) &&
                      num_bytes == size_in_bytes) {
             found_activity_memory_host = true;
-            EXPECT_EQ(kind,
-                      GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+            EXPECT_EQ(kind, xla::profiler::GetMemoryKindName(
+                                CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
           }
         } else if (stat.Type() == StatType::kMemsetDetails) {
           CHECK(!found_activity_memset);
@@ -459,8 +459,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
               EXPECT_EQ(num_bytes, 8);
             } else if (absl::StartsWith(detail, "kind:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
             }
           }
         } else if (stat.Type() == StatType::kMemcpyDetails) {
@@ -475,11 +475,11 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
               (void)absl::SimpleAtoi(name_value[1], &num_bytes);
               EXPECT_EQ(num_bytes, 8);
             } else if (absl::StartsWith(detail, "kind_src:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_DEVICE));
             } else if (absl::StartsWith(detail, "kind_dst:")) {
-              EXPECT_EQ(name_value[1],
-                        GetMemoryKindName(CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
+              EXPECT_EQ(name_value[1], xla::profiler::GetMemoryKindName(
+                                           CUPTI_ACTIVITY_MEMORY_KIND_PINNED));
             }
           }
         }

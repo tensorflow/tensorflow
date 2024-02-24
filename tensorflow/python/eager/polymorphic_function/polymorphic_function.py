@@ -65,6 +65,7 @@ import functools
 import os
 import threading
 import types as types_lib
+import warnings
 import weakref
 
 from google.protobuf import text_format as _text_format
@@ -996,10 +997,33 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
     )
     filtered_flat_args = concrete_fn.function_type.unpack_inputs(bound_args)
 
-    def compiler_ir_generator(stage="hlo", device_name=None):
+    def compiler_ir_generator(
+        stage="hlo", device_name=None, platform_name=None
+    ):
+      """Gets the compiler IR bytes.
+
+      Args:
+        stage: The exported stage for the given function.
+        device_name: The name of the device with the form as
+          "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
+          When this is used, actual device is used for getting the compiler IR.
+        platform_name: The name of the platform, e.g. "TPU". See the comment in
+          `get_compiler_ir` in `context.py`.
+
+      Returns:
+        The compiler IR bytes.
+      """
+      if device_name is not None:
+        if platform_name is not None:
+          raise ValueError(
+              "device_name and platform_name cannot be provided at the same"
+              " time."
+          )
+        warnings.warn("device_name is being deprecated. Use platform_name.")
       device_name = compiler_ir.maybe_get_device_name(device_name)
       res_bytes = context.context().get_compiler_ir(
           device_name=device_name,
+          platform_name=platform_name,
           function_name=fn_name,
           flat_args=list(filtered_flat_args),
           captured_inputs=concrete_fn.captured_inputs,

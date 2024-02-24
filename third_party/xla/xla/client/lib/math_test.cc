@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -758,6 +758,17 @@ XLA_TEST_F(MathTest, AcosComplexValues) {
       {0.9045568943023814, -1.0612750619050357},
       {0.7011246914497526, -0.30527648462436596}};
   ComputeAndCompareR1<std::complex<float>>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, ZetaF64) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<double>(&builder, {2.0});
+  auto q = ConstantR1<double>(&builder, {1.0});
+  Zeta(x, q);
+  std::vector<double> expected = {1.64493406684823};
+
+  ComputeAndCompareR1<double>(&builder, expected, {},
+                              ErrorSpec{0.00000000000001});
 }
 
 }  // namespace

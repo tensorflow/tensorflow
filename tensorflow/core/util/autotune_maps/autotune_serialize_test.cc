@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // For Google-internal use only.
+#include "xla/stream_executor/platform_manager.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
-
-#include "absl/types/variant.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/status_matchers.h"
@@ -39,7 +38,7 @@ using ::testing::HasSubstr;
 // Gets a GPU StreamExecutor instance.  Any one will do.
 se::StreamExecutor* GetStreamExec() {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   CHECK_GT(platform->VisibleDeviceCount(), 0);
   return platform->ExecutorForDevice(0).value();
 }

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/async/interop/c/types.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 namespace {

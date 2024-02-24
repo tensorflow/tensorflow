@@ -1,6 +1,6 @@
 // RUN: tf-opt -hlo-legalize-to-linalg -hlo-xla-runtime-sparsification %s | FileCheck %s
 
-#SparseVector = #sparse_tensor.encoding<{ lvlTypes = ["compressed"] }>
+#SparseVector = #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>
 
 // CHECK-LABEL: func.func @mult_sparse_dense(
 // CHECK-SAME:    %[[PTR:.*0]]: memref<?xindex>,

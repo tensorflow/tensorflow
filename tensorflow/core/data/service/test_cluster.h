@@ -54,11 +54,14 @@ class TestCluster {
     int64_t worker_heartbeat_interval_ms = 0;
     int64_t job_gc_check_interval_ms = 0;
     int64_t job_gc_timeout_ms = 0;
+    int64_t worker_max_concurrent_snapshots = 0;
+    std::string work_dir;
   };
 
   // Creates a new test cluster with a dispatcher and `num_workers` workers.
   explicit TestCluster(int num_workers);
   explicit TestCluster(const Config& config);
+  virtual ~TestCluster();
 
   // Initializes the test cluster. This must be called before interacting with
   // the cluster. Initialize should be called only once.

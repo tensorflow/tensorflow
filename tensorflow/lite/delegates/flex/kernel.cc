@@ -237,6 +237,16 @@ class OpNode {
         tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data_));
     AddDefaultsToNodeDef(op_reg_data_->op_def, &nodedef_);
 
+    // Force disable the use of inter op parallelism to prevent deadlocks in
+    // Tensorflow Function Library Runtime when only one thread is allowed.
+    // This changes the threadpool that is used by TF's data ops by passing it
+    // to the CapturedFunction instantiate function.
+    //
+    // It should be ok to remove this when/if the tensorflow::Executor::Run
+    // function is changed not to call the RunAsync function and wait on its
+    // completion. See b/304799442 for more context.
+    (*nodedef_.mutable_attr())["use_inter_op_parallelism"].set_b(false);
+
     return ::tensorflow::OkStatus();
   }
 

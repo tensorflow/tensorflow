@@ -1,5 +1,5 @@
 
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -588,6 +588,35 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   EXPECT_FALSE(changed);
   std::vector<HloComputation *> computations = module->MakeComputationSorted();
   EXPECT_EQ(computations.size(), (total_regions + 1));
+}
+
+TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
+  // Note: this test is hypothetical and just to check dedup.
+  const std::string_view text = R"(
+  HloModule TestModule
+
+  add.1 {
+    Arg_0 = s32[] parameter(0)
+    Arg_1 = s32[] parameter(1)
+    ROOT add.2 = s32[] add(Arg_0, Arg_1)
+  }
+  add.2 {
+    Arg_0 = s32[] parameter(0)
+    Arg_1 = s32[] parameter(1)
+    ROOT add.2 = s32[] add(Arg_0, Arg_1)
+  }
+
+  ENTRY main {
+    Arg_0.1 = s32[10] parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0.1, constant.3), dimensions={0}, to_apply=add.1
+    Arg_1.1 = s32[] parameter(1)
+    rd2 = s32[] all-reduce(Arg_1.1), to_apply=add.2
+    ROOT multiply.14 = s32[] multiply(rd1, rd2)
+  }
+  )";
+  auto computation_names = RunDeduplicatePass(text, /*expect_true=*/false);
+  EXPECT_EQ(computation_names.size(), 3);
 }
 }  //  namespace
 }  //  namespace xla

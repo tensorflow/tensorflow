@@ -44,6 +44,8 @@ void DcnSlackAnalysisCombiner::Combine(const DcnSlackAnalysis& slack_analysis) {
                                  slack.send_duration_us() * occurrences);
     summary.set_recv_duration_us(summary.recv_duration_us() +
                                  slack.recv_duration_us() * occurrences);
+    summary.set_host_stall_us(summary.host_stall_us() +
+                              slack.host_stall_us() * occurrences);
     summary.set_occurrences(summary.occurrences() + slack.occurrences());
     summary.set_bytes_transmitted_over_network(
         slack.bytes_transmitted_over_network());
@@ -74,6 +76,8 @@ DcnSlackAnalysis DcnSlackAnalysisCombiner::Finalize() {
         SafeDivide(summary.send_duration_us(), summary.occurrences()));
     slack->set_recv_duration_us(
         SafeDivide(summary.recv_duration_us(), summary.occurrences()));
+    slack->set_host_stall_us(
+        SafeDivide(summary.host_stall_us(), summary.occurrences()));
     slack->set_occurrences(summary.occurrences());
     slack->set_bytes_transmitted_over_network(
         summary.bytes_transmitted_over_network());

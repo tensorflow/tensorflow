@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,17 +21,33 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
+namespace {
+
+// A nullptr std::function implicitly converts to a non-nullptr
+// absl::AnyInvocable, which later crashes when being invoked. absl team
+// explicitly said this is WAI. See b/258212655#comment10.
+absl::AnyInvocable<void() &&> FromStdFunction(std::function<void()>&& f) {
+  return f ? std::move(f) : absl::AnyInvocable<void() &&>();
+}
+
+}  // namespace
 
 char PjRtCompatibleClient::ID = 0;
 char PjRtClient::ID = 0;
@@ -39,6 +55,25 @@ char PjRtClient::ID = 0;
 std::unique_ptr<PjRtClient> PjRtClient::Create(
     std::shared_ptr<xla::PjRtClient> pjrt_client) {
   return absl::WrapUnique(new PjRtClient(std::move(pjrt_client)));
+}
+
+absl::flat_hash_map<std::string, Client::ClientAttribute>
+PjRtClient::attributes() const {
+  absl::flat_hash_map<std::string, ClientAttribute> attributes;
+  attributes.insert({"supports_executable_serialization", true});
+
+  if (std::optional<PjRtPluginAttributes> plugin_attributes =
+          pjrt_client_->plugin_attributes();
+      plugin_attributes.has_value()) {
+    attributes.insert(
+        {"pjrt_c_api_major_version",
+         ClientAttribute(plugin_attributes->pjrt_c_api_major_version)});
+    attributes.insert(
+        {"pjrt_c_api_minor_version",
+         ClientAttribute(plugin_attributes->pjrt_c_api_minor_version)});
+  }
+
+  return attributes;
 }
 
 StatusOr<tsl::RCReference<PjRtCompatibleArray>> PjRtClient::CreatePjRtArray(
@@ -94,16 +129,17 @@ StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
                         }));
     }
     TF_ASSIGN_OR_RETURN(
-        buffer, pjrt_client_->BufferFromHostBuffer(
-                    data, primitive_type, shape.dims(), byte_strides, semantics,
-                    std::move(on_done_with_host_buffer), memory_space,
-                    /*device_layout=*/nullptr));
-  } else {
-    TF_ASSIGN_OR_RETURN(
         buffer,
         pjrt_client_->BufferFromHostBuffer(
             data, primitive_type, shape.dims(), byte_strides, semantics,
-            std::move(on_done_with_host_buffer), sharding->devices().front()));
+            FromStdFunction(std::move(on_done_with_host_buffer)), memory_space,
+            /*device_layout=*/nullptr));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        buffer, pjrt_client_->BufferFromHostBuffer(
+                    data, primitive_type, shape.dims(), byte_strides, semantics,
+                    FromStdFunction(std::move(on_done_with_host_buffer)),
+                    sharding->devices().front()));
   }
   return PjRtArray::Create(
       this, dtype, std::move(shape), std::move(sharding),
@@ -125,12 +161,12 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
     }
     return arrays[0];
   } else if (!llvm::isa<const OpaqueSharding, const ConcreteSharding,
-                        const ConcreteEvenSharding,
-                        const ShardingParamSharding>(sharding.get())) {
+                        const ConcreteEvenSharding, const ShardingParamSharding,
+                        const HloSharding>(sharding.get())) {
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
-        "ConcreteEvenSharding, and ShardingParamSharding are supported: "
-        "sharding=%s",
+        "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
+        "supported: sharding=%s",
         sharding->DebugString());
   }
   if (sharding->devices().size() != arrays.size()) {

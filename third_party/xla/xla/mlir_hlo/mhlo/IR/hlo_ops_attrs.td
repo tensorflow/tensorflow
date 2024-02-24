@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -157,8 +157,9 @@ def MHLO_ArgResultAlias : AttrDef<MHLO_Dialect, "ArgResultAlias"> {
 }
 
 // Represents a unique identifier for each Send/Recv instruction pair or
-// optionally for collective instructions (AllReduce, CollectivePermute,
-// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+// optionally for collective instructions (AllToAll, AllReduce,
+// CollectiveBroadcast, and CollectivePermute). Non-positive channel_id
+// handle is equivalent to no channel id.
 def MHLO_ChannelHandle : AttrDef<MHLO_Dialect, "ChannelHandle"> {
   let mnemonic = "channel_handle";
   let parameters = (ins "int64_t":$handle, "int64_t":$type);

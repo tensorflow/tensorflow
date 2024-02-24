@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,10 +43,10 @@ static std::string GetDefaultAttrExport(
   Attribute attr = named_attr.attr;
   StringRef storage_type = attr.getStorageType();
   // For some attribute types we have a general conversion, so use that.
-  if (!attr.isEnumAttr() && (storage_type.endswith("BoolAttr") ||
-                             storage_type.endswith("FloatAttr") ||
-                             storage_type.endswith("IntegerAttr") ||
-                             storage_type.endswith("StringAttr"))) {
+  if (!attr.isEnumAttr() && (storage_type.ends_with("BoolAttr") ||
+                             storage_type.ends_with("FloatAttr") ||
+                             storage_type.ends_with("IntegerAttr") ||
+                             storage_type.ends_with("StringAttr"))) {
     // The return type may contains qualified namespaces. Split to remove them.
     std::pair<StringRef, StringRef> splits = attr.getReturnType().rsplit("::");
     StringRef symbol = splits.second;

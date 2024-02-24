@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,8 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
   void CheckGpuFusionPipeline(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     HloPassPipeline pipeline("gpu-fusion");
-    const GpuDeviceInfo device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    const se::DeviceDescription device_info =
+        TestGpuDeviceInfo::RTXA6000DeviceInfo();
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
                                            device_info);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);

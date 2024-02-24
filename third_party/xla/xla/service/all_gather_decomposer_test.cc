@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -153,6 +153,34 @@ ENTRY entry {
               op::AllReduce(op::DynamicUpdateSlice(
                   op::Broadcast(op::Constant()), op::Parameter(0),
                   op::Constant(), op::Multiply(id, op::Constant()))));
+}
+
+TEST_F(AllGatherDecomposerTest, CrossReplicaAllGatherWithTuple) {
+  const std::string module_str = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = f32[10,20] parameter(0)
+  param1 = f32[10,16] parameter(1)
+  ROOT ag = (f32[10,80], f32[10,64]) all-gather(param0, param1),
+    replica_groups={}, dimensions={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((module_str)));
+  AllGatherDecomposer decomposer;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(
+          op::AllReduce(op::DynamicUpdateSlice(
+              op::Broadcast(op::Constant()), op::Parameter(0), op::Constant(),
+              op::Multiply(op::ReplicaId(), op::Constant()))),
+          op::AllReduce(op::DynamicUpdateSlice(
+              op::Broadcast(op::Constant()), op::Parameter(1), op::Constant(),
+              op::Multiply(op::ReplicaId(), op::Constant())))));
 }
 
 }  // namespace

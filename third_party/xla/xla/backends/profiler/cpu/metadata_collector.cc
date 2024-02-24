@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,7 +77,8 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
   std::vector<std::unique_ptr<xla::HloProto>> debug_info_;
   bool trace_active_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);
+  MetadataCollector(const MetadataCollector&) = delete;
+  void operator=(const MetadataCollector&) = delete;
 };
 
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreatMetadataCollector(

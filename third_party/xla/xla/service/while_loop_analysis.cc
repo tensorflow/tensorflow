@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "xla/service/while_loop_analysis.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -317,44 +325,6 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   return indvar_tuple_idx;
 }
 
-// Converts the given literal to a scalar int64_t, if possible.
-//
-// Fails if the literal is not an integral type or if the value it contains
-// cannot be represented in an int64_t.
-static optional<int64_t> LiteralAsScalarInt64(const Literal& l) {
-  if (!ShapeUtil::IsEffectiveScalar(l.shape())) {
-    VLOG(2) << "literal is not an effective scalar: " << l.ToString();
-    return nullopt;
-  }
-  switch (l.shape().element_type()) {
-    case S8:
-      return l.GetFirstElement<int8_t>();
-    case S16:
-      return l.GetFirstElement<int16_t>();
-    case S32:
-      return l.GetFirstElement<int32_t>();
-    case S64:
-      return l.GetFirstElement<int64_t>();
-    case U8:
-      return l.GetFirstElement<uint8_t>();
-    case U16:
-      return l.GetFirstElement<uint16_t>();
-    case U32:
-      return l.GetFirstElement<uint32_t>();
-    case U64: {
-      uint64_t v = l.GetFirstElement<uint64_t>();
-      if (v > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        VLOG(2) << "uint64_t literal is out of range for int64_t: " << v;
-        return nullopt;
-      }
-      return v;
-    }
-    default:
-      VLOG(2) << "literal is of non-integral type " << l.shape().ToString();
-      return nullopt;
-  }
-}
-
 // Computes a + b, returning nullopt if it overflows.
 optional<int64_t> CheckedAdd(int64_t a, int64_t b) {
   // Overflow occurred iff `a` and `b` have the same sign and `a + b` has a
@@ -381,16 +351,12 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
   return result;
 }
 
-// Check if
-//  - `i` is initialized to a scalar constant K (namely, `indvar_init`),
-//  - the while condition does `i < N` or `i <= N`, and
-//  - the while body does `i++`.
-// If so, it's trivial to compute the loop bound.
-static optional<int64_t> PatternMatchLoopTripCount(
-    const HloInstruction* while_op, int64_t indvar_tuple_idx,
-    const Literal& indvar_init) {
-  // First, find the scalar constant K that `i` is initialized to.
-  optional<int64_t> indvar_init_val = LiteralAsScalarInt64(indvar_init);
+optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
+                                            int64_t indvar_tuple_idx,
+                                            const Literal& indvar_init) {
+  // First, find the scalar constant init that `i` is initialized to.
+  optional<int64_t> indvar_init_val =
+      LiteralUtil::LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
     VLOG(2) << "Pattern-match failed: induction variable init is not a "
                "constant scalar representable as an int64_t: "
@@ -398,21 +364,51 @@ static optional<int64_t> PatternMatchLoopTripCount(
     return nullopt;
   }
 
-  // Check that `i` goes as `i++` in the while body.
-  //
-  // TODO(jlebar): We could also handle i-- and other idioms.
+  // Check that `i` goes as `i += k` in the while body where k is a natural
+  // number.
   auto* while_body = while_op->while_body();
   auto* while_body_indvar_update =
-      while_body->root_instruction()->operand(indvar_tuple_idx);
+      while_body->root_instruction()->mutable_operand(indvar_tuple_idx);
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  HloInstruction* trip_count_increase_step_instr = nullptr;
+  int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
              m::AddAnyOrder(m::Op().Is(while_body_indvar),
-                            m::ConstantEffectiveScalar(1)))) {
-    VLOG(2) << "Pattern-match failed: induction variable does not go as i++: "
-            << while_body_indvar_update->ToString();
-    return nullopt;
+                            m::Op(&trip_count_increase_step_instr)))) {
+    if (trip_count_increase_step_instr == nullptr) {
+      VLOG(2) << "Pattern-match failed: induction variable is not getting "
+                 "updated by an add operation: "
+              << while_body_indvar_update->ToString();
+      return nullopt;
+    }
+    if (!trip_count_increase_step_instr->IsConstant() ||
+        !ShapeUtil::IsEffectiveScalar(
+            trip_count_increase_step_instr->shape())) {
+      VLOG(2) << "Pattern-match failed: induction variable is not getting "
+                 "incremented by constant: "
+              << while_body_indvar_update->ToString();
+      return nullopt;
+    }
+    if (!LiteralUtil::LiteralAsScalarInt64(
+             trip_count_increase_step_instr->literal())
+             .has_value()) {
+      VLOG(2)
+          << "Pattern-match failed: trip count step is not an integral type: "
+          << trip_count_increase_step_instr->shape().ToString();
+      return nullopt;
+    }
+    VLOG(2) << "Pattern-match for trip count step failed: "
+            << trip_count_increase_step_instr->ToString();
   }
 
+  trip_count_step = LiteralUtil::LiteralAsScalarInt64(
+                        trip_count_increase_step_instr->literal())
+                        .value();
+  if (trip_count_step <= 0) {
+    VLOG(2) << "Pattern-match failed: trip count step is not a natural number: "
+            << trip_count_step;
+    return nullopt;
+  }
   // Check that we do op(i, N) or op(N, i) as the while condition.  Capture the
   // value N.
   auto* while_cond = while_op->while_condition();
@@ -430,14 +426,14 @@ static optional<int64_t> PatternMatchLoopTripCount(
   // Note: If this succeeds, the constant `N` is representable as an int64_t --
   // that is, if it's an XLA U64, it fits within an int64_t.
   optional<int64_t> while_cond_bound_val =
-      LiteralAsScalarInt64(while_cond_bound->literal());
+      LiteralUtil::LiteralAsScalarInt64(while_cond_bound->literal());
   if (!while_cond_bound_val) {
     VLOG(2) << "Pattern-match failed: while condition induction variable is "
                "not a constant scalar representable as an int64_t.";
     return nullopt;
   }
 
-  // Handle `i = K; i < N; ++i`.
+  // Handle `i = init; i < N; i+=k`.
   if (Match(while_cond_root,
             m::Op()
                 .WithComparisonDirection(ComparisonDirection::kLt)
@@ -447,14 +443,26 @@ static optional<int64_t> PatternMatchLoopTripCount(
     optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
     if (trips) {
-      return std::max(int64_t{0}, *trips);
-    } else {
-      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
-      return nullopt;
+      const int64_t remainder = std::remainder(*trips, trip_count_step);
+      const int64_t div = std::floor(*trips / trip_count_step);
+      if (remainder == 0) {
+        return std::max(int64_t{0}, div);
+      }
+      trips = CheckedAdd(div, 1);
+      if (!trips) {
+        VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+        return nullopt;
+      }
+      if (*trips < *while_cond_bound_val) {
+        return std::max(int64_t{0}, *trips);
+      }
+      return std::max(int64_t{0}, div);
     }
+    VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+    return nullopt;
   }
 
-  // Handle `i = K; i <= N; ++i`.
+  // Handle `i = init; i <= N; i+=k`.
   if (Match(while_cond_root,
             m::Op()
                 .WithComparisonDirection(ComparisonDirection::kLe)
@@ -467,7 +475,7 @@ static optional<int64_t> PatternMatchLoopTripCount(
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    trips = CheckedAdd(*trips, 1);
+    trips = CheckedAdd(std::floor(*trips / trip_count_step), 1);
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
@@ -509,7 +517,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   Literal indvar_iter_val = std::move(indvar_init_result).value();
 
   // First, try to pattern-match.
-  if (auto trip_count = PatternMatchLoopTripCount(while_op, *indvar_tuple_idx,
+  if (auto trip_count = MatchTrivialLoopTripCount(while_op, *indvar_tuple_idx,
                                                   indvar_iter_val)) {
     return trip_count;
   }

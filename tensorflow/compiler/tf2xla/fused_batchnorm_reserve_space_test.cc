@@ -60,7 +60,7 @@ Status GetTestDevice(Session* session, string* test_device) {
 
   *test_device = found_gpu ? "GPU" : "CPU";
   VLOG(2) << "Using test device " << *test_device;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void FillZeros(Tensor* tensor) {

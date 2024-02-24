@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/literal_comparison.h"
+
+#include <complex>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -47,8 +49,8 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/ml_dtypes.h"
 
 using absl::StrAppend;
 using absl::StrAppendFormat;
@@ -358,8 +360,8 @@ class NearComparator {
         // used for sorting a std::set of the top mismatches, and a nan value
         // here will result in undefined behavior because nan's do not satisfy
         // the strict weak ordering requirement of std containers.
-        abs_error = std::numeric_limits<float>::infinity();
-        rel_error = std::numeric_limits<float>::infinity();
+        abs_error = std::numeric_limits<double>::infinity();
+        rel_error = std::numeric_limits<double>::infinity();
       } else {
         abs_error = 0;
         rel_error = 0;
@@ -376,14 +378,14 @@ class NearComparator {
       if (expected != T{0}) {
         rel_error = abs_error / FpAbsoluteValue(expected);
       } else {
-        rel_error = std::numeric_limits<float>::infinity();
+        rel_error = std::numeric_limits<double>::infinity();
       }
     } else if (IsInf(expected) || IsInf(actual)) {
       // If either the expected or actual value is infinity but not both,
       // then both absolute and relative error are regarded as infinity.
       CHECK(!CompareEqual(expected, actual, {linear_index}));
-      abs_error = std::numeric_limits<float>::infinity();
-      rel_error = std::numeric_limits<float>::infinity();
+      abs_error = std::numeric_limits<double>::infinity();
+      rel_error = std::numeric_limits<double>::infinity();
     } else {
       abs_error = FpAbsoluteValue(actual - expected);
 
@@ -392,7 +394,7 @@ class NearComparator {
       if (expected != T{0}) {
         rel_error = abs_error / FpAbsoluteValue(expected);
       } else {
-        rel_error = std::numeric_limits<float>::infinity();
+        rel_error = std::numeric_limits<double>::infinity();
       }
     }
     const bool is_abs_mismatch = abs_error > error_.abs;
@@ -433,25 +435,12 @@ class NearComparator {
   }
 
   // For complex types, we compare real and imaginary parts individually.
-  void CompareValues(complex64 expected, complex64 actual,
+  template <typename T>
+  void CompareValues(std::complex<T> expected, std::complex<T> actual,
                      int64_t linear_index) {
     const auto both_parts_mismatch = num_mismatches_ + 2;
-    CompareValues<float>(expected.real(), actual.real(), linear_index);
-    CompareValues<float>(expected.imag(), actual.imag(), linear_index);
-    if (num_mismatches_ == both_parts_mismatch) {
-      // The mismatch counter had been incremented by each CompareValues() call,
-      // which means that both real and imaginary parts of the passed-in complex
-      // values are different. However, the counter should reflect a single
-      // mismatch between these complex values.
-      num_mismatches_--;
-    }
-  }
-
-  void CompareValues(complex128 expected, complex128 actual,
-                     int64_t linear_index) {
-    const auto both_parts_mismatch = num_mismatches_ + 2;
-    CompareValues<double>(expected.real(), actual.real(), linear_index);
-    CompareValues<double>(expected.imag(), actual.imag(), linear_index);
+    CompareValues<T>(expected.real(), actual.real(), linear_index);
+    CompareValues<T>(expected.imag(), actual.imag(), linear_index);
     if (num_mismatches_ == both_parts_mismatch) {
       // The mismatch counter had been incremented by each CompareValues() call,
       // which means that both real and imaginary parts of the passed-in complex
@@ -510,8 +499,8 @@ class NearComparator {
     std::string out;
     int64_t element_count = ShapeUtil::ElementsIn(actual_.shape());
 
-    auto percent_string = [](float a, float b) {
-      float pct = b == 0.0 ? 0.0 : 100.0 * a / b;
+    auto percent_string = [](double a, double b) {
+      double pct = b == 0.0 ? 0.0 : 100.0 * a / b;
       return absl::StrFormat("%0.4f%%", pct);
     };
 
@@ -619,8 +608,9 @@ class NearComparator {
   // Actual values are bucketed by absolute value. kAbsValueBucketBounds is the
   // bounds of these buckets. abs_value_buckets_ contains a pair for each
   // bucket: the element count and failure count.
-  static constexpr std::array<float, 7> kAbsValueBucketBounds = {
-      0.0, 0.0001, 0.001, 0.01, 0.1, 1, std::numeric_limits<float>::infinity()};
+  static inline constexpr std::array<double, 7> kAbsValueBucketBounds = {
+      0.0, 0.0001, 0.001, 0.01, 0.1, 1, std::numeric_limits<double>::infinity(),
+  };
   std::vector<std::pair<int64_t, int64_t>> abs_value_buckets_;
 
   // Buckets for relative and absolute errors. The relative error buckets only
@@ -631,16 +621,11 @@ class NearComparator {
   // a cumulative distribution so an error value may appear in more than one
   // bucket. For example an error value of 0.003 may appear in the buckets
   // bounded by 0.01, 0.1, and 1.0.
-  static constexpr std::array<float, 5> kErrorBucketBounds = {0.0001, 0.001,
-                                                              0.01, 0.1, 1};
+  static inline constexpr std::array<double, 5> kErrorBucketBounds = {
+      0.0001, 0.001, 0.01, 0.1, 1};
   std::vector<int64_t> abs_error_buckets_;
   std::vector<int64_t> rel_error_buckets_;
 };
-
-template <typename NativeT>
-constexpr std::array<float, 7> NearComparator<NativeT>::kAbsValueBucketBounds;
-template <typename NativeT>
-constexpr std::array<float, 5> NearComparator<NativeT>::kErrorBucketBounds;
 
 Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                    const ShapeIndex& shape_index,

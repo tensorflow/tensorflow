@@ -18,6 +18,14 @@ import ctypes
 import sys
 import traceback
 
+# TODO(vam): Override boringssl static linking by explicitly importing openssl
+# Please refer to b/304394983 for more information.
+try:
+  import ssl
+except ImportError:
+  print(f'{traceback.format_exc()}')
+  print('\nWarning: Failed to load ssl module. Continuing without ssl support.')
+
 from tensorflow.python.platform import self_check
 
 # TODO(mdan): Cleanup antipattern: import for side effects.

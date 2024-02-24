@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -47,16 +49,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
-#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -80,10 +82,6 @@ auto* saved_model_grappler_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
         "/tensorflow/tfrt/saved_model/grappler_time",
         "Record the grappler time for the savedmodel.", "model_name");
-
-auto* free_gpu_memory = tensorflow::monitoring::Gauge<int64_t, 1>::New(
-    "/tensorflow/tfrt/saved_model/free_gpu_memory",
-    "Record the free GPU memory.", "gpu_id");
 
 std::vector<std::string> FindNamesForValidSignatures(
     const tensorflow::MetaGraphDef& meta_graph_def) {
@@ -123,22 +121,52 @@ std::vector<std::string> FindNamesForValidSignatures(
   return valid_signature_names;
 }
 
+tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
+  return tensorflow::Tensor(tensorflow::tstring(str));
+}
+
+// Create the tensor for the bound input, which can be a variable or an asset.
+//
+// TODO(chky): For V2 models, the bound input can also be a resource.
+StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
+    mlir::Operation* bound_input, absl::string_view saved_model_dir) {
+  // Assets are files in the saved model directory. We pass their filenames to
+  // functions so that they can be used.
+  if (auto asset = llvm::dyn_cast<mlir::tf_saved_model::AssetOp>(bound_input)) {
+    // The filename in the asset is a relative path. So we prefix it with the
+    // directory path.
+    return CreateScalarStringTensor(
+        tsl::io::JoinPath(saved_model_dir, asset.getFilename().str()));
+  }
+
+  return absl::AbortedError(
+      "Failed to create captured tensors: unknown bound input type.");
+}
+
 StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module) {
+    mlir::ModuleOp module, absl::string_view saved_model_dir) {
   InitializersAndSignatures result;
+
+  const bool should_initialize_inputs = !saved_model_dir.empty();
+  // A map for initializer inputs.
+  absl::flat_hash_map<std::string, std::vector<tensorflow::Tensor>>
+      initializer_input_map;
 
   // Create placeholders for initializers.
   for (auto session_initializer_name :
        mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
     Initializer initializer;
     initializer.name = session_initializer_name.str();
+    if (should_initialize_inputs) initializer_input_map[initializer.name];
     result.initializers.push_back(std::move(initializer));
   }
 
   auto& signatures = result.signature_map;
+  tensorflow::StatusGroup status_group;
   TF_RETURN_IF_ERROR(tensorflow::MapFunctionSignaturesFromTFSavedModelMLIR(
-      module,
-      [&signatures](const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
+      module, [&status_group, &signatures, &initializer_input_map,
+               saved_model_dir, should_initialize_inputs](
+                  const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
         auto signature_name = std::string(sig_info.func_name);
         auto& signature = signatures[signature_name];
 
@@ -162,7 +190,35 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
         for (auto& spec : sig_info.output_specs) {
           signature.output_specs.push_back(TensorSpec(spec.first, spec.second));
         }
+
+        if (should_initialize_inputs) {
+          auto init_iter = initializer_input_map.find(signature_name);
+          if (init_iter == initializer_input_map.end()) return;
+
+          auto& init_inputs = init_iter->second;
+
+          for (auto* bound_input : sig_info.bound_inputs) {
+            auto capture =
+                CreateTensorFromBoundInput(bound_input, saved_model_dir);
+            if (!capture.ok()) {
+              status_group.Update(capture.status());
+              // Insert a random tensor in case of errors.
+              init_inputs.push_back(tensorflow::Tensor());
+            } else {
+              init_inputs.push_back(*std::move(capture));
+            }
+          }
+        }
       }));
+
+  if (!status_group.ok()) return status_group.as_concatenated_status();
+
+  if (should_initialize_inputs) {
+    for (auto& initializer : result.initializers) {
+      initializer.inputs =
+          std::move(initializer_input_map.at(initializer.name));
+    }
+  }
 
   return result;
 }
@@ -189,10 +245,15 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions) {
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    const std::vector<std::string>& import_signature_names) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
-    signature_names = FindNamesForValidSignatures(meta_graph_def);
+    if (!import_signature_names.empty()) {
+      signature_names = import_signature_names;
+    } else {
+      signature_names = FindNamesForValidSignatures(meta_graph_def);
+    }
     if (signature_names.empty())
       LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
   }
@@ -233,25 +294,25 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
 }
 
 std::string GetAotPackagePath(absl::string_view saved_model_dir) {
-  return tsl::io::JoinPath(std::string(saved_model_dir), kAoTPackagesDirectory);
+  return tsl::io::JoinPath(std::string(saved_model_dir), kAotPackagesDirectory);
 }
 
-std::string GetBEFFilePath(std::string aot_package_directory) {
+std::string GetBefFilePath(std::string aot_package_directory) {
   return tsl::io::JoinPath(aot_package_directory,
-                           std::string(kBefBufferFilenameMLIRBEF));
+                           std::string(kBefBufferFileName));
 }
 
 std::string GetMlirFilePath(const std::string& aot_package_directory) {
-  return tsl::io::JoinPath(aot_package_directory, kMLIRModuleFilename);
+  return tsl::io::JoinPath(aot_package_directory, kMlirModuleFilename);
 }
 
-absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
   const std::string bef_file_path =
-      tfrt_stub::GetBEFFilePath(aot_package_directory);
+      tfrt_stub::GetBefFilePath(aot_package_directory);
   TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef, DeserializeBEFBuffer(bef_file_path));
 
   if (bef.empty()) {
@@ -265,7 +326,7 @@ absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
   return bef;
 }
 
-absl::Status DeserializeAoTMlirModule(
+absl::Status DeserializeAotMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
@@ -278,27 +339,11 @@ absl::Status DeserializeAoTMlirModule(
   return absl::OkStatus();
 }
 
-void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry) {
+void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry) {
   tfrt::RegisterTFRTDialects(registry);
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   tensorflow::RegisterGpuDialects(&registry);
-}
-
-void RecordFreeGpuMemory() {
-  se::Platform* gpu_manager = se::GPUMachineManager();
-  if (gpu_manager == nullptr || gpu_manager->VisibleDeviceCount() <= 0) return;
-
-  for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
-    se::StreamExecutor* se = gpu_manager->ExecutorForDevice(i).value();
-    int64_t free_memory = 0, total_memory = 0;
-    DCHECK(se->DeviceMemoryUsage(&free_memory, &total_memory));
-    free_gpu_memory->GetCell(std::to_string(i))->Set(free_memory);
-  }
-}
-
-int64_t GetFreeGpuMemory(int gpu_id) {
-  return free_gpu_memory->GetCell(std::to_string(gpu_id))->value();
 }
 
 }  // namespace tfrt_stub

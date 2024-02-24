@@ -36,9 +36,9 @@ load(
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
     _tf_stream_executor_deps = "tf_stream_executor_deps",
-    _tf_testing_deps = "tf_testing_deps",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
     _tsl_cc_test = "tsl_cc_test",
+    _tsl_grpc_credentials_deps = "tsl_grpc_credentials_deps",
     _tsl_protobuf_deps = "tsl_protobuf_deps",
 )
 
@@ -76,7 +76,7 @@ tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
 tf_stream_executor_deps = _tf_stream_executor_deps
-tf_testing_deps = _tf_testing_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
 tsl_protobuf_deps = _tsl_protobuf_deps
 tsl_cc_test = _tsl_cc_test
+tsl_grpc_credentials_deps = _tsl_grpc_credentials_deps

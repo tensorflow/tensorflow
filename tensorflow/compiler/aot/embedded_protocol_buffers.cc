@@ -84,7 +84,7 @@ static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
                                           llvm::CodeGenFileType::ObjectFile)) {
-    return xla::InternalError(
+    return xla::Internal(
         "Could not create pass pipeline to generate object file");
   }
 
@@ -101,8 +101,8 @@ GetTargetMachineFromTriple(absl::string_view target_triple) {
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(normalized_triple, error);
   if (target == nullptr) {
-    return xla::InternalError("TargetRegistry::lookupTarget failed: %s",
-                              error.c_str());
+    return xla::Internal("TargetRegistry::lookupTarget failed: %s",
+                         error.c_str());
   }
 
   return absl::WrapUnique(target->createTargetMachine(

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,28 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -47,6 +60,10 @@ bool IsMatrixMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize() { return 32; }
 
+// Fusions that implemented with pre-compiled device kernels have
+// FusionBackendConfig.kind requel to this string.
+inline constexpr absl::string_view kCustomFusionKind = "__custom_fusion";
+
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
@@ -55,8 +72,12 @@ inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 inline constexpr absl::string_view kTritonSoftmaxFusionKind =
     "__triton_softmax";
 
+inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
+
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
+
+inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -65,22 +86,21 @@ inline constexpr absl::string_view kUncompilableFusion =
 // say, a kCholesky opcode.
 bool IsCustomCallToCusolver(const HloInstruction& hlo);
 
+// Returns true if `hlo` will be implemented as a call to a TopK routine.
+bool IsCustomCallToTopK(const HloInstruction& hlo);
+
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the
 // Cholesky decomposition, workspace is scratch space for cuSolver, and info
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns whether unnested_hlo is an input fusion whose root is either a slice
-// or a tuple of slices. If verify_no_strides is true, returns false unless all
-// ROOT slices have no strides.
-bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
-                          bool verify_no_strides);
+// Returns true if `instr` is a non-strided slice.
+bool IsSliceWithUnitStrides(const HloInstruction* instr);
 
-// Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(absl::string_view fmt,
-                        absl::Span<llvm::Value* const> arguments,
-                        llvm::IRBuilder<>* builder);
+// Returns true if `instr` is a slice instruction and produces a contiguous
+// slice.
+bool IsContiguousSlice(const HloInstruction& instr);
 
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
@@ -99,24 +119,23 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
-template <typename T>
-std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
-  return std::vector<T>(v.begin(), v.end());
-}
-
-StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation> allocations,
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
 
-bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation> allocations);
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    const BufferAssignment& buffer_assignment, const HloInstruction* instr,
+    const ShapeIndex& index);
+
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+    const HloFusionInstruction* fusion,
+    const BufferAssignment* buffer_assignment,
+    const std::vector<const HloInstruction*>& roots);
 
 // Returns the dynamic-update-slice instructions defining the results of a
 // fusion node. A dynamic slice update is said to be "defining" of a result if
@@ -126,23 +145,18 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     const std::vector<const HloInstruction*>& roots);
 
-// Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
-// A dynamic slice update is said to be "defining" of a result if that result is
-// the output of a dynamic slice update, or if that result is the output of a
-// bitcast of a dynamic slice update---since such bitcast may be handled as a
-// no-op.
-std::vector<mlir::mhlo::DynamicUpdateSliceOp>
-GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
-
 Shape GetShape(mlir::Value value);
 
 // `is_boundary` returns `true` for edges that are on the boundary of the
 // fusion, i.e., they go from an instruction inside the fusion to one outside,
 // or vice versa.
-const HloInstruction& FindNonTrivialHero(
-    const HloInstruction& instr,
-    const std::function<bool(const HloInstruction& producer,
-                             const HloInstruction& consumer)>& is_boundary);
+// Note: when this is called with a fusion instruction, it will traverse into
+// the fusion (unless the boundary function stops it).
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion);
+
+// Like above, but assumes the instruction is inside an HloFusionInstruction.
+// Returns the instruction itself if it is an HloFusionInstruction.
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 /// Description of how to emit a given transposition.
@@ -163,11 +177,6 @@ struct TransposeDescription {
                        Vector3 permutation)
       : instr(instr), dimensions(dimensions), permutation(permutation) {}
 
-  std::string ToString() const {
-    return absl::StrCat("dimensions=", VectorString(dimensions),
-                        ", permutation=", VectorString(permutation));
-  }
-
   // Transpose instruction input shape.
   const Shape& input_shape() const { return instr->operand(0)->shape(); }
 
@@ -178,19 +187,22 @@ struct TransposeDescription {
   }
 };
 
-std::optional<TransposeDescription> FindTiledTranspose(
-    const HloInstruction& instr);
-
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
-    const HloInstruction& instr);
-
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
+// Checks if the instruction is elementwise and only has a single user. If
+// a fusion adaptor is provided, only checks for users within the fusion. If
+// `add_single_user_check` is true, then it is also checked whether `instr` has
+// at most 1 user.
+bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1,
+                    const HloFusionAdaptor* fusion = nullptr,
+                    bool add_single_user_check = false);
 
-// Log and verify an LLVM module.
-void LogAndVerify(const llvm::Module* m);
+// Log the given module if the VLOG level is >= level.
+void VLogModule(int level, const llvm::Module& module);
+
+// Verify the given module, and crash if it failed.
+void VerifyModule(const llvm::Module& module);
 
 // Returns the llvm type for the indices used in the kernel that contains the
 // hlo instruction. Such indices include the index for the parallel loop and
@@ -212,6 +224,41 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
+
+// Whether the module's target is a SPIR.
+bool IsSPIR(const llvm::Module* module);
+
+// This class stores either a non-owning reference or owns data that represents
+// a dense array in XLA format. It is used for intermediate storage during IR
+// constant emission.
+class DenseDataIntermediate {
+ public:
+  // Creates an instance of DenseDataIntermediate that owns the provided vector.
+  static DenseDataIntermediate Own(std::vector<uint8_t> owned) {
+    DenseDataIntermediate di;
+    di.data_ = std::move(owned);
+    return di;
+  }
+
+  // Creates an instance of DenseDataIntermediate that aliases the input.
+  static DenseDataIntermediate Alias(absl::Span<const uint8_t> aliased) {
+    DenseDataIntermediate di;
+    di.data_ = aliased;
+    return di;
+  }
+
+  // Returns a reference to the data this object represents.
+  absl::Span<const uint8_t> span() const {
+    return data_.index() == 0 ? absl::Span<const uint8_t>(std::get<0>(data_))
+                              : std::get<1>(data_);
+  }
+
+ private:
+  std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;
+};
+
+absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
+    const Literal& literal);
 
 }  // namespace gpu
 }  // namespace xla

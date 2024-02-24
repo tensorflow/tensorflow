@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ class ConstantValue {
   static ConstantValue GetUnsigned(uint64_t value, int32_t bitwidth) {
     return ConstantValue(value, bitwidth, /*is_signed=*/false);
   }
-  static StatusOr<ConstantValue> FromLiteral(const Literal& literal);
+  static absl::StatusOr<ConstantValue> FromLiteral(const Literal& literal);
   ConstantValue add(const ConstantValue& other) const {
     return ConstantValue(value_ + other.value_, bitwidth_, is_signed_);
   }

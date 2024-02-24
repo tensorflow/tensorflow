@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -173,7 +173,7 @@ class DeserializeSparseOp : public OpKernel {
       tensors.push_back(std::move(tensor));
     }
 
-    gtl::optional<SparseTensor> maybe_output;
+    std::optional<SparseTensor> maybe_output;
 #define HANDLE_TYPE(T)                               \
   case DataTypeToEnum<T>::value: {                   \
     maybe_output = SparseTensor::Concat<T>(tensors); \
@@ -223,7 +223,7 @@ class DeserializeSparseOp : public OpKernel {
       return errors::InvalidArgument("Could not construct tensor from proto");
     }
     *result = tensor;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAndValidateSparseTensor(
@@ -278,7 +278,7 @@ class DeserializeSparseOp : public OpKernel {
                                      index, "].shape but they do not: ", rank,
                                      " vs. ", output_shape->dim_size(0));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType dtype_;

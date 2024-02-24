@@ -14,6 +14,7 @@ load(
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -220,7 +221,10 @@ filegroup(
         "@local_xla//xla/service:custom_call_status_hdrs",
         "@local_xla//xla/service/cpu:runtime_hdrs",
     ],
-    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
 )
 
 filegroup(
@@ -234,7 +238,10 @@ filegroup(
         "@local_xla//xla/service:custom_call_status_srcs",
         "@local_xla//xla/service/cpu:runtime_srcs",
     ],
-    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
 )
 
 # This stand-alone target is used to ensure that we can build tf_library type
@@ -256,8 +263,6 @@ cc_library(
     copts = runtime_copts() + tf_openmp_copts(),
     defines = [
         "EIGEN_NEON_GEBP_NR=4",
-        # TODO(b/238649163): remove this once no longer necessary.
-        "EIGEN_USE_AVX512_GEMM_KERNELS=0",
     ],
     features = [
         "fully_static_link",
@@ -295,6 +300,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:empty",
         "//tensorflow/core/framework:numeric_types",
@@ -507,9 +513,11 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla:protobuf_util",
         "@local_xla//xla:shape_util",
@@ -523,10 +531,11 @@ cc_library(
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:computation_placer_hdr",
+        "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
-    ]),
+    ]) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
     alwayslink = 1,
 )
 
@@ -694,6 +703,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service/gpu:gpu_executable_run_options",
+        "@local_xla//xla/service/gpu:nccl_clique_key",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
     ],
@@ -902,6 +912,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:literal",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:statusor",
@@ -909,7 +920,7 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/service:cpu_plugin",
-    ],
+    ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_cc_test(
@@ -933,8 +944,8 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:platform_util",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -968,6 +979,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
@@ -976,6 +988,7 @@ tf_cc_test(
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/service:cpu_plugin",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/service:hlo_proto_util",
         "@local_xla//xla/tests:literal_test_util",
     ],
 )
@@ -1153,19 +1166,30 @@ cc_library(
     visibility = [":internal"],
     deps = [
         ":tf2xla_defs",
+        ":xla_op_registry",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:cluster_tf",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:tf_dialect_to_executor",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_dialect_to_executor",
+        "//tensorflow/compiler/mlir/tf2xla/internal:mlir_bridge_pass_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
 )

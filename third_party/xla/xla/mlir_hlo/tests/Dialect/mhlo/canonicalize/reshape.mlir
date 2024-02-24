@@ -147,3 +147,44 @@ func.func @non_const_many_chained_reshapes(%arg : tensor<2x3x4xi32>) -> tensor<1
   // CHECK-NEXT: return [[RES]]
   func.return %4 : tensor<1x2x4x3xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @fold_per_tensor_quantized_tensor
+func.func @fold_per_tensor_quantized_tensor() -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+0:16>> {
+  %cst = mhlo.constant() {value = dense<[[[1, 2],[3, 4]],[[5, 6],[7, 8]]]> : tensor<2x2x2xi8>} : () -> tensor<2x2x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %0 = "mhlo.reshape"(%cst) : (tensor<2x2x2x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant()
+  // CHECK-SAME: [1, 2], [3, 4], [5, 6], [7, 8]
+  // CHECK-SAME: () -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:16>>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<4x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+}
+
+// -----
+
+// CHECK-LABEL: func @fold_per_axis_quantized_tensor
+func.func @fold_per_axis_quantized_tensor() -> tensor<4x2x!quant.uniform<i8:f32:1, {2.000000e+0:16,3.000000e+0:32}>> {
+  %cst = mhlo.constant() {value = dense<[[[1, 2],[3, 4]],[[5, 6],[7, 8]]]> : tensor<2x2x2xi8>} : () -> tensor<2x2x2x!quant.uniform<i8:f32:2, {2.000000e+0:16,3.000000e+0:32}>>
+  %0 = "mhlo.reshape"(%cst) : (tensor<2x2x2x!quant.uniform<i8:f32:2, {2.000000e+0:16,3.000000e+0:32}>>) -> tensor<4x2x!quant.uniform<i8:f32:1, {2.000000e+0:16,3.000000e+0:32}>>
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant()
+  // CHECK-SAME: [1, 2], [3, 4], [5, 6], [7, 8]
+  // CHECK-SAME: () -> tensor<4x2x!quant.uniform<i8:f32:1, {2.000000e+00:16,3.000000e+00:32}>>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<4x2x!quant.uniform<i8:f32:1, {2.000000e+0:16,3.000000e+0:32}>>
+}
+
+// -----
+
+// CHECK-LABEL: func @non_const_many_chained_reshapes_quantized
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func.func @non_const_many_chained_reshapes_quantized(%arg : tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<1x2x4x3x!quant.uniform<i8:f32, 2.000000e+0:16>> {
+  %0 = "mhlo.reshape"(%arg) : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %1 = "mhlo.reshape"(%0) : (tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<12x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %2 = "mhlo.reshape"(%1) : (tensor<12x2x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<2x12x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %3 = "mhlo.reshape"(%2) : (tensor<2x12x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<24x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %4 = "mhlo.reshape"(%3) : (tensor<24x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<1x2x4x3x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  // CHECK-NEXT: [[RES:%.+]] = mhlo.reshape [[ARG]] : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:16>>) -> tensor<1x2x4x3x!quant.uniform<i8:f32, 2.000000e+00:16>>
+  // CHECK-NEXT: return [[RES]]
+  func.return %4 : tensor<1x2x4x3x!quant.uniform<i8:f32, 2.000000e+0:16>>
+}

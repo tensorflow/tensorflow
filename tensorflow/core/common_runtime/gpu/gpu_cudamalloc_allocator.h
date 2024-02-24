@@ -43,7 +43,8 @@ class GPUcudaMallocAllocator : public tsl::Allocator {
  private:
   se::StreamExecutor* stream_exec_;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUcudaMallocAllocator);
+  GPUcudaMallocAllocator(const GPUcudaMallocAllocator&) = delete;
+  void operator=(const GPUcudaMallocAllocator&) = delete;
 };
 
 }  // namespace tensorflow

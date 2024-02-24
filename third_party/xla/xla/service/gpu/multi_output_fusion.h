@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_reachability.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -94,14 +94,14 @@ namespace gpu {
 class GpuMultiOutputFusion : public HloModulePass {
  public:
   explicit GpuMultiOutputFusion(
-      const GpuDeviceInfo& device_info,
+      const se::DeviceDescription& device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function)
       : device_info_(device_info), shape_size_function_(shape_size_function) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -109,7 +109,7 @@ class GpuMultiOutputFusion : public HloModulePass {
   bool FuseSiblings(HloInstruction* parent, FusionInfoCache* fusion_info_cache,
                     GpuHloCostAnalysis* cost_analysis);
 
-  StatusOr<bool> DoMultiOutputFusion();
+  absl::StatusOr<bool> DoMultiOutputFusion();
 
   // Recompute reachability for the current computation.
   void RecomputeReachability();
@@ -123,7 +123,7 @@ class GpuMultiOutputFusion : public HloModulePass {
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
 
-  const GpuDeviceInfo device_info_;
+  se::DeviceDescription device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 };
 

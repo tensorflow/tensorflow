@@ -11,6 +11,18 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":schema_fbs_srcs",
+        ":schema_utils.cc",
+        ":schema_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # This is the package group declaration to which targets for TensorFlow Lite
 # Flatbuffer schema utilities.
 #
@@ -160,7 +172,7 @@ cc_library(
     srcs = ["schema_utils.cc"],
     hdrs = ["schema_utils.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [":utils_friends"],
+    visibility = ["//visibility:public"],
     deps = [
         ":schema_fbs",
         "//tensorflow/lite/kernels/internal:compatibility",

@@ -61,7 +61,8 @@ class GoogleAuthProvider : public AuthProvider {
   mutex mu_;
   string current_token_ TF_GUARDED_BY(mu_);
   uint64 expiration_timestamp_sec_ TF_GUARDED_BY(mu_) = 0;
-  TF_DISALLOW_COPY_AND_ASSIGN(GoogleAuthProvider);
+  GoogleAuthProvider(const GoogleAuthProvider&) = delete;
+  void operator=(const GoogleAuthProvider&) = delete;
 };
 
 }  // namespace tsl

@@ -1,6 +1,9 @@
 // RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
 // RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
 
+// CHECK: #[[$DC:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed), posWidth = 32, crdWidth = 32 }>
+// CHECK: #[[$CSS:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed(nonunique), d1 : singleton(nonunique, nonordered), d2 : singleton(nonordered)), posWidth = 32, crdWidth = 32 }>
+
 // NO_DEAD_FUNCTION-NOT: @test
 
 // CHECK: module @foobar
@@ -67,6 +70,18 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   // CHECK-SAME: use_global_device_ids
   ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
+}
+
+// CHECK-LABEL:  func private @test_all_gather_variadic
+%test_all_gather_variadic {
+  input.0 = f32[128,8] parameter(0)
+  input.1 = f32[128,16] parameter(1)
+  // CHECK-NEXT: "mhlo.all_gather"(%arg0, %arg1)
+  // CHECK-SAME: all_gather_dim = 1 : i64
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK-SAME: use_global_device_ids
+  ROOT ag = (f32[128,32], f32[128,64]) all-gather(f32[128,8] input.0, f32[128,16] input.1), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
 }
 
 // Test all-to-all
@@ -1127,16 +1142,12 @@ add {
   // CHECK: mhlo.tuple %0#0, %0#1 {xla_shape = {{.*}}} : tuple<tensor<f32>, tensor<f32>>
   %reduce.1 = (f32[], f32[]) reduce(%Arg_0.1, %Arg_0.1, %Arg_2.3, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.1
 
-  // CHECK:  [[VAL2:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG2]])
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  [[VAL2:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG2]]) applies mhlo.add across dimensions = [0, 1] : (tensor<4x4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.3 = f32[] reduce(%Arg_0.1, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.3
   // CHECK:  [[VAL3:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG1]])
-  // CHECK-
   // CHECK:  mhlo.add{{.*}} : tensor<4xf32>
   %reduce.2 = f32[4] reduce(%Arg_0.1, %Arg_1.2), dimensions={0}, to_apply=%reduce_helper.2
-  // CHECK:  [[VAL4:%.*]] = mhlo.reduce([[VAL3]] init: [[ARG2]])
-  // CHECK-SAME:  dimensions = [0]
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  [[VAL4:%.*]] = mhlo.reduce([[VAL3]] init: [[ARG2]]) applies mhlo.add across dimensions = [0] : (tensor<4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.4 = f32[] reduce(%reduce.2, %Arg_2.3), dimensions={0}, to_apply=%reduce_helper.3
 
   // CHECK:  %5 = mhlo.subtract [[VAL2]], [[VAL4]] : tensor<f32>
@@ -1757,13 +1768,13 @@ add {
 }
 
 // CHECK-LABEL : func private @sparse
-// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>
+// CHECK: tensor<10x10xf32, #[[$DC]]>) -> tensor<10x10xf32, #[[$DC]]>
 %sparse {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
 }
 
 // CHECK-LABEL : func private @sparse_nu_no
-// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed_nu", "singleton_nu_no", "singleton_no" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed_nu", "singleton_nu_no", "singleton_no" ], posWidth = 32, crdWidth = 32 }>>
+// CHECK: tensor<3x4x5xf32, #[[$CSS]]>) -> tensor<3x4x5xf32, #[[$CSS]]>
 %sparse_nu_no {
   ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
 }
@@ -1794,23 +1805,18 @@ add {
   // CHECK:  %[[START:.*]] = "mhlo.async_start"(%[[ARG0]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(%p0),
-                                                    calls=%AsyncOp,
-                                                    async_group_id=1
+   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
+                                                    calls=%AsyncOp
   // CHECK: %[[UPDATE:.*]] = "mhlo.async_update"(%[[START]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update(
+   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
                                                          %async-start),
-                                                     calls=%AsyncOp,
-                                                     async_group_id=1
+                                                     calls=%AsyncOp
   // CHECK: "mhlo.async_done"(%[[UPDATE]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp, async_group_id=1
+   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
  }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding
@@ -1838,3 +1844,21 @@ add {
   %b = (f32[2,4]{1,0}, (f32[2,4]{1,0})) parameter(1), parameter_replication={false,true}
   ROOT %tuple = (f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0}))) tuple(f32[] %a, (f32[2,4]{1,0}, (f32[2,4]{1,0})) %b)
 }
+
+// CHECK-LABEL: func.func private @unbounded(%arg0: tensor<?x784xf32>) -> tensor<?x784xf32> {
+// CHECK-NEXT: [[VAL0:%.*]] = mhlo.abs %arg0 : tensor<?x784xf32>
+// CHECK-NEXT: return [[VAL0]] : tensor<?x784xf32>
+// CHECK-NEXT: }
+%unbounded (Arg_0.1: f32[?,784]) -> f32[?,784] {
+  %Arg_0.1 = f32[?,784] parameter(0)
+  ROOT %abs.2 = f32[?,784] abs(f32[?,784] %Arg_0.1)
+}
+
+// Test topk
+%test_topk {
+  x = f32[4,4] parameter(0)
+  ROOT out = (f32[4,2], s32[4,2]) topk(x), k=2, largest=true
+}
+// CHECK-LABEL:  func private @test_topk
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> tuple<tensor<4x2xf32>, tensor<4x2xi32>>
+// CHECK:  mhlo.topk([[ARG]], k = 2, largest = true) : tensor<4x4xf32> -> (tensor<4x2xf32>, tensor<4x2xi32>)

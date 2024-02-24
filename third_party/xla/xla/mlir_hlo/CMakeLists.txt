@@ -1,5 +1,5 @@
 #
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -158,16 +158,13 @@ set(MLIR_HLO_TOOLS_DIR ${MLIR_HLO_BINARY_DIR}/bin)
 set(MLIR_HLO_LIB_DIR ${MLIR_HLO_BINARY_DIR}/lib)
 add_custom_target(check-mlir-hlo)
 
-add_subdirectory(analysis)
 add_subdirectory(bindings)
 add_subdirectory(deallocation)
-add_subdirectory(gml_st)
 add_subdirectory(lhlo)
 add_subdirectory(lhlo_gpu)
 add_subdirectory(mhlo)
 add_subdirectory(stablehlo)
 add_subdirectory(tests)
-add_subdirectory(thlo)
 add_subdirectory(tools)
 add_subdirectory(transforms)
 add_subdirectory(utils)

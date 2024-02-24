@@ -134,7 +134,8 @@ class ConstOp : public XlaOpKernel {
 
  private:
   TensorProto proto_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ConstOp);
+  ConstOp(const ConstOp&) = delete;
+  void operator=(const ConstOp&) = delete;
 };
 
 // XLA_* devices also register a "real" Const operator so we suppress the

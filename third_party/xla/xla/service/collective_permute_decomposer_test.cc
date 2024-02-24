@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,9 +38,9 @@ TEST_F(CollectivePermuteDecomposerTest, SyncNotTransformed) {
       HloModule test
       ENTRY test_computation {
         p = u32[] replica-id()
-        start = (u32[], u32[]) collective-permute-start(p),
+        start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
           source_target_pairs={{0,1}, {1,2}},
-          backend_config="{\"is_sync\":true}"
+          backend_config="{ \"collective_backend_config\": {\"is_sync\":true}}"
         ROOT done = u32[] collective-permute-done(start)
       }
     )";
@@ -57,7 +57,7 @@ TEST_F(CollectivePermuteDecomposerTest, WithCycleNotTransformed) {
       HloModule test
       ENTRY test_computation {
         p = (u32[], u32[]) replica-id()
-        start = u32[] collective-permute-start(p),
+        start = u32[] collective-permute-start(p), channel_id=1,
           source_target_pairs={{0,1}, {1,0}}
         ROOT done = u32[] collective-permute-done(start)
       }
@@ -75,7 +75,7 @@ TEST_F(CollectivePermuteDecomposerTest, WithContextDataNotTransformed) {
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[], u32[], u32[]) collective-permute-start(p),
+    start = (u32[], u32[], u32[], u32[]) collective-permute-start(p), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
     ROOT done = u32[] collective-permute-done(start)
   }
@@ -88,12 +88,12 @@ TEST_F(CollectivePermuteDecomposerTest, WithContextDataNotTransformed) {
   EXPECT_FALSE(changed);
 }
 
-TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
+TEST_F(CollectivePermuteDecomposerTest, TransformedExplicitChannelId) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[]) collective-permute-start(p),
+    start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
       metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
     ROOT done = u32[] collective-permute-done(start)
@@ -115,7 +115,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
   HloInstruction* after_all = FindInstruction(module.get(), "after-all");
   HloInstruction* recv = FindInstruction(module.get(), "recv");
   EXPECT_EQ(recv->operand(0), after_all);
-  EXPECT_EQ(recv->channel_id().value(), 0);
+  EXPECT_EQ(recv->channel_id().value(), 1);
   EXPECT_THAT(
       recv->ToString(),
       HasSubstr(
@@ -126,7 +126,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
 
   HloInstruction* send = FindInstruction(module.get(), "send");
   EXPECT_EQ(send->operand(1), after_all);
-  EXPECT_EQ(send->channel_id().value(), 0);
+  EXPECT_EQ(send->channel_id().value(), 1);
   EXPECT_THAT(
       send->ToString(),
       HasSubstr(
@@ -139,12 +139,12 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
   EXPECT_THAT(root, op::GetTupleElement(recv_done, 0));
 }
 
-TEST_F(CollectivePermuteDecomposerTest, TransformedExplicitChannelId) {
+TEST_F(CollectivePermuteDecomposerTest, NotTransformedDefaultChannelId) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[]) collective-permute-start(p), channel_id=2,
+    start = (u32[], u32[]) collective-permute-start(p),
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
     ROOT done = u32[] collective-permute-done(start)
   }
@@ -154,12 +154,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedExplicitChannelId) {
                           ParseAndReturnUnverifiedModule((kModuleStr)));
   CollectivePermuteDecomposer decomposer(/*threshold_in_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  HloInstruction* recv = FindInstruction(module.get(), "recv");
-  EXPECT_EQ(recv->channel_id().value(), 2);
-  HloInstruction* send = FindInstruction(module.get(), "send");
-  EXPECT_EQ(send->channel_id().value(), 2);
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ThresholdNotTransformed) {
@@ -167,7 +162,7 @@ TEST_F(CollectivePermuteDecomposerTest, ThresholdNotTransformed) {
   HloModule test
   ENTRY test_computation {
     p = u32[] replica-id()
-    start = (u32[], u32[]) collective-permute-start(p),
+    start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
       source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}},
       metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
     ROOT done = u32[] collective-permute-done(start)

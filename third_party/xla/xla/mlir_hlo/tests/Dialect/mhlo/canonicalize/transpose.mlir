@@ -120,3 +120,42 @@ func.func @broadcast_transpose_multi_dim(%arg0 : tensor<95x64xf32>) -> tensor<5x
     // CHECK-NEXT: return [[RET]]
     func.return %1 : tensor<5x64x31x95xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @transpose_splat_constant_quantized_per_tensor
+// CHECK-NOT: mhlo.transpose
+func.func @transpose_splat_constant_quantized_per_tensor() -> tensor<5x10x!quant.uniform<i8:f32, 2.000000e+0:16>> {
+  %cst = mhlo.constant() {value = dense<42> : tensor<10x5xi8>} : () -> tensor<10x5x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %0 = "mhlo.transpose"(%cst) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<10x5x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<5x10x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant
+  // CHECK-SAME: tensor<5x10x!quant.uniform<i8:f32, 2.000000e+00:16>>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<5x10x!quant.uniform<i8:f32, 2.000000e+0:16>>
+}
+
+// -----
+
+// CHECK-LABEL: func @transpose_splat_constant_quantized_per_axis
+// CHECK-NOT: mhlo.transpose
+func.func @transpose_splat_constant_quantized_per_axis() -> tensor<2x10x!quant.uniform<i8:f32:0, {2.000000e+0:16,3.000000e+0:32}>> {
+  %cst = mhlo.constant() {value = dense<42> : tensor<10x2xi8>} : () -> tensor<10x2x!quant.uniform<i8:f32:1, {2.000000e+0:16,3.000000e+0:32}>>
+  %0 = "mhlo.transpose"(%cst) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<10x2x!quant.uniform<i8:f32:1, {2.000000e+0:16,3.000000e+0:32}>>) -> tensor<2x10x!quant.uniform<i8:f32:0, {2.000000e+0:16,3.000000e+0:32}>>
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant
+  // CHECK-SAME: tensor<2x10x!quant.uniform<i8:f32:0, {2.000000e+00:16,3.000000e+00:32}>>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<2x10x!quant.uniform<i8:f32:0, {2.000000e+0:16,3.000000e+0:32}>>
+}
+
+// -----
+
+// Can not fold non-splat tensors (quantized or not)
+// CHECK-LABEL: func @nofold_nonsplat_quant_constant
+func.func @nofold_nonsplat_quant_constant() -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+0:16>> {
+  %cst = mhlo.constant() {value = dense<[[1, 2, 3, 4],[5, 6, 7, 8]]> : tensor<2x4xi8>} : () -> tensor<2x4x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  %0 = "mhlo.transpose"(%cst) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x4x!quant.uniform<i8:f32, 2.000000e+0:16>>) -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+  // CHECK: [[TRANSPOSED:%.+]] = "mhlo.transpose"
+  // CHECK-SAME: -> tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:16>>
+  // CHECK-NEXT: return [[TRANSPOSED]]
+  func.return %0 : tensor<4x2x!quant.uniform<i8:f32, 2.000000e+0:16>>
+}

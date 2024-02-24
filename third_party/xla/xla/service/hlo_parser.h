@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,9 +28,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-
-// For details about the syntax accepted by this parser, see
-// g3doc/hlo_parser.md.
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with the given config.
@@ -80,6 +77,9 @@ StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
 
 // Parses and returns a Shape::ToString-format string.
 StatusOr<Shape> ParseShape(absl::string_view str);
+
+// Parses and returns a Layout::ToString-format string.
+StatusOr<Layout> ParseLayout(absl::string_view str);
 
 // Parses and returns a std::vector<ReplicaGroup> from str. str is supposed to
 // contain a list of the replica groups, i.e. just the rhs of the

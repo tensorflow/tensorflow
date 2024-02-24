@@ -75,6 +75,7 @@ def GetHostCompilerOptions(argv):
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
   parser.add_argument('-fno-canonical-system-headers', action='store_true')
+  parser.add_argument('--genco', action='store_true')
 
   args, _ = parser.parse_known_args(argv)
 
@@ -86,10 +87,12 @@ def GetHostCompilerOptions(argv):
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
-  #if args.fno_canonical_system_headers:
-  #  opts += ' -fno-canonical-system-headers'
+  if args.fno_canonical_system_headers:
+    opts += ' -no-canonical-prefixes'
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
+  if args.genco:
+    opts += ' --genco'
 
   return opts
 

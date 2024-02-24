@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ def LmhloGpuDialect : Dialect {
   let cppNamespace = "::mlir::lmhlo_gpu";
 
   let useDefaultAttributePrinterParser = 1;
-  let usePropertiesForAttributes = 0;
 }
 
 #endif // LHLO_GPU_OPS_BASE

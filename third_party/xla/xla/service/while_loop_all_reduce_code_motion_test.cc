@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1081,7 +1081,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
                                    /*num_partitions=*/8));
-  module->config().set_use_spmd_partitioning(true);
+  module->mutable_config().set_use_spmd_partitioning(true);
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
@@ -1169,7 +1169,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
                                    /*num_partitions=*/8));
-  module->config().set_use_spmd_partitioning(true);
+  module->mutable_config().set_use_spmd_partitioning(true);
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);

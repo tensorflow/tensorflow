@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,6 +38,10 @@ std::string ConstantBufferAllocationToGlobalName(
 // Returns the Literal corresponding to `allocation`, which must be a constant
 // allocation.
 const Literal& LiteralForConstantAllocation(const BufferAllocation& allocation);
+// Returns the constant HloInstruction corresponding to `allocation`, which must
+// be a constant allocation.
+const HloInstruction& InstrForConstantBufferAllocation(
+    const BufferAllocation& allocation);
 }  // namespace llvm_ir
 }  // namespace xla
 

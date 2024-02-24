@@ -60,5 +60,19 @@ TEST(DumpGraph, DumpFunctionDefToFileSuccess) {
   EXPECT_EQ(ret, io::JoinPath(testing::TmpDir(), "function.pbtxt"));
 }
 
+TEST(DumpGraph, DumpProtoToFileSuccess) {
+  NodeDef ndef_in;
+  ndef_in.set_name("foo");
+
+  setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
+  string expected_filepath = io::JoinPath(testing::TmpDir(), "node_def.pbtxt");
+  string actual_filepath = DumpProtoToFile("node_def", ndef_in);
+  EXPECT_EQ(expected_filepath, actual_filepath);
+
+  NodeDef ndef_out;
+  TF_ASSERT_OK(ReadTextProto(Env::Default(), expected_filepath, &ndef_out));
+  EXPECT_EQ(ndef_in.DebugString(), ndef_out.DebugString());
+}
+
 }  // namespace
 }  // namespace tensorflow

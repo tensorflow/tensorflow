@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,12 +29,12 @@ namespace xla {
 class ReduceScatterCombiner : public HloModulePass {
  public:
   ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
-                        int64_t combine_threshold_count);
+                        int64_t combine_threshold_count, bool combine_by_dim);
 
   absl::string_view name() const override { return "reduce-scatter-combiner"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -44,6 +44,9 @@ class ReduceScatterCombiner : public HloModulePass {
 
   // Combine reduce-scatter ops up to this threshold (number of operands).
   int64_t combine_threshold_count_;
+
+  // Combine only reduce-scatter ops with the same dimension.
+  bool combine_by_dim_;
 };
 
 }  // namespace xla

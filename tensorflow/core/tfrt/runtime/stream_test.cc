@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
+#include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 
@@ -76,8 +77,9 @@ TEST(StreamTest, Simple) {
     auto thread = absl::WrapUnique(tsl::Env::Default()->StartThread(
         tsl::ThreadOptions(), "fake_stream_client", [&]() {
           for (const auto& map : expected) {
-            CHECK_OK(GetGlobalStreamCallbackRegistry().Write(
-                callback_id, step_id, {map, absl::Now()}));
+            TfThreadPool thread_pool(/*name=*/"test", /*num_threads=*/4);
+            CHECK_OK(GetGlobalStreamCallbackRegistry().Invoke(
+                &thread_pool, callback_id, step_id, {map, absl::Now()}));
           }
         }));
   }
@@ -98,6 +100,7 @@ TEST(StreamTest, MultipleWriters) {
   std::vector<absl::flat_hash_map<std::string, std::vector<int32_t>>> outputs;
 
   {
+    TfThreadPool thread_pool(/*name=*/"test", /*num_threads=*/4);
     TF_ASSERT_OK_AND_ASSIGN(
         auto scoped_stream_callback,
         GetGlobalStreamCallbackRegistry().Register(
@@ -115,11 +118,12 @@ TEST(StreamTest, MultipleWriters) {
          {{"c", AsTensor<int32_t>({300})}}};
 
     for (const auto& p : expected) {
-      tsl::Env::Default()->SchedClosure([callback_id, step_id, p]() {
+      tsl::Env::Default()->SchedClosure([&, callback_id, step_id, p]() {
+        TfThreadPool thread_pool(/*name=*/"test", /*num_threads=*/4);
         // The stream callback may be dropped early, and in that case we ignore
         // the error.
         GetGlobalStreamCallbackRegistry()
-            .Write(callback_id, step_id, {p, absl::Now()})
+            .Invoke(&thread_pool, callback_id, step_id, {p, absl::Now()})
             .IgnoreError();
       });
     }

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,8 +30,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/inspect_sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -122,19 +123,31 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       auto py_result =
           partition_(GetArgShapes(instruction), GetArgShardings(instruction),
                      instruction->shape(), instruction->sharding(),
-                     instruction->raw_backend_config_string());
+                     py::bytes(instruction->raw_backend_config_string()));
 
-      const XlaComputation* computation = nullptr;  // Kept alive by py_result.
+      XlaComputation computation_scratch;
+      const XlaComputation* computation;
       std::vector<HloSharding> arg_shardings;
       std::optional<HloSharding> result_sharding;
       try {
-        std::tie(computation, arg_shardings, result_sharding) =
-            py::cast<std::tuple<const XlaComputation*, std::vector<HloSharding>,
-                                HloSharding>>(py_result);
+        py::object m;
+        std::tie(m, arg_shardings, result_sharding) = py::cast<
+            std::tuple<py::object, std::vector<HloSharding>, HloSharding>>(
+            py_result);
+        if (py::isinstance<py::bytes>(m)) {
+          std::string mlir_module = py::cast<std::string>(m);
+          TF_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
+              mlir_module, computation_scratch, /*use_tuple_args=*/false,
+              /*return_tuple=*/false));
+          computation = &computation_scratch;
+        } else {
+          // TODO(parkers): Remove fallback.
+          computation = py::cast<const XlaComputation*>(m);
+        }
       } catch (const py::cast_error& e) {
-        return xla::InternalError(
+        return xla::Internal(
             "Shardings returned from partitioning %s: expected "
-            "Tuple[XlaComputation, List[HloSharding], HloSharding] got: %s",
+            "Tuple[bytes, List[HloSharding], HloSharding] got: %s",
             instruction->ToString(), py::repr(py_result));
       }
       auto hlo_module_config =
@@ -147,7 +160,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       std::vector<HloInstruction*> operands;
       operands.reserve(instruction->operand_count());
       if (arg_shardings.size() != instruction->operand_count()) {
-        return xla::InternalError(
+        return xla::Internal(
             "Shardings returned from partitioning %s must match: %d vs %d",
             instruction->ToString(), arg_shardings.size(),
             instruction->operand_count());
@@ -179,34 +192,44 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       partitioner->SetPartitionedHlo(instruction, result_partitioned);
       return xla::OkStatus();
     } catch (const pybind11::error_already_set& e) {
-      return xla::InternalError("custom_partitioner: %s", e.what());
+      return xla::Internal("custom_partitioner: %s", e.what());
     }
   }
   HloSharding PropagateUserSharding(
       const HloInstruction* instruction, const HloInstruction* user,
       const HloSharding& sharding) const override {
     py::gil_scoped_acquire gil;
-    // TODO(parkers): expand this API to handle the `user` sharding.
-    // The user is used when the custom call returns a Tuple and
-    // the user is a get-tuple-element. In this case we must update only
-    // part of the sharding spec.
-    auto result = py::cast<HloSharding>(
-        prop_user_sharding_(sharding, instruction->shape(),
-                            instruction->raw_backend_config_string()));
-    return result;
+    try {
+      // TODO(parkers): expand this API to handle the `user` sharding.
+      // The user is used when the custom call returns a Tuple and
+      // the user is a get-tuple-element. In this case we must update only
+      // part of the sharding spec.
+      auto result = py::cast<HloSharding>(prop_user_sharding_(
+          sharding, instruction->shape(),
+          py::bytes(instruction->raw_backend_config_string())));
+      return result;
+    } catch (const pybind11::error_already_set& e) {
+      LOG(FATAL) << absl::StrFormat("custom_partitioner: %s", e.what());
+    }
   }
   std::optional<HloSharding> InferShardingFromOperands(
       const HloInstruction* instruction) const override {
+    std::optional<HloSharding> result;
     std::vector<Shape> arg_shapes = GetArgShapes(instruction);
     auto arg_shardings = GetArgShardings(instruction);
     py::gil_scoped_acquire gil;
-    auto py_result = infer_sharding_from_operands_(
-        arg_shapes, arg_shardings, instruction->shape(),
-        instruction->raw_backend_config_string());
-    if (py_result.is_none()) {
-      return std::nullopt;
+    try {
+      auto py_result = infer_sharding_from_operands_(
+          arg_shapes, arg_shardings, instruction->shape(),
+          py::bytes(instruction->raw_backend_config_string()));
+      if (py_result.is_none()) {
+        return std::nullopt;
+      }
+      return py::cast<HloSharding>(py_result);
+    } catch (const pybind11::error_already_set& e) {
+      LOG(FATAL) << absl::StrFormat("custom_partitioner: %s", e.what());
     }
-    return py::cast<HloSharding>(py_result);
+    return result;
   }
   bool IsCustomCallShardable(const HloInstruction* instruction) const override {
     return true;

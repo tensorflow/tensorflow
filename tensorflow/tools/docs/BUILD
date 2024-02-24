@@ -1,14 +1,14 @@
 # Description:
 #   Doc generator
 
-load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -175,7 +175,6 @@ py_strict_test(
     ],
     deps = [
         ":generate2_lib",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/platform:test",
         "@pypi_packaging//:pkg",
@@ -206,7 +205,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:pywrap_xla_ops",

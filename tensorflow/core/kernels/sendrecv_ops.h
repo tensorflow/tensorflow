@@ -33,7 +33,8 @@ class SendOp : public OpKernel {
   Rendezvous::ParsedKey parsed_key_;
   bool hostmem_sendrecv_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SendOp);
+  SendOp(const SendOp&) = delete;
+  void operator=(const SendOp&) = delete;
 };
 
 class RecvOp : public AsyncOpKernel {
@@ -48,7 +49,8 @@ class RecvOp : public AsyncOpKernel {
   Rendezvous::ParsedKey parsed_key_;
   bool hostmem_sendrecv_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvOp);
+  RecvOp(const RecvOp&) = delete;
+  void operator=(const RecvOp&) = delete;
 };
 
 }  // end namespace tensorflow

@@ -24,12 +24,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 // TODO(b/114492873): Move this include into core/platform.
+#include <optional>
 #include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
@@ -235,6 +237,13 @@ class RamBudgetManager {
     VLOG(2) << "Updated ram budget to " << budget;
   }
 
+  std::string DebugString() {
+    mutex_lock l(mu_);
+    return absl::StrCat("RamBudgetManager: budget_: ", budget_,
+                        " prefetch allocated: ", legacy_prefetch_allocated_,
+                        " model allocated: ", model_allocated_);
+  }
+
  private:
   mutable mutex mu_;
   int64_t budget_ TF_GUARDED_BY(mu_) = 0;
@@ -408,7 +417,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
-  bool output_deleted() { return output_weak_ptr_.expired(); }
+  std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -616,6 +625,10 @@ class Node {
     tf_shared_lock l(mu_);
     return AverageBufferedElementSizeLocked();
   }
+
+  // Copies node's parameter state value to parameter value if the parameter
+  // name matches `parameter_name`.
+  void SyncStateValuesToParameterValues(const std::string& parameter_name);
 
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
@@ -907,7 +920,8 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
-  Model();
+  explicit Model(std::optional<std::string> dataset_name);
+  explicit Model() : Model(std::nullopt) {}
   ~Model();
 
   // Returns a pointer to the model's output node.
@@ -946,7 +960,8 @@ class Model {
   // invoke `cancellation_mgr->StartCancel()`.
   Status OptimizeLoop(AutotuneAlgorithm algorithm,
                       std::function<int64_t()> cpu_budget_func,
-                      std::function<int64_t(int64_t)> ram_budget_func,
+                      double ram_budget_share,
+                      std::optional<int64_t> fixed_ram_budget,
                       RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
@@ -954,7 +969,8 @@ class Model {
   // optimization.
   void Optimize(AutotuneAlgorithm algorithm,
                 std::function<int64_t()> cpu_budget_func,
-                std::function<int64_t(int64_t)> ram_budget_func,
+                double ram_budget_share,
+                std::optional<int64_t> fixed_ram_budget,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 
@@ -1027,7 +1043,7 @@ class Model {
   // nodes, the parameter state values are not tuned by Autotune and hence the
   // parameter values can be stale. We do not sync all parameters because it may
   // increase mutex contention with `GetNext()`.
-  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
+  void MaybeSyncStateValuesToValues(std::shared_ptr<Node> snapshot);
 
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.
@@ -1140,6 +1156,7 @@ class Model {
   // buffers were full.
   double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
+  std::optional<std::string> dataset_name_;
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
@@ -1165,11 +1182,11 @@ class Model {
   };
   std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
 
-  // Time use for rate limitting the recomputation of human-readable string
-  // represention of the model.
+  // Time use for rate limiting the recomputation of human-readable string
+  // representation of the model.
   absl::Time cache_until_ = absl::InfinitePast();
   // Cached result of the `DebugString()` invocation used to implement rate
-  // limitting of the computation.
+  // limiting of the computation.
   std::string cached_debug_string_ = "";
   // Used to coordinate gap time updates between different threads. Gap time is
   // the time between the completion of the previous `GetNext()` and the start
@@ -1183,6 +1200,8 @@ class Model {
   std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
   // Stores the optimization parameters used by autotune.
   OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
+  // Stores the model id in the string format
+  std::string model_id_;
 };
 
 // Class to compute timing information for a model.

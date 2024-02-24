@@ -31,6 +31,15 @@ namespace tensorflow {
 namespace metrics {
 namespace {
 
+auto* persistent_cache_load_count = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/core/persistent_cache_load_count",
+    "The number of times a binary is loaded from the persistent cache.");
+
+auto* aot_bef_mlir_load_count = tsl::monitoring::Counter<0>::New(
+    "/tensorflow/core/aot_bef_mlir_load_count",
+    "The number of times BEF and MLIR are deserialized instead of generated "
+    "and used.");
+
 auto* graph_runs = tsl::monitoring::Counter<0>::New(
     "/tensorflow/core/graph_runs",
     "The number of graph executions used to collect "
@@ -98,7 +107,27 @@ auto* tf_data_elements_counter = tsl::monitoring::Counter<1>::New(
 
 auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/experiment",
-    "The number of times tf.data experiment is applied to input pipelines.",
+    "The number of times a tf.data experiment was applied.", "name");
+
+auto* tf_data_experiment_live_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_live",
+    "The number of times a tf.data experiment could have been applied.",
+    "name");
+
+auto* tf_data_experiment_opt_in_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_opt_in",
+    "The number of times a tf.data experiment was opted into. Values are "
+    "either (1) the name of the experiment or (2) `\"all\"` (for all "
+    "experiments in `/tensorflow/data/experiment_live`).",
+    "name");
+
+auto* tf_data_experiment_opt_out_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_opt_out",
+    "The number of times a tf.data experiment was opted out of. Values are (1) "
+    "the name of the experiment, (2) `\"all\"` (for all experiments in "
+    "`/tensorflow/data/experiment_live`), or (3) `\"all_except_opt_in\"` (for "
+    "all experiments in `/tensorflow/data/experiment_live` and not in "
+    "`/tensor/data/experiment_opt_out`).",
     "name");
 
 auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
@@ -199,6 +228,10 @@ auto* tf_data_service_snapshot_bytes_committed =
         "/tensorflow/data/service/snapshot_bytes_committed",
         "tf.data service distributed snapshot committed bytes.");
 
+auto* tf_data_service_snapshot_ops_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/service/snapshot_ops",
+    "Number times a tf.data snapshot is saved/loaded.", "path", "op");
+
 auto* tf_data_service_data_transfer_protocol_used =
     tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/service/data_transfer_protocol_used",
@@ -242,6 +275,12 @@ auto* tf_data_model_gauge =
     tsl::monitoring::Gauge<std::function<std::string()>, 1>::New(
         "/tensorflow/data/model", "tf.data autotuning model proto.", "id");
 
+auto* tf_data_pipeline_processing_time = tsl::monitoring::Gauge<double, 1>::New(
+    "/tensorflow/data/pipeline_processing_time",
+    "The total processing time of the slowest stage in the input pipeline "
+    "in microseconds",
+    "id");
+
 auto* tf_data_auto_shard = tsl::monitoring::Gauge<int64, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
@@ -267,10 +306,18 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "algorithm stopping criterion is met.",
         "name");
 
+auto* tf_data_debug = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/debug",
+    "The number of times this event occured, for debugging.", "event");
+
 auto* tf_data_error = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/error",
     "The number of times an error of this type occurred with this status code.",
     "error_type", "status_code");
+
+auto* tf_data_framework_type = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/framework_type",
+    "The framework type used to build the tf.data.Dataset.", "framework_type");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -443,12 +490,29 @@ tsl::monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
   return tf_data_model_gauge->GetCell(id);
 }
 
+tsl::monitoring::GaugeCell<double>* GetTFDataPipelineProcessingTimeGauge(
+    const string& id) {
+  return tf_data_pipeline_processing_time->GetCell(id);
+}
+
 void RecordTFDataBytesFetched(int64_t num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
 void RecordTFDataExperiment(const string& name) {
   tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentLive(const string& name) {
+  tf_data_experiment_live_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentOptIn(const string& name) {
+  tf_data_experiment_opt_in_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentOptOut(const string& name) {
+  tf_data_experiment_opt_out_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataFingerprint(const string& name) {
@@ -584,6 +648,11 @@ void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op) {
+  tf_data_service_snapshot_ops_counter->GetCell(path, op)->IncrementBy(1);
+}
+
 void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
   tf_data_service_optimal_number_of_workers->GetCell()->Set(number_of_workers);
 }
@@ -614,8 +683,16 @@ void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
 }
 
+void RecordTFDataDebug(const string& event) {
+  tf_data_debug->GetCell(event)->IncrementBy(1);
+}
+
 void RecordTFDataError(const string& error_type, const string& status_code) {
   tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
+}
+
+void RecordTFDataFrameworkType(const std::string& framework_type) {
+  tf_data_framework_type->GetCell(framework_type)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {
@@ -651,6 +728,18 @@ void RecordGraphOutputTensors(const size_t size) {
 void RecordTPUXlaSpmdCoresPerReplica(int64_t cores_per_replica) {
   xla_tpu_spmd_cores_per_replica->GetCell(absl::StrCat(cores_per_replica))
       ->IncrementBy(1);
+}
+
+void UpdatePersistentCacheLoadCount() {
+  static auto* persistent_cache_load_count_cell =
+      persistent_cache_load_count->GetCell();
+  persistent_cache_load_count_cell->IncrementBy(1);
+}
+
+void UpdateAotBefMlirLoadCount() {
+  static auto* aot_bef_mlir_load_count_cell =
+      aot_bef_mlir_load_count->GetCell();
+  aot_bef_mlir_load_count_cell->IncrementBy(1);
 }
 
 void UpdateGraphExecTime(const uint64 running_time_usecs) {
@@ -779,6 +868,11 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
 
 void RecordUnusedOutput(const string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
+}
+
+void RecordPipelineProcessingTime(const string& id,
+                                  double pipeline_processing_time_usec) {
+  GetTFDataPipelineProcessingTimeGauge(id)->Set(pipeline_processing_time_usec);
 }
 
 void IncrementTestCounter(const string& name, const string& label) {

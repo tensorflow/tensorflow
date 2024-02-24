@@ -1,7 +1,7 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm", "if_not_android", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -60,6 +60,10 @@ alias(
 cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez/tpu:__pkg__",
+        "//tensorflow/c/experimental/pluggable_profiler:__pkg__",
+    ],
     deps = [
         ":profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
@@ -120,7 +124,9 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "@local_xla//xla/backends/profiler:profiler_backends",
-    ],
+    ] + if_cuda_or_rocm([
+        "@local_xla//xla/backends/profiler/gpu:device_tracer",
+    ]),
     alwayslink = True,
 )
 
@@ -160,8 +166,6 @@ cc_library(
         ":scoped_annotation",
         ":traceme",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -203,6 +207,7 @@ cc_library(
     ],
 )
 
+# TODO(csigg): Remove this forwarding target.
 cc_library(
     name = "scoped_annotation",
     hdrs = ["scoped_annotation.h"],
@@ -212,22 +217,6 @@ cc_library(
         "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
-    ] + if_not_android([
-        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
-    ]),
-)
-
-cc_library(
-    name = "scoped_annotation_stack",
-    hdrs = ["scoped_annotation_stack.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation_stack",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),

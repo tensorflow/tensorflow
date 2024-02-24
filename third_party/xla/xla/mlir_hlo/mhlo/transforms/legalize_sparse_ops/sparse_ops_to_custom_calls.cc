@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,8 +56,8 @@ class SparseOpToCustomCallConverter : public OpConversionPattern<OpTy> {
 void populateLegalizeSparseOpsToCustomCallPatterns(
     MLIRContext* context, TypeConverter& typeConverter,
     RewritePatternSet* patterns) {
-  patterns->add<SparseOpToCustomCallConverter<sparse_tensor::PackOp>,
-                SparseOpToCustomCallConverter<sparse_tensor::UnpackOp>,
+  patterns->add<SparseOpToCustomCallConverter<sparse_tensor::AssembleOp>,
+                SparseOpToCustomCallConverter<sparse_tensor::DisassembleOp>,
                 SparseOpToCustomCallConverter<sparse_tensor::ConvertOp>>(
       typeConverter, context);
 }

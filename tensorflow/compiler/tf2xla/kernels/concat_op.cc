@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Concat Ops.
 
+#include <cstdint>
 #include <limits>
 #include <vector>
 
@@ -41,7 +42,7 @@ namespace {
 // --------------------------------------------------------------------------
 class ConcatBaseOp : public XlaOpKernel {
  public:
-  ConcatBaseOp(OpKernelConstruction* c, int axis_index)
+  ConcatBaseOp(OpKernelConstruction* c, int64_t axis_index)
       : XlaOpKernel(c), axis_index_(axis_index) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -61,7 +62,7 @@ class ConcatBaseOp : public XlaOpKernel {
     const int input_dims = shapes[0].dims();
     const TensorShape& input_shape = shapes[0];
 
-    int32_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
+    int64_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     OP_REQUIRES(ctx, 0 <= axis && axis < input_dims,
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
@@ -115,7 +116,7 @@ class ConcatV2Op : public ConcatBaseOp {
 REGISTER_XLA_OP(Name("Concat").CompileTimeConstantInput("concat_dim"),
                 ConcatOp);
 REGISTER_XLA_OP(Name("ConcatV2")
-                    .TypeConstraint("Tidx", DT_INT32)
+                    .TypeConstraint("Tidx", {DT_INT32, DT_INT64})
                     .CompileTimeConstantInput("axis"),
                 ConcatV2Op);
 

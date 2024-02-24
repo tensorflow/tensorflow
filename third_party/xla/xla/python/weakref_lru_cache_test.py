@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -93,6 +93,23 @@ class WeakrefLRUCacheTest(absltest.TestCase):
     self.assertEqual(cache(wrkey, kwkey1="a", kwkey2="b"), 1)
     self.assertEqual(cache(wrkey, kwkey1="b", kwkey2="a"), 2)
     self.assertEqual(cache(wrkey, kwkey2="b", kwkey1="a"), 1)
+
+  def testGetKeys(self):
+    def CacheFn(obj, arg):
+      del obj
+      return arg + "extra"
+
+    cache = xla_client.weakref_lru_cache(lambda: None, CacheFn, 4)
+
+    class WRKey:
+      pass
+
+    wrkey = WRKey()
+
+    self.assertEmpty(cache.cache_keys())
+    cache(wrkey, "arg1")
+    cache(wrkey, "arg2")
+    self.assertLen(cache.cache_keys(), 2)
 
 
 if __name__ == "__main__":

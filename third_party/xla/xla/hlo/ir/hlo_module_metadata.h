@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -62,6 +63,7 @@ class HloModuleMetadata {
   void add_partitioned_module_id(int64_t id) {
     module_metadata_.add_partitioned_module_ids(id);
   }
+  Status set_custom_metadata(const ::tsl::protobuf::Message& message);
 
   StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,

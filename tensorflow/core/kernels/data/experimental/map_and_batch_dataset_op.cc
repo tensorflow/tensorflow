@@ -138,7 +138,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -182,7 +182,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
          std::make_pair(kPreserveCardinality,
                         preserve_cardinality_attr)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -239,7 +239,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (ctx->warm_start() && !ctx->is_restoring()) {
         EnsureThreadsStarted(ctx);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -279,7 +279,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
                        out_tensors, end_of_sequence, &result->output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -298,7 +298,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (ctx->symbolic_checkpoint()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCallCounter, 0));
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kBatchResultsSize, 0));
-        return OkStatus();
+        return absl::OkStatus();
       }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
@@ -314,7 +314,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -334,7 +334,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (ctx->warm_start()) {
         EnsureThreadsStarted(ctx);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -370,7 +370,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
-            status(OkStatus()),
+            status(absl::OkStatus()),
             status_offset(-1),
             num_calls(batch_size),
             checkpoint(MemoryCheckpoint{ctx->id_registry()}),
@@ -534,7 +534,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         const std::shared_ptr<std::vector<Tensor>>& return_values) {
       mutex_lock l(result->mu);
       if (result->output_allocated) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       const size_t num_components = return_values->size();
       result->output.reserve(num_components);
@@ -553,7 +553,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
       RecordBufferEnqueue(ctx.get(), result->output);
       result->output_allocated = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
@@ -647,7 +647,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferEnqueue(ctx, result->output);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
@@ -677,7 +677,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           WriteStatus(prefix(), strings::StrCat(batch_prefix, "_", kStatus),
                       result->status, writer));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Used for coordination between the main thread, the runner thread, and

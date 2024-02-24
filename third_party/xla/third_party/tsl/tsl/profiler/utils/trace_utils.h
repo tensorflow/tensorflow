@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tsl/platform/types.h"
 
@@ -29,8 +30,15 @@ namespace profiler {
 // Support up to 500 accelerator devices.
 constexpr uint32 kFirstDeviceId = 1;
 constexpr uint32 kLastDeviceId = 500;
+// Support Upto 200 custom planes as fake devices (i.e., planes with a
+// "/custom:" prefix). See `<project_name>::kCustomPlanePrefix` for more
+// information
+constexpr uint32 kFirstCustomPlaneDeviceId = kLastDeviceId + 1;
+constexpr uint32 kMaxCustomPlaneDevicesPerHost = 200;
+constexpr uint32 kLastCustomPlaneDeviceId =
+    kFirstCustomPlaneDeviceId + kMaxCustomPlaneDevicesPerHost - 1;
 // Host threads are shown as a single fake device.
-constexpr uint32 kHostThreadsDeviceId = kLastDeviceId + 1;
+constexpr uint32 kHostThreadsDeviceId = kLastCustomPlaneDeviceId + 1;
 
 // Constants used as trace_viewer TID (resource_id in trace_events.proto).
 constexpr int kThreadIdDerivedMin = 0xdeadbeef;

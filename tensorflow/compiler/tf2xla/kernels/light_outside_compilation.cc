@@ -53,8 +53,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -153,9 +153,8 @@ StatusOr<std::string> MakeOpaque(TfCallbackData callback_data) {
 StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
   constexpr absl::string_view kFingerprintPrefix = "fingerprint128=";
   if (!absl::StartsWith(opaque, kFingerprintPrefix)) {
-    return xla::InternalError(
-        "Invalid opaque; must start with '%s', but was '%s'",
-        kFingerprintPrefix, opaque);
+    return xla::Internal("Invalid opaque; must start with '%s', but was '%s'",
+                         kFingerprintPrefix, opaque);
   }
   opaque.remove_prefix(kFingerprintPrefix.length());
 
@@ -165,8 +164,8 @@ StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
   absl::string_view fingerprint_str = opaque.substr(0, kFingerprintLen);
   opaque.remove_prefix(kFingerprintLen);
   if (fingerprint_str.length() != kFingerprintLen) {
-    return xla::InternalError(
-        "Invalid opaque; fingerprint is wrong length: '%s'", fingerprint_str);
+    return xla::Internal("Invalid opaque; fingerprint is wrong length: '%s'",
+                         fingerprint_str);
   }
 
   static absl::Mutex mu{absl::kConstInit};
@@ -182,9 +181,8 @@ StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
     // the serialized TfCallbackData from the opaque.
     constexpr absl::string_view kSerializedPrefix = " serialized=";
     if (!absl::StartsWith(opaque, kSerializedPrefix)) {
-      return xla::InternalError(
-          "Invalid opaque; must start with '%s', but was '%s'",
-          kSerializedPrefix, opaque);
+      return xla::Internal("Invalid opaque; must start with '%s', but was '%s'",
+                           kSerializedPrefix, opaque);
     }
     opaque.remove_prefix(kSerializedPrefix.length());
 
@@ -194,12 +192,12 @@ StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
     // Unescape the base64 string, then parse the proto.
     std::string unescaped_opaque;
     if (!absl::Base64Unescape(opaque, &unescaped_opaque)) {
-      return xla::InternalError("Failed to base64 decode opaque %s", opaque);
+      return xla::Internal("Failed to base64 decode opaque %s", opaque);
     }
     TfCallbackData callback_data;
     if (!callback_data.ParseFromString(unescaped_opaque)) {
-      return xla::InternalError("Failed to parse TfCallbackData from opaque %s",
-                                opaque);
+      return xla::Internal("Failed to parse TfCallbackData from opaque %s",
+                           opaque);
     }
     TF_ASSIGN_OR_RETURN(instantiation,
                         KernelInstantiation::Create(std::move(callback_data)));
@@ -376,7 +374,7 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
                    output_shape.IsTuple() ? xla::GetTupleElement(out, i) : out);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -481,10 +479,8 @@ class TfCallbackDevice : public DeviceBase {
                                Allocator* allocator) override {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     auto concrete_device = static_cast<ConcretePerOpGpuDevice*>(device);
-    const void* gpu_stream = reinterpret_cast<const void*>(
-        stream_->implementation()->GpuStreamMemberHack());
     concrete_device->Reinitialize(
-        context, gpu_stream,
+        context, stream_->platform_specific_handle().stream,
         /*platform_device_id=*/
         tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
         // TODO(cheshire): Pass meaningful scratch buffer.
@@ -552,11 +548,11 @@ Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
       void* location = static_cast<char*>(allocated->data()) +
                        xla::ShapeUtil::ByteSizeOf(xla_shape);
       se::DeviceMemoryBase m{location, num_dimensions * sizeof(int32_t)};
-      stream->ThenMemcpy(&m, shape_info.data(),
-                         num_dimensions * sizeof(int32_t));
+      TF_RETURN_IF_ERROR(stream->Memcpy(&m, shape_info.data(),
+                                        num_dimensions * sizeof(int32_t)));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class FakeDeviceContext : public DeviceContext {
@@ -573,8 +569,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   // Look up the platform only once, for a small performance gain.
   static Status* platform_status = nullptr;
   static se::Platform* platform = [&]() -> se::Platform* {
-    StatusOr<se::Platform*> p =
-        se::MultiPlatformManager::PlatformWithName("CUDA");
+    StatusOr<se::Platform*> p = se::PlatformManager::PlatformWithName("CUDA");
     if (!p.ok()) {
       platform_status = new Status(p.status());
       return nullptr;
@@ -589,7 +584,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
                       platform->GetExecutor(config));
   se::Stream* stream = executor->FindAllocatedStream(stream_handle);
   if (!stream) {
-    return xla::InternalError("Stream not found for %p", stream_handle);
+    return xla::Internal("Stream not found for %p", stream_handle);
   }
 
   TF_ASSIGN_OR_RETURN(KernelInstantiation * instantiation,
@@ -712,7 +707,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
   }
 
   TF_RETURN_IF_ERROR(ctx.status());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,

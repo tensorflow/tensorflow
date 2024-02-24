@@ -95,7 +95,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -121,7 +121,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
                        std::make_pair(kCpuBudget, cpu_budget_attr),
                        std::make_pair(kRamBudget, ram_budget_attr)},
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -197,18 +197,16 @@ class ModelDatasetOp::Dataset : public DatasetBase {
               int64_t captured_ram_budget = ram_budget_;
               Status status = model_->OptimizeLoop(
                   dataset()->algorithm_,
-                  [captured_cpu_budget]() { return captured_cpu_budget; },
-                  [captured_ram_budget](int64_t) {
-                    return captured_ram_budget;
-                  },
-                  *ram_budget_manager, cancellation_manager_.get());
+                  [captured_cpu_budget]() { return captured_cpu_budget; }, 1.0,
+                  captured_ram_budget, *ram_budget_manager,
+                  cancellation_manager_.get());
               if (!status.ok()) {
                 LOG(WARNING)
                     << "Optimization loop failed: " << status.ToString();
               }
             });
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     mutex mu_;

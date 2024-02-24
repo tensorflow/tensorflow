@@ -69,11 +69,5 @@ teardown_file() {
 # Is this still useful?
 @test "TensorFlow has Keras" {
     source /tf/venv/bin/activate
-    python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
-}
-
-# Is this still useful?
-@test "TensorFlow has Estimator" {
-    source /tf/venv/bin/activate
-    python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
+    python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
 }

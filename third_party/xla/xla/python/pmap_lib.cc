@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharded_device_array.h"
 #include "xla/python/sharding.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/xla_data.pb.h"
@@ -224,8 +224,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
     return result;
   }
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
-  auto py_array_or_bufs = python_fallback(arg, py_devices, input_spec.indices,
-                                          input_spec.array_sharding);
+  auto py_array_or_bufs = python_fallback(arg, input_spec.array_sharding);
 
   auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
   ShardArgResult result;

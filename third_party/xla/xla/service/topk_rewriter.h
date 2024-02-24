@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,6 +59,10 @@ class TopkRewriter : public HloModulePass {
   // converted into a custom call.
   std::function<bool(const HloSortInstruction*, int64_t)>
       is_profitable_to_convert_;
+
+  // Matches the input to the sort+iota+slice pattern and converts to custom
+  // call if profitable. Returns the custom call if one was created.
+  StatusOr<HloInstruction*> TransformPatternToCustomCall(HloInstruction* inst);
 };
 
 class TopkDecomposer : public HloModulePass {

@@ -23,6 +23,8 @@ limitations under the License.
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_internal.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 

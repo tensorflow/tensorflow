@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,10 +34,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
@@ -141,7 +141,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto result_literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
-  blocked_buffer->ToLiteral(result_literal.get(), [&](absl::Status s) {
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -150,7 +150,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 
   EXPECT_FALSE(got_literal);
 
-  avr.emplace(tsl::OkStatus());
+  avr.emplace(absl::OkStatus());
   EXPECT_TRUE(future.IsReady());
 
   {

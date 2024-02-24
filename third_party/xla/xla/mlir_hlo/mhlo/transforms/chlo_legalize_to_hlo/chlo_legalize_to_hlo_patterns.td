@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -355,3 +355,9 @@ def : Pat<(CHLO_ConstantOp $v),
 
 def : Pat<(CHLO_TanOp $v),
           (MHLO_TanOp $v)>;
+
+def : Pat<(CHLO_ErfOp $v),
+          (MHLO_ErfOp $v)>;
+
+def : Pat<(CHLO_TopKOp AnyRankedTensor:$v, $k),
+          (MHLO_TopKOp $v, $k, ConstBoolAttrTrue)>;

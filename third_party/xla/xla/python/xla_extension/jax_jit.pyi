@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,10 +34,12 @@ class JitState:
 def global_state() -> JitState: ...
 def thread_local_state() -> JitState: ...
 
-def jit_is_disabled() -> bool: ...
 def get_enable_x64() -> bool: ...
 def set_thread_local_state_initialization_callback(
     function: Callable[[], None]): ...
+
+def swap_thread_local_state_disable_jit(
+    value: Optional[bool]) -> Optional[bool]: ...
 
 class ArgSignature:
   dtype: np.dtype

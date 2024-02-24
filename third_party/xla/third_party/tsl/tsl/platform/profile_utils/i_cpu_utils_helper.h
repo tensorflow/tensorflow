@@ -45,7 +45,8 @@ class ICpuUtilsHelper {
   virtual int64_t CalculateCpuFrequency() = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ICpuUtilsHelper);
+  ICpuUtilsHelper(const ICpuUtilsHelper&) = delete;
+  void operator=(const ICpuUtilsHelper&) = delete;
 };
 
 }  // namespace profile_utils

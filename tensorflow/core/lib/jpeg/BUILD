@@ -26,7 +26,6 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
-        "@local_tsl//tsl/platform:jpeg_hdrs",
     ],
     hdrs = [
         "jpeg_handle.h",
@@ -52,7 +51,6 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
-        "@local_tsl//tsl/platform:jpeg_hdrs",
     ]),
     hdrs = [
         "jpeg_handle.h",
@@ -75,6 +73,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
@@ -82,7 +81,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/platform/default:dynamic_annotations",
     ],
 )
 

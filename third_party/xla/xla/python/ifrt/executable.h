@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -61,6 +62,10 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
       const = 0;
   // Returns a list of output `OpSharding`.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
+  // Returns a list of parameter `xla::Layout`s.
+  virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
+  // Returns a list of output/result `xla::Layout`s.
+  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
   // Returns an `HloModule` (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
@@ -96,6 +101,16 @@ class LoadedExecutable
   // serialized executable is implementation-specific.
   virtual StatusOr<std::string> Serialize() const = 0;
 
+  // Returns a future that becomes ready when the executable is ready to be
+  // used for execution.
+  //
+  // This can be used by implementations that support async compilation, where
+  // `Compiler::Compile()` returns an executable ~immediately and does heavy
+  // compilation work in the background. Implementations must still ensure that
+  // all other methods can be used even without explicitly waiting for the ready
+  // future (e.g., via blocking).
+  virtual Future<absl::Status> GetReadyFuture() const = 0;
+
   // The following APIs are taken from `xla::PjRtExecutable` for fast
   // prototyping.
 
@@ -114,6 +129,10 @@ class LoadedExecutable
       const = 0;
   // Returns a list of output OpSharding.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
+  // Returns a list of parameter `xla::Layout`s.
+  virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const = 0;
+  // Returns a list of output/result `xla::Layout`s.
+  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const = 0;
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;

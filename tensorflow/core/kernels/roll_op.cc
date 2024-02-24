@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/roll_op.h"
 
+#include <algorithm>
+#include <cstdint>
+
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/register_types_traits.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -191,9 +196,9 @@ void DoRollWithMemcpy(const OpKernelContext* context,
                   int64_t start, int64_t end) {
     // the number of indices over in the flattened tensor you need to skip in
     // order to make it over from one side of the isd to the other
-    const int64_t isd_range = std::max<int>(dim_range[isd], 1);
-    // the distance along the flattend tensor to the next element in the isd
-    const int64_t isd_stride = isd_range / std::max<int>(dim_size[isd], 1);
+    const int64_t isd_range = std::max<int64_t>(dim_range[isd], 1);
+    // the distance along the flattened tensor to the next element in the isd
+    const int64_t isd_stride = isd_range / std::max<int64_t>(dim_size[isd], 1);
 
     // start and end represent the i-th group currently so we will convert
     // them into numbers representing the i-th elements.
@@ -295,9 +300,10 @@ void DoRollWithMemcpy(const OpKernelContext* context,
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   const int64_t ave_group_size = dim_range[isd] / 2;
-  const int total_work = 2 * num_elements / std::max<int>(dim_range[isd], 1);
+  const int64_t total_work =
+      2 * num_elements / std::max<int64_t>(dim_range[isd], 1);
   // 25000 - experimentally determined with float and bool types
-  const int cost_per_group = 25000 * sizeof(T) * ave_group_size;
+  const int64_t cost_per_group = 25000 * sizeof(T) * ave_group_size;
   Shard(worker_threads->num_threads, worker_threads->workers, total_work,
         cost_per_group, std::move(work));
 }

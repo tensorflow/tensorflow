@@ -180,7 +180,7 @@ Status HeapReadyManager::Init(
   // Sets up the comparator for the heap.
   greater_ = Greater();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HeapReadyManager::AddNode(const NodeDef* node) {
@@ -269,7 +269,7 @@ void PriorityReadyManager::AddNode(const NodeDef* node) {
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
   node_priority_ = node_priority;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CompositeNodeManager::CompositeNodeManager()
@@ -281,7 +281,7 @@ Status CompositeNodeManager::Init(
   TF_RETURN_IF_ERROR(send_manager_.Init(node_map));
   TF_RETURN_IF_ERROR(recv_manager_.Init(node_map));
   curr_node_ = nullptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CompositeNodeManager::AddNode(const NodeDef* node) {
@@ -593,7 +593,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
   }
 
   initialized_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SchedulerState::MaybeUpdateInputOutput(const NodeDef* node) {

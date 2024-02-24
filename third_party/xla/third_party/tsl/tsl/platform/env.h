@@ -490,7 +490,8 @@ class Env {
 
  private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
-  TF_DISALLOW_COPY_AND_ASSIGN(Env);
+  Env(const Env&) = delete;
+  void operator=(const Env&) = delete;
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -576,7 +577,8 @@ class Thread {
   virtual ~Thread();
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(Thread);
+  Thread(const Thread&) = delete;
+  void operator=(const Thread&) = delete;
 };
 
 /// \brief Cross-platform setenv.

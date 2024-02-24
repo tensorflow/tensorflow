@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
+#include "xla/pjrt/distributed/topology_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/status_macros.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -48,7 +50,7 @@ constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
 class ClientServerTest : public testing::Test {
  public:
-  std::unique_ptr<DistributedRuntimeClient> GetClient(
+  std::shared_ptr<DistributedRuntimeClient> GetClient(
       int node_id, DistributedRuntimeClient::Options client_options = {},
       std::shared_ptr<::grpc::Channel> channel = nullptr) {
     client_options.node_id = node_id;
@@ -215,7 +217,13 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     n.WaitForNotification();
     // Sleep a short while for the other thread to send their device info first.
     absl::SleepFor(absl::Seconds(1));
-    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[0], &topology));
+
+    auto kv_store = GetDistributedKeyValueStore(client, /*key_prefix=*/"");
+    TF_RETURN_IF_ERROR(
+        ExchangeTopologies("cuda", /*node_id=*/0, /*num_nodes=*/2,
+                           /*get_local_topology_timeout=*/absl::Minutes(1),
+                           /*get_global_topology_timeout=*/absl::Minutes(1),
+                           kv_store.get(), locals[0], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
@@ -236,7 +244,12 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
     // We cannot send the notification after the call since there is a barrier
     // within the call that would cause a deadlock.
     n.Notify();
-    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[1], &topology));
+    auto kv_store = GetDistributedKeyValueStore(client, /*key_prefix=*/"");
+    TF_RETURN_IF_ERROR(
+        ExchangeTopologies("cuda", /*node_id=*/1, /*num_nodes=*/2,
+                           /*get_local_topology_timeout=*/absl::Minutes(1),
+                           /*get_global_topology_timeout=*/absl::Minutes(1),
+                           kv_store.get(), locals[1], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
@@ -290,7 +303,12 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     auto client = GetClient(node_id);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
-    TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[node_id], &topology));
+    auto kv_store = GetDistributedKeyValueStore(client, /*key_prefix=*/"");
+    TF_RETURN_IF_ERROR(
+        ExchangeTopologies("cuda", /*node_id=*/node_id, num_nodes,
+                           /*get_local_topology_timeout=*/absl::Minutes(1),
+                           /*get_global_topology_timeout=*/absl::Minutes(1),
+                           kv_store.get(), locals[node_id], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
         << topology.DebugString();
@@ -515,7 +533,7 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   int num_nodes = 3;
   absl::Duration timeout = absl::Milliseconds(100);
   CoordinationServiceImpl::Options service_options;
-  service_options.enumerate_devices_timeout = timeout;
+  service_options.cluster_register_timeout = timeout;
   service_options.shutdown_timeout = timeout;
   StartService(num_nodes, service_options);
 

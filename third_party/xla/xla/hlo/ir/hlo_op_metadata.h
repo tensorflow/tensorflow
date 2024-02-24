@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-std::string OpMetadataToString(const OpMetadata& metadata);
+std::string OpMetadataToString(const OpMetadata& metadata,
+                               bool only_op_name = false);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_OP_METADATA_H_

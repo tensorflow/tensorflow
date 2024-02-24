@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_GPU_EXTENSION_H_
 #define XLA_PJRT_C_PJRT_C_API_GPU_EXTENSION_H_
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
 
@@ -24,12 +24,13 @@ limitations under the License.
 extern "C" {
 #endif
 
-#define PJRT_API_GPU_EXTENSION_VERSION 0
+#define PJRT_API_GPU_EXTENSION_VERSION 1
 
 struct PJRT_Gpu_Register_Custom_Call_Args {
   size_t struct_size;
   const char* function_name;
   size_t function_name_size;
+  int api_version;  // 0 for an untyped call, 1 -- for typed
   void* custom_call_function;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Register_Custom_Call_Args,
@@ -40,7 +41,7 @@ typedef PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args);
 
 typedef struct PJRT_Gpu_Custom_Call {
-  PJRT_Structure_Type type;
+  PJRT_Extension_Type type;
   const void* next;
   PJRT_Gpu_Register_Custom_Call* custom_call;
 } PJRT_Gpu_Custom_Call;

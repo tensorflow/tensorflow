@@ -39,7 +39,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -780,48 +779,6 @@ struct ConvertTFStridedSlice : public RewritePattern {
   }
 };
 
-struct ConvertTFBroadcastTo : public RewritePattern {
-  explicit ConvertTFBroadcastTo(MLIRContext *context)
-      : RewritePattern(TF::BroadcastToOp::getOperationName(), 1, context) {}
-
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
-    auto input_type =
-        tf_broadcast_to_op.getInput().getType().cast<ShapedType>();
-    auto output_type =
-        tf_broadcast_to_op.getOutput().getType().cast<ShapedType>();
-    auto shape_type =
-        tf_broadcast_to_op.getShape().getType().cast<ShapedType>();
-    Type element_type = input_type.getElementType();
-
-    // Allow lowering when low dimension inputs are given and its type is F32 or
-    // I32.
-    if (!((output_type.hasRank() && output_type.getRank() <= 4) ||
-          (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
-           shape_type.getDimSize(0) <= 4)))
-      return failure();
-
-    if (!(element_type.isa<BFloat16Type, Float32Type>() ||
-          element_type.isInteger(32) || element_type.isInteger(16)))
-      return failure();
-
-    auto status_or_const_op =
-        CreateConstOpWithSingleValue(&rewriter, op->getLoc(), input_type, 1);
-    if (!status_or_const_op.ok()) {
-      return failure();
-    }
-
-    auto tf_fill_op = rewriter.create<TF::FillOp>(op->getLoc(), output_type,
-                                                  tf_broadcast_to_op.getShape(),
-                                                  status_or_const_op.value());
-
-    auto mul_op = rewriter.create<TF::MulOp>(
-        op->getLoc(), output_type, tf_broadcast_to_op.getInput(), tf_fill_op);
-    rewriter.replaceOp(op, mul_op.getResult());
-    return success();
-  }
-};
 
 // The below pattern is equivalent to the DRR rule below
 // The checks are dependent on generated values, so we can't add
@@ -1591,9 +1548,8 @@ void PrepareTFPass::runOnOperation() {
   if (unfold_batch_matmul_) {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
-  phase_2_patterns
-      .add<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFStridedSlice,
-           ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+  phase_2_patterns.add<TF::ConvertTFEinsumOp, ConvertTFStridedSlice,
+                       ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
   // Remove redundant reshape ops.

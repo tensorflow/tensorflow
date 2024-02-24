@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -273,7 +273,9 @@ class LayoutAssignment : public HloModulePass {
    public:
     explicit LayoutConstraints(HloComputation* computation,
                                ComputationLayout* computation_layout,
-                               int64_t priority);
+                               int64_t priority)
+        : computation_(computation),
+          computation_constraint_(computation, computation_layout, priority) {}
     ~LayoutConstraints() = default;
 
     const HloComputation* computation() const { return computation_; }

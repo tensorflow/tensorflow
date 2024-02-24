@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,8 +56,8 @@ extern const char* const kEigenConv2DF16SymbolName;
 extern const char* const kEigenConv2DF32SymbolName;
 extern const char* const kEigenConv3DF16SymbolName;
 extern const char* const kEigenConv3DF32SymbolName;
-extern const char* const kEigenFftSymbolName;
-extern const char* const kEigenSingleThreadedFftSymbolName;
+extern const char* const kDuccFftSymbolName;
+extern const char* const kDuccSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
@@ -84,7 +84,12 @@ extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
 extern const char* const kAllToAllSymbolName;
+extern const char* const kAllGatherSymbolName;
+extern const char* const kReduceScatterSymbolName;
 extern const char* const kOneDnnMatMulSymbolName;
+extern const char* const kOneDnnSoftmaxSymbolName;
+extern const char* const kOneDnnLayerNormSymbolName;
+extern const char* const kOneDnnMatMulReorderSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
@@ -194,6 +199,19 @@ extern void __xla_cpu_runtime_AllToAll(
     int64_t op_id, const void* replica_groups_str,
     int32_t replica_groups_str_size, int32_t num_buffers, int64_t buffer_size,
     void** source_buffers, void** destination_buffers);
+
+extern void __xla_cpu_runtime_AllGather(
+    const xla::ExecutableRunOptions* run_options, int32_t channel_id_present,
+    int32_t use_global_device_ids, int64_t op_id,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int64_t buffer_size, void* source_buffer, void* destination_buffer);
+
+void __xla_cpu_runtime_ReduceScatter(
+    const xla::ExecutableRunOptions* run_options,
+    const void* replica_groups_str, int32_t replica_groups_str_size,
+    int32_t channel_id_present, int32_t use_global_device_ids, int64_t op_id,
+    int32_t reduction_kind, int32_t element_type, int64_t chunk_elems,
+    void* input_buffer, void* output_buffer);
 
 // Write the partition ID into the output buffer.
 extern void __xla_cpu_runtime_PartitionId(

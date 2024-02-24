@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -42,8 +44,8 @@ constexpr const char kTempFileSuffix[] = ".tmp";
 
 absl::Status AtomicallyWrite(
     absl::string_view filename, tsl::Env* env,
-    absl::FunctionRef<tsl::Status(const std::string&)> nonatomically_write) {
-  std::string uncommitted_filename(filename);
+    absl::FunctionRef<absl::Status(const std::string&)> nonatomically_write) {
+  std::string uncommitted_filename = absl::StrCat(filename, "__");
   if (!env->CreateUniqueFileName(&uncommitted_filename, kTempFileSuffix)) {
     return tsl::errors::Internal("Failed to write file ", filename,
                                  ": Unable to create temporary files.");
@@ -107,7 +109,7 @@ absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
                                          std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
     TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
-    return absl::OkStatus();
+    return writer.Close();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
@@ -134,6 +136,19 @@ absl::StatusOr<std::vector<std::string>> GetChildren(
 
 bool IsTemporaryFile(absl::string_view filename) {
   return absl::EndsWith(filename, kTempFileSuffix);
+}
+
+int64_t SnapshotChunksCardinality(absl::string_view snapshot_path,
+                                  tsl::Env* env) {
+  if (!env->FileExists(SnapshotDoneFilePath(snapshot_path)).ok()) {
+    return kUnknownCardinality;
+  }
+  absl::StatusOr<std::vector<std::string>> chunks =
+      GetChildren(CommittedChunksDirectory(snapshot_path), env);
+  if (!chunks.ok()) {
+    return kUnknownCardinality;
+  }
+  return chunks->size();
 }
 
 }  // namespace data

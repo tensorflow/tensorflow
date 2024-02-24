@@ -17,6 +17,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/platform/errors.h"
@@ -128,7 +131,7 @@ Status RemoteTensorHandleData::Shape(TensorShape* shape) const {
   tf_shared_lock l(mu_);
   *shape = shape_;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::NumDims(int* num_dims) const {
@@ -137,7 +140,7 @@ Status RemoteTensorHandleData::NumDims(int* num_dims) const {
   tf_shared_lock l(mu_);
   *num_dims = shape_.dims();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::Dim(int dim_index, int64_t* dim) const {
@@ -146,7 +149,7 @@ Status RemoteTensorHandleData::Dim(int dim_index, int64_t* dim) const {
   tf_shared_lock l(mu_);
   *dim = shape_.dim_size(dim_index);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::NumElements(int64_t* num_elements) const {
@@ -155,7 +158,7 @@ Status RemoteTensorHandleData::NumElements(int64_t* num_elements) const {
   tf_shared_lock l(mu_);
   *num_elements = shape_.num_elements();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool RemoteTensorHandleData::IsReady() const {
@@ -186,17 +189,31 @@ Status RemoteTensorHandleData::SetShapeAndRemoteTask(
 
   mutex_lock l(mu_);
   if (is_ready_) {
-    return errors::Internal("SetShape is only called on non-ready handles.");
+    // `RemoteTensorHandleData` does not allow setting the
+    // shape more than once. `is_ready_` indicates whether the shape has
+    // been set. We skip the second and any further attempt to set the
+    // shape with the same value. Previously, for all cases (whether the new
+    // shape is same or different), an `Internal` error would be returned. Now,
+    // if the new shape is same, `Ok` status will be returned with a `WARNING`.
+    // Otherwise, an error would be returned as the caller's attempt to change
+    // the shape did not succeed.
+    if (shape_ != shape) {
+      return absl::InternalError(
+          absl::StrCat("Trying to change shape to ", shape.DebugString(),
+                       " from existing shape of ", shape_.DebugString()));
+    }
+    LOG(WARNING) << "SetShape can only be called on non-ready handles.";
+    return absl::OkStatus();
   }
 
   shape_ = shape;
   if (!remote_task.empty()) {
     remote_task_ = remote_task;
   }
-  is_poisoned_ = OkStatus();
+  is_poisoned_ = absl::OkStatus();
   is_ready_ = true;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string RemoteTensorHandleData::DebugString() const {
@@ -204,15 +221,15 @@ string RemoteTensorHandleData::DebugString() const {
                       " output_num: ", output_num_);
 }
 
-Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,
+Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_until_ready,
                                                 int64_t* op_id,
                                                 int32* output_num) const {
-  if (wait_util_ready) {
+  if (wait_until_ready) {
     TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
   }
   *op_id = op_id_;
   *output_num = output_num_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RemoteTensorHandleData::WaitReady(const char* caller) const {

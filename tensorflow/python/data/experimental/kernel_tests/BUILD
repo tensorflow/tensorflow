@@ -77,34 +77,10 @@ tf_py_strict_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:python_io",
         "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_strict_test(
-    name = "checkpoint_input_pipeline_hook_test",
-    size = "medium",
-    srcs = ["checkpoint_input_pipeline_hook_test.py"],
-    tags = ["no_windows"],  # b/287333711
-    deps = [
-        "//tensorflow/python/checkpoint:checkpoint_management",
-        "//tensorflow/python/data/experimental/ops:iterator_ops",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:control_flow_ops",
-        "//tensorflow/python/ops:variable_v1",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training:saver",
-        "//tensorflow/python/training:training_util",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -211,6 +187,25 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
+    name = "global_shuffle_test",
+    srcs = ["global_shuffle_test.py"],
+    shard_count = 8,
+    deps = [
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:random_seed",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -700,7 +695,8 @@ tf_py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:python_io",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",

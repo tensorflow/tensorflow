@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -53,7 +52,8 @@ class OutfeedEnqueueOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OutfeedEnqueueOp);
+  OutfeedEnqueueOp(const OutfeedEnqueueOp&) = delete;
+  void operator=(const OutfeedEnqueueOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("OutfeedEnqueue"), OutfeedEnqueueOp);
@@ -90,7 +90,8 @@ class OutfeedEnqueueTupleOp : public XlaOpKernel {
  private:
   DataTypeVector dtypes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OutfeedEnqueueTupleOp);
+  OutfeedEnqueueTupleOp(const OutfeedEnqueueTupleOp&) = delete;
+  void operator=(const OutfeedEnqueueTupleOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("OutfeedEnqueueTuple"), OutfeedEnqueueTupleOp);

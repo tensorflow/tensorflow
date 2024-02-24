@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -281,8 +281,8 @@ tf_cc_test(
         ":kernel_stats_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/backends/gpu:cupti_collector_header",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
     ],
 )
 
@@ -400,7 +400,7 @@ tf_cuda_library(
     srcs = ["hlo_module_map.cc"],
     hdrs = ["hlo_module_map.h"],
     cuda_deps = [
-        "@local_xla//xla/service/gpu:gpu_hlo_cost_analysis",
+        "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
     ],
     visibility = [":friends"],
     deps = [

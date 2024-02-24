@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,20 +43,10 @@ class HloToIrBindings {
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
                         ShapeIndexView shape_index = {});
 
-  // Unbinds all IR values that's defined in an LLVM function, e.g., function
-  // arguments and stack variables. Global variables will be kept in bindings_.
-  //
-  // This method is called after emitting code for each top-level HLO. The local
-  // IR values are out of scope at that point and should not be used.
-  void UnbindAllLocalIrValues();
-
   // Returns whether `hlo` is bound to an LLVM IR value.
   bool BoundToIrValue(const HloInstruction& hlo) const {
     return base_ptrs_.contains(&hlo);
   }
-
-  llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
-  void SetTempBufferBase(llvm::Value* v) { temp_buffer_base_ = v; }
 
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
@@ -81,15 +71,6 @@ class HloToIrBindings {
   std::string ToString() const;
 
  private:
-  // Emits IR to resolve (possibly) recursive GetTupleElement instructions.
-  llvm::Value* EmitGetTupleElement(const HloInstruction* gte,
-                                   llvm::Value* base_ptr);
-
-  // Returns an llvm typed ir representation of 'ir_value' based on 'hlo' shape.
-  llvm::Value* GetTypedIrValue(const HloInstruction& hlo,
-                               ShapeIndexView shape_index,
-                               llvm::Value* ir_value);
-
   const bool is_nested_;
 
   llvm::IRBuilder<>* b_;
@@ -101,14 +82,7 @@ class HloToIrBindings {
   // in the ShapeTree.
   absl::flat_hash_map<const HloInstruction*, ShapeTree<llvm::Value*>>
       base_ptrs_;
-
-  // The address of the memory block that contains all temporary buffers.
-  llvm::Value* temp_buffer_base_ = nullptr;
 };
-
-// Converts `ir_value` with type i8* to a typed LLVM Value* based on `shape`.
-llvm::Value* CastToTypedValue(const Shape& shape, llvm::Value* ir_value,
-                              llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

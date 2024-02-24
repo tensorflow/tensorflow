@@ -204,7 +204,8 @@ class SymbolicGradientBuilder {
   // Returns zeros if there are no gradients, or the dtype is DT_BOOL.
   NodeOut SumGradients(const NodeOut& src);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
+  SymbolicGradientBuilder(const SymbolicGradientBuilder&) = delete;
+  void operator=(const SymbolicGradientBuilder&) = delete;
 };
 
 SymbolicGradientBuilder::SymbolicGradientBuilder(
@@ -401,7 +402,7 @@ Status SymbolicGradientBuilder::Compute() {
     (*x_grad_node_outputs_)[i] = SumGradients(x_node_outputs_[i]);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddSymbolicGradients(gtl::ArraySlice<NodeOut> y_node_outputs,

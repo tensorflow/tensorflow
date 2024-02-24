@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

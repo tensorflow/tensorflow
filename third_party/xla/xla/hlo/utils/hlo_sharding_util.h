@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,12 +25,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -59,13 +64,18 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
 
 // Tries to refine `to_merge` by combining with `old`. Returns if the final
 // `to_merge` is more specific than `old`.
-bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
+bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding);
 
 // Merges `to_merge` into `dst` only if they are compatible, and the merged
 // sharding has >= minimum_tiles tiles. Returns if merging happened.
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst);
+
+// Find a reasonable common sharding for a list of shardings. The reasonable
+// sharding should incur little(the least) amount of total resharding cost when
+// resharding all the shardings to this common sharding.
+HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings);
 
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
@@ -250,7 +260,7 @@ HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
 // - If computation is min/max, return max value/min value with corresponding op
 //   code.
 // - Otherwise, return error status.
-StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
+absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
 IdentityValueAndHloOpcodeForScatterReduceComputation(
     const HloScatterInstruction& scatter);
 
@@ -321,6 +331,16 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
+absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
+    const Shape& output_shape, const Shape& operand_shape,
+    const HloSharding& operand_sharding, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
+
+absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
+    const Shape& update_shape, const Shape& operand_shape,
+    const HloSharding& operand_sharding, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
+
 // Returns the index pass-through dimensions for gather/scatter indices.
 absl::InlinedVector<int64_t, 1> GetGatherScatterIndexPassthroughIndexDims(
     const int64_t indices_rank, const int64_t index_vector_dim);
@@ -342,9 +362,9 @@ absl::InlinedVector<int64_t, 1> IndexAlignedOperandParallelDims(
 // represents the in-group sharding.
 struct GroupedSharding {
   GroupedSharding(std::vector<std::vector<int64_t>> device_groups,
-                  std::vector<int64_t> group_dims,
-                  std::vector<int64_t> group_dim_sizes, int64_t data_rank,
-                  HloSharding grouped_sharding, bool subgroup_manual = false)
+                  DimensionVector group_dims, DimensionVector group_dim_sizes,
+                  int64_t data_rank, HloSharding grouped_sharding,
+                  bool subgroup_manual = false)
       : device_groups(std::move(device_groups)),
         group_dims(std::move(group_dims)),
         group_dim_sizes(std::move(group_dim_sizes)),
@@ -353,8 +373,8 @@ struct GroupedSharding {
         subgroup_manual(subgroup_manual) {}
   std::string ToString() const;
   std::vector<std::vector<int64_t>> device_groups;
-  std::vector<int64_t> group_dims;
-  std::vector<int64_t> group_dim_sizes;
+  DimensionVector group_dims;
+  DimensionVector group_dim_sizes;
   int64_t data_rank;
   HloSharding sharding;
   bool subgroup_manual;
@@ -376,12 +396,25 @@ GroupedSharding GroupShardingOnAllDimsExcept(
     const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
     bool subgroup_manual = false);
 
-// Creates a GroupedSharding by trying to group on partially replicated
-// dimensions, otherwise replicate it.
-GroupedSharding GroupShardingOnReplicatedDim(const HloSharding& sharding,
-                                             const int64_t num_groups,
-                                             const int64_t num_tiles,
-                                             const int64_t data_rank);
+// Creates a GroupedSharding by trying to do the following in sequence:
+//
+// 1. Group on partially replicated dimensions, which preserves the existing
+// tiled sharding in the group.
+// 2. If option 1 doesn't have enough dimensions, try borrowing dimensions from
+// replicable_dims in order, until it has enough dimensions. This partly
+// preserves the existing tiled sharding in the group. (e.g. if we need 4
+// groups, while our sharding is {[4,8,2]<=[64] last_tile_dim_replicate}, and if
+// we borrow 2 dimensions from the first dimension(i.e. the 4-way partition),
+// combined with the partially replicated 2, we will be able to group the
+// sharding into 4 groups, and we have grouped sub-sharding [2,8]<=[16] instead.
+// 3. Otherwise replicate the whole thing.
+//
+// This does not guarantee the consistency of the ordering of the tile
+// assignment, and should be used with AlignGroup where its tile assignment
+// doesn't matter and will always align to some other tile assignment.
+GroupedSharding GroupShardingOnReplicatedDim(
+    const HloSharding& sharding, int64_t num_groups, int64_t num_tiles,
+    int64_t data_rank, absl::Span<const int64_t> replicable_dims = {});
 
 // Get group sharding for replicated sharding.
 GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
@@ -438,6 +471,13 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
 // Returns the sharding of an output of an instruction. Some instructions have
 // special handling like Outfeed and this function takes care of those.
 std::optional<HloSharding> GetOutputSharding(const HloInstruction* instruction);
+
+// Returns the un-tiled shape.
+Shape UntileShape(const HloSharding& sharding, const Shape& shape);
+
+// Returns the un-tiled shape.
+// REQUIRES: !sharding.IsTuple()
+Shape UntileLeafShape(const HloSharding& sharding, const Shape& shape);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

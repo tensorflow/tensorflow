@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_UTIL_H_
 #define XLA_SERVICE_WHILE_UTIL_H_
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_inliner.h"
+#include "xla/statusor.h"
 
 namespace xla {
 class WhileUtil {
@@ -42,6 +48,11 @@ class WhileUtil {
     // to the corresponding instructions in the body for the newly created while
     // operation.
     CallInliner::InlinedInstructionMap while_body_instruction_map;
+
+    // `while_body_instruction_map` maps instructions in the original while body
+    // to the corresponding instructions in the body for the newly created while
+    // operation.
+    CallInliner::InlinedInstructionMap while_condition_instruction_map;
   };
 
   // Replaces `while_instr` with a new while instruction that is equivalent to

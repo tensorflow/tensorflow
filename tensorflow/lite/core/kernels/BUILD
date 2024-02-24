@@ -12,7 +12,10 @@ exports_files(
         "builtin_op_kernels.h",
         "register.h",
     ],
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//research/drishti/benchmarking/async:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(

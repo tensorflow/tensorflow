@@ -23,11 +23,14 @@ namespace tensorflow {
 
 StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor);
 
-Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
-                              xla::PjRtCApiClient* c_api_client,
-                              Tensor* tensor);
+absl::Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
+                                    xla::PjRtCApiClient* c_api_client,
+                                    Tensor* tensor);
 
-StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(const DeviceType& device_type);
+absl::StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
+    const DeviceType& device_type);
+
+absl::Status ResetPjRtClient(const DeviceType& device_type);
 
 }  // namespace tensorflow
 

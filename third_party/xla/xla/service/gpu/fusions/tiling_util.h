@@ -1,4 +1,4 @@
-/*Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/*Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,66 +15,128 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_TILING_UTIL_H_
 #define XLA_SERVICE_GPU_FUSIONS_TILING_UTIL_H_
 
+#include <cstdint>
 #include <functional>
+#include <string>
 
-#include "xla/service/gpu/kernel_mapping_scheme.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
 
-// Contains threading information. Note that for performance we might apply
-// thread id "scaling" where the physical thread id (to achieve good SM
-// occupancy) will differ from logical thread id. This struct contains
-// logical thread ids, along with meta-information about the scaling applied.
-struct TilingThreadIdInfo {
-  TilingThreadIdInfo(llvm::Value* thread_id, llvm::Value* thread_id_x,
-                     llvm::Value* thread_id_y, llvm::Value* lane_id,
-                     llvm::Value* block_id, llvm::Value* scaling)
-      : thread_id(thread_id),
-        thread_id_x(thread_id_x),
-        thread_id_y(thread_id_y),
-        lane_id(lane_id),
-        block_id(block_id),
-        scaling(scaling) {}
+// Describes tiling used by the kernel.
+//
+// Used by reduction and transpose emitters.
+class Tiling {
+ public:
+  Tiling(absl::InlinedVector<int64_t, 4> shape,
+         absl::InlinedVector<int64_t, 4> tile_sizes,
+         absl::InlinedVector<int64_t, 4> num_threads,
+         // By default, don't unroll anything.
+         absl::InlinedVector<bool, 4> loops_to_unroll = {})
+      : shape_(shape),
+        tile_sizes_per_thread_(tile_sizes),
+        tile_sizes_per_block_(shape.size()),
+        num_threads_(num_threads),
+        num_blocks_(shape.size()),
+        loops_to_unroll_(loops_to_unroll) {
+    for (int64_t i = 0; i < shape.size(); ++i) {
+      tile_sizes_per_block_[i] = tile_sizes[i] * num_threads[i];
+      CHECK_NE(tile_sizes_per_block_[i], 0);
+      num_blocks_[i] = CeilOfRatio(shape[i], tile_sizes_per_block_[i]);
+      CHECK_NE(num_blocks_[i], 0);
+    }
+    if (loops_to_unroll_.empty()) loops_to_unroll_.resize(shape.size());
+  }
 
+  std::string ToString() const {
+    return absl::StrJoin(
+        {absl::StrFormat("shape = {%s}", absl::StrJoin(shape_, ", ")),
+         absl::StrFormat("tile_sizes = {%s}",
+                         absl::StrJoin(tile_sizes_per_thread_, ", ")),
+         absl::StrFormat("num_threads = {%s}",
+                         absl::StrJoin(num_threads_, ", "))},
+        ", ");
+  }
+
+  // Number of elements in each dimension.
+  const absl::InlinedVector<int64_t, 4>& GetShape() const { return shape_; }
+  xla::Shape GetXlaShape(PrimitiveType element_type = F32) const {
+    return ShapeUtil::MakeShape(element_type, shape_);
+  }
+
+  const absl::InlinedVector<int64_t, 4>& GetBlockCounts() const {
+    return num_blocks_;
+  }
+
+  // Tile size for each thread.
+  //
+  // Equals to the number of iterations in the loop each tile will make.
+  const absl::InlinedVector<int64_t, 4>& GetThreadTileSize() const {
+    return tile_sizes_per_thread_;
+  }
+
+  // Tile size for an entire thread block.
+  const absl::InlinedVector<int64_t, 4>& GetBlockTileSize() const {
+    return tile_sizes_per_block_;
+  }
+
+  const absl::InlinedVector<int64_t, 4>& GetThreadsPerBlock() const {
+    return num_threads_;
+  }
+
+  // Returns the strides of the thread index dimensions wrt. the linear thread
+  // id.
+  absl::InlinedVector<int64_t, 4> GetThreadStrides() const {
+    return *ShapeUtil::ByteStrides(ShapeUtil::MakeShape(U8, num_threads_));
+  }
+
+  // Returns the strides of the block index dimensions wrt. the linear block id.
+  absl::InlinedVector<int64_t, 4> GetBlockStrides() const {
+    return *ShapeUtil::ByteStrides(ShapeUtil::MakeShape(U8, num_blocks_));
+  }
+
+  int64_t GetNumThreadsPerBlock() const { return Product(num_threads_); }
+
+  int64_t GetNumBlocks() const { return Product(num_blocks_); }
+
+  const absl::InlinedVector<bool, 4>& GetLoopsToUnroll() const {
+    return loops_to_unroll_;
+  }
+
+ private:
+  // The number of elements in each dimension.
+  absl::InlinedVector<int64_t, 4> shape_;
+
+  // The number of elements for each dimension of a tile.
+  absl::InlinedVector<int64_t, 4> tile_sizes_per_thread_;
+  absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
+
+  absl::InlinedVector<int64_t, 4> num_threads_;
+  absl::InlinedVector<int64_t, 4> num_blocks_;
+
+  absl::InlinedVector<bool, 4> loops_to_unroll_;
+};
+
+struct TilingThreadIdInfo {
   llvm::Value* thread_id;
 
-  // X-coordinate calculated from thread id: `thread_id % num_threads_x`
-  llvm::Value* thread_id_x;
-
-  // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
-  llvm::Value* thread_id_y;
+  absl::InlinedVector<llvm::Value*, 4> thread_ids;
 
   // Lane id: `thread_id % WarpSize`
   llvm::Value* lane_id;
 
   // Block id.
   llvm::Value* block_id;
-
-  // Emits GEP into a shared memory, taking virtual thread scaling into
-  // account. Automatically inserts the first zero required by LLVM GEP.
-  // Defined on ThreadIdInfo to keep `scaling` private.
-  //
-  // Same semantics as CreateInBoundsGEP.
-  llvm::Value* GEPIntoSharedMemory(
-      llvm::IRBuilder<>* b, llvm::GlobalVariable* shared,
-      absl::Span<llvm::Value* const> idx_major_to_minor,
-      const llvm::Twine& name = "") const;
-
-  // Calculate the pointee type of the llvm::Value returned by
-  // GEPIntoSharedMemory
-  llvm::Type* GEPIntoSharedMemoryType(
-      llvm::GlobalVariable* shared,
-      absl::Span<llvm::Value* const> idx_major_to_minor) const;
-
- private:
-  llvm::Value* scaling;
 };
 
 struct TilingKernelInfo {
   // Tiling bounds.
-  std::array<llvm::Value*, 2> output_tile_bounds;
+  absl::InlinedVector<llvm::Value*, 4> output_tile_bounds;
 
   // Starting tile, as calculated from block id only.
   llvm_ir::IrArray::Index tile_origin;
@@ -87,61 +149,30 @@ struct TilingKernelInfo {
 //
 // index: Absolute coordinate of the start of the tile in input.
 // tile_dimensions: Size of the tile
-using TileElementGenerator =
+using TileGenerator =
     std::function<void(const TilingThreadIdInfo& thread_id_info,
-                       const llvm_ir::IrArray::Index& index,
-                       std::array<llvm::Value*, 2> tile_dimensions)>;
+                       const llvm_ir::IrArray::Index& tile_start_index,
+                       absl::Span<llvm::Value* const> tile_dimensions)>;
 
 // A function object to generate code to process one element in a tile.
 //
-// index: the index for the first output element of the current thread.
-// y_loc: The y coordinate within a tile.
-// x_loc: The x coordinate within a tile.
-using EmitTileElementFunction =
-    std::function<void(const TilingThreadIdInfo& thread_id_info,
-                       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-                       llvm::Value* x_loc)>;
+// index_in_tile: the current coordinates within the tile. To get the global
+// coordinates, use `tile_start_index.AddOffset(index_in_tile, ...)`.
+using TileElementGenerator =
+    std::function<void(absl::Span<llvm::Value* const> index_in_tile)>;
 
-// Emits code to iterate through a 2-dimensional tile with a given tile
-// dimensions and given strides, and call the callback at each iteration.,
-//
-// thread_id_y` and `thread_id_x` are the intra-tile coordinates for
-// the first element to process, and `index` is the index for the origin of
-// the tile. Emits bounds check to ensure that each processed element
-// is within the boundary defined by `tile_dimensions`.
-//
-// Rough pseudocode:
-//
-// Given: tile_dimensions, x_offset, y_offset
-//
-// for (y = 0; y < tile_dimensions[0]; y += num_threads_y) {
-//   for (x = 0; x < tile_dimensions[1]; x++) {
-//
-//     y_pos = y_offset + y
-//     x_pos = x_offset + x * stride
-//
-//     if (x_loc < tile_width) {
-//       emit_elem_function(y_offset + y, x_loc);
-//     }
-//   }
-// }
-//
-void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-              const llvm_ir::IrArray::Index& tile_origin_index,
+// Emits code to iterate through a tile with given tile dimensions and generate
+// elements using the callback.
+void EmitTile(llvm::IRBuilder<>* builder, const Tiling& tiling,
               const TilingThreadIdInfo& thread_id_info,
-              std::array<llvm::Value*, 2> tile_dimensions,
-              const EmitTileElementFunction& emit_elem_function);
+              absl::Span<llvm::Value* const> tile_dimensions,
+              const TileElementGenerator& emit_elem_function);
 
 // Emits a kernel for the hlo instruction using the given kernel mapping
 // scheme.
-StatusOr<TilingKernelInfo> EmitTilingKernel(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* index_ty, const TileElementGenerator& tile_element_generator);
-
-llvm_ir::IrArray::Index GetUnnormalizedIndex(
-    const llvm_ir::IrArray::Index& normalized_shape_index,
-    const Shape& unnormalized_shape, llvm::IRBuilder<>* builder,
-    absl::Span<const int64_t> dims_in_elems);
+absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
+    llvm::IRBuilder<>* builder, const Tiling& tiling, llvm::Type* index_ty,
+    const TileGenerator& tile_element_generator);
 
 }  // namespace gpu
 }  // namespace xla

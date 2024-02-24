@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -101,24 +101,6 @@ class FusionDecision {
     return *this;
   }
 
-  // Executes the given fusibility checks in order, until one fails. Returns the
-  // result of the first failure (or a `FusionDecision` with `CanFuse() == true`
-  // if none did).
-  // Usage:
-  //   FusionDecision result = FusionDecision::All(std::tuple{FnOne, FnTwo},
-  //                                               arg1, arg2)
-  template <typename... Checks, typename... Args>
-  static FusionDecision All(const std::tuple<Checks...>& checks,
-                            const Args&... args) {
-    FusionDecision result = {};
-    std::apply(
-        [&](auto&&... fns) {
-          ((result = result ? fns(args...) : result), ...);
-        },
-        checks);
-    return result;
-  }
-
   // Appends to explanation, or turns the decision negative.
   FusionDecision operator<<(absl::string_view explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
@@ -136,6 +118,14 @@ class FusionDecision {
   // Empty IFF fusion is possible (explanation provided for negative cases).
   std::optional<std::string> explanation_;
 };
+
+#define RETURN_IF_NOT_FUSIBLE(...)                   \
+  do {                                               \
+    ::xla::FusionDecision _decision = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_decision.CanFuse())) {    \
+      return _decision;                              \
+    }                                                \
+  } while (0)
 
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers

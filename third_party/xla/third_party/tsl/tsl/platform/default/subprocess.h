@@ -123,7 +123,8 @@ class SubProcess {
   int parent_pipe_[kNFds] TF_GUARDED_BY(data_mu_);
   int child_pipe_[kNFds] TF_GUARDED_BY(data_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SubProcess);
+  SubProcess(const SubProcess&) = delete;
+  void operator=(const SubProcess&) = delete;
 };
 
 }  // namespace tsl

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -208,6 +208,56 @@ TEST_F(GpuFusibleTest,
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kAdd);
   EXPECT_FALSE(IsPhysicallyTransposing(*loop_fusion));
+}
+
+TEST_F(GpuFusibleTest, TransposesMinorDimension) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      default_layout = f32[10,20,30,40]{3,2,1,0} parameter(0)
+      non_default_layout = f32[10,20,30,40]{1,2,3,0} parameter(1)
+
+      transpose_minor_default = f32[10,20,40,30]{3,2,1,0} transpose(default_layout), dimensions={0,1,3,2}
+      no_transpose_minor_default = f32[10,20,40,30]{2,3,1,0} transpose(default_layout), dimensions={0,1,3,2}
+      transpose_major_default = f32[10,30,20,40]{3,2,1,0} transpose(default_layout), dimensions={0,2,1,3}
+
+      transpose_minor_non_default = f32[10,30,20,40]{1,2,3,0} transpose(non_default_layout), dimensions={0,2,1,3}
+      no_transpose_minor_non_default = f32[10,20,40,30]{1,2,0,3} transpose(non_default_layout), dimensions={0,1,3,2}
+      transpose_major_non_default = f32[10,20,40,30]{1,2,3,0} transpose(non_default_layout), dimensions={0,1,3,2}
+
+      ROOT r = tuple(transpose_minor_default, no_transpose_minor_default, transpose_major_default,
+                     transpose_minor_non_default, no_transpose_minor_non_default, transpose_major_non_default)
+    })"));
+
+  auto* tuple = (*module)->entry_computation()->root_instruction();
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(0)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(1)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(2)));
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(3)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(4)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(5)));
+}
+
+TEST_F(GpuFusibleTest, CopyTransposesMinorDimension) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY entry {
+      default_layout = f32[10,20,30,40]{3,2,1,0} parameter(0)
+      non_default_layout = f32[10,20,30,40]{1,2,3,0} parameter(1)
+
+      copy_transpose_minor_default = f32[10,20,30,40]{2,3,1,0} copy(default_layout)
+      copy_no_transpose_minor_default = f32[10,20,30,40]{3,2,1,0} copy(default_layout)
+
+      copy_transpose_minor_non_default = f32[10,20,30,40]{2,1,3,0} copy(non_default_layout)
+      copy_no_transpose_minor_non_default = f32[10,20,30,40]{1,2,3,0} copy(non_default_layout)
+
+      ROOT r = tuple(copy_transpose_minor_default, copy_no_transpose_minor_default,
+                     copy_transpose_minor_non_default, copy_no_transpose_minor_non_default)
+    })"));
+
+  auto* tuple = (*module)->entry_computation()->root_instruction();
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(0)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(1)));
+  EXPECT_TRUE(TransposesMinorDimension(tuple->operand(2)));
+  EXPECT_FALSE(TransposesMinorDimension(tuple->operand(3)));
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {
@@ -951,6 +1001,51 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
   EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
+TEST_F(GpuFusibleTest, ProducerConsumerFusionTransposeAndLoopFusion) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0.1 = f32[32,31,30]{2,1,0} parameter(0)
+      p1.1 = f32[32,31,30]{2,1,0} parameter(1)
+      neg = f32[32,31,30]{2,1,0} negate(p0.1)
+      ROOT add = f32[32,31,30]{2,1,0} add(neg, p1.1)
+    }
+
+    ENTRY reduce {
+      p0 = f32[32,31,30]{2,1,0} parameter(0)
+      p1 = f32[32,30,31]{2,1,0} parameter(1)
+      transpose =  f32[32,31,30]{2,1,0} transpose(p1), dimensions={0,2,1}
+      ROOT add = f32[32,31,30]{2,1,0} fusion(p0, transpose), kind=kLoop, calls=fused_add
+    })"))
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* consumer = root;
+  const HloInstruction* producer = root->operand(1);
+  EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceAndLoopFusion) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0.1 = f32[32,31,30]{2,1,0} parameter(0)
+      p1.1 = f32[32,31,30]{2,1,0} parameter(1)
+      neg = f32[32,31,30]{2,1,0} negate(p0.1)
+      ROOT add = f32[32,31,30]{2,1,0} add(neg, p1.1)
+    }
+
+    ENTRY reduce {
+      p0 = f32[32,31,30]{2,1,0} parameter(0)
+      p1 = f32[32,31,30,29]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0.0)
+      reduce =  f32[32,31,30]{2,1,0} reduce(p1, c0), dimensions={3}, to_apply=scalar_add
+      ROOT add = f32[32,31,30]{2,1,0} fusion(p0, reduce), kind=kLoop, calls=fused_add
+    })"))
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* consumer = root;
+  const HloInstruction* producer = root->operand(1);
+  EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
+}
+
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_add {
@@ -1163,6 +1258,40 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
       static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
 }
 
+TEST_F(GpuFusibleTest, FuseReduceWithUnaryElementwise) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY main.12 {
+      Arg_0.1 = f32[2048]{0} parameter(0)
+      constant.4 = f32[] constant(0.0)
+      reduce.10 = f32[] reduce(Arg_0.1, constant.4), dimensions={0}, to_apply=scalar_add
+      ROOT exp = f32[] exponential(reduce.10)
+    })"))
+                    .value();
+
+  const HloInstruction* consumer =
+      module->entry_computation()->root_instruction();
+  const HloInstruction* producer = consumer->operand(0);
+  EXPECT_TRUE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
+}
+
+TEST_F(GpuFusibleTest, DoNotFuseReduceWithRacesWithUnaryElementwise) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    ENTRY main.12 {
+      Arg_0.1 = f32[196608]{0} parameter(0)
+      constant.4 = f32[] constant(0.0)
+      reduce.10 = f32[] reduce(Arg_0.1, constant.4), dimensions={0}, to_apply=scalar_add
+      ROOT exp = f32[] exponential(reduce.10)
+    })"))
+                    .value();
+
+  const HloInstruction* consumer =
+      module->entry_computation()->root_instruction();
+  const HloInstruction* producer = consumer->operand(0);
+  EXPECT_FALSE(
+      static_cast<bool>(IsProducerConsumerFusible(*producer, *consumer)));
+}
+
 TEST_F(GpuFusibleTest, CreatesHeavyComputation_NonfusionInstr) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
@@ -1317,6 +1446,23 @@ TEST_F(GpuFusibleTest, DoesNotCreateHeavyComputation_FusionInstr) {
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
   EXPECT_FALSE(CreatesHeavyComputation(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, ChooseFusionKind) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY computation {
+    p = f32[5000,6000]{1,0} parameter(0)
+    c = f32[6000,5000] transpose(p), dimensions={1,0}
+    ROOT r = f32[300,20,5000] reshape(c)
+}
+)")
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  EXPECT_EQ(ChooseFusionKind(*producer, *root),
+            HloInstruction::FusionKind::kInput);
 }
 
 }  // namespace gpu

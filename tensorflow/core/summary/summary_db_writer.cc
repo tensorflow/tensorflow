@@ -210,7 +210,8 @@ class IdAllocator {
   Sqlite* const db_;
   int tier_ TF_GUARDED_BY(mu_) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(IdAllocator);
+  IdAllocator(const IdAllocator&) = delete;
+  void operator=(const IdAllocator&) = delete;
 };
 
 class GraphWriter {
@@ -372,7 +373,8 @@ class GraphWriter {
   std::vector<string> name_copies_;
   std::unordered_map<StringPiece, int64_t, StringPieceHasher> name_to_node_id_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphWriter);
+  GraphWriter(const GraphWriter&) = delete;
+  void operator=(const GraphWriter&) = delete;
 };
 
 /// \brief Run metadata manager.
@@ -619,7 +621,8 @@ class RunMetadata {
   double run_started_time_ TF_GUARDED_BY(mu_) = 0.0;
   std::unordered_map<string, int64_t> tag_ids_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RunMetadata);
+  RunMetadata(const RunMetadata&) = delete;
+  void operator=(const RunMetadata&) = delete;
 };
 
 /// \brief Tensor writer for a single series, e.g. Tag.
@@ -817,7 +820,8 @@ class SeriesWriter {
   std::deque<int64_t> rowids_ TF_GUARDED_BY(mu_);
   uint64 unflushed_bytes_ TF_GUARDED_BY(mu_) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SeriesWriter);
+  SeriesWriter(const SeriesWriter&) = delete;
+  void operator=(const SeriesWriter&) = delete;
 };
 
 /// \brief Tensor writer for a single Run.
@@ -869,7 +873,8 @@ class RunWriter {
   std::unordered_map<int64_t, std::unique_ptr<SeriesWriter>> series_writers_
       TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RunWriter);
+  RunWriter(const RunWriter&) = delete;
+  void operator=(const RunWriter&) = delete;
 };
 
 /// \brief SQLite implementation of SummaryWriterInterface.

@@ -22,11 +22,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -36,12 +50,14 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/executable_context.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
-#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -87,8 +103,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     tfrt::ResourceContext* resource_context,
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
-    tfd::FallbackResourceArray* resource_array,
-    const FallbackState& fallback_state,
+    tfd::FallbackResourceArray* resource_array, FallbackState& fallback_state,
     const ProcessFunctionLibraryRuntime& process_function_library_runtime,
     CostRecorder* cost_recorder = nullptr);
 
@@ -110,7 +125,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
-    const FallbackState& fallback_state,
+    FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
@@ -143,7 +158,8 @@ class GraphExecutor {
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context,
                       std::optional<StreamCallbackId> stream_callback_id,
-                      FunctionLibraryDefinition flib_def);
+                      bool is_restore, FunctionLibraryDefinition flib_def,
+                      tensorflow::monitoring::SamplerCell* latency_sampler);
 
     // Returns this instance's CostRecorder if it is time to update costs,
     // else returns nullptr. Only allows one non-null return value at a time
@@ -173,9 +189,14 @@ class GraphExecutor {
       return stream_callback_id_;
     }
 
+    bool is_restore() const { return is_restore_; }
+
     const ProcessFunctionLibraryRuntime& process_function_library_runtime()
         const {
       return pflr_;
+    }
+    tensorflow::monitoring::SamplerCell* latency_sampler() {
+      return latency_sampler_;
     }
 
    private:
@@ -212,8 +233,10 @@ class GraphExecutor {
     SyncResourceState sync_resource_state_;
 
     std::optional<StreamCallbackId> stream_callback_id_;
+    bool is_restore_;
     FunctionLibraryDefinition flib_def_;
     ProcessFunctionLibraryRuntime pflr_;
+    tensorflow::monitoring::SamplerCell* latency_sampler_;
   };
 
   // A subgraph constructed by specifying input/output tensors.
@@ -232,13 +255,13 @@ class GraphExecutor {
 
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
-      Options options, const FallbackState& fallback_state,
+      Options options, std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       tensorflow::GraphDef graph_def,
       std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Ctor. Public for `Create()`. Do not use directly.
-  GraphExecutor(Options options, const FallbackState& fallback_state,
+  GraphExecutor(Options options, std::unique_ptr<FallbackState> fallback_state,
                 std::unique_ptr<tfrt::ResourceContext> resource_context,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
@@ -282,7 +305,8 @@ class GraphExecutor {
   tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const Options& options() const { return options_; }
-  const FallbackState& fallback_state() const { return fallback_state_; }
+  const FallbackState& fallback_state() const { return *fallback_state_; }
+  FallbackState& fallback_state() { return *fallback_state_; }
 
   // Compiles graph for `graph_name` and runs any initializers.
   tensorflow::Status CompileGraph(
@@ -300,9 +324,12 @@ class GraphExecutor {
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
       const GraphExecutor::ClientGraph& client_graph,
-      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
+      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs);
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
-  ImportAndCompileClientGraph(const GraphExecutor::ClientGraph& client_graph);
+  ImportAndCompileClientGraph(
+      const GraphExecutor::ClientGraph& client_graph,
+      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs);
   tensorflow::StatusOr<
       std::pair<FunctionLibraryDefinition, mlir::OwningOpRef<mlir::ModuleOp>>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
@@ -325,11 +352,12 @@ class GraphExecutor {
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_tensor_names,
       tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
-      std::optional<const std::string> graph_name = std::nullopt)
+      absl::string_view graph_name = "",
+      absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs = {})
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
 
   Options options_;
-  std::reference_wrapper<const FallbackState> fallback_state_;
+  std::unique_ptr<FallbackState> fallback_state_;
 
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
       graph_execution_state_;
@@ -355,7 +383,8 @@ class GraphExecutor {
   int num_recompilations_ TF_GUARDED_BY(num_recompilations_mu_) = 0;
 };
 
-void RegisterMlirDialect(mlir::DialectRegistry& registry);
+void RegisterMlirDialect(mlir::DialectRegistry& registry,
+                         tensorflow::BackendCompiler* backend_compiler);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

@@ -1,9 +1,10 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/mlir/math:friends"],
     licenses = ["notice"],
 )
 
@@ -32,17 +33,12 @@ cc_library(
     ],
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
     deps = [
         ":passes_inc_gen",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMCommonConversion",
-        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:MathToLLVM",
-        "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:MathTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",

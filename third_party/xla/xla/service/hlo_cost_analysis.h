@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_COST_ANALYSIS_H_
 #define XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -247,7 +248,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // props[kFlopsKey] gets optimized to `return flops_` just fine.
 
     // Getters/setters for more complex properties like operand utilization,
-    // where we have a fastpath for e.g. operand 0/1 + shape_index {}.
+    // where we have a fastpath, e.g., operand 0/1 + shape_index {}.
     float operand_utilization(int64_t operand,
                               const ShapeIndex& shape_index = {}) {
       if (operand == 0 && shape_index.empty()) {
@@ -333,15 +334,15 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
    private:
     // These must match GetOperandUtilizationKey(0, {}) etc.
     static inline constexpr absl::string_view kOperand0UtilizationKey =
-        "utilization operand 0 {}";
+        "utilization0{}";
     static inline constexpr absl::string_view kOperand1UtilizationKey =
-        "utilization operand 1 {}";
+        "utilization1{}";
     static inline constexpr absl::string_view kOperand0BytesAccessedKey =
-        "bytes accessed operand 0 {}";
+        "bytes accessed0{}";
     static inline constexpr absl::string_view kOperand1BytesAccessedKey =
-        "bytes accessed operand 1 {}";
+        "bytes accessed1{}";
     static inline constexpr absl::string_view kOutputRootBytesAccessedKey =
-        "bytes accessed output {}";
+        "bytes accessedout{}";
 
     float flops_;
     float transcendentals_;
@@ -398,7 +399,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     }
 
     // Returns the specified per-second rate used by cost analysis.
-    float per_second_rate(const std::string& key) const {
+    float per_second_rate(absl::string_view key) const {
       return per_second_rates[key];
     }
   };
@@ -546,7 +547,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the specified per-second rate used by cost analysis.
   float per_second_rate(absl::string_view key) const {
-    return options_.per_second_rates[key];
+    return options_.per_second_rate(key);
   }
 
   // Return the key that is used to index into Properties for the specified
@@ -571,6 +572,37 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
                              const DotDimensionNumbers& dnums);
 
  protected:
+  // Computes the bytes accessed based on the outputs produced by the fusion
+  // instruction.
+  virtual Status FusionProcessOutputBytesAccessed(const HloInstruction* fusion);
+
+  // Computes the bytes accessed (read) based on the inputs consumed by the
+  // fusion instruction.
+  virtual Status FusionProcessOperandBytesRead(const HloInstruction* fusion);
+
+  // Computes memory access to all larger constants in the fusion instruction.
+  virtual Status FusionCountConstantsMemoryAccess(const HloInstruction* fusion);
+
+  // Allows exclusion of certain types of inputs from bytes accessed during
+  // FusionProcessOperandBytesRead.
+  virtual bool ShouldFilterFusionInput(const HloInstruction* fusion,
+                                       int64_t input_index) {
+    return false;
+  }
+
+  // Allows exclusion of certain instructions from FusionCalculateUtilizations.
+  virtual bool ShouldFilterFusionInstruction(
+      const HloInstruction* fusion, const HloInstruction* instruction) {
+    return false;
+  }
+
+  // Allows exclusion of certain types of output from bytes written during
+  // FusionProcessOutputBytesAccessed.
+  virtual bool ShouldFilterFusionOutputIndex(const HloInstruction* fusion,
+                                             const ShapeIndex& output_index) {
+    return false;
+  }
+
   typedef absl::flat_hash_map<const HloInstruction*, Properties>
       HloToProperties;
 
@@ -588,7 +620,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // given hlo. The cost of visited sub HLO instructions is saved to
   // hlo_properties_, which will be used by functions such as
   // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
-  StatusOr<Properties> ProcessSubcomputation(HloComputation* computation);
+  virtual StatusOr<Properties> ProcessSubcomputation(
+      HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
@@ -615,7 +648,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // bottleneck.
   bool current_should_compute_bottleneck_time_;
 
-  // The properties of the currently visited instruction. A HandleFoo method can
+  // The properties of the currently visited instruction. A HandleFoo method
   // modify these to change the default values computed in Preprocess.
   Properties current_properties_;
 

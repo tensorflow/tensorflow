@@ -157,7 +157,8 @@ class DeviceExecutablePersistor {
   // Cache is read-only if set to true.
   const bool persistent_cache_directory_read_only_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceExecutablePersistor);
+  DeviceExecutablePersistor(const DeviceExecutablePersistor&) = delete;
+  void operator=(const DeviceExecutablePersistor&) = delete;
 };
 
 template <typename ExecutableType, typename ClientType>
@@ -270,7 +271,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::VerifyLoadedCacheEntry(
   if (entry.executable().empty()) {
     return errors::InvalidArgument("No binary found in serialized entry.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ExecutableType, typename ClientType>
@@ -391,7 +392,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToPersistExecutable(
       persistent_cache_directory_read_only_) {
     VLOG(1) << "Not persisting executable. No `persistent_cache_directory` "
                "provided or cache is read-only.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   XLA_SCOPED_LOGGING_TIMER(
@@ -400,7 +401,7 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToPersistExecutable(
                       SerializeEntry(signature_hash, options,
                                      compilation_result, executable, client));
   TF_RETURN_IF_ERROR(SaveSerializedEntry(std::move(serialized_entry)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

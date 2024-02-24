@@ -1,8 +1,8 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
@@ -39,6 +39,14 @@ NEON_FLAGS_IF_APPLICABLE = select({
         "-O3",
     ],
 })
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["compatibility.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
 
 cc_library(
     name = "compatibility",
@@ -884,6 +892,7 @@ cc_library_with_tflite(
     copts = tflite_copts(),
     tflite_deps = [
         "//tensorflow/lite/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite:namespace",
     ],
     deps = [
         ":types",
@@ -1497,7 +1506,9 @@ filegroup(
     srcs = glob([
         "optimized/*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 filegroup(
@@ -1505,7 +1516,9 @@ filegroup(
     srcs = glob([
         "reference/*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 filegroup(
@@ -1513,7 +1526,9 @@ filegroup(
     srcs = glob([
         "*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 transitive_hdrs(

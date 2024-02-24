@@ -37,8 +37,13 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::_;
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::testing::Not;
 using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 template <class T>
@@ -286,6 +291,65 @@ TEST(SnapshotManagerTest, ResumeFromError) {
   TF_EXPECT_OK(
       resumed_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
   EXPECT_THAT(heartbeat_response.snapshot_tasks(), IsEmpty());
+}
+
+TEST(SnapshotAssignmentManagerTest, LoadBalanceSnapshots) {
+  SnapshotAssignmentManager snapshot_assignment_manager(
+      /*worker_max_concurrent_snapshots=*/2);
+  snapshot_assignment_manager.AddSnapshot("snapshot_1");
+  snapshot_assignment_manager.AddSnapshot("snapshot_2");
+  snapshot_assignment_manager.AddSnapshot("snapshot_3");
+
+  // Worker 1: snapshot 3
+  // Worker 2: N/A
+  EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
+                  "snapshot_3", "worker_1", /*stream_index=*/0),
+              IsOkAndHolds(true));
+  EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
+              ElementsAre("snapshot_3", _));
+  ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
+              ElementsAre(Not("snapshot_3")));
+
+  // Worker 1: snapshots 2, 3
+  // Worker 2: N/A
+  EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
+                  "snapshot_2", "worker_1", /*stream_index=*/0),
+              IsOkAndHolds(true));
+  ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
+              UnorderedElementsAre("snapshot_2", "snapshot_3"));
+  EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
+              ElementsAre("snapshot_1"));
+
+  // Worker 1: snapshots 2, 3
+  // Worker 2: snapshot 2
+  EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
+                  "snapshot_1", "worker_1", /*stream_index=*/0),
+              IsOkAndHolds(false));
+  EXPECT_THAT(snapshot_assignment_manager.TryAddAssignment(
+                  "snapshot_2", "worker_2", /*stream_index=*/0),
+              IsOkAndHolds(true));
+  ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
+              UnorderedElementsAre("snapshot_2", "snapshot_3"));
+  EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
+              ElementsAre("snapshot_2", "snapshot_1"));
+
+  // Worker 1: snapshot 3
+  // Worker 2: snapshot 2
+  snapshot_assignment_manager.RemoveAssignment("snapshot_2", "worker_1",
+                                               /*stream_index=*/0);
+  EXPECT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
+              ElementsAre("snapshot_3", "snapshot_1"));
+  ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
+              ElementsAre("snapshot_2", "snapshot_1"));
+
+  // Worker 1: N/A
+  // Worker 2: snapshot 2
+  snapshot_assignment_manager.RemoveAssignment("snapshot_3", "worker_1",
+                                               /*stream_index=*/0);
+  ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_1"),
+              ElementsAre("snapshot_1"));
+  ASSERT_THAT(snapshot_assignment_manager.LoadBalanceSnapshots("worker_2"),
+              ElementsAre("snapshot_2", "snapshot_1"));
 }
 
 }  // namespace

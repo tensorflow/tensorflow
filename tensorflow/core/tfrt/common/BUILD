@@ -17,9 +17,11 @@ package_group(
     packages = [
         # copybara:uncomment "//learning/brain/experimental/dtensor/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/google/monitoring/...",
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/serving/model_servers/...",
         # copybara:uncomment "//platforms/xla/megascale/tensorflow/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/jit/...",
@@ -246,6 +248,16 @@ cc_library(
         "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "metrics",
+    srcs = ["metrics.cc"],
+    hdrs = ["metrics.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cuda_cc_test(

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/dot_dimension_sorter.h"
 
+#include <memory>
+
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

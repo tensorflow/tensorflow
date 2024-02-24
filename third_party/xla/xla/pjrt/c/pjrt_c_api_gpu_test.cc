@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,11 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_gpu.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <numeric>
 #include <string>
+#include <string_view>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
 #include <variant>
@@ -32,17 +35,26 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/ffi/api/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -50,45 +62,100 @@ limitations under the License.
 namespace pjrt {
 namespace {
 
+#ifdef TENSORFLOW_USE_ROCM
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
-                                                  /*platform_name=*/"gpu"),
+                                                  /*platform_name=*/"rocm"),
                       true);
+#else   // TENSORFLOW_USE_ROCM
+const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                                                  /*platform_name=*/"cuda"),
+                      true);
+#endif  // TENSORFLOW_USE_ROCM
 
 class PjrtCApiGpuTest : public PjrtCApiTestBase {
  public:
   PjrtCApiGpuTest() : PjrtCApiTestBase(GetPjrtApi()) {}
 };
 
-std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
-    absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
-  xla::PjRtClient::KeyValueGetCallback kv_get =
-      [kv_store, &mu](const std::string& k,
-                      absl::Duration timeout) -> xla::StatusOr<std::string> {
-    absl::Duration wait_interval = absl::Milliseconds(10);
-    int num_retry = timeout / wait_interval;
-    for (int i = 0; i < num_retry; i++) {
-      {
-        absl::MutexLock lock(&mu);
-        auto iter = kv_store->find(k);
-        if (iter != kv_store->end()) {
-          return iter->second;
-        }
-      }
-      absl::SleepFor(wait_interval);
-    }
-    return absl::NotFoundError(
-        absl::StrCat(k, " is not found in the kv store."));
+TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
+  // Prepares a device memory ptr on GPU.
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer =
+      create_buffer().first;
+  PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
+  device_buffer_ptr_args.struct_size =
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
+  device_buffer_ptr_args.extension_start = nullptr;
+  device_buffer_ptr_args.buffer = buffer.get();
+  PJRT_Error* device_buffer_ptr_error =
+      api_->PJRT_Buffer_OpaqueDeviceMemoryDataPointer(&device_buffer_ptr_args);
+  ASSERT_EQ(device_buffer_ptr_error, nullptr);
+  // Looks up a device.
+  PJRT_Buffer_Device_Args device_args = PJRT_Buffer_Device_Args{
+      /*struct_size=*/PJRT_Buffer_Device_Args_STRUCT_SIZE,
+      /*extension_start=*/nullptr,
+      /*buffer=*/buffer.get(),
   };
-  xla::PjRtClient::KeyValuePutCallback kv_put =
-      [kv_store, &mu](const std::string& k,
-                      const std::string& v) -> xla::Status {
-    {
-      absl::MutexLock lock(&mu);
-      kv_store->insert(std::pair<std::string, std::string>(k, v));
-    }
-    return tsl::OkStatus();
+  PJRT_Error* device_error = api_->PJRT_Buffer_Device(&device_args);
+  ASSERT_EQ(device_error, nullptr);
+
+  // Prepares PJRT_Client_CreateViewOfDeviceBuffer_Args.
+  PJRT_Client_CreateViewOfDeviceBuffer_Args create_view_args;
+  create_view_args.struct_size =
+      PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
+  create_view_args.extension_start = nullptr;
+  create_view_args.client = client_;
+  create_view_args.device_buffer_ptr = device_buffer_ptr_args.device_memory_ptr;
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {4});
+  create_view_args.dims = shape.dimensions().data();
+  create_view_args.num_dims = shape.dimensions().size();
+  create_view_args.element_type =
+      pjrt::ConvertToPjRtBufferType(shape.element_type());
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  TF_ASSERT_OK_AND_ASSIGN(
+      c_layout_data, pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+  create_view_args.layout = &(c_layout_data.c_layout);
+  create_view_args.device = device_args.device;
+  std::function<void()> on_delete_callback = []() mutable {};
+  create_view_args.on_delete_callback_arg =
+      new std::function(on_delete_callback);
+  create_view_args.on_delete_callback = [](void* device_buffer_ptr,
+                                           void* user_arg) {
+    auto c_func = reinterpret_cast<std::function<void()>*>(user_arg);
+    (*c_func)();
+    delete c_func;
   };
-  return ::pjrt::ConvertToCKeyValueCallbacks(kv_get, kv_put);
+  create_view_args.stream = reinterpret_cast<intptr_t>(nullptr);
+
+  PJRT_Error* error =
+      api_->PJRT_Client_CreateViewOfDeviceBuffer(&create_view_args);
+
+  ASSERT_EQ(error, nullptr);
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> view_buffer(
+      create_view_args.buffer, ::pjrt::MakeBufferDeleter(api_));
+
+  // Transfers view_buffer to host to verify.
+  PJRT_Buffer_ToHostBuffer_Args to_host_args;
+  to_host_args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+  to_host_args.extension_start = nullptr;
+  to_host_args.src = view_buffer.get();
+  xla::Shape host_shape = xla::ShapeUtil::MakeShape(xla::F32, {4});
+  auto literal = std::make_shared<xla::Literal>(host_shape);
+  to_host_args.host_layout = nullptr;
+  to_host_args.dst = literal->untyped_data();
+  to_host_args.dst_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
+  to_host_args.event = nullptr;
+
+  PJRT_Error* to_host_error = api_->PJRT_Buffer_ToHostBuffer(&to_host_args);
+
+  ASSERT_EQ(to_host_error, nullptr);
+  xla::PjRtFuture<absl::Status> transfer_to_host =
+      ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
+  TF_CHECK_OK(transfer_to_host.Await());
+  ASSERT_EQ(literal->data<float>().size(), 4);
+  std::vector<float> float_data(4);
+  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
 
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
@@ -96,7 +163,7 @@ absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     std::vector<PJRT_NamedValue>& c_options) {
   PJRT_Client_Create_Args args;
   args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.create_options = c_options.data();
   args.num_options = c_options.size();
   args.kv_get_callback = kv_callback_data->c_kv_get;
@@ -109,11 +176,9 @@ absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
 
 TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   auto api = GetPjrtApi();
-  auto kv_store_ptr =
-      std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  absl::Mutex mu;
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
   std::shared_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data =
-      CreateTestCKVCallback(kv_store_ptr.get(), mu);
+      ::pjrt::ConvertToCKeyValueCallbacks(kv_store);
 
   int num_nodes = 2;
   std::vector<std::thread> threads;
@@ -121,7 +186,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   for (int i = 0; i < num_nodes; i++) {
     threads.emplace_back([api, i, num_nodes,
                           kv_callback_data = kv_callback_data,
-                          kv_store_ptr = kv_store_ptr] {
+                          kv_store = kv_store] {
       absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)}};
@@ -136,7 +201,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
 
       PJRT_Client_Devices_Args device_args;
       device_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
-      device_args.priv = nullptr;
+      device_args.extension_start = nullptr;
       device_args.client = create_arg.client;
 
       PJRT_Error* device_error = api->PJRT_Client_Devices(&device_args);
@@ -146,7 +211,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
       PJRT_Client_AddressableDevices_Args addressable_device_args;
       addressable_device_args.struct_size =
           PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
-      addressable_device_args.priv = nullptr;
+      addressable_device_args.extension_start = nullptr;
       addressable_device_args.client = create_arg.client;
 
       PJRT_Error* addressable_device_error =
@@ -156,7 +221,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
 
       PJRT_Client_Destroy_Args destroy_args;
       destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-      destroy_args.priv = nullptr;
+      destroy_args.extension_start = nullptr;
       destroy_args.client = create_arg.client;
 
       PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
@@ -188,7 +253,7 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
         ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
     PJRT_Client_Create_Args create_arg;
     create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-    create_arg.priv = nullptr;
+    create_arg.extension_start = nullptr;
     create_arg.client = nullptr;
     create_arg.create_options = c_options.data();
     create_arg.num_options = c_options.size();
@@ -197,7 +262,7 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
 
     PJRT_Client_Destroy_Args destroy_args;
     destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
+    destroy_args.extension_start = nullptr;
     destroy_args.client = create_arg.client;
 
     PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
@@ -217,7 +282,7 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
       ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
-  create_arg.priv = nullptr;
+  create_arg.extension_start = nullptr;
   create_arg.client = nullptr;
   create_arg.create_options = c_options.data();
   create_arg.num_options = c_options.size();
@@ -232,27 +297,105 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
-  error_destroy_args.priv = nullptr;
+  error_destroy_args.extension_start = nullptr;
   error_destroy_args.error = error;
 
   api->PJRT_Error_Destroy(&error_destroy_args);
 }
 
-void TestCustomCall() {}
+TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
+  auto api = GetPjrtApi();
+  std::string expected_platform_name_for_cuda = "cuda";
+  std::string expected_platform_name_for_rocm = "rocm";
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"platform_name", static_cast<std::string>("gpu")},
+      {"allocator", static_cast<std::string>("default")},
+      {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PJRT_NamedValue> c_options,
+      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  PJRT_Client_Create_Args create_arg;
+  create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_arg.extension_start = nullptr;
+  create_arg.client = nullptr;
+  create_arg.create_options = c_options.data();
+  create_arg.num_options = c_options.size();
+  PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+  EXPECT_EQ(error, nullptr) << error->status.message();
 
-TEST(PjrtCApiGpuPrivTest, CustomCall) {
+  PJRT_Client_PlatformName_Args platform_name_args;
+  platform_name_args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  platform_name_args.extension_start = nullptr;
+  platform_name_args.client = create_arg.client;
+
+  PJRT_Error* platform_name_error =
+      api->PJRT_Client_PlatformName(&platform_name_args);
+  EXPECT_EQ(platform_name_error, nullptr);
+#if TENSORFLOW_USE_ROCM
+  EXPECT_EQ(platform_name_args.platform_name, expected_platform_name_for_rocm);
+#else
+  EXPECT_EQ(platform_name_args.platform_name, expected_platform_name_for_cuda);
+#endif
+
+  PJRT_Client_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.client = create_arg.client;
+
+  PJRT_Error* destroy_error = api->PJRT_Client_Destroy(&destroy_args);
+  CHECK_EQ(destroy_error, nullptr);
+}
+
+TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
+  auto api = GetPjrtApi();
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"platform_name", static_cast<std::string>("invalid_platform_name")},
+      {"allocator", static_cast<std::string>("default")},
+      {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<PJRT_NamedValue> c_options,
+      ::pjrt::ConvertToPjRtNamedValueList(options, /*api_minor_version=*/30));
+  PJRT_Client_Create_Args create_arg;
+  create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_arg.extension_start = nullptr;
+  create_arg.client = nullptr;
+  create_arg.create_options = c_options.data();
+  create_arg.num_options = c_options.size();
+  PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+  EXPECT_NE(error, nullptr);
+  EXPECT_THAT(error->status,
+              ::tsl::testing::StatusIs(
+                  absl::StatusCode::kNotFound,
+                  testing::StartsWith("Could not find registered platform with "
+                                      "name: \"invalid_platform_name\". "
+                                      "Available platform names are:")));
+
+  PJRT_Error_Destroy_Args error_destroy_args;
+  error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+  error_destroy_args.extension_start = nullptr;
+  error_destroy_args.error = error;
+
+  api->PJRT_Error_Destroy(&error_destroy_args);
+}
+
+void TestCustomCallV2() {}
+
+TEST(PjrtCApiGpuExtensionTest, CustomCallUntyped) {
   PJRT_Gpu_Register_Custom_Call_Args args;
   args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
-  std::string function_name = "function_name";
+  std::string function_name = "untyped_function_name";
   args.function_name = function_name.c_str();
   args.function_name_size = function_name.size();
-  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCall);
+  args.api_version = 0;
+  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCallV2);
   auto api = GetPjrtApi();
-  const PJRT_Structure_Base* next =
-      reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
+  const PJRT_Extension_Base* next =
+      reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
   while (next != nullptr &&
          next->type !=
-             PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call) {
+             PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
     next = next->next;
   }
   ASSERT_NE(next, nullptr);
@@ -263,7 +406,37 @@ TEST(PjrtCApiGpuPrivTest, CustomCall) {
   CHECK_EQ(error, nullptr);
   void* custom_call =
       xla::CustomCallTargetRegistry::Global()->Lookup(function_name, "CUDA");
-  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCall));
+  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
+}
+
+static void* kNoop = xla::ffi::Ffi::Bind()
+                         .To([]() { return xla::ffi::Error::Success(); })
+                         .release();
+
+TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "typed_function_name";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.custom_call_function = kNoop;
+  auto api = GetPjrtApi();
+  const PJRT_Extension_Base* next =
+      reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
+  while (next != nullptr &&
+         next->type !=
+             PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call) {
+    next = next->next;
+  }
+  ASSERT_NE(next, nullptr);
+
+  PJRT_Error* error =
+      reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next)->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto* custom_call = xla::ffi::FindHandler(function_name, "CUDA").value();
+  EXPECT_EQ(reinterpret_cast<void*>(custom_call), kNoop);
 }
 
 }  // namespace

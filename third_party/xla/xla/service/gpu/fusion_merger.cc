@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,11 +22,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -40,7 +42,7 @@ namespace gpu {
 class FusionInstructionMerger {
  public:
   explicit FusionInstructionMerger(
-      HloComputation* computation, const GpuDeviceInfo& gpu_device_info,
+      HloComputation* computation, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function)
       : computation_(computation),
         shape_size_function_(shape_size_function),
@@ -50,13 +52,13 @@ class FusionInstructionMerger {
                                        .debug_options()
                                        .xla_dump_fusion_visualization()) {}
 
-  Status Run();
+  absl::Status Run();
 
   bool changed() const { return changed_; }
 
  private:
   FusionDecision ShouldFuse(HloInstruction* producer);
-  Status FuseIntoAllUsers(HloInstruction* producer);
+  absl::Status FuseIntoAllUsers(HloInstruction* producer);
 
   HloComputation* computation_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
@@ -64,7 +66,7 @@ class FusionInstructionMerger {
   // HLO cost analysis of the computation so that it may be not needed at all.
   std::optional<GpuHloCostAnalysis> cost_analysis_;
   FusionInfoCache fusion_info_cache_;
-  const GpuDeviceInfo& gpu_device_info_;
+  const se::DeviceDescription& gpu_device_info_;
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
 
@@ -83,7 +85,8 @@ class FusionInstructionMerger {
   FusionInstructionMerger& operator=(const FusionInstructionMerger&) = delete;
 };
 
-Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
+absl::Status FusionInstructionMerger::FuseIntoAllUsers(
+    HloInstruction* producer) {
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = producer->users();
   for (HloInstruction* user : users) {
@@ -131,10 +134,10 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                              absl::StrAppend(out, user->name());
                            })
           << " }";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FusionInstructionMerger::Run() {
+absl::Status FusionInstructionMerger::Run() {
   for (HloInstruction* producer : computation_->MakeInstructionPostOrder()) {
     if (producer->opcode() != HloOpcode::kFusion) {
       continue;
@@ -171,7 +174,7 @@ Status FusionInstructionMerger::Run() {
           << num_fail_inefficient_fusion_emitter_
           << " slower_if_fused: " << num_fail_slower_if_fused_
           << " fusion_too_large: " << num_fail_fusion_too_large_ << " }";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TransposesMostData(const HloInstruction& fusion) {
@@ -219,6 +222,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     if (user->opcode() == HloOpcode::kBitcast) {
       ++num_fail_merge_all_users_;
       return "not fusing bitcast ops";
+    }
+    if (user->IsCustomFusion()) {
+      ++num_fail_merge_all_users_;
+      return "not fusing custom fusions";
     }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
     if (auto compatible =
@@ -275,7 +282,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, producer->users());
+      producer, &*cost_analysis_, GpuPerformanceModelOptions::Default(),
+      producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
     return "will execute slower if fused";
@@ -284,7 +292,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   return {};
 }
 
-StatusOr<bool> FusionMerger::Run(
+absl::StatusOr<bool> FusionMerger::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

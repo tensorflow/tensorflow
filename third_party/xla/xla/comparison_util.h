@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +60,13 @@ class Comparison {
     // https://en.wikipedia.org/wiki/Partially_ordered_set
     kPartial,
   };
+
+  friend absl::string_view ComparisonOrderToString(Comparison::Order order);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Order& p) {
+    absl::Format(&sink, "%s", ComparisonOrderToString(p));
+  }
 
   // Represents different comparison operations.
   enum class Direction : uint8_t {
@@ -228,7 +235,6 @@ inline std::ostream& operator<<(std::ostream& os, const Comparison& cmp) {
 std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
-absl::string_view ComparisonOrderToString(Comparison::Order order);
 
 StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);

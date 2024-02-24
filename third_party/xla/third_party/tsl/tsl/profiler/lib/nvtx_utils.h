@@ -17,43 +17,28 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_LIB_NVTX_UTILS_H_
 
 #include <optional>
-
-#include "absl/strings/string_view.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include <string>
 
 #if GOOGLE_CUDA
 #include "nvtx3/nvToolsExt.h"
+#include "nvtx3/nvToolsExtPayload.h"
+#else
+// Some typedef to help build without NVTX.
+typedef void* nvtxDomainHandle_t;
+typedef void* nvtxStringHandle_t;
 #endif
 
 namespace tsl {
 namespace profiler {
-namespace nvtx {
-
-// Some typedef to help build without NVTX.
-#if !GOOGLE_CUDA
-typedef void* nvtxEventAttributes_t;
-typedef void* nvtxDomainHandle_t;
-#endif
 
 // A helper function that return the domains to use if NVTX profiling
 // is enabled.
 inline std::optional<nvtxDomainHandle_t> GetNVTXDomain() {
 #if GOOGLE_CUDA
-  static nvtxDomainHandle_t domain;
-  static bool is_enabled = [] {
-    bool _is_enabled = false;
-    // Force NVTX marker if a tool triggered the profiler.
-    domain = nvtxDomainCreateA("TSL");
-    if (domain) {
-      _is_enabled = true;
-    }
-    VLOG(1) << "Is NVTX marker enabled? " << _is_enabled;
-    return _is_enabled;
-  }();
-  if (is_enabled) return domain;
+  static nvtxDomainHandle_t domain = nvtxDomainCreateA("TSL");
+  if (domain != nullptr) return domain;
 #endif
-  return {};
+  return std::nullopt;
 }
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
@@ -65,19 +50,39 @@ inline bool RangesEnabled() {
 #endif
 }
 
-// Note: The memory backing msg must persist until the result of this function
-// has been consumed by an NVTX API.
-inline void MakeAttributes(const char* msg, nvtxEventAttributes_t* result) {
-  *result = {0};
+// Older/simpler version; NVTX implementation copies a C-style string each time
+inline void RangePush(nvtxDomainHandle_t domain, const char* ascii) {
 #if GOOGLE_CUDA
-  result->version = NVTX_VERSION;
-  result->size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
-  result->messageType = NVTX_MESSAGE_TYPE_ASCII;
-  result->message.ascii = msg;
+  nvtxEventAttributes_t attrs{};
+  attrs.version = NVTX_VERSION;
+  attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+  attrs.messageType = NVTX_MESSAGE_TYPE_ASCII;
+  attrs.message.ascii = ascii;
+  ::nvtxDomainRangePushEx(domain, &attrs);
+#endif
+}
+inline void RangePush(nvtxDomainHandle_t domain, const std::string& str) {
+  RangePush(domain, str.c_str());
+}
+
+// More powerful version: pass a registered string instead of a C-style string,
+// and attach a generic payload. The Annotation type must implement a method
+// called NvtxSchemaId() that allows the NVTX backend to interpret the payload.
+template <typename Annotation>
+void RangePush(nvtxDomainHandle_t domain, nvtxStringHandle_t handle,
+               const Annotation& annotation) {
+#if GOOGLE_CUDA
+  nvtxEventAttributes_t attrs{};
+  attrs.version = NVTX_VERSION;
+  attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+  attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
+  attrs.message.registered = handle;
+  NVTX_PAYLOAD_EVTATTR_SET(attrs, annotation.NvtxSchemaId(), &annotation,
+                           sizeof(Annotation));
+  ::nvtxDomainRangePushEx(domain, &attrs);
 #endif
 }
 
-}  // namespace nvtx
 }  // namespace profiler
 }  // namespace tsl
 #endif  // TENSORFLOW_TSL_PROFILER_LIB_NVTX_UTILS_H_

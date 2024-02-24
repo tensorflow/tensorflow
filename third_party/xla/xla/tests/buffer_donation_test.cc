@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -125,7 +125,7 @@ class BufferDonationTest : public HloTestBase {
       args.emplace_back(ExecutionInput(std::move(owned_buffers)));
     }
 
-    StatusOr<ExecutionOutput> output_status =
+    absl::StatusOr<ExecutionOutput> output_status =
         executable->ExecuteAsyncOnStream(&service_run_options, std::move(args),
                                          /*hlo_execution_profile=*/nullptr);
     if (!expected_failure.empty()) {
@@ -289,7 +289,7 @@ TEST_F(BufferDonationTest, TestNoCopyProtectionOnPassthroughParam) {
   HloModuleConfig config;
   config.set_alias_passthrough_params(true);
 
-  StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(R"(
 HloModule module
 
@@ -317,7 +317,7 @@ ENTRY entry {
 TEST_F(BufferDonationTest, TestMustAliasNotDonated) {
   HloModuleConfig config;
 
-  StatusOr<std::unique_ptr<VerifiedHloModule>> module =
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(R"(
 HloModule module
 

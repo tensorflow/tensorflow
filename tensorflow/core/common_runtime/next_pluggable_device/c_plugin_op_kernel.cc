@@ -83,7 +83,7 @@ Status CPluginOpKernelConstruction::GetInt32AttrList(
                                       &total_size, status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
 
-  value->reserve(list_size);
+  value->resize(list_size);
 
   TF_OpKernelConstruction_GetAttrInt32List(
       ctx_, attr_name.data(), value->data(), /*max_vals=*/list_size, status);
@@ -249,6 +249,11 @@ std::string_view CPluginOpKernelContext::GetOpKernelRequestedInput(
 std::string_view CPluginOpKernelContext::GetOpKernelName() const {
   TF_StringView op_kernel_name = TF_GetOpKernelName(ctx_);
   return {op_kernel_name.data, op_kernel_name.len};
+}
+
+std::string_view CPluginOpKernelContext::GetDeviceName() const {
+  TF_StringView device_name = TF_GetDeviceName(ctx_);
+  return {device_name.data, device_name.len};
 }
 
 Status CPluginOpKernelContext::GetConfigProto(

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,32 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_loop_analysis.h"
 #include "xla/statusor.h"
 #include "xla/union_find.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -41,6 +48,73 @@ namespace xla {
 namespace m = match;
 using hlo_query::ContainsInstrWithOpcode;
 using std::optional;
+
+// This function removes trivial compare hlo instructions inside the while body.
+// Assuming a while loop with known trip count, k, loop induction variable i,
+// and the initial loop induction value c, a compare(i,x) instruction is trivial
+// if:
+//   1) x is a constant and x >= k + c.
+//   2) x is a constant x <= c.
+static StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
+  std::optional<int64_t> indvar_index = GetLoopInductionVarTupleIdx(while_op);
+  if (indvar_index.has_value()) {
+    if (while_op->operand(0)->operand(*indvar_index)->IsConstant()) {
+      const HloConstantInstruction* init_value_hlo =
+          Cast<HloConstantInstruction>(
+              while_op->operand(0)->operand(*indvar_index));
+      std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
+          while_op, indvar_index.value(), init_value_hlo->literal());
+
+      if (trip_count.has_value()) {
+        std::optional<int64_t> init_value =
+            LiteralUtil::LiteralAsScalarInt64(init_value_hlo->literal());
+        for (HloInstruction* body_instr :
+             while_op->while_body()->instructions()) {
+          HloInstruction* constant;
+          if (Match(body_instr,
+                    m::Compare(m::GetTupleElement(m::Parameter(),
+                                                  indvar_index.value()),
+                               m::Constant(&constant).IsConstantScalar()))) {
+            std::optional<int64_t> constant_value =
+                LiteralUtil::LiteralAsScalarInt64(constant->literal());
+            if (constant_value.has_value()) {
+              // x <= c && i >= c --> i > x
+              if (constant_value.value() <= init_value.value()) {
+                if (body_instr->comparison_direction() ==
+                    ComparisonDirection::kLt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, false)));
+                  return true;
+                } else if (body_instr->comparison_direction() ==
+                           ComparisonDirection::kGt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, true)));
+                  return true;
+                }
+              }
+              // x >= c + k && i < c + k --> i < x
+              if (constant_value.value() >=
+                  init_value.value() + trip_count.value()) {
+                if (body_instr->comparison_direction() ==
+                    ComparisonDirection::kLt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, true)));
+                  return true;
+                } else if (body_instr->comparison_direction() ==
+                           ComparisonDirection::kGt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, false)));
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
 
 // A helper function that copy the frontend attributes from the old while op to
 // the new one.
@@ -51,10 +125,11 @@ void CopyFrontendAttributes(HloInstruction* old_while_op,
 
 // This is a utility function that removes the given tuple indices from the
 // while loop init, body, and condition. The final shape returned is still the
-// same as before.
+// same as before. If set index_for_replaced will replace any use of the removed
+// indices in the final shape with a copy of the removed index.
 static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
-    HloInstruction* while_op,
-    absl::flat_hash_set<int64_t>& used_tuple_indices) {
+    HloInstruction* while_op, absl::flat_hash_set<int64_t>& used_tuple_indices,
+    int64_t index_for_replaced = -1) {
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64_t> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                             used_tuple_indices.end());
@@ -200,8 +275,11 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   const int64_t tuple_size = ShapeUtil::TupleElementCount(while_init->shape());
   for (int64_t old_idx = 0; old_idx < tuple_size; ++old_idx) {
     auto new_tuple_idx_it = old_to_new_tuple_idx.find(old_idx);
-    if (new_tuple_idx_it != old_to_new_tuple_idx.end()) {
-      int64_t gte_idx = new_tuple_idx_it->second;
+    if (new_tuple_idx_it != old_to_new_tuple_idx.end() ||
+        index_for_replaced != -1) {
+      int64_t gte_idx = new_tuple_idx_it != old_to_new_tuple_idx.end()
+                            ? new_tuple_idx_it->second
+                            : index_for_replaced;
       new_tuple_elems.push_back(
           computation->AddInstruction(HloInstruction::CreateGetTupleElement(
               new_while_op->shape().tuple_shapes(gte_idx), new_while_op,
@@ -472,7 +550,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 // duplicates by replacing them with tuple_index, followed by a call to
 // RemoveDeadTupleIndices.
 static StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
-    HloInstruction* while_op, const int64_t tuple_index,
+    HloInstruction* while_op, const int64_t tuple_index, bool replace_with_init,
     absl::flat_hash_set<int64_t>& duplicates) {
   HloComputation* while_cond = while_op->while_condition();
   HloComputation* while_body = while_op->while_body();
@@ -512,12 +590,21 @@ static StatusOr<HloInstruction*> TryRemoveRepeatedWhileTupleIndicesHelper(
       used_tuple_indices.insert(index);
     }
   }
-
   // Remove the duplicate tuple elements.
-  TF_ASSIGN_OR_RETURN(while_op,
-                      RemoveDeadTupleIndices(while_op, used_tuple_indices));
+  TF_ASSIGN_OR_RETURN(
+      while_op, RemoveDeadTupleIndices(while_op, used_tuple_indices,
+                                       replace_with_init ? -1 : tuple_index));
 
   return while_op;
+}
+
+// Returns if this instruction looks like an insertion inside a variable of a
+// while loop.
+static bool IsDynamicUpdateSliceWhileInsertion(
+    const HloInstruction* instr, const HloComputation* while_body) {
+  return instr->opcode() == HloOpcode::kDynamicUpdateSlice &&
+         instr->operand(0)->opcode() == HloOpcode::kGetTupleElement &&
+         instr->operand(0)->operand(0) == while_body->parameter_instruction(0);
 }
 
 // If the while loop init passes the same values to several tuple indices, and
@@ -564,12 +651,23 @@ static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     absl::flat_hash_set<int64_t> duplicates;
     auto* pivot_init_elem = while_init->operand(index_to_investigate);
     auto* pivot_body_elem = while_body_root->operand(index_to_investigate);
+    bool replace_with_init = true;
     if (pivot_body_elem->opcode() == HloOpcode::kGetTupleElement &&
         pivot_body_elem->operand(0) == while_body->parameter_instruction(0)) {
       if (pivot_body_elem->tuple_index() != index_to_investigate) {
         VLOG(2) << "Mismatch between pivot_body_elem->tuple_index() "
                 << pivot_body_elem->tuple_index() << " index_to_investigate "
                 << index_to_investigate;
+        index_to_investigate++;
+        continue;
+      }
+    } else if (IsDynamicUpdateSliceWhileInsertion(pivot_body_elem,
+                                                  while_body)) {
+      if (pivot_body_elem->operand(0)->tuple_index() != index_to_investigate) {
+        VLOG(2)
+            << "Mismatch between pivot_body_elem->operand(0)->tuple_index() "
+            << pivot_body_elem->operand(0)->tuple_index()
+            << " index_to_investigate " << index_to_investigate;
         index_to_investigate++;
         continue;
       }
@@ -583,13 +681,44 @@ static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
          i < while_shape.tuple_shapes_size(); ++i) {
       auto* init_elem = while_init->operand(i);
       auto* body_elem = while_body_root->operand(i);
-      if (body_elem->opcode() == HloOpcode::kGetTupleElement &&
+      if (pivot_body_elem->opcode() == HloOpcode::kGetTupleElement &&
+          body_elem->opcode() == HloOpcode::kGetTupleElement &&
           body_elem->operand(0) == while_body->parameter_instruction(0)) {
         if (body_elem->tuple_index() != i) {
           VLOG(2) << "Mismatch between body_elem->tuple_index() "
                   << body_elem->tuple_index() << " i " << i;
           continue;
         }
+      } else if (IsDynamicUpdateSliceWhileInsertion(pivot_body_elem,
+                                                    while_body) &&
+                 IsDynamicUpdateSliceWhileInsertion(body_elem, while_body)) {
+        if (pivot_body_elem->operand_count() != body_elem->operand_count()) {
+          VLOG(2) << "Mismatch in operand count of dynamic-update-slice "
+                  << pivot_body_elem->operand_count() << " vs "
+                  << body_elem->operand_count();
+          continue;
+        }
+        if (body_elem->operand(0)->tuple_index() != i) {
+          VLOG(2) << "Mismatch between body_elem->operand(0)->tuple_index() "
+                  << body_elem->tuple_index() << " i " << i;
+          continue;
+        }
+        if (pivot_body_elem->operand(0) == body_elem->operand(0)) {
+          VLOG(2) << "Inserting in the same input index";
+          continue;
+        }
+        bool mismatch = false;
+        for (int64_t i = 1; i < body_elem->operand_count(); ++i) {
+          if (body_elem->operand(i) != pivot_body_elem->operand(i)) {
+            VLOG(2) << "Mismatch in insertion indices or values";
+            mismatch = true;
+            break;
+          }
+        }
+        if (mismatch) {
+          continue;
+        }
+        replace_with_init = false;
       } else {
         continue;
       }
@@ -607,9 +736,9 @@ static StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
     if (!duplicates.empty()) {
       VLOG(2) << "Duplicate found " << duplicates.size() << " pivot_init "
               << pivot_init_elem->ToString();
-      TF_ASSIGN_OR_RETURN(while_op,
-                          TryRemoveRepeatedWhileTupleIndicesHelper(
-                              while_op, index_to_investigate, duplicates));
+      TF_ASSIGN_OR_RETURN(while_op, TryRemoveRepeatedWhileTupleIndicesHelper(
+                                        while_op, index_to_investigate,
+                                        replace_with_init, duplicates));
       changed = true;
       VLOG(2) << "Changed while_op " << while_op->ToString()
               << " while_op operand count " << while_op->operand_count();
@@ -1391,6 +1520,14 @@ StatusOr<bool> WhileLoopSimplifier::Run(
     changed |= result;
     if (result) {
       continue;
+    }
+
+    if (simplify_compare_instrs_) {
+      TF_ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
+      changed |= result;
+      if (result) {
+        continue;
+      }
     }
 
     // We can't remove while loops that contain send/recv nodes, because we rely

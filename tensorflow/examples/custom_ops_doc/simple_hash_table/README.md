@@ -519,7 +519,8 @@ class SimpleHashTableCreateOpKernel : public OpKernel {
 
  private:
   // Just to be safe, avoid accidentally copying the kernel.
-  TF_DISALLOW_COPY_AND_ASSIGN(SimpleHashTableCreateOpKernel);
+  SimpleHashTableCreateOpKernel(const SimpleHashTableCreateOpKernel&) = delete;
+  void operator=(const SimpleHashTableCreateOpKernel&) = delete;
 };
 ```
 

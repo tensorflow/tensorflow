@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -46,7 +47,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -111,6 +112,16 @@ class PjRtExecutable final
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputShardings();
+  }
+
+  StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
+    DCHECK(this);
+    return pjrt_executable_->GetParameterLayouts();
+  }
+
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const override {
+    DCHECK(this);
+    return pjrt_executable_->GetOutputLayouts();
   }
 
   StatusOr<std::optional<std::string>> Fingerprint() const override;
@@ -202,6 +213,12 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->name();
   }
 
+  Future<absl::Status> GetReadyFuture() const override {
+    // PjRtCompiler blocks until compilation finishes and returns only the
+    // executables that are ready.
+    return Future<absl::Status>(absl::OkStatus());
+  }
+
   std::optional<std::vector<OpSharding>> GetParameterShardings()
       const override {
     DCHECK(this);
@@ -211,6 +228,16 @@ class PjRtLoadedExecutable final
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputShardings();
+  }
+
+  StatusOr<std::vector<Layout>> GetParameterLayouts() const override {
+    DCHECK(this);
+    return pjrt_loaded_executable_->GetParameterLayouts();
+  }
+
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const override {
+    DCHECK(this);
+    return pjrt_loaded_executable_->GetOutputLayouts();
   }
 
   StatusOr<std::optional<std::string>> Fingerprint() const override;

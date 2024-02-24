@@ -132,7 +132,8 @@ class ExecutableClosure {
   ResourceVarsSnapshot resource_var_snapshots_;
   int num_constant_args_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutableClosure);
+  ExecutableClosure(const ExecutableClosure&) = delete;
+  void operator=(const ExecutableClosure&) = delete;
 };
 
 // This maintains a mapping from a globally unique ID to ExecutableClosure
@@ -173,7 +174,8 @@ class ExecutableClosureStore {
   absl::flat_hash_map<KeyT, ExecutableClosure<ExecutableType, ClientType>>
       closures_ TF_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutableClosureStore);
+  ExecutableClosureStore(const ExecutableClosureStore&) = delete;
+  void operator=(const ExecutableClosureStore&) = delete;
 };
 
 using XlaExecutableClosure =
@@ -210,7 +212,7 @@ Status GetTaskName(const std::string_view device_name, std::string* task_name) {
                                    device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Provide SendDeviceMemoryFunction for XLA host callbacks.  This callback
@@ -382,19 +384,23 @@ Status CompileToLocalExecutable(
     return absl::InternalError("No resource manager.");
   }
 
+  TF_ASSIGN_OR_RETURN(DeviceType compilation_device_type,
+                      GetCompilationDeviceType(platform_info.device_type()));
+
   XlaDeviceCompiler* xla_device_compiler;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
       rm->default_container(), "xla_device_compiler", &xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
-                                      platform_info, xla_device_compiler);
+                                      platform_info, compilation_device_type,
+                                      xla_device_compiler);
       }));
   DeviceCompilationProfiler* profiler;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
       rm->default_container(), "device_compilation_profiler", &profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
+        return absl::OkStatus();
       }));
   // Hold the reference to the XLA device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
@@ -893,7 +899,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
                                  closure.client(), closure.executable(), ctx));
     }
 
-    OP_REQUIRES_OK(ctx, OkStatus());
+    OP_REQUIRES_OK(ctx, absl::OkStatus());
     return;
   }
 

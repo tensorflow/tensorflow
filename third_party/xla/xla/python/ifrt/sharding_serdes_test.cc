@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,9 +21,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -88,6 +92,41 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shapes(),
               ElementsAreArray(sharding->shard_shapes()));
+}
+
+TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({10, 20}),
+                           BoundedDynamicShapeTag({false, true})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape1,
+      DynamicShape::Create(Shape({3, 20}),
+                           BoundedDynamicShapeTag({false, true})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape shard_dynamic_shape2,
+      DynamicShape::Create(Shape({7, 20}),
+                           BoundedDynamicShapeTag({false, true})));
+  auto sharding = ConcreteSharding::Create(
+      GetDevices({0, 1}), MemoryKind("abc"),
+      /*dynamic_shape=*/dynamic_shape,
+      /*shard_dynamic_shapes=*/{shard_dynamic_shape1, shard_dynamic_shape2});
+
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*sharding));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized,
+      Deserialize(serialized,
+                  std::make_unique<DeserializeShardingOptions>(
+                      absl::bind_front(&Client::LookupDevice, client()))));
+
+  const auto* out_sharding =
+      llvm::dyn_cast<ConcreteSharding>(deserialized.get());
+  ASSERT_NE(out_sharding, nullptr);
+  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->dynamic_shape(), sharding->dynamic_shape());
+  EXPECT_THAT(out_sharding->shard_dynamic_shapes(),
+              ElementsAreArray(sharding->shard_dynamic_shapes()));
 }
 
 TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {

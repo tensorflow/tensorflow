@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -110,7 +111,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   xla::CompileOnlyClient* client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;

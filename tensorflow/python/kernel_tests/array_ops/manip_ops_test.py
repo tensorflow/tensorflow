@@ -105,11 +105,25 @@ class RollTest(test_util.TensorFlowTestCase):
     self._testAll(np.zeros([0, 1]), 1, 1)
     self._testAll(np.zeros([1, 0]), 1, 1)
 
+  @test_util.run_v2_only
+  def testLargeInput(self):
+    with test_util.force_cpu():
+      # Num elements just over INT_MAX for int32 to ensure no overflow
+      np_input = np.arange(0, 128 * 524289 * 33, dtype=np.int8).reshape(
+          128, -1, 33
+      )
+
+      for shift in range(-5, 5):
+        roll = manip_ops.roll(np_input, shift, 0)
+        self.assertAllEqual(roll[shift], np_input[0], msg=f"shift={shift}")
+        self.assertAllEqual(roll[0], np_input[-shift], msg=f"shift={shift}")
+
   @test_util.run_deprecated_v1
   def testInvalidInputShape(self):
     # The input should be 1-D or higher, checked in shape function.
-    with self.assertRaisesRegex(ValueError,
-                                "Shape must be at least rank 1 but is rank 0"):
+    with self.assertRaisesRegex(
+        ValueError, "Shape must be at least rank 1 but is rank 0"
+    ):
       manip_ops.roll(7, 1, 0)
 
   @test_util.run_deprecated_v1

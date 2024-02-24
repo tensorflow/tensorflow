@@ -41,7 +41,7 @@ class MemoryInputStream : public io::InputStreamInterface {
                                      bytes_to_read);
     }
     int64_t bytes = bytes_to_read;
-    Status s = OkStatus();
+    Status s = absl::OkStatus();
     if (pos_ + bytes_to_read > len_) {
       bytes = len_ - pos_;
       s = errors::OutOfRange("reached end of file");
@@ -58,7 +58,7 @@ class MemoryInputStream : public io::InputStreamInterface {
 
   Status Reset() override {
     pos_ = 0;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

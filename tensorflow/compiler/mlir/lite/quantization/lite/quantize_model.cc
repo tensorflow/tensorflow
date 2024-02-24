@@ -58,7 +58,8 @@ TfLiteStatus QuantizeModel(
     bool whole_model_verify, bool legacy_float_scale,
     const absl::flat_hash_set<std::string>& denylisted_ops,
     const absl::flat_hash_set<std::string>& denylisted_nodes,
-    const bool enable_variable_quantization) {
+    const bool enable_variable_quantization,
+    bool disable_per_channel_for_dense_layers) {
   // Translate TFLite names to mlir op names.
   absl::flat_hash_set<std::string> denylisted_mlir_op_names;
   for (const auto& entry : denylisted_ops) {
@@ -84,6 +85,8 @@ TfLiteStatus QuantizeModel(
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
+  quant_specs.disable_per_channel_for_dense_layers =
+      disable_per_channel_for_dense_layers;
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;

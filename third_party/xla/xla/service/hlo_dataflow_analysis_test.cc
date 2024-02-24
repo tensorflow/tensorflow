@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,27 +15,35 @@ limitations under the License.
 
 #include "xla/service/hlo_dataflow_analysis.h"
 
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/service/async_op_canonicalizer.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/literal_util.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/status.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -57,8 +65,6 @@ class HloDataflowAnalysisTest : public HloTestBase,
   const HloDataflowAnalysis& RunAnalysis(bool ssa_form,
                                          bool bitcast_defines_value = false,
                                          bool run_dce = true) {
-    AsyncOpCanonicalizer async_op_canonicalizer;
-    EXPECT_TRUE(async_op_canonicalizer.Run(module_.get()).ok());
     if (run_dce) {
       HloDCE dce;
       EXPECT_TRUE(dce.Run(module_.get()).ok());
@@ -1076,8 +1082,8 @@ TEST_P(HloDataflowAnalysisTest, AsyncOps) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-update), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1142,10 +1148,10 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %b = f32[4096]{0} parameter(1)
   %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
   %negate_2 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %async-update = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-update(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), to_apply=%called_computation
+  %async-update = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-update(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
   %negate_3 = f32[4096]{0} negate(f32[4096]{0} %b)
   %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_2, f32[4096]{0} %negate_3)
-  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-update), to_apply=%called_computation
+  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-update)
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
 }
 )";
@@ -1190,8 +1196,8 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-update(async-start), custom_call_target="foo"
-    ROOT async-done = (f32[2,3], f32[2,3]) custom-call-done(async-update), custom_call_target="foo"
+    async-update = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-update(async-start)
+    ROOT async-done = (f32[2,3], f32[2,3]) custom-call-done(async-update)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1239,7 +1245,7 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
               UnorderedElementsAre(&analysis.GetValueDefinedAt(param)));
 }
 
-TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
+TEST_P(HloDataflowAnalysisTest, SetDimensionSizeCreatesValue) {
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, vector_shape_, "param"));
@@ -1254,11 +1260,11 @@ TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
   bool ssa_form = GetParam();
   {
     const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
-    EXPECT_EQ(analysis.values().size(), 2);
+    EXPECT_EQ(analysis.values().size(), 3);
 
     EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(sds));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(param).live_out_of_module());
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(sds));
+    EXPECT_TRUE(analysis.GetValueDefinedAt(sds).live_out_of_module());
   }
 }
 

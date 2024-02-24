@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,8 +34,10 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/executable_metadata.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -43,7 +45,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -99,6 +100,8 @@ struct CompileOptions {
   // overriding if appropriate.
   using OptionOverride = std::variant<std::string, bool, int64_t, double>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+
+  std::optional<xla::Compiler::TargetConfig> target_config;
 
   // Used to indicate the precision configuration.
   PrecisionConfig::Precision matrix_unit_operand_precision =
@@ -157,7 +160,6 @@ struct PjRtTransferMetadata {
 };
 
 class PjRtChunk;
-class PjRtTransferMetadata;
 class CopyToDeviceStream;
 
 struct SendCallback {
@@ -273,6 +275,28 @@ struct CompiledMemoryStats {
 
   std::string serialized_hlo_proto = "";
   std::string DebugString() const;
+
+  CompiledMemoryStatsProto ToProto() {
+    CompiledMemoryStatsProto proto;
+    proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
+    proto.set_argument_size_in_bytes(argument_size_in_bytes);
+    proto.set_output_size_in_bytes(output_size_in_bytes);
+    proto.set_alias_size_in_bytes(alias_size_in_bytes);
+    proto.set_temp_size_in_bytes(temp_size_in_bytes);
+    proto.mutable_hlo_proto()->ParseFromString(serialized_hlo_proto);
+    return proto;
+  }
+
+  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto) {
+    CompiledMemoryStats stats;
+    stats.generated_code_size_in_bytes = proto.generated_code_size_in_bytes();
+    stats.argument_size_in_bytes = proto.argument_size_in_bytes();
+    stats.output_size_in_bytes = proto.alias_size_in_bytes();
+    stats.alias_size_in_bytes = proto.alias_size_in_bytes();
+    stats.temp_size_in_bytes = proto.temp_size_in_bytes();
+    stats.serialized_hlo_proto = proto.hlo_proto().SerializeAsString();
+    return stats;
+  }
 };
 
 class PjRtExecutable {
@@ -305,6 +329,12 @@ class PjRtExecutable {
   // should be equal to `GetHloModules()`.
   virtual StatusOr<std::vector<std::vector<DimensionVector>>>
   GetOutputDimensions() const;
+
+  // Returns the layout of each input parameter.
+  virtual StatusOr<std::vector<Layout>> GetParameterLayouts() const;
+
+  // Returns the layout of each output.
+  virtual StatusOr<std::vector<Layout>> GetOutputLayouts() const;
 
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be

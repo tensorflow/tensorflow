@@ -109,8 +109,11 @@ sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
 update_bazel_flags
 
+start-stop-daemon -b -n portserver.py -a /usr/local/bin/python3 -S -- /usr/local/bin/portserver.py
+
 bazel test ${TF_TEST_FLAGS} \
     --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+    --test_env=PORTSERVER_ADDRESS=@unittest-portserver \
     --build_tag_filters=${TF_FILTER_TAGS} \
     --test_tag_filters=${TF_FILTER_TAGS} \
     --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \

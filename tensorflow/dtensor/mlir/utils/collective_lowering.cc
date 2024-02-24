@@ -77,6 +77,8 @@ namespace internal {
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
+constexpr char kCpuDevice[] = "/device:CPU:0";
+constexpr char kDeviceAttr[] = "device";
 
 std::atomic<int32> tf_collective_instance_key_base{0};
 
@@ -523,7 +525,7 @@ mlir::LogicalResult LowerAllReduceOpImpl(
 
   Mesh mesh = output_layout->mesh();
   // This will become more general when Topology is properly defined.
-  const bool is_tpu = all_reduce.getDeviceType().endswith("TPU");
+  const bool is_tpu = all_reduce.getDeviceType().ends_with("TPU");
 
   const int32_t key_base = GetCollectiveKeyBase(mesh, group_assignment_attr);
   mlir::Operation* final_op;
@@ -592,7 +594,7 @@ mlir::LogicalResult LowerReduceScatterOp(
   int32 scatter_dim = (*scatter_attr.begin()).getSExtValue();
 
   mlir::OpBuilder builder(reduce_scatter);
-  if (reduce_scatter.getDeviceType().endswith("TPU")) {
+  if (reduce_scatter.getDeviceType().ends_with("TPU")) {
     // For TPUs, lower to XlaReduceScatter straightforwardly.
     mlir::Operation* xla_reduce_scatter =
         builder.create<mlir::TF::XlaReduceScatterOp>(
@@ -602,7 +604,7 @@ mlir::LogicalResult LowerReduceScatterOp(
             reduce_scatter.getReduceOpAttr());
     SetSingleLayoutOnOp(xla_reduce_scatter, *output_layout);
     reduce_scatter.replaceAllUsesWith(xla_reduce_scatter);
-  } else if (reduce_scatter.getDeviceType().endswith("GPU") &&
+  } else if (reduce_scatter.getDeviceType().ends_with("GPU") &&
              UseNcclCommunicationOnGpu()) {
     // Use CollectiveReduceScatterV2 which has a NCCL GPU implementation.
     mlir::Value relative_device_id =
@@ -1144,6 +1146,13 @@ mlir::LogicalResult LowerAllScatterOp(
                                   builder.getIntegerType(32)),
       mesh_coordinates, matrix_value);
 
+  // We need to softly place the DT_INT32 MatMulOp for GPUs.
+  if (original_layout.mesh().is_gpu_mesh() ||
+      desired_layout.mesh().is_gpu_mesh()) {
+    // TODO(b/303662238): See whether we can replicate soft placement here.
+    offset->setAttr(kDeviceAttr, builder.getStringAttr(kCpuDevice));
+  }
+
   // Input to slice needs to be rank 1, so we need to squeeze it.
   mlir::TF::SqueezeOp offset_squeezed = builder.create<mlir::TF::SqueezeOp>(
       all_scatter.getLoc(),
@@ -1210,7 +1219,7 @@ mlir::LogicalResult LowerAllToAllOp(mlir::TF::DTensorAllToAllOp all_to_all) {
     return all_to_all.emitOpError();
   }
 
-  if (mlir::StringRef(device_type).endswith("TPU")) {
+  if (mlir::StringRef(device_type).ends_with("TPU")) {
     // For TPUs, lower to XlaAllToAll.
     mlir::Operation* xla_all_to_all = builder.create<mlir::TF::AllToAllOp>(
         loc, all_to_all.getResult().getType(), all_to_all.getInput(),

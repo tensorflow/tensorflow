@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 
@@ -44,15 +43,14 @@ class ScopedActivateExecutorContext {
   // fatal failure if it is not CUDA inside.
   explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
 
-  ScopedActivateExecutorContext(ScopedActivateExecutorContext&& other);
-
   ~ScopedActivateExecutorContext();
 
  private:
   // The cuda.h-using datatype that we wrap.
   ScopedActivateContext* driver_scoped_activate_context_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivateExecutorContext);
+  ScopedActivateExecutorContext(const ScopedActivateExecutorContext&) = delete;
+  void operator=(const ScopedActivateExecutorContext&) = delete;
 };
 
 }  // namespace gpu

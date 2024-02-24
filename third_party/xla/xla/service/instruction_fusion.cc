@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -177,12 +177,14 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kDot:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
@@ -681,7 +683,8 @@ StatusOr<bool> InstructionFusion::Run(
       VLOG(1) << "There are " << fused_count << " fused bits that cause "
               << fuse_count << " fusion actions.";
     }
-    *module->config().mutable_fusion_config() = std::move(fusion_config);
+    *module->mutable_config().mutable_fusion_config() =
+        std::move(fusion_config);
   }
 
   VLOG(1) << "Fusion count: " << fuse_count;

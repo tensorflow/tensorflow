@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/tracing.h"
 #include "xla/runtime/type_id.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
 
 namespace Eigen {
 struct half;

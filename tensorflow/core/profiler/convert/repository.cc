@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -38,9 +40,10 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 std::string GetHostnameByPath(absl::string_view xspace_path) {
-  std::string file_name = std::string(tensorflow::io::Basename(xspace_path));
-  std::vector<std::string> parts = absl::StrSplit(file_name, '.');
-  return parts[0];
+  std::string_view file_name = tensorflow::io::Basename(xspace_path);
+  // Remove suffix from file_name, preserving entire prefix.
+  absl::ConsumeSuffix(&file_name, ".xplane.pb");
+  return std::string(file_name);
 }
 }  // namespace
 

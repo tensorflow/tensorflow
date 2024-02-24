@@ -195,7 +195,7 @@ Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
                                 result.collective_info->group_size)
         .status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,

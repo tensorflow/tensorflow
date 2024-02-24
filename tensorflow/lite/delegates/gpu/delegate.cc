@@ -20,12 +20,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 
+#include "tensorflow/lite/logger.h"
+
 #if defined(__ANDROID__)
 #include <android/hardware_buffer.h>
 #endif
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
@@ -34,6 +37,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/numbers.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 
@@ -46,6 +50,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/gpu/android_hardware_buffer.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
@@ -105,17 +110,9 @@ using tflite::delegates::utils::WriteSyncAttrs;
   } while (false)
 
 // This idiom allows selecting alternate code paths depending on whether or not
-// AHWB is available.  However, it's still necessary to directly guard calls to
-// AHardwareBuffer_* functions with "if (__builtin_available(android 26, *))" to
-// avoid compiler errors.
-#define TFLITE_AHWB_AVAILABLE()               \
-  [] {                                        \
-    if (__builtin_available(android 26, *)) { \
-      return true;                            \
-    } else {                                  \
-      return false;                           \
-    }                                         \
-  }()
+// AHWB is available.
+#define TFLITE_AHWB_AVAILABLE() \
+  ::tflite::gpu::OptionalAndroidHardwareBuffer::Instance().Supported()
 
 namespace tflite {
 namespace gpu {
@@ -123,6 +120,7 @@ namespace {
 
 using delegates::Serialization;
 using delegates::SerializationParams;
+using tflite::TFLITE_LOG_WARNING;
 
 constexpr char kSerializedDataPrefix[] = "gpuv2_data_";
 
@@ -156,6 +154,69 @@ InferenceUsage ToUsage(int32_t usage) {
       return InferenceUsage::BALANCED;
   }
   return InferenceUsage::UNKNOWN;
+}
+
+bool ParseOptions(const char* const* options_keys,
+                  const char* const* options_values, size_t num_options,
+                  TfLiteGpuDelegateOptionsV2* options) {
+  for (size_t i = 0; i < num_options; ++i) {
+    if (strcmp(options_keys[i], "is_precision_loss_allowed")) {
+      if (!absl::SimpleAtoi(options_values[i],
+                            &options->is_precision_loss_allowed)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_preference")) {
+      if (!absl::SimpleAtoi(options_values[i],
+                            &options->inference_preference)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_priority1")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->inference_priority1)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_priority2")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->inference_priority2)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_priority3")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->inference_priority3)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "experimental_flags")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->experimental_flags)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "max_delegated_partitions")) {
+      if (!absl::SimpleAtoi(options_values[i],
+                            &options->max_delegated_partitions)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "serialization_dir")) {
+      options->serialization_dir = options_values[i];
+    } else if (strcmp(options_keys[i], "model_token")) {
+      options->model_token = options_values[i];
+    } else {
+      TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: unknown option %s.",
+                 options_keys[i]);
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Forward declarations.
@@ -528,9 +589,19 @@ absl::Status DelegateKernelCore::InitializeOpenGlApi(
   auto delegate_options = delegate_->options();
   gl::InferenceOptions options;
   options.usage = ToUsage(delegate_options.inference_preference);
-  options.priority1 = ToPriority(delegate_options.inference_priority1);
-  options.priority2 = ToPriority(delegate_options.inference_priority2);
-  options.priority3 = ToPriority(delegate_options.inference_priority3);
+  // If is_precision_loss_allowed == -1, then just use priorities instead
+  // of paying attention to is_precision_loss_allowed value.
+  if (delegate_options.is_precision_loss_allowed == -1) {
+    options.priority1 = ToPriority(delegate_options.inference_priority1);
+    options.priority2 = ToPriority(delegate_options.inference_priority2);
+    options.priority3 = ToPriority(delegate_options.inference_priority3);
+  } else {
+    if (delegate_options.is_precision_loss_allowed == 0) {
+      options.priority1 = InferencePriority::MAX_PRECISION;
+    } else {
+      options.priority1 = InferencePriority::MIN_LATENCY;
+    }
+  }
   RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                        options, builder));
   enforce_same_thread_ = true;
@@ -772,24 +843,24 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
   using UniquePtrAHardwareBuffer =
       std::unique_ptr<AHardwareBuffer, void (*)(AHardwareBuffer*)>;
   static UniquePtrAHardwareBuffer Acquire(AHardwareBuffer* ahwb) {
-    if (__builtin_available(android 26, *)) {
-      AHardwareBuffer_acquire(ahwb);
+    if (OptionalAndroidHardwareBuffer::Instance().Supported()) {
+      OptionalAndroidHardwareBuffer::Instance().Acquire(ahwb);
+      return UniquePtrAHardwareBuffer(ahwb, [](AHardwareBuffer* b) {
+        OptionalAndroidHardwareBuffer::Instance().Release(b);
+      });
     } else {
       TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                       "attempting AHardwareBuffer_acquire on a device without "
                       "AHardwareBuffer support");
+      return {nullptr, [](AHardwareBuffer*) {}};
     }
-    return UniquePtrAHardwareBuffer(ahwb, [](AHardwareBuffer* b) {
-      if (__builtin_available(android 26, *)) {
-        AHardwareBuffer_release(b);
-      }
-    });
   }
   static AHardwareBuffer_Desc Describe(
       const UniquePtrAHardwareBuffer& uptr_ahwb) {
     AHardwareBuffer_Desc desc_ahwb = {};
-    if (__builtin_available(android 26, *)) {
-      AHardwareBuffer_describe(uptr_ahwb.get(), &desc_ahwb);
+    if (OptionalAndroidHardwareBuffer::Instance().Supported()) {
+      OptionalAndroidHardwareBuffer::Instance().Describe(uptr_ahwb.get(),
+                                                         &desc_ahwb);
     } else {
       TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                       "attempting AHardwareBuffer_describe on a device without "
@@ -1425,4 +1496,20 @@ TfLiteDelegate* TfLiteGpuDelegateV2CreateAsync(
 
 void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate) {
   delete tflite::gpu::GetDelegate(delegate);
+}
+
+TfLiteDelegate* tflite_plugin_create_delegate(
+    const char* const* options_keys, const char* const* options_values,
+    size_t num_options, void (*report_error)(const char*)) {
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  if (!tflite::gpu::ParseOptions(options_keys, options_values, num_options,
+                                 &options)) {
+    return nullptr;
+  }
+
+  return TfLiteGpuDelegateV2Create(&options);
+}
+
+void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate) {
+  TfLiteGpuDelegateV2Delete(delegate);
 }

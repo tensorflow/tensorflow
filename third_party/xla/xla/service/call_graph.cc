@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -188,6 +188,21 @@ bool CallGraph::Dominates(const HloComputation* a,
                           const HloComputation* b) const {
   absl::flat_hash_set<const HloComputation*> visited;
   return DominatesHelper(a, b, &visited);
+}
+
+bool CallGraph::CanReach(const HloComputation* a,
+                         const HloComputation* b) const {
+  if (a == b) {
+    return true;
+  }
+
+  const CallGraphNode& b_node = GetNode(b);
+  for (const HloComputation* b_caller : b_node.callers()) {
+    if (CanReach(a, b_caller)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {

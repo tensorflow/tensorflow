@@ -148,7 +148,8 @@ class SnappyOutputBuffer : public WritableFile {
   char* next_out_;
   size_t avail_out_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SnappyOutputBuffer);
+  SnappyOutputBuffer(const SnappyOutputBuffer&) = delete;
+  void operator=(const SnappyOutputBuffer&) = delete;
 };
 
 }  // namespace io

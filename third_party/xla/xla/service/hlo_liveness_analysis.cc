@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "xla/service/hlo_liveness_analysis.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/types.h"
@@ -116,25 +120,28 @@ void PropagateLivenessThroughTuple(
     HloLivenessAnalysis::HloIndexMap* live_index_map, Worklist* worklist,
     Workset* workset) {
   CHECK_EQ(instruction->opcode(), HloOpcode::kTuple);
-  for (int64_t operand_index = 0; operand_index < instruction->operand_count();
-       ++operand_index) {
-    const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
-    ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
-      if (shape_index.empty() || shape_index[0] != operand_index) {
-        return;
-      }
-      // Mark top-level index of operand at 'operand_index'.
-      MarkLiveAtIndex(instruction->operand(operand_index), {}, live_index_map,
-                      worklist, workset);
-      // Mark sub-shape index of operand at 'operand_index'.
-      ShapeIndex operand_shape_index;
-      for (int i = 1; i < shape_index.size(); ++i) {
-        operand_shape_index.push_back(shape_index[i]);
-      }
-      MarkLiveAtIndex(instruction->operand(operand_index), operand_shape_index,
-                      live_index_map, worklist, workset);
-    });
-  }
+  const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
+
+  ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+    const size_t size = shape_index.size();
+    if (size == 0) {
+      return;
+    }
+    const int64_t operand_index = shape_index[0];
+    if (operand_index >= instruction->operand_count()) {
+      return;
+    }
+    // Mark top-level index of operand at 'operand_index'.
+    MarkLiveAtIndex(instruction->operand(operand_index), {}, live_index_map,
+                    worklist, workset);
+    // Mark sub-shape index of operand at 'operand_index'.
+    ShapeIndex operand_shape_index(size - 1);
+    for (int i = 1; i < size; ++i) {
+      operand_shape_index[i - 1] = shape_index[i];
+    }
+    MarkLiveAtIndex(instruction->operand(operand_index), operand_shape_index,
+                    live_index_map, worklist, workset);
+  });
 }
 
 // Propagates liveness through GetTupleElement instructions.

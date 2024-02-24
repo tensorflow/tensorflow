@@ -45,10 +45,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -83,7 +83,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/stream_executor/device_host_allocator.h"
+#include "xla/stream_executor/integrations/device_host_allocator.h"
 #endif  // TF_GPU_USE_PJRT
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/dso_loader.h"
@@ -152,6 +152,9 @@ using se::rocm::ScopedActivateExecutorContext;
 
 #endif
 
+static_assert(std::is_pointer_v<gpuStream_t>,
+              "Gpu stream handle must be a pointer");
+
 // Eigen Ops directly allocate memory only for temporary buffers used
 // during OpKernel::Compute().  The recommended way of allocating such
 // memory is via OpKernelContext::allocate_temp().  However, Eigen Ops
@@ -168,7 +171,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
         device_(this) {}
   ~EigenGpuStreamDevice() override {}
 
-  void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
+  void Reinitialize(OpKernelContext* context, gpuStream_t gpu_stream,
                     tsl::PlatformDeviceId platform_device_id,
                     ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
@@ -184,7 +187,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     device_prop_ = &Eigen::GetGpuDeviceProperties(platform_device_id.value());
   }
 
-  const gpuStream_t& stream() const override { return *stream_; }
+  const gpuStream_t& stream() const override { return stream_; }
   const gpuDeviceProp_t& deviceProperties() const override {
     return *device_prop_;
   }
@@ -216,10 +219,10 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     AsyncFreeData* afData =
         new AsyncFreeData(allocator_, buffer, operation_, step_id_);
 #if GOOGLE_CUDA
-    cudaError_t err = cudaStreamAddCallback(*stream_, asyncLogFree, afData, 0);
+    cudaError_t err = cudaStreamAddCallback(stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-    hipError_t err = hipStreamAddCallback(*stream_, asyncLogFree, afData, 0);
+    hipError_t err = hipStreamAddCallback(stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, hipSuccess);
 #endif
     allocator_->DeallocateRaw(buffer);
@@ -266,7 +269,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
 
   string operation_;
   int64_t step_id_;
-  const gpuStream_t* stream_;           // Not owned.
+  gpuStream_t stream_;                  // Not owned.
   const gpuDeviceProp_t* device_prop_;  // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
   mutable char* scratch_;
@@ -274,7 +277,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   OpKernelContext* context_;
   Eigen::GpuDevice device_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
+  EigenGpuStreamDevice(const EigenGpuStreamDevice&) = delete;
+  void operator=(const EigenGpuStreamDevice&) = delete;
 };
 
 // This factory helps to ensure that different GPU device objects that refer to
@@ -321,8 +325,8 @@ class BaseGPUDevice::StreamGroupFactory {
               << "] = " << group->nccl;
 
       // Force underlying resource creation now.
-      group->compute->ThenWaitFor(group->nccl);
-      group->nccl->ThenWaitFor(group->compute);
+      group->compute->WaitFor(group->nccl).IgnoreError();
+      group->nccl->WaitFor(group->compute).IgnoreError();
 #endif
 
       group->host_to_device = GetInitializedStream(executor, priority);
@@ -433,7 +437,8 @@ class BaseGPUDevice::StreamGroupFactory {
   // StreamGroupFactory cannot be created directly; Call
   // StreamGroupFactory::Global() to get the global instance.
   StreamGroupFactory() = default;
-  TF_DISALLOW_COPY_AND_ASSIGN(StreamGroupFactory);
+  StreamGroupFactory(const StreamGroupFactory&) = delete;
+  void operator=(const StreamGroupFactory&) = delete;
 };
 
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
@@ -501,7 +506,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options,
 #else
 Status BaseGPUDevice::Init(const SessionOptions& options) {
 #endif  // TF_GPU_USE_PJRT
-  auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
+  auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager(), tf_device_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device ",
@@ -694,13 +699,14 @@ bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
 
 Tensor BaseGPUDevice::CopyGpuTensorToHostDebugOnly(const Tensor& gpu_tensor) {
   Tensor host_tensor(gpu_tensor.dtype(), gpu_tensor.shape());
-  CHECK(device_context_->stream()
-            ->ThenMemcpy(host_tensor.data(),
-                         se::DeviceMemoryBase(gpu_tensor.data(),
-                                              gpu_tensor.TotalBytes()),
-                         gpu_tensor.TotalBytes())
-            .BlockHostUntilDone()
+  auto stream = device_context_->stream();
+  CHECK(stream  // Crash OK
+            ->Memcpy(host_tensor.data(),
+                     se::DeviceMemoryBase(gpu_tensor.data(),
+                                          gpu_tensor.TotalBytes()),
+                     gpu_tensor.TotalBytes())
             .ok());
+  CHECK(stream->BlockHostUntilDone().ok());  // Crash OK
   return host_tensor;
 }
 
@@ -1006,7 +1012,7 @@ ConcretePerOpGpuDevice::ConcretePerOpGpuDevice()
     : stream_device_(std::make_unique<EigenGpuStreamDevice>()) {}
 
 void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
-                                          const void* gpu_stream,
+                                          void* gpu_stream,
                                           tsl::TfDeviceId tf_device_id,
                                           Allocator* base_allocator,
                                           char* scratch) {
@@ -1014,16 +1020,16 @@ void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
   TF_CHECK_OK(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
   static_cast<EigenGpuStreamDevice*>(stream_device_.get())
-      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+      ->Reinitialize(context, static_cast<gpuStream_t>(gpu_stream),
                      platform_device_id, base_allocator, scratch);
 }
 
 void ConcretePerOpGpuDevice::Reinitialize(
-    OpKernelContext* context, const void* gpu_stream,
+    OpKernelContext* context, void* gpu_stream,
     tsl::PlatformDeviceId platform_device_id, Allocator* base_allocator,
     char* scratch) {
   static_cast<EigenGpuStreamDevice*>(stream_device_.get())
-      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+      ->Reinitialize(context, static_cast<gpuStream_t>(gpu_stream),
                      platform_device_id, base_allocator, scratch);
 }
 
@@ -1195,8 +1201,8 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                                       int64_t* memory_limit) {
   int64_t total_memory = 0;
   int64_t available_memory = 0;
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                               se::GPUMachineManager(), platform_device_id)
+  se::StreamExecutor* se = se::GPUMachineManager()
+                               ->ExecutorForDevice(platform_device_id.value())
                                .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return errors::Unknown("Failed to query available memory for GPU ",
@@ -1277,8 +1283,8 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
   DCHECK_EQ(stream_id, 0);
-  const gpuStream_t* gpu_stream = reinterpret_cast<const gpuStream_t*>(
-      stream_->compute->implementation()->GpuStreamMemberHack());
+  const gpuStream_t gpu_stream = reinterpret_cast<gpuStream_t>(
+      stream_->compute->platform_specific_handle().stream);
   concrete_device->Reinitialize(context, gpu_stream, tf_device_id_, allocator,
                                 scratch_);
 }
@@ -1667,8 +1673,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #ifdef TF_GPU_USE_PJRT
   // After the GPU device creation loop, allocator_id_stream_tuples will be
   // populated.
-  std::vector<se::MultiDeviceAdapter::AllocatorWithLogicalIdAndStream>
-      allocator_id_stream_tuples;
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocator_id_stream_tuples;
   allocator_id_stream_tuples.reserve(tf_device_specs.size());
   // We build a map of xla::LocalDeviceState in the GPU device creation loop.
   // Each xla::LocalDeviceState maps to each logical GPU device. The map key is
@@ -1746,7 +1751,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
 #ifdef TF_GPU_USE_PJRT
     // Create xla::LocalDeviceState.
-    const auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
+    const auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
         DEVICE_GPU, gpu_manager, tf_device_id);
     if (!executor_status.status().ok()) {
       return absl::InternalError(absl::StrCat(
@@ -1799,8 +1804,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
     if (should_create_new_pjrt_client) {
       auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocator);
       allocator_id_stream_tuples.emplace_back(
-          std::move(gpu_allocator_ptr), tf_device_id.value(),
-          local_device_state->compute_stream());
+          std::move(gpu_allocator_ptr), local_device_state->compute_stream(), 0,
+          tf_device_id.value());
     }
   }
 
@@ -1831,9 +1836,14 @@ Status BaseGPUDeviceFactory::CreateDevices(
     // Creates PJRT GPU client and places it into a TF global resource manager.
     auto gpu_run_options =
         std::make_unique<xla::gpu::GpuExecutableRunOptions>();
+#if TENSORFLOW_USE_ROCM
+    auto platform_name = xla::RocmName();
+#else   // TENSORFLOW_USE_ROCM
+    auto platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
     std::unique_ptr<xla::PjRtClient> pjrt_client =
         std::make_unique<xla::StreamExecutorGpuClient>(
-            xla::GpuName(), xla_client, std::move(pjrt_devices),
+            platform_name, xla_client, std::move(pjrt_devices),
             /*process_index=*/numa_node,
             /*allocator=*/std::move(allocator_adapter),
             /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
@@ -1924,9 +1934,11 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
 #else
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
 #endif  // TF_GPU_USE_PJRT
-  gpu_allocator->SetStreamAndPreallocateMemory(gpu_device->GetStream());
-  devices->push_back(std::move(gpu_device));
 
+  gpu_allocator->SetStreamAndPreallocateMemory(
+      gpu_device->compute_stream()->platform_specific_handle().stream);
+
+  devices->push_back(std::move(gpu_device));
   return OkStatus();
 }
 
@@ -1941,12 +1953,10 @@ GetPeerAccessMap(se::Platform* platform,
                        bool>);
   for (tsl::PlatformDeviceId platform_gpu_i : visible_gpu_order) {
     for (tsl::PlatformDeviceId platform_gpu_j : visible_gpu_order) {
-      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                     platform, platform_gpu_i)
-                                     .value();
-      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                   platform, platform_gpu_j)
-                                   .value();
+      se::StreamExecutor* from =
+          platform->ExecutorForDevice(platform_gpu_i.value()).value();
+      se::StreamExecutor* to =
+          platform->ExecutorForDevice(platform_gpu_j.value()).value();
       (*map)[{platform_gpu_i, platform_gpu_j}] =
           from->CanEnablePeerAccessTo(to);
     }
@@ -2162,12 +2172,10 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
       const tsl::PlatformDeviceId platform_gpu_j = visible_gpu_order[j];
       // We have already validated that ExecutorForDevice() calls return OK.
-      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                     gpu_manager, platform_gpu_i)
-                                     .value();
-      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                   gpu_manager, platform_gpu_j)
-                                   .value();
+      se::StreamExecutor* from =
+          gpu_manager->ExecutorForDevice(platform_gpu_i.value()).value();
+      se::StreamExecutor* to =
+          gpu_manager->ExecutorForDevice(platform_gpu_j.value()).value();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;

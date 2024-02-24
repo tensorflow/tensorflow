@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -117,6 +116,8 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
     .Output("sorted_gains: float32")
     .Output("splits: int64")
     .Output("id_counts: int32")
+    .Output("max_ids: int32")
+    .Output("max_uniques: int32")
     .Attr("sample_count : int >= 1")
     .Attr("num_replica: int >= 1")
     .Attr("table_vocab_size: int >= 1")
@@ -129,23 +130,26 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
       c->set_output(0, c->UnknownShapeOfRank(1));
       c->set_output(1, c->UnknownShapeOfRank(1));
       c->set_output(2, c->UnknownShapeOfRank(1));
-      int32 num_replica;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_replica", &num_replica));
-
-      int32 num_sc_per_chip;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_sc_per_chip", &num_sc_per_chip));
-
-      const int max_division_level = GetMinibatchMaxDivisionLevel();
-
-      const int num_physical_replica = num_replica * num_sc_per_chip;
-
-      const int32 kMaxDivisions = 1 << max_division_level;
-
       c->set_output(3, c->Scalar());
-      c->set_output(
-          4, c->MakeShape(
-                 {num_physical_replica * kMaxDivisions * num_sc_per_chip + 1}));
+      // Depends on max division level, which is currently passed by flag.
+      c->set_output(4, c->UnknownShapeOfRank(1));
+      c->set_output(5, c->Scalar());
+      c->set_output(6, c->Scalar());
       return OkStatus();
     });
 
+REGISTER_OP("StoreMinibatchStatisticsInFdo")
+    .Input("program_key: string")
+    .Input("max_ids: int32")
+    .Input("max_uniques: int32")
+    .Attr("sample_count : int >= 1")
+    .Attr("num_replica: int >= 1")
+    .Attr("feature_width: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("table_name: string")
+    .Attr("mini_batch_splits: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return OkStatus();
+    });
 }  // namespace tensorflow

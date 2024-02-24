@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,8 +50,7 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
   if (!stream) {
     // Create a new stream.
     stream = std::make_unique<se::Stream>(executor);
-    auto stream_impl = stream->implementation();
-    stream_impl->SetPriority(priority);
+    stream->SetPriority(priority);
     VLOG(1) << "Set stream priority to: "
             << se::StreamPriorityToString(priority);
     stream->Init();
@@ -69,8 +68,7 @@ void StreamPool::ReturnStream(se::Stream* stream) {
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool returning ok stream";
     absl::MutexLock lock(&mu_);
-    auto priority =
-        std::get<se::StreamPriority>(stream->implementation()->priority());
+    auto priority = std::get<se::StreamPriority>(stream->priority());
     streams_with_pri_[priority].emplace_back(stream);
   } else {
     // If the stream has encountered any errors, all subsequent operations on it

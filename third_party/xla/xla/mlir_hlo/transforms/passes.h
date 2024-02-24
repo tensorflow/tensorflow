@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,27 +44,16 @@ using BufferizePatternsCallback = std::function<void(
 // Passes
 //===----------------------------------------------------------------------===//
 
-#define GEN_PASS_DECL_BUFFERPACKING
 #define GEN_PASS_DECL_FINALBUFFERIZEPASS
 #define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
 #define GEN_PASS_DECL_GENERICHOSTTOLLVMPASS
+#define GEN_PASS_DECL_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
-
-/// Creates a pass that merges smaller buffer into bigger buffer to optimize
-/// memory consumption.
-std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
-    unsigned windowSize = 5);
-
-/// Creates a pass that tests the useranges of the UserangeAnalysis.
-std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
 
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createTestShapeComponentAnalysisPass();
-
-/// Creates a pass that computes the allocated memory.
-std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 
 // Pass to lower index cast on tensors to tensor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass();
@@ -98,6 +87,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
 // Detensorizes loop-carried variables and block arguments of scf.while, scf.for
 // and scf.if.
 std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
+
+/// Pass to remove redundant `memref.copy` ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
+
+/// Pass to vectorize `memref.copy`.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 
 /// Registers the test pass for erasing transform dialect ops.
 void registerTestHloTransformDialectEraseSchedulePass();

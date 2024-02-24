@@ -10,8 +10,8 @@ func.func @issue_ids(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32
 
 
 // CHECK: func @issue_ids
-// CHECK-NEXT:  [[rhs:%.*]] = "tf.CustomAggregator"(%arg1) {id = "0"} : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT:  [[lhs:%.*]] = "tf.CustomAggregator"(%arg0) {id = "1"} : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:  [[rhs:%.*]] = "tf.CustomAggregator"(%arg1) <{id = "0"}> : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:  [[lhs:%.*]] = "tf.CustomAggregator"(%arg0) <{id = "1"}> : (tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:  [[add:%.*]] = "tf.AddV2"([[lhs]], [[rhs]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT:  [[res:%.*]] = "tf.CustomAggregator"([[add]]) {id = "2"} : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:  [[res:%.*]] = "tf.CustomAggregator"([[add]]) <{id = "2"}> : (tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:  return [[res]] : tensor<*xf32>

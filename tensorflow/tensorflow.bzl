@@ -6,6 +6,7 @@ load(
     "if_dynamic_kernels",
     "if_static",
     "tf_additional_grpc_deps_py",
+    "tf_additional_tpu_ops_deps",
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
@@ -81,7 +82,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.15.0"
+VERSION = "2.17.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -1395,7 +1396,11 @@ def tf_gen_op_wrapper_py(
             is invalid to specify both "hidden" and "op_allowlist".
         cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
             specified ops.
-        api_def_srcs: undocumented.
+        api_def_srcs: a list of targets that defines the attributes of API endpoints
+            for this target. For an api_def file to take effect it must be included
+            (transitively) from this list.
+            For example, `visibility: HIDDEN` in the api_def hides the Op from
+            the tf.* namespace.
         compatible_with: undocumented.
         testonly: undocumented.
         copts: undocumented.
@@ -1626,22 +1631,23 @@ def tf_gpu_cc_test(
         linkopts = [],
         **kwargs):
     targets = []
-    tf_cc_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        args = args,
-        data = data,
-        extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
-        kernels = kernels,
-        linkopts = linkopts,
-        linkstatic = linkstatic,
-        suffix = "_cpu",
-        tags = tags,
-        deps = deps,
-        **kwargs
-    )
-    targets.append(name + "_cpu")
+    if "gpu" not in tags:
+        tf_cc_test(
+            name = name,
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
+            kernels = kernels,
+            linkopts = linkopts,
+            linkstatic = linkstatic,
+            suffix = "_cpu",
+            tags = tags,
+            deps = deps,
+            **kwargs
+        )
+        targets.append(name + "_cpu")
     tf_cc_test(
         name = name,
         size = size,
@@ -1710,7 +1716,8 @@ def tf_gpu_only_cc_test(
         size = "medium",
         args = [],
         kernels = [],
-        linkopts = []):
+        linkopts = [],
+        features = []):
     tags = tags + tf_gpu_tests_tags()
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
@@ -1719,12 +1726,13 @@ def tf_gpu_only_cc_test(
         srcs = srcs + tf_binary_additional_srcs(),
         deps = deps,
         testonly = 1,
+        features = features,
     )
     cc_test(
         name = "%s%s" % (name, "_gpu"),
         size = size,
         args = args,
-        features = if_cuda(["-use_header_modules"]),
+        features = features + if_cuda(["-use_header_modules"]),
         data = data + tf_binary_dynamic_kernel_dsos(),
         deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
@@ -1749,7 +1757,8 @@ def tf_cc_tests(
         linkopts = lrt_if_needed(),
         kernels = [],
         create_named_test_suite = False,
-        visibility = None):
+        visibility = None,
+        features = []):
     test_names = []
     for src in srcs:
         test_name = src_to_test_name(src)
@@ -1763,6 +1772,7 @@ def tf_cc_tests(
             linkstatic = linkstatic,
             tags = tags,
             deps = deps,
+            features = features,
             visibility = visibility,
         )
         test_names.append(test_name)
@@ -2324,7 +2334,7 @@ def tf_custom_op_py_library(
 # module init functions are not exported unless
 # they contain one of the keywords in the version file
 # this prevents custom python modules.
-# This function attempts to append init_module_name to list of
+# This function attempts to append PyInit_module_name to list of
 # exported functions in version script
 def _append_init_to_versionscript_impl(ctx):
     mod_name = ctx.attr.module_name
@@ -2333,7 +2343,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "global:": "global:\n     init_%s;\n     _init_%s;\n     PyInit_*;\n     _PyInit_*;" % (mod_name, mod_name),
+                "global:": "global:\n     PyInit_*;\n     _PyInit_*;",
             },
             is_executable = False,
         )
@@ -2342,7 +2352,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "*tensorflow*": "*tensorflow*\ninit_%s\n_init_%s\nPyInit_*\n_PyInit_*\n" % (mod_name, mod_name),
+                "*tensorflow*": "*tensorflow*\nPyInit_*\n_PyInit_*\n",
             },
             is_executable = False,
         )
@@ -2537,7 +2547,7 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         }),
         data = data + select({
             "//conditions:default": kernels,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
+            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         exec_properties = exec_properties,
         **kwargs
@@ -2609,6 +2619,7 @@ def tf_py_test(
         # TODO(b/156911178): Revert this temporary workaround once TFRT open source
         # is fully integrated with TF.
         tfrt_enabled_internal = False,
+        tpu_ops_enabled = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2625,6 +2636,8 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
+    if tpu_ops_enabled:
+        deps = deps + tf_additional_tpu_ops_deps()
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.
@@ -3037,8 +3050,6 @@ def pybind_extension_opensource(
     filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
-        "init%s" % sname,
-        "init_%s" % sname,
         "PyInit_%s" % sname,
     ] + additional_exported_symbols
 
@@ -3312,6 +3323,7 @@ def tf_python_pybind_extension_opensource(
         static_deps = [],
         compatible_with = None,
         copts = [],
+        data = [],
         defines = [],
         enable_stub_generation = False,
         additional_stubgen_deps = [],
@@ -3339,6 +3351,7 @@ def tf_python_pybind_extension_opensource(
         deps = extended_deps,
         compatible_with = compatible_with,
         copts = copts,
+        data = data,
         defines = defines,
         enable_stub_generation = enable_stub_generation,
         additional_stubgen_deps = additional_stubgen_deps,
@@ -3396,9 +3409,6 @@ def tf_monitoring_python_deps():
 # Teams sharing the same repo can provide their own ops_to_register.h file using
 # this function, and pass in -Ipath/to/repo flag when building the target.
 def tf_selective_registration_deps():
-    return []
-
-def tf_jit_compilation_passes_extra_deps():
     return []
 
 def if_mlir(if_true, if_false = []):

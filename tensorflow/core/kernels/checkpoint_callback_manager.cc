@@ -165,7 +165,7 @@ Status CheckpointCallbackManager::RegisterSaveCallback(
     TriggerSaveCallbackIfFileNotExist(checkpoint_id, checkpoint_dir,
                                       file_extension, lazy_callback);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool CheckpointCallbackManager::DoesSaveCallbackExist(
@@ -199,7 +199,7 @@ Status CheckpointCallbackManager::RegisterRestoreCallback(
     TriggerRestoreCallbackIfFileExists(checkpoint_id, checkpoint_dir,
                                        file_extension, lazy_callback);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool CheckpointCallbackManager::DoesRestoreCallbackExist(

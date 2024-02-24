@@ -3,11 +3,11 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = ["//visibility:public"])
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -66,7 +66,6 @@ transitive_hdrs(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
-        "//third_party/eigen3",
         "@local_xla//xla/stream_executor",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -198,7 +197,10 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
     "//tensorflow/python/util:pywrap_xla_ops",
     "//tensorflow:tensorflow_py",
-]
+] + if_with_tpu_support([
+    "//tensorflow/python/tools:grpc_tpu_worker",
+    "//tensorflow/python/tools:grpc_tpu_worker_service",
+])
 
 filegroup(
     name = "licenses",

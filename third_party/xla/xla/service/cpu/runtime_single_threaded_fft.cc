@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "xla/service/cpu/runtime_single_threaded_fft.h"
 
-#include "absl/base/dynamic_annotations.h"
-#include "xla/service/cpu/runtime_fft_impl.h"
+#include <cstdint>
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenSingleThreadedFft(
-    const void* run_options_ptr, void* out, void* operand, int32_t fft_type,
-    int32_t double_precision, int32_t fft_rank, int64_t input_batch,
-    int64_t fft_length0, int64_t fft_length1, int64_t fft_length2) {
-  xla::EigenFftImpl(Eigen::DefaultDevice(), out, operand,
-                    static_cast<xla::internal::FftType>(fft_type),
-                    static_cast<bool>(double_precision), fft_rank, input_batch,
-                    fft_length0, fft_length1, fft_length2);
+#include "absl/base/attributes.h"
+#include "xla/service/cpu/runtime_fft.h"
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_DuccSingleThreadedFft(
+    const void* /*run_options_ptr*/, void* out, void* operand, int32_t fft_type,
+    int32_t double_precision, int32_t fft_rank, const int64_t* input_shape,
+    const int64_t* fft_length) {
+  return __xla_cpu_runtime_DuccFft(
+      /*run_options_ptr=*/nullptr, out, operand, fft_type, double_precision,
+      fft_rank, input_shape, fft_length);
 }

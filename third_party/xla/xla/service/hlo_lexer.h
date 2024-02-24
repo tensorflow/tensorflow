@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -39,13 +39,14 @@ enum class TokKind {
   kError,
 
   // Tokens with no info.
-  kEqual,      // =
-  kComma,      // ,
-  kColon,      // :
-  kAsterisk,   // *
-  kOctothorp,  // #
-  kPlus,       // +
-  kTilde,      // ~
+  kEqual,         // =
+  kComma,         // ,
+  kColon,         // :
+  kAsterisk,      // *
+  kQuestionMark,  // ?
+  kOctothorp,     // #
+  kPlus,          // +
+  kTilde,         // ~
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,

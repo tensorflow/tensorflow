@@ -1,43 +1,7 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -279,6 +279,24 @@
- )
- 
- cc_library(
-+    name = "experimental_ops",
-+    srcs = [
-+        "stablehlo/dialect/ExperimentalOps.cpp",
-+    ],
-+    hdrs = [
-+        "stablehlo/dialect/ExperimentalOps.h",
-+    ],
-+    strip_include_prefix = ".",
-+    deps = [
-+        ":stablehlo_ops",
-+        "@llvm-project//llvm:Support",
-+        "@llvm-project//mlir:FuncDialect",
-+        "@llvm-project//mlir:IR",
-+        "@llvm-project//mlir:Support",
-+    ],
-+)
-+
-+cc_library(
-     name = "interpreter_ops",
-     srcs = [
-         "stablehlo/reference/InterpreterOps.cpp",
-@@ -763,6 +781,7 @@
-     deps = [
-         ":base",
-         ":chlo_ops",
-+        ":experimental_ops",
-         ":stablehlo_ops",
-         ":stablehlo_ops_inc_gen",
-         ":stablehlo_pass_inc_gen",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,135 +13,20 @@
+@@ -13,153 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -61,6 +25,11 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -if(POLICY CMP0116)
 -  cmake_policy(SET CMP0116 OLD)
 -endif()
+-
+-# Support for return(PROPAGATE ...) in functions.
+-if (POLICY CMP0140)
+-  cmake_policy(SET CMP0140 NEW)
+-endif()
 +# This build of StableHLO is meant to be embedded in MLIR-HLO.
 +# As a result, its root CMakeLists.txt is different from the original
 +# CMakeLists.txt from https://github.com/openxla/stablehlo.
@@ -75,6 +44,9 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
 -option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
 -option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
+-option(STABLEHLO_ENABLE_SANITIZER "Enable a sanitizer [OFF, address]" OFF)
+-option(STABLEHLO_ENABLE_SPLIT_DWARF "Enable split DWARF if the platform supports it" OFF)
+-option(STABLEHLO_ENABLE_LLD "Use LLD as the linker if available" OFF)
  
 -#-------------------------------------------------------------------------------
 -# Project setup and globals
@@ -89,29 +61,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  project(stablehlo LANGUAGES CXX C)
 -  set(CMAKE_C_STANDARD 11)
 -  set(CMAKE_CXX_STANDARD 17)
--endif()
--
--# Build with ccache if the package is present
--set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
--if(LLVM_CCACHE_BUILD)
--  find_program(CCACHE_PROGRAM ccache)
--  if(CCACHE_PROGRAM)
--      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
--      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
--      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
--          CACHE STRING "Parameters to pass through to ccache")
--
--      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
--      if (LLVM_CCACHE_MAXSIZE)
--        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
--      endif()
--      if (LLVM_CCACHE_DIR)
--        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
--      endif()
--      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
--  else()
--    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
--  endif()
 -endif()
 -
 -#-------------------------------------------------------------------------------
@@ -150,8 +99,37 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -  message(STATUS "Building StableHLO embedded in another project")
 -endif()
 -
+-# Add the CMake modules specific to StableHLO
+-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+-
 -if(LLVM_ENABLE_ZLIB)
 -  find_package(ZLIB)
+-endif()
+-
+-#-------------------------------------------------------------------------------
+-# Performance configuration
+-#-------------------------------------------------------------------------------
+-
+-include(CheckCXXCompilerFlag)
+-include(CheckLinkerFlag)
+-if (STABLEHLO_ENABLE_LLD)
+-  message(STATUS "Enabling LLD as the linker")
+-  add_link_options("-fuse-ld=lld")
+-endif()
+-
+-if(STABLEHLO_ENABLE_SPLIT_DWARF)
+-    check_cxx_compiler_flag(-gsplit-dwarf STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-    if (STABLEHLO_SUPPORTS_SPLIT_DWARF)
+-      message(STATUS "Enabling split-dwarf build")
+-      add_compile_options(-gsplit-dwarf -ggnu-pubnames)
+-    endif()
+-    check_linker_flag(CXX "-Wl,--gdb-index" STABLEHLO_SUPPORTS_GDB_INDEX)
+-    # If we set LLD it doesn't seem to affect the check_linker_flag above.
+-    # Account for it with the generator expression OR
+-    if (STABLEHLO_SUPPORTS_GDB_INDEX OR STABLEHLO_ENABLE_LLD)
+-      message(STATUS "Enabling GDB index in binary")
+-      add_link_options("-Wl,--gdb-index")
+-    endif()
 -endif()
 -
 -include(TableGen)
@@ -165,15 +143,19 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -link_directories(${LLVM_BUILD_LIBRARY_DIR})
 -add_definitions(${LLVM_DEFINITIONS})
 -
+-
+-#-------------------------------------------------------------------------------
+-# Sanitizer configuration
+-#-------------------------------------------------------------------------------
+-
+-include(SetupSanitizers)
+-setup_sanitizers()
+-
 -#-------------------------------------------------------------------------------
 -# Python configuration
 -#-------------------------------------------------------------------------------
 -
 -if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
--  if(NOT STABLEHLO_EXTERNAL_PROJECT_BUILD)
--    message(WARNING "StableHLO Python bindings are not supported in standalone mode")
--  endif()
--
 -  include(MLIRDetectPythonEnv)
 -  mlir_configure_python_dev_packages()
 -endif()
@@ -181,13 +163,1128 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -600,5 +600,18 @@
-   return UnrankedTensorType::get(components.getElementType());
+diff --ruN a/stablehlo/MODULE.bazel.lock b/stablehlo/MODULE.bazel.lock
+--- stablehlo/MODULE.bazel.lock
++++ stablehlo/MODULE.bazel.lock
+@@ -1,3 +1,17 @@
++# Copyright 2024 The StableHLO Authors. All Rights Reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
+ {
+   "lockFileVersion": 3,
+   "moduleFileHash": "836f0a7d2276ed93403f104a10008b94ec7e7f81b8d6921cea287f0a6d364efa",
+diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists.txt
+--- stablehlo/stablehlo/CMakeLists.txt
++++ stablehlo/stablehlo/CMakeLists.txt
+@@ -15,6 +15,7 @@
+ add_subdirectory(api)
+ add_subdirectory(conversions)
+ add_subdirectory(dialect)
++add_subdirectory(experimental)
+ add_subdirectory(integrations)
+ add_subdirectory(reference)
+ add_subdirectory(tests)
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -16,15 +16,28 @@
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ 
+ #include <cstdint>
++#include <optional>
+ #include <string>
+ 
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/StringExtras.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/Regex.h"
++#include "llvm/Support/SMLoc.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/OpImplementation.h"
++#include "mlir/IR/OperationSupport.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/TypeUtilities.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
++
++#define DEBUG_TYPE "hlo-assembly"
+ 
+ namespace mlir {
+ namespace hlo {
+@@ -212,6 +225,343 @@
+   return success();
  }
  
++namespace {
++void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
++                ArrayRef<Type> types,
++                SmallVector<OpAsmParser::Argument>& args) {
++  for (auto argAndType : llvm::zip(operands, types)) {
++    auto& arg = args.emplace_back();
++    arg.ssaName = std::get<0>(argAndType);
++    arg.type = std::get<1>(argAndType);
++  }
++}
++
++Operation* createReturn(OpBuilder& builder, Dialect* dialect, Location loc,
++                        ResultRange operands) {
++  auto returnOpName = dialect->getNamespace() + ".return";
++  OperationState returnOpState(loc, returnOpName.str());
++  returnOpState.operands.append(operands.begin(), operands.end());
++  return builder.create(returnOpState);
++}
++
++bool hasSameOperandAndResultTypes(Operation& op) {
++  Type expected;
++  if (op.getNumResults() != 0) expected = op.getResult(0).getType();
++  if (op.getNumOperands() != 0) expected = op.getOperand(0).getType();
++  if (!expected) return false;
++
++  auto typeMatch = [&](Type actual) { return actual == expected; };
++  return llvm::all_of(op.getOperandTypes(), typeMatch) &&
++         llvm::all_of(op.getResultTypes(), typeMatch);
++}
++
++// Checks the following eligibility criteria for compact printing of reduce:
++// E1. The reduce-op wraps a single inner-op in the associated region.
++// E2. The single operation is a commutative binary-op from the dialect, zero
++//     region, producing single result such that the operands and result all
++//     have the same type.
++// E3. The reduce-op consist of at least one input-operand; The operand-types of
++//     inner-op should be derived trivially from the element-type of reduce-op's
++//     first input-operand.
++// E4. The arguments of the region's only basic block are forwarded perfectly
++//     to inner-op's operands.
++// E5. The single operation result is perfectly forwarded to the reduce op
++//     return.
++static bool isReduceEligibleForCompactPrint(Operation* op, ValueRange inputs,
++                                            Region& body) {
++  // Check E1.
++  LLVM_DEBUG(llvm::dbgs() << "Checking ReduceOp compact print E1\n");
++  auto& block = body.front();
++  if (!hasSingleElement(block.without_terminator())) return false;
++
++  Operation& innerOp = *block.begin();
++
++  // Check E2.
++  LLVM_DEBUG(llvm::dbgs() << "Checking ReduceOp compact print E2\n");
++  if (innerOp.getDialect() != op->getDialect()) return false;
++
++  if (innerOp.getNumOperands() != 2 ||
++      !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
++      !hasSameOperandAndResultTypes(innerOp) ||
++      (!innerOp.hasTrait<mlir::hlo::OpTrait::IsCommutative>() &&
++       !innerOp.hasTrait<mlir::OpTrait::IsCommutative>()) ||
++      !innerOp.hasTrait<mlir::OpTrait::ZeroRegions>())
++    return false;
++
++  // Check E3.
++  LLVM_DEBUG(llvm::dbgs() << "Checking ReduceOp compact print E3\n");
++  if (inputs.empty()) return false;
++
++  auto elemType = inputs[0].getType().cast<ShapedType>().getElementType();
++  auto expectedInnerOpType = RankedTensorType::get(/*shape=*/{}, elemType);
++  if (innerOp.getOperands()[0].getType() != expectedInnerOpType) return false;
++
++  // Check E4.
++  LLVM_DEBUG(llvm::dbgs() << "Checking ReduceOp compact print E4\n");
++  if (!llvm::equal(block.getArguments(), innerOp.getOperands())) return false;
++
++  // Check E5.
++  LLVM_DEBUG(llvm::dbgs() << "Checking ReduceOp compact print E5\n");
++  auto retOp = block.getTerminator();
++  if (!retOp->getName().stripDialect().equals("return")) return false;
++
++  return llvm::equal(innerOp.getResults(), retOp->getOperands());
++}
++}  // namespace
++
++void printReduceOp(OpAsmPrinter& p, Operation* op, ValueRange inputs,
++                   ArrayRef<int64_t> dimensions, Region& body) {
++  {
++    // Print the pairs of operands under the form:
++    //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
++    StringRef comma = "";
++    int numOperandPairs = op->getNumOperands() / 2;
++    for (int opId : llvm::seq<int>(0, numOperandPairs)) {
++      p << comma << "(" << op->getOperand(opId)
++        << " init: " << op->getOperand(opId + numOperandPairs) << ")";
++      comma = ", ";
++    }
++  }
++
++  // If the reduce-op is eligible for compact printing, we emit the one-liner:
++  // stablehlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
++  // Note: We are not printing the function type of reduction operation. We
++  // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
++  // to derive the type from that of reduce-op.
++  if (isReduceEligibleForCompactPrint(op, inputs, body)) {
++    Operation& innerOp = body.front().front();
++    p << " applies ";
++    llvm::printEscapedString(innerOp.getName().getStringRef(), p.getStream());
++    p << " across dimensions = [";
++    llvm::interleaveComma(dimensions, p);
++    p << "]";
++    p.printOptionalAttrDict(op->getAttrs(), {"dimensions"});
++    p << " : ";
++    p.printFunctionalType(op);
++  } else {
++    p << " across dimensions = [";
++    llvm::interleaveComma(dimensions, p);
++    p << "]";
++    p.printOptionalAttrDict(op->getAttrs(), {"dimensions"});
++    p << " : ";
++    p.printFunctionalType(op);
++    p.printNewline();
++    p << " reducer";
++    {
++      // Print the pairs of block operands under the form:
++      //   (%arg0_elt, %arg0_acc) (%arg1_elt, %arg1_acc):
++      Block& reducer = body.front();
++      int numOperandPairs = op->getNumOperands() / 2;
++      for (int opId : llvm::seq<int>(0, numOperandPairs)) {
++        p << "(";
++        p.printRegionArgument(reducer.getArgument(opId));
++        p << ", ";
++        p.printRegionArgument(reducer.getArgument(opId + numOperandPairs));
++        p << ") ";
++      }
++    }
++    p << ' ';
++    p.printRegion(body, /*printEntryBlockArgs=*/false);
++  }
++}
++
++ParseResult parseReduceOp(
++    OpAsmParser& parser, OperationState& result,
++    std::function<Attribute(OpBuilder&, ArrayRef<int64_t>)> createDimensions) {
++  llvm::SMLoc loc = parser.getCurrentLocation();
++  Location currLocation = parser.getEncodedSourceLoc(loc);
++
++  // Parse the operands of reduce-op, this is a list of pair under the form:
++  //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
++  // Each input to reduce is paired with its init value, even though in memory
++  // they are stored with the input first and the init values after.
++  SmallVector<OpAsmParser::UnresolvedOperand, 2> operands;
++  SmallVector<OpAsmParser::UnresolvedOperand, 2> initOperands;
++  do {
++    (void)parser.parseOptionalComma();
++    if (parser.parseOptionalLParen()) break;
++    OpAsmParser::UnresolvedOperand operand, initOperand;
++    if (parser.parseOperand(operand) || parser.parseKeyword("init") ||
++        parser.parseColon() || parser.parseOperand(initOperand) ||
++        parser.parseRParen())
++      return failure();
++    operands.push_back(operand);
++    initOperands.push_back(initOperand);
++  } while (true);
++  operands.append(initOperands);
++
++  // Check if we are parsing the compact version of reduce-op:
++  // stablehlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
++  // else parse the "region-based" variant.
++  if (failed(parser.parseOptionalKeyword("applies"))) {
++    // Parse the inner-op dimensions, reduce-op's function-type and
++    // optional location.
++    SmallVector<int64_t> dimensions;
++    auto parseDim = [&]() -> ParseResult {
++      if (parser.parseInteger(dimensions.emplace_back())) return failure();
++      return success();
++    };
++
++    FunctionType reduceOpFnType;
++    if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
++        parser.parseEqual() ||
++        parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
++                                       parseDim) ||
++        parser.parseOptionalAttrDict(result.attributes) ||
++        parser.parseColon() || parser.parseType(reduceOpFnType) ||
++        parser.parseKeyword("reducer"))
++      return failure();
++    OpBuilder builder(parser.getBuilder().getContext());
++    result.addAttribute("dimensions", createDimensions(builder, dimensions));
++
++    // Parse the "reducer" region now.
++    SmallVector<OpAsmParser::UnresolvedOperand, 2> reducerOperands;
++    SmallVector<OpAsmParser::UnresolvedOperand, 2> reducerInitOperands;
++    SmallVector<Type, 2> reducerTypes;
++    SmallVector<Type, 2> reducerInitTypes;
++    SmallVector<std::optional<Location>, 2> reducerLocs;
++    SmallVector<std::optional<Location>, 2> reducerInitLocs;
++    auto parseBlockOperand =
++        [&](SmallVectorImpl<OpAsmParser::UnresolvedOperand>& operands,
++            SmallVectorImpl<Type>& types,
++            SmallVectorImpl<std::optional<Location>>& locs) -> ParseResult {
++      OpAsmParser::UnresolvedOperand operand;
++      Type type;
++      std::optional<Location> loc;
++      if (parser.parseOperand(operand, /*allowResultNumber=*/false) ||
++          parser.parseColon() || parser.parseType(type) ||
++          parser.parseOptionalLocationSpecifier(loc))
++        return failure();
++      operands.push_back(operand);
++      types.push_back(type);
++      locs.push_back(loc);
++      return success();
++    };
++    do {
++      if (failed(parser.parseOptionalLParen())) break;
++      if (parseBlockOperand(reducerOperands, reducerTypes, reducerLocs) ||
++          parser.parseComma() ||
++          parseBlockOperand(reducerInitOperands, reducerInitTypes,
++                            reducerInitLocs) ||
++          parser.parseRParen())
++        return failure();
++    } while (true);
++    reducerOperands.append(reducerInitOperands);
++    reducerTypes.append(reducerInitTypes);
++    reducerLocs.append(reducerInitLocs);
++    result.addTypes(reduceOpFnType.getResults());
++    SmallVector<OpAsmParser::Argument> reducerArgs;
++    createArgs(reducerOperands, reducerTypes, reducerArgs);
++
++    // Derive the SSA-values for reduce-op's operands and parse the region, and
++    // the optional trailing location.
++    std::optional<Location> trailingLoc;
++    if (parser.resolveOperands(operands, reduceOpFnType.getInputs(), loc,
++                               result.operands) ||
++        parser.parseRegion(*result.addRegion(), reducerArgs))
++      return failure();
++    // Set the individual block arguments.
++    for (auto argAndLoc :
++         llvm::zip(result.regions.front()->front().getArguments(), reducerLocs))
++      if (std::get<1>(argAndLoc))
++        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).value());
++    result.location = trailingLoc.value_or(currLocation);
++    return success();
++  }
++
++  // Parse the inner-op name and check if the contract on inner-op
++  // mentioned in "isEligibleForCompactPrint::E2" for pretty-printing is met.
++  FailureOr<OperationName> innerOpNameInfo = parser.parseCustomOperationName();
++  if (failed(innerOpNameInfo)) return failure();
++
++  StringRef innerOpName = innerOpNameInfo->getStringRef();
++  Dialect* innerOpDialect = innerOpNameInfo->getDialect();
++  StringRef reduceOpDialect = result.name.getDialectNamespace();
++  LLVM_DEBUG(llvm::dbgs() << "Reduce: " << reduceOpDialect << "\n");
++  LLVM_DEBUG(llvm::dbgs() << "inner: " << innerOpDialect->getNamespace()
++                          << "\n");
++  if (!innerOpDialect ||
++      !innerOpDialect->getNamespace().equals(reduceOpDialect) ||
++      !innerOpNameInfo->hasTrait<mlir::OpTrait::NOperands<2>::Impl>() ||
++      !innerOpNameInfo->hasTrait<mlir::OpTrait::OneResult>() ||
++      (!innerOpNameInfo->hasTrait<mlir::hlo::OpTrait::IsCommutative>() &&
++       !innerOpNameInfo->hasTrait<mlir::OpTrait::IsCommutative>()) ||
++      !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegions>()) {
++    parser.emitError(loc,
++                     "expected the inner-op to be a commutative binary-op that "
++                     "matching the reduce op dialect, with zero region, "
++                     "producing single result");
++    return failure();
++  }
++
++  // Parse the inner-op dimensions, reduce-op's function-type and
++  // optional location.
++  SmallVector<int64_t> dimensions;
++  auto parseDim = [&]() -> ParseResult {
++    if (parser.parseInteger(dimensions.emplace_back())) return failure();
++    return success();
++  };
++
++  std::optional<Location> explicitLoc;
++  FunctionType reduceOpFnType;
++  if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
++      parser.parseEqual() ||
++      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
++      parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
++      parser.parseType(reduceOpFnType) ||
++      parser.parseOptionalLocationSpecifier(explicitLoc))
++    return failure();
++
++  if (!reduceOpFnType || reduceOpFnType.getInputs().empty()) {
++    if (!reduceOpFnType) return parser.emitError(loc, "expected function type");
++    return parser.emitError(loc,
++                            "input types missing in reduce-op function type");
++  }
++
++  // If location of reduce-op is explicitly provided, then use it; Else use
++  // the parser's current location.
++  Location reduceOpLoc = explicitLoc.value_or(currLocation);
++
++  // Derive the SSA-values for reduce-op's operands.
++  if (parser.resolveOperands(operands, reduceOpFnType.getInputs(), loc,
++                             result.operands))
++    return failure();
++
++  // Derive the type of inner-op from that of reduce-op's input operand.
++  auto innerOpType = RankedTensorType::get(
++      /*shape=*/{}, getElementTypeOrSelf(reduceOpFnType.getInput(0)));
++
++  // Add a region for reduce-op.
++  Region& region = *result.addRegion();
++
++  // Create a basic-block inside reduce-op's region.
++  Block& block = region.emplaceBlock();
++  auto lhs = block.addArgument(innerOpType, reduceOpLoc);
++  auto rhs = block.addArgument(innerOpType, reduceOpLoc);
++
++  // Create and insert an "inner-op" operation in the block.
++  OpBuilder builder(parser.getBuilder().getContext());
++  builder.setInsertionPointToStart(&block);
++
++  OperationState innerOpState(reduceOpLoc, innerOpName);
++  innerOpState.operands.push_back(lhs);
++  innerOpState.operands.push_back(rhs);
++  innerOpState.addTypes(innerOpType);
++
++  Operation* innerOp = builder.create(innerOpState);
++
++  // Insert a return statement in the block returning the inner-op's result.
++  createReturn(builder, innerOp->getDialect(), innerOp->getLoc(),
++               innerOp->getResults());
++
++  // Populate the reduce-op operation-state with result-type, location, and
++  // dimension attribute.
++  result.addTypes(reduceOpFnType.getResults());
++  result.location = innerOp->getLoc();
++  result.addAttribute("dimensions", createDimensions(builder, dimensions));
++  return success();
++}
++
+ void printSelectOpType(OpAsmPrinter& p, Operation* op, ShapedType pred,
+                        ShapedType onTrue, ShapedType onFalse,
+                        ShapedType result) {
+@@ -250,6 +600,63 @@
+   auto fnType = types[0].cast<FunctionType>();
+   return assignFromFunctionType(parser, loc, {&pred, &onTrue, &onFalse}, result,
+                                 fnType);
++}
++
++void printWhileOp(OpAsmPrinter& p, Operation* op, Region& cond, Region& body) {
++  p << '(';
++  llvm::interleaveComma(llvm::zip(body.getArguments(), op->getOperands()), p,
++                        [&](auto zip) {
++                          p.printOperand(std::get<0>(zip));
++                          p << " = ";
++                          p.printOperand(std::get<1>(zip));
++                        });
++  p << ")";
++  if (op->getNumOperands()) {
++    p << " : ";
++    llvm::interleaveComma(op->getOperandTypes(), p);
++  }
++  p.printOptionalAttrDictWithKeyword(op->getAttrs());
++  p.printNewline();
++  p << " cond ";
++  p.printRegion(cond, /*printEntryBlockArgs=*/false);
++  p << " do ";
++  p.printRegion(body, /*printEntryBlockArgs=*/false);
++}
++
++ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result) {
++  llvm::SMLoc loc = parser.getCurrentLocation();
++  // Parse the operands of the while: these are of the form:
++  //   %iter_arg = %init_val
++  // where %iter_arg is the name of the block argument in the cond/body blocks
++  // and %init_val is the actual operand.
++  SmallVector<OpAsmParser::UnresolvedOperand> operands;
++  SmallVector<OpAsmParser::UnresolvedOperand> iterArgs;
++  if (parser.parseLParen()) return failure();
++  do {
++    if (succeeded(parser.parseOptionalRParen())) break;
++    OpAsmParser::UnresolvedOperand operand, iterArg;
++    if (parser.parseOperand(iterArg) || parser.parseEqual() ||
++        parser.parseOperand(operand))
++      return failure();
++    iterArgs.push_back(iterArg);
++    operands.push_back(operand);
++    if (succeeded(parser.parseOptionalRParen())) break;
++    if (failed(parser.parseComma())) return failure();
++  } while (true);
++  if (!operands.empty()) {
++    if (parser.parseColon() || parser.parseTypeList(result.types))
++      return failure();
++  }
++  SmallVector<OpAsmParser::Argument> args;
++  createArgs(iterArgs, result.types, args);
++  if (parser.resolveOperands(operands, result.types, loc, result.operands) ||
++      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
++      parser.parseKeyword("cond") ||
++      parser.parseRegion(*result.addRegion(), args) ||
++      parser.parseKeyword("do") ||
++      parser.parseRegion(*result.addRegion(), args))
++    return failure();
++  return success();
+ }
+ 
+ //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/dialect/AssemblyFormat.h
+--- stablehlo/stablehlo/dialect/AssemblyFormat.h
++++ stablehlo/stablehlo/dialect/AssemblyFormat.h
+@@ -16,19 +16,25 @@
+ #ifndef STABLEHLO_DIALECT_ASSEMBLYFORMAT_H
+ #define STABLEHLO_DIALECT_ASSEMBLYFORMAT_H
+ 
++#include <cstdint>
++#include <functional>
++
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/ADT/StringRef.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/Dialect.h"
+ #include "mlir/IR/DialectImplementation.h"
+-#include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OpImplementation.h"
+ #include "mlir/IR/Operation.h"
++#include "mlir/IR/OperationSupport.h"
++#include "mlir/IR/Region.h"
+ #include "mlir/IR/TypeRange.h"
+ #include "mlir/IR/Types.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/Base.h"
+ 
+@@ -154,6 +160,15 @@
+ ParseResult parseComplexOpType(OpAsmParser& parser, Type& lhs, Type& rhs,
+                                Type& result);
+ 
++// Print reduce with or without compact printing
++void printReduceOp(OpAsmPrinter& p, Operation* op, ValueRange inputs,
++                   ArrayRef<int64_t> dimensions, Region& body);
++
++// Parse reduce with or without compact parsing
++ParseResult parseReduceOp(
++    OpAsmParser& parser, OperationState& result,
++    std::function<Attribute(OpBuilder&, ArrayRef<int64_t>)> createDimensions);
++
+ // SelectOpType - only print the condition and result type when branch types
+ // match the result type.
+ //
+@@ -170,15 +185,27 @@
+ ParseResult parseSelectOpType(OpAsmParser& parser, Type& pred, Type& onTrue,
+                               Type& onFalse, Type& result);
+ 
++// Print a `while` op.
++//
++// op ::= `stablehlo.while` `(` assignment-list `)` `:` types attribute-dict
++//         `cond` region
++//         `do` region
++// assignment-list ::= assignment | assignment `,` assignment-list
++// assignment ::= ssa-value `=` ssa-value
++void printWhileOp(OpAsmPrinter& p, Operation* op, Region& cond, Region& body);
++
++// Parse reduce with or without compact parsing
++ParseResult parseWhileOp(OpAsmParser& parser, OperationState& result);
++
+ //===----------------------------------------------------------------------===//
+ // Attribute Printers and Parsers
+ //===----------------------------------------------------------------------===//
+ 
+ // SliceRanges - Used to print multi-dimensional ranges for slice.
+ void printSliceRanges(OpAsmPrinter& p, Operation* op,
+-                      ArrayRef<int64_t> startIndices,
+-                      ArrayRef<int64_t> limitIndices,
+-                      ArrayRef<int64_t> strides);
++                      llvm::ArrayRef<int64_t> startIndices,
++                      llvm::ArrayRef<int64_t> limitIndices,
++                      llvm::ArrayRef<int64_t> strides);
+ 
+ ParseResult parseSliceRanges(OpAsmParser& parser,
+                              DenseI64ArrayAttr& startIndices,
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -99,16 +99,6 @@
+   return dialect->getRegisteredInterface<hlo::HloDialectInterface>();
+ }
+ 
+-void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
+-                ArrayRef<Type> types,
+-                SmallVector<OpAsmParser::Argument>& args) {
+-  for (auto argAndType : llvm::zip(operands, types)) {
+-    auto& arg = args.emplace_back();
+-    arg.ssaName = std::get<0>(argAndType);
+-    arg.type = std::get<1>(argAndType);
+-  }
+-}
+-
+ // Returns a new scalar integer value having type `type`. Here `type` must be
+ // an integer or index type.
+ Value maybeCastTo(OpBuilder& b, Location loc, Value value, Type type) {
+@@ -1472,305 +1462,16 @@
+ // ReduceOp
+ //===----------------------------------------------------------------------===//
+ 
+-bool hasSameOperandAndResultTypes(Operation& op) {
+-  Type expected;
+-  if (op.getNumResults() != 0) expected = op.getResult(0).getType();
+-  if (op.getNumOperands() != 0) expected = op.getOperand(0).getType();
+-  if (!expected) return false;
+-
+-  auto typeMatch = [&](Type actual) { return actual == expected; };
+-  return llvm::all_of(op.getOperandTypes(), typeMatch) &&
+-         llvm::all_of(op.getResultTypes(), typeMatch);
+-}
+-
+-// Checks the following eligibility criteria for compact printing of reduce:
+-// E1. The reduce-op wraps a single inner-op in the associated region.
+-// E2. The single operation is a commutative binary-op from the dialect, zero
+-//     region, producing single result such that the operands and result all
+-//     have the same type.
+-// E3. The reduce-op consist of at least one input-operand; The operand-types of
+-//     inner-op should be derived trivially from the element-type of reduce-op's
+-//     first input-operand.
+-// E4. The  arguments of the region's only basic block are forwarded perfectly
+-//     to inner-op's operands.
+-// E5. The single operation result is perfectly forwarded to the reduce op
+-//     return.
+-static bool isEligibleForCompactPrint(ReduceOp op) {
+-  // Check E1.
+-  auto& block = op.getBody().front();
+-  if (!hasSingleElement(block.without_terminator())) return false;
+-
+-  Operation& innerOp = *block.begin();
+-
+-  // Check E2.
+-  if (innerOp.getDialect() != op->getDialect()) return false;
+-
+-  if (innerOp.getNumOperands() != 2 ||
+-      !innerOp.hasTrait<mlir::OpTrait::OneResult>() ||
+-      !hasSameOperandAndResultTypes(innerOp) ||
+-      !innerOp.hasTrait<mlir::hlo::OpTrait::IsCommutative>() ||
+-      !innerOp.hasTrait<mlir::OpTrait::ZeroRegions>())
+-    return false;
+-
+-  // Check E3.
+-  if (op.getInputs().empty()) return false;
+-
+-  auto elemType =
+-      op.getInputs()[0].getType().cast<ShapedType>().getElementType();
+-  auto expectedInnerOpType = RankedTensorType::get(/*shape=*/{}, elemType);
+-  if (innerOp.getOperands()[0].getType() != expectedInnerOpType) return false;
+-
+-  // Check E4.
+-  if (!llvm::equal(block.getArguments(), innerOp.getOperands())) return false;
+-
+-  // Check E5.
+-  auto retOp = dyn_cast<ReturnOp>(block.getTerminator());
+-  if (!retOp) return false;
+-
+-  return llvm::equal(innerOp.getResults(), retOp.getOperands());
+-}
+-
+ void ReduceOp::print(OpAsmPrinter& p) {
+-  {
+-    // Print the pairs of operands under the form:
+-    //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
+-    StringRef comma = "";
+-    int numOperandPairs = getNumOperands() / 2;
+-    for (int opId : llvm::seq<int>(0, numOperandPairs)) {
+-      p << comma << "(" << getOperand(opId)
+-        << " init: " << getOperand(opId + numOperandPairs) << ")";
+-      comma = ", ";
+-    }
+-  }
+-
+-  // If the reduce-op is eligible for compact printing, we emit the one-liner:
+-  // stablehlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
+-  // Note: We are not printing the function type of reduction operation. We
+-  // have some simplifying assumptions (refer to IsEligibleForCompactPrint::E3)
+-  // to derive the type from that of reduce-op.
+-  if (isEligibleForCompactPrint(*this)) {
+-    Operation& innerOp = getBody().front().front();
+-    p << " applies ";
+-    printEscapedString(innerOp.getName().getStringRef(), p.getStream());
+-
+-    p << " across dimensions = [";
+-    llvm::interleaveComma(getDimensions(), p);
+-    p << "]";
+-    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
+-    p << " : ";
+-    p.printFunctionalType(*this);
+-  } else {
+-    p << " across dimensions = [";
+-    llvm::interleaveComma(getDimensions(), p);
+-    p << "]";
+-    p.printOptionalAttrDict(getOperation()->getAttrs(), {"dimensions"});
+-    p << " : ";
+-    p.printFunctionalType(*this);
+-    p.printNewline();
+-    p << " reducer";
+-    {
+-      // Print the pairs of block operands under the form:
+-      //   (%arg0_elt, %arg0_acc) (%arg1_elt, %arg1_acc):
+-      Block& reducer = getBody().front();
+-      int numOperandPairs = getNumOperands() / 2;
+-      for (int opId : llvm::seq<int>(0, numOperandPairs)) {
+-        p << "(";
+-        p.printRegionArgument(reducer.getArgument(opId));
+-        p << ", ";
+-        p.printRegionArgument(reducer.getArgument(opId + numOperandPairs));
+-        p << ") ";
+-      }
+-    }
+-    p << ' ';
+-    p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+-  }
++  hlo::printReduceOp(p, getOperation(), getInputs(), getDimensions(),
++                     getBody());
+ }
+ 
+ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
+-  llvm::SMLoc loc = parser.getCurrentLocation();
+-  Location currLocation = parser.getEncodedSourceLoc(loc);
+-
+-  // Parse the operands of reduce-op, this is a list of pair under the form:
+-  //   (%arg0 init: %arg3), (%arg1 init: %arg4), (%arg2 init: %arg5)
+-  // Each input to reduce is paired with its init value, even though in memory
+-  // they are stored with the input first and the init values after.
+-  SmallVector<OpAsmParser::UnresolvedOperand, 2> operands;
+-  SmallVector<OpAsmParser::UnresolvedOperand, 2> initOperands;
+-  do {
+-    (void)parser.parseOptionalComma();
+-    if (parser.parseOptionalLParen()) break;
+-    OpAsmParser::UnresolvedOperand operand, initOperand;
+-    if (parser.parseOperand(operand) || parser.parseKeyword("init") ||
+-        parser.parseColon() || parser.parseOperand(initOperand) ||
+-        parser.parseRParen())
+-      return failure();
+-    operands.push_back(operand);
+-    initOperands.push_back(initOperand);
+-  } while (true);
+-  operands.append(initOperands);
+-
+-  // Check if we are parsing the compact version of reduce-op:
+-  // stablehlo.reduce applies <inner-op> across dimensions = [...] : <func-type>
+-  // else parse the "region-based" variant.
+-  if (failed(parser.parseOptionalKeyword("applies"))) {
+-    // Parse the inner-op dimensions, reduce-op's function-type and
+-    // optional location.
+-    SmallVector<int64_t> dimensions;
+-    auto parseDim = [&]() -> ParseResult {
+-      if (parser.parseInteger(dimensions.emplace_back())) return failure();
+-      return success();
+-    };
+-
+-    FunctionType reduceOpFnType;
+-    if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
+-        parser.parseEqual() ||
+-        parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+-                                       parseDim) ||
+-        parser.parseOptionalAttrDict(result.attributes) ||
+-        parser.parseColon() || parser.parseType(reduceOpFnType) ||
+-        parser.parseKeyword("reducer"))
+-      return failure();
+-    OpBuilder builder(parser.getBuilder().getContext());
+-    result.addAttribute("dimensions", builder.getDenseI64ArrayAttr(dimensions));
+-
+-    // Parse the "reducer" region now.
+-    SmallVector<OpAsmParser::UnresolvedOperand, 2> reducerOperands;
+-    SmallVector<OpAsmParser::UnresolvedOperand, 2> reducerInitOperands;
+-    SmallVector<Type, 2> reducerTypes;
+-    SmallVector<Type, 2> reducerInitTypes;
+-    SmallVector<std::optional<Location>, 2> reducerLocs;
+-    SmallVector<std::optional<Location>, 2> reducerInitLocs;
+-    auto parseBlockOperand =
+-        [&](SmallVectorImpl<OpAsmParser::UnresolvedOperand>& operands,
+-            SmallVectorImpl<Type>& types,
+-            SmallVectorImpl<std::optional<Location>>& locs) -> ParseResult {
+-      OpAsmParser::UnresolvedOperand operand;
+-      Type type;
+-      std::optional<Location> loc;
+-      if (parser.parseOperand(operand, /*allowResultNumber=*/false) ||
+-          parser.parseColon() || parser.parseType(type) ||
+-          parser.parseOptionalLocationSpecifier(loc))
+-        return failure();
+-      operands.push_back(operand);
+-      types.push_back(type);
+-      locs.push_back(loc);
+-      return success();
+-    };
+-    do {
+-      if (failed(parser.parseOptionalLParen())) break;
+-      if (parseBlockOperand(reducerOperands, reducerTypes, reducerLocs) ||
+-          parser.parseComma() ||
+-          parseBlockOperand(reducerInitOperands, reducerInitTypes,
+-                            reducerInitLocs) ||
+-          parser.parseRParen())
+-        return failure();
+-    } while (true);
+-    reducerOperands.append(reducerInitOperands);
+-    reducerTypes.append(reducerInitTypes);
+-    reducerLocs.append(reducerInitLocs);
+-    result.addTypes(reduceOpFnType.getResults());
+-    SmallVector<OpAsmParser::Argument> reducerArgs;
+-    createArgs(reducerOperands, reducerTypes, reducerArgs);
+-
+-    // Derive the SSA-values for reduce-op's operands and parse the region, and
+-    // the optional trailing location.
+-    std::optional<Location> trailingLoc;
+-    if (parser.resolveOperands(operands, reduceOpFnType.getInputs(), loc,
+-                               result.operands) ||
+-        parser.parseRegion(*result.addRegion(), reducerArgs))
+-      return failure();
+-    // Set the individual block arguments.
+-    for (auto argAndLoc :
+-         llvm::zip(result.regions.front()->front().getArguments(), reducerLocs))
+-      if (std::get<1>(argAndLoc))
+-        std::get<0>(argAndLoc).setLoc(std::get<1>(argAndLoc).value());
+-    result.location = trailingLoc.value_or(currLocation);
+-    return success();
+-  }
+-
+-  // Parse the inner-op name and check if the contract on inner-op
+-  // mentioned in "isEligibleForCompactPrint::E2" for pretty-printing is met.
+-  FailureOr<OperationName> innerOpNameInfo = parser.parseCustomOperationName();
+-  if (failed(innerOpNameInfo)) return failure();
+-
+-  StringRef innerOpName = innerOpNameInfo->getStringRef();
+-  Dialect* innerOpDialect = innerOpNameInfo->getDialect();
+-  if (!innerOpDialect || !innerOpDialect->getNamespace().equals("stablehlo") ||
+-      !innerOpNameInfo->hasTrait<mlir::OpTrait::NOperands<2>::Impl>() ||
+-      !innerOpNameInfo->hasTrait<mlir::OpTrait::OneResult>() ||
+-      !innerOpNameInfo->hasTrait<mlir::hlo::OpTrait::IsCommutative>() ||
+-      !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegions>()) {
+-    parser.emitError(loc,
+-                     "expected the inner-op to be a commutative binary-op from "
+-                     "stablehlo dialect, zero region, producing single result");
+-    return failure();
+-  }
+-
+-  // Parse the inner-op dimensions, reduce-op's function-type and
+-  // optional location.
+-  SmallVector<int64_t> dimensions;
+-  auto parseDim = [&]() -> ParseResult {
+-    if (parser.parseInteger(dimensions.emplace_back())) return failure();
+-    return success();
++  auto parseDenseArray = [](OpBuilder& b, ArrayRef<int64_t> dims) -> Attribute {
++    return b.getDenseI64ArrayAttr(dims);
+   };
+-
+-  std::optional<Location> explicitLoc;
+-  FunctionType reduceOpFnType;
+-  if (parser.parseKeyword("across") || parser.parseKeyword("dimensions") ||
+-      parser.parseEqual() ||
+-      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square, parseDim) ||
+-      parser.parseOptionalAttrDict(result.attributes) || parser.parseColon() ||
+-      parser.parseType(reduceOpFnType) ||
+-      parser.parseOptionalLocationSpecifier(explicitLoc))
+-    return failure();
+-
+-  if (!reduceOpFnType || reduceOpFnType.getInputs().empty()) {
+-    if (!reduceOpFnType) return parser.emitError(loc, "expected function type");
+-    return parser.emitError(loc,
+-                            "input types missing in reduce-op function type");
+-  }
+-
+-  // If location of reduce-op is explicitly provided, then use it; Else use
+-  // the parser's current location.
+-  Location reduceOpLoc = explicitLoc.value_or(currLocation);
+-
+-  // Derive the SSA-values for reduce-op's operands.
+-  if (parser.resolveOperands(operands, reduceOpFnType.getInputs(), loc,
+-                             result.operands))
+-    return failure();
+-
+-  // Derive the type of inner-op from that of reduce-op's input operand.
+-  auto innerOpType = RankedTensorType::get(
+-      /*shape=*/{}, getElementTypeOrSelf(reduceOpFnType.getInput(0)));
+-
+-  // Add a region for reduce-op.
+-  Region& region = *result.addRegion();
+-
+-  // Create a basic-block inside reduce-op's region.
+-  Block& block = region.emplaceBlock();
+-  auto lhs = block.addArgument(innerOpType, reduceOpLoc);
+-  auto rhs = block.addArgument(innerOpType, reduceOpLoc);
+-
+-  // Create and insert an "inner-op" operation in the block.
+-  OpBuilder builder(parser.getBuilder().getContext());
+-  builder.setInsertionPointToStart(&block);
+-
+-  OperationState innerOpState(reduceOpLoc, innerOpName);
+-  innerOpState.operands.push_back(lhs);
+-  innerOpState.operands.push_back(rhs);
+-  innerOpState.addTypes(innerOpType);
+-
+-  Operation* innerOp = builder.create(innerOpState);
+-
+-  // Insert a return statement in the block returning the inner-op's result.
+-  builder.create<ReturnOp>(innerOp->getLoc(), innerOp->getResults());
+-
+-  // Populate the reduce-op operation-state with result-type, location, and
+-  // dimension attribute.
+-  result.addTypes(reduceOpFnType.getResults());
+-  result.location = innerOp->getLoc();
+-  result.addAttribute("dimensions", builder.getDenseI64ArrayAttr(dimensions));
+-  return success();
++  return hlo::parseReduceOp(parser, result, parseDenseArray);
+ }
+ 
+ LogicalResult ReduceOp::inferReturnTypeComponents(
+@@ -2385,69 +2086,12 @@
+   return hlo::verifyWhileOp(getLoc(), getOperand(), getCond(), getBody());
+ }
+ 
+-/// Print a `while` op.
+-///
+-/// op ::= `stablehlo.while` `(` assignment-list `)` `:` types attribute-dict
+-///         `cond` region
+-///         `do` region
+-/// assignment-list ::= assignment | assignment `,` assignment-list
+-/// assignment ::= ssa-value `=` ssa-value
+ void WhileOp::print(OpAsmPrinter& p) {
+-  p << '(';
+-  llvm::interleaveComma(
+-      llvm::zip(SingleBlock::getBody()->getArguments(), getOperands()), p,
+-      [&](auto zip) {
+-        p.printOperand(std::get<0>(zip));
+-        p << " = ";
+-        p.printOperand(std::get<1>(zip));
+-      });
+-  p << ")";
+-  if (getNumOperands()) {
+-    p << " : ";
+-    llvm::interleaveComma(getOperandTypes(), p);
+-  }
+-  p.printOptionalAttrDictWithKeyword(getOperation()->getAttrs());
+-  p.printNewline();
+-  p << " cond ";
+-  p.printRegion(getRegion(0), /*printEntryBlockArgs=*/false);
+-  p << " do ";
+-  p.printRegion(getRegion(1), /*printEntryBlockArgs=*/false);
++  hlo::printWhileOp(p, getOperation(), getCond(), getBody());
+ }
+ 
+ ParseResult WhileOp::parse(OpAsmParser& parser, OperationState& result) {
+-  llvm::SMLoc loc = parser.getCurrentLocation();
+-  // Parse the operands of the while: these are of the form:
+-  //   %iter_arg = %init_val
+-  // where %iter_arg is the name of the block argument in the cond/body blocks
+-  // and %init_val is the actual operand.
+-  SmallVector<OpAsmParser::UnresolvedOperand> operands;
+-  SmallVector<OpAsmParser::UnresolvedOperand> iterArgs;
+-  if (parser.parseLParen()) return failure();
+-  do {
+-    if (succeeded(parser.parseOptionalRParen())) break;
+-    OpAsmParser::UnresolvedOperand operand, iterArg;
+-    if (parser.parseOperand(iterArg) || parser.parseEqual() ||
+-        parser.parseOperand(operand))
+-      return failure();
+-    iterArgs.push_back(iterArg);
+-    operands.push_back(operand);
+-    if (succeeded(parser.parseOptionalRParen())) break;
+-    if (failed(parser.parseComma())) return failure();
+-  } while (true);
+-  if (!operands.empty()) {
+-    if (parser.parseColon() || parser.parseTypeList(result.types))
+-      return failure();
+-  }
+-  SmallVector<OpAsmParser::Argument> args;
+-  createArgs(iterArgs, result.types, args);
+-  if (parser.resolveOperands(operands, result.types, loc, result.operands) ||
+-      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
+-      parser.parseKeyword("cond") ||
+-      parser.parseRegion(*result.addRegion(), args) ||
+-      parser.parseKeyword("do") ||
+-      parser.parseRegion(*result.addRegion(), args))
+-    return failure();
+-  return success();
++  return hlo::parseWhileOp(parser, result);
+ }
+ 
+ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
+diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
+--- stablehlo/stablehlo/experimental/BUILD.bazel
++++ stablehlo/stablehlo/experimental/BUILD.bazel
+@@ -0,0 +1,115 @@
++# Copyright 2023 The StableHLO Authors. All Rights Reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
++
++package(
++    default_visibility = ["//visibility:public"],
++    licenses = ["notice"],
++)
++
++cc_library(
++    name = "experimental_base",
++    srcs = [
++        "dialect/Base.cpp",
++    ],
++    hdrs = [
++        "dialect/Base.h",
++    ],
++    deps = [
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
++    ],
++)
++
++cc_library(
++    name = "experimental_stablehlo_ops",
++    srcs = [
++        "dialect/StablehloOps.cpp",
++    ],
++    hdrs = [
++        "dialect/StablehloOps.h",
++    ],
++    deps = [
++        ":experimental_base",
++        "//:stablehlo_ops",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:Support",
++    ],
++)
++
++gentbl_cc_library(
++    name = "experimental_stablehlo_pass_inc_gen",
++    tbl_outs = [
++        (
++            [
++                "-gen-pass-decls",
++            ],
++            "transforms/Passes.h.inc",
++        ),
++    ],
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "transforms/Passes.td",
++    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
++)
++
++cc_library(
++    name = "experimental_stablehlo_passes",
++    srcs = [
++        "transforms/ChloRecomposeOps.cpp",
++        "transforms/StablehloCanonicalizeDynamism.cpp",
++        "transforms/StablehloRefineShapes.cpp",
++    ],
++    hdrs = [
++        "transforms/Passes.h",
++    ],
++    deps = [
++        ":experimental_stablehlo_ops",
++        ":experimental_stablehlo_pass_inc_gen",
++        "//:base",
++        "//:chlo_ops",
++        "//:stablehlo_ops",
++        "//:stablehlo_ops_inc_gen",
++        "//:stablehlo_passes",
++        "//:stablehlo_type_inference",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:InferTypeOpInterface",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:TransformUtils",
++        "@llvm-project//mlir:Transforms",
++    ],
++)
++
++cc_binary(
++    name = "experimental-stablehlo-opt",
++    srcs = [
++        "tools/StablehloOptMain.cpp",
++    ],
++    deps = [
++        ":experimental_stablehlo_passes",
++        "//:interpreter_ops",
++        "//:register",
++        "//:stablehlo_passes",
++        "//:test_utils",
++        "//:tosa_passes",
++        "@llvm-project//mlir:AllExtensions",
++        "@llvm-project//mlir:AllPassesAndDialects",
++        "@llvm-project//mlir:MlirOptLib",
++        "@llvm-project//mlir:TosaDialect",
++    ],
++)
+diff --ruN a/stablehlo/stablehlo/experimental/CMakeLists.txt b/stablehlo/stablehlo/experimental/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/CMakeLists.txt
+@@ -0,0 +1,18 @@
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++add_subdirectory(dialect)
++add_subdirectory(tests)
++add_subdirectory(tools)
++add_subdirectory(transforms)
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.cpp b/stablehlo/stablehlo/experimental/dialect/Base.cpp
+--- stablehlo/stablehlo/experimental/dialect/Base.cpp
++++ stablehlo/stablehlo/experimental/dialect/Base.cpp
+@@ -0,0 +1,39 @@
++/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/experimental/dialect/Base.h"
++
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
++
++namespace mlir {
++namespace hlo {
++
 +DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
 +                                    ArrayRef<int64_t> values) {
 +  return DenseIntElementsAttr::get(
@@ -201,49 +1298,96 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/
 +  return getPaddingAttr(builder->getContext(), values);
 +}
 +
- }  // namespace hlo
- }  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
---- stablehlo/stablehlo/dialect/Base.h
-+++ stablehlo/stablehlo/dialect/Base.h
-@@ -194,6 +194,10 @@
- 
- ShapedType createShapedType(ShapedTypeComponents components);
- 
++}  // namespace hlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/Base.h b/stablehlo/stablehlo/experimental/dialect/Base.h
+--- stablehlo/stablehlo/experimental/dialect/Base.h
++++ stablehlo/stablehlo/experimental/dialect/Base.h
+@@ -0,0 +1,35 @@
++/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2022 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++#define STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
++
++#include "llvm/ADT/ArrayRef.h"
++#include "mlir/IR/Builders.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/MLIRContext.h"
++
++namespace mlir {
++namespace hlo {
++
 +DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
 +                                    ArrayRef<int64_t> value);
 +DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
 +
- // This interface is implemented by both StableHLO and MHLO dialects
- // and is used as the foundation for sharing verification, type inference and
- // prettyprinting logic between them.
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -77,6 +77,20 @@
- target_include_directories(ChloOps INTERFACE
-   $<BUILD_INTERFACE:${STABLEHLO_SOURCE_DIR}>
-   $<BUILD_INTERFACE:${STABLEHLO_BINARY_DIR}>
++}  // namespace hlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_EXPERIMENTAL_DIALECT_BASE_H
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/dialect/CMakeLists.txt
+@@ -0,0 +1,42 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++add_mlir_library(ExperimentalStablehloBase
++  PARTIAL_SOURCES_INTENDED
++  Base.cpp
++
++  LINK_LIBS PUBLIC
++  MLIRIR
 +)
 +
-+add_mlir_dialect_library(ExperimentalOps
++add_mlir_dialect_library(ExperimentalStablehloOps
 +  PARTIAL_SOURCES_INTENDED
-+  ExperimentalOps.cpp
++  StablehloOps.cpp
 +
 +  DEPENDS
 +  StablehloOpsIncGen
 +
 +  LINK_LIBS PUBLIC
++  ExperimentalStablehloBase
 +  MLIRFuncDialect
 +  MLIRIR
 +  MLIRSupport
 +  StablehloOps
- )
- 
- add_mlir_dialect_library(StablehloRegister
-diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
---- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
-+++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
++)
++
++target_include_directories(ExperimentalStablehloOps INTERFACE
++  $<BUILD_INTERFACE:${STABLEHLO_SOURCE_DIR}>
++  $<BUILD_INTERFACE:${STABLEHLO_BINARY_DIR}>
++)
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 @@ -0,0 +1,504 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
@@ -260,8 +1404,9 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +limitations under the License.
 +==============================================================================*/
 +
-+#include "stablehlo/dialect/ExperimentalOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
 +
++#include <cstdint>
 +#include <optional>
 +
 +#include "llvm/ADT/ArrayRef.h"
@@ -274,6 +1419,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +
 +namespace mlir {
 +namespace stablehlo {
++namespace experimental {
 +
 +LogicalResult DynamicReduceWindowOpAdaptor::verify() {
 +  // Before checking the constraints inherited from ReduceWindowOp,
@@ -287,8 +1433,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +    // api_version and backend_config have default values.
 +    // call_target_name should be "stablehlo.dynamic_reduce_window".
 +    // called_computations carries the body.
-+    if (attr.getName() != "api_version" &&
-+        attr.getName() != "backend_config" &&
++    if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
 +        attr.getName() != "call_target_name" &&
 +        attr.getName() != "called_computations")
 +      return op_.emitError()
@@ -669,8 +1814,8 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +
 +  // dynamic_top_k_i2
 +  auto kType = k.getType().dyn_cast<ShapedType>();
-+  if (!kType || !kType.hasRank() ||
-+      kType.getRank() != 0 || !kType.getElementType().isIntOrIndex())
++  if (!kType || !kType.hasRank() || kType.getRank() != 0 ||
++      !kType.getElementType().isIntOrIndex())
 +    return op_.emitError()
 +           << "expects k (operand #1) "
 +           << "to be a 0-dimensional tensor of integer or index type";
@@ -732,7 +1877,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +  return op_.getInputs()[1].cast<TypedValue<ShapedType>>();
 +}
 +
-+
 +TypedValue<ShapedType> DynamicTopKOpAdaptor::getValues() {
 +  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
 +}
@@ -741,18 +1885,18 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
 +}
 +
-+std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
-+    CustomCallOp op) {
++std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op) {
 +  if (op.getCallTargetName() != "stablehlo.dynamic_top_k") return {};
 +  return DynamicTopKOpAdaptor(op);
 +}
 +
++}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo/dialect/ExperimentalOps.h
---- stablehlo/stablehlo/dialect/ExperimentalOps.h
-+++ stablehlo/stablehlo/dialect/ExperimentalOps.h
-@@ -0,0 +1,227 @@
+diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
+--- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
++++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
+@@ -0,0 +1,230 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -768,8 +1912,8 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +limitations under the License.
 +==============================================================================*/
 +
-+#ifndef STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-+#define STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
++#ifndef STABLEHLO_EXPERIMENTAL_DIALECT_STABLEHLO_OPS_H
++#define STABLEHLO_EXPERIMENTAL_DIALECT_STABLEHLO_OPS_H
 +
 +// This file supports XLA-specific experiments with the StableHLO opset.
 +// These experiments are not yet ready to be upstreamed to openxla/stablehlo
@@ -786,9 +1930,11 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +#include "mlir/IR/ValueRange.h"
 +#include "mlir/Support/LogicalResult.h"
 +#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/Base.h"
 +
 +namespace mlir {
 +namespace stablehlo {
++namespace experimental {
 +
 +// The DynamicReduceWindowOp experiment provides a dynamic version of
 +// ReduceWindowOp. Once the dynamism RFC is figured out, we expect to have an
@@ -976,98 +2122,243 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +// "stablehlo.dynamic_top_k".
 +std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
 +
++}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 +
-+#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/reference/Process.cpp b/stablehlo/stablehlo/reference/Process.cpp
---- stablehlo/stablehlo/reference/Process.cpp
-+++ stablehlo/stablehlo/reference/Process.cpp
-@@ -44,7 +44,7 @@
- 
- void Process::outfeed(ArrayRef<Tensor> inputs) { grid_->outfeed(inputs); }
- 
--const std::shared_ptr<RendezvousResult> Process::rendezvous(
-+std::shared_ptr<RendezvousResult const> Process::rendezvous(
-     ProcessGroup processGroup, ChannelId channelId, const Tensor &operand) {
-   return grid_->rendezvous(processGroup, channelId, getId(), operand);
- }
-diff --ruN a/stablehlo/stablehlo/reference/Process.h b/stablehlo/stablehlo/reference/Process.h
---- stablehlo/stablehlo/reference/Process.h
-+++ stablehlo/stablehlo/reference/Process.h
-@@ -54,7 +54,7 @@
-   void outfeed(ArrayRef<Tensor> inputs);
- 
-   /// See `ProcessGrid::rendezvous`.
--  const std::shared_ptr<RendezvousResult> rendezvous(ProcessGroup processGroup,
-+  std::shared_ptr<RendezvousResult const> rendezvous(ProcessGroup processGroup,
-                                                      ChannelId channelId,
-                                                      const Tensor &operand);
- 
-diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.cpp b/stablehlo/stablehlo/reference/ProcessGrid.cpp
---- stablehlo/stablehlo/reference/ProcessGrid.cpp
-+++ stablehlo/stablehlo/reference/ProcessGrid.cpp
-@@ -66,13 +66,13 @@
-   result_[processId] = tensor;
- }
- 
--Tensor RendezvousResult::lookup(ProcessId processId) {
-+Tensor RendezvousResult::lookup(ProcessId processId) const {
-   auto it = result_.find(processId);
-   if (it != result_.end()) return it->second;
-   return {};
- }
- 
--SmallVector<Tensor> RendezvousResult::getSortedTensors() {
-+SmallVector<Tensor> RendezvousResult::getSortedTensors() const {
-   return llvm::to_vector(
-       llvm::map_range(result_, [](const auto &pair) { return pair.second; }));
- }
-@@ -162,7 +162,7 @@
- 
- void ProcessGrid::outfeed(ArrayRef<Tensor> inputs) { outfeed_.push(inputs); }
- 
--const std::shared_ptr<RendezvousResult> ProcessGrid::rendezvous(
-+std::shared_ptr<RendezvousResult const> ProcessGrid::rendezvous(
-     ProcessGroup processGroup, ChannelId channelId, ProcessId processId,
-     const Tensor &operand) {
-   std::pair<ProcessGroup, ChannelId> channelKey(processGroup, channelId);
-diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.h b/stablehlo/stablehlo/reference/ProcessGrid.h
---- stablehlo/stablehlo/reference/ProcessGrid.h
-+++ stablehlo/stablehlo/reference/ProcessGrid.h
-@@ -75,14 +75,14 @@
-   /// Iterates through the (ProcessId, Tensor) map entires and returns a vector
-   /// of Tensors sorted by ProcessId--(replicaId, partitionId) pair--in
-   /// lexicographical order.
--  SmallVector<Tensor> getSortedTensors();
-+  SmallVector<Tensor> getSortedTensors() const;
- 
-   /// Inserts `tensor` into the map using the key `processId`.
-   void insert(ProcessId processId, Tensor tensor);
- 
-   /// Iterates through the map and returns the value associated with the key
-   /// `processId`. If key is not found, return an empty `Tensor`.
--  Tensor lookup(ProcessId processId);
-+  Tensor lookup(ProcessId processId) const;
- 
-  private:
-   /// Internal map representation of the result of `ProcessGrid::rendezvous`.
-@@ -134,7 +134,7 @@
-   /// tensors are accumulated in `RendezvousResult` whose shard pointer is
-   /// returned to all callers once the barrier has been reached by all StableHLO
-   /// processes.
--  const std::shared_ptr<RendezvousResult> rendezvous(ProcessGroup processGroup,
-+  std::shared_ptr<RendezvousResult const> rendezvous(ProcessGroup processGroup,
-                                                      ChannelId channelId,
-                                                      ProcessId processId,
-                                                      const Tensor &operand);
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
---- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
-@@ -426,6 +426,172 @@
- 
- // -----
- 
++#endif  // STABLEHLO_EXPERIMENTAL_DIALECT_STABLEHLO_OPS_H
+diff --ruN a/stablehlo/stablehlo/experimental/tests/BUILD.bazel b/stablehlo/stablehlo/experimental/tests/BUILD.bazel
+--- stablehlo/stablehlo/experimental/tests/BUILD.bazel
++++ stablehlo/stablehlo/experimental/tests/BUILD.bazel
+@@ -0,0 +1,59 @@
++# Copyright 2023 The StableHLO Authors. All Rights Reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
++load("@llvm-project//llvm:lit_test.bzl", "lit_test", "package_path")
++
++package(
++    default_visibility = ["//visibility:public"],
++    licenses = ["notice"],
++)
++
++# Equivalent of configure_lit_site_cfg from CMakeLists.txt.
++expand_template(
++    name = "lit_site_cfg_py_gen",
++    testonly = True,
++    out = "lit.site.cfg.py",
++    substitutions = {
++        "@LIT_SITE_CFG_IN_HEADER@": "# Autogenerated, do not edit.",
++        "@LLVM_TOOLS_DIR@": package_path("@llvm-project//llvm:BUILD"),
++        "\"@STABLEHLO_TOOLS_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
++        "\"@STABLEHLO_SOURCE_DIR@\"": "os.path.join(os.environ['TEST_SRCDIR'], 'stablehlo')",
++    },
++    template = "lit.site.cfg.py.in",
++)
++
++# Equivalent of add_lit_testsuite from CMakeLists.txt.
++[
++    lit_test(
++        name = "%s.test" % src,
++        size = "small",
++        srcs = [src],
++        data = [
++            "lit.cfg.py",
++            "lit.site.cfg.py",
++            "//:stablehlo-opt",
++            "//:stablehlo-translate",
++            "//stablehlo/experimental:experimental-stablehlo-opt",
++            "@llvm-project//llvm:FileCheck",
++            "@llvm-project//llvm:not",
++        ] + glob(["%s.bc" % src]),
++        tags = ["stablehlo_tests"],
++    )
++    for src in glob(["**/*.mlir"])
++]
++
++test_suite(
++    name = "experimental_stablehlo_tests",
++    tags = ["experimental_stablehlo_tests"],
++)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/stablehlo/experimental/tests/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/tests/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/tests/CMakeLists.txt
+@@ -0,0 +1,29 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++configure_lit_site_cfg(
++  ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
++  ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
++  MAIN_CONFIG
++  ${CMAKE_CURRENT_SOURCE_DIR}/lit.cfg.py
++)
++add_lit_testsuite(check-experimental-stablehlo-tests "Running the experimental/tests/ suite"
++  ${CMAKE_CURRENT_BINARY_DIR}
++  DEPENDS
++  FileCheck
++  experimental-stablehlo-opt
++  stablehlo-translate
++)
++add_dependencies(check-stablehlo-quick check-experimental-stablehlo-tests)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir b/stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
+--- stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
++++ stablehlo/stablehlo/experimental/tests/chlo_recompose_ops.mlir
+@@ -0,0 +1,51 @@
++// RUN: experimental-stablehlo-opt --experimental-chlo-recompose-ops --split-input-file --verify-diagnostics %s | FileCheck %s
++
++// -----
++
++// CHECK-LABEL: func @recompose_topk
++func.func @recompose_topk(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: %values, %indices = chlo.top_k(%arg0, k = 4) {largest = true} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = true}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @recompose_topk_invalid_attr
++func.func @recompose_topk_invalid_attr(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>) {
++  // CHECK: stablehlo.custom_call @mhlo.topk
++  %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
++    mhlo.attributes = { k = 4 : i64, largest = false}
++  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
++  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @recompose_tan
++func.func @recompose_tan(%arg0: tensor<16xf32>) -> tensor<?xf32> {
++  // CHECK: %0 = chlo.tan %arg0 : tensor<16xf32> -> tensor<?xf32>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "mhlo.tan",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<16xf32>) -> tensor<?xf32>
++  func.return %0 : tensor<?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: @recompose_erf
++func.func @recompose_erf(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
++  // CHECK: %0 = chlo.erf %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    backend_config = "",
++    call_target_name = "mhlo.erf",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
++  func.return %0 : tensor<?x20x20xbf16>
++}
++
+diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
+--- stablehlo/stablehlo/experimental/tests/lit.cfg.py
++++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
+@@ -0,0 +1,46 @@
++"""Lit configuration to drive test in this repo."""
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++# -*- Python -*-
++# pylint: disable=undefined-variable
++
++import os
++
++import lit.formats
++from lit.llvm import llvm_config
++
++# Populate Lit configuration with the minimal required metadata.
++# Some metadata is populated in lit.site.cfg.py.in.
++config.name = 'STABLEHLO_TESTS_SUITE'
++config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
++config.suffixes = ['.mlir']
++config.test_source_root = os.path.dirname(__file__)
++
++# Disallow reusing variables across CHECK-LABEL matches.
++# A variable can eschew this (be made "global") by prefixing its name with $.
++config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
++
++# Make LLVM and StableHLO tools available in RUN directives
++tools = [
++  'FileCheck',
++  'experimental-stablehlo-opt',
++  'stablehlo-translate',
++  'not',
++]
++tool_dirs = [
++  config.llvm_tools_dir,
++  config.stablehlo_tools_dir,
++]
++llvm_config.add_tool_substitutions(tools, tool_dirs)
+diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in b/stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in
+--- stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in
++++ stablehlo/stablehlo/experimental/tests/lit.site.cfg.py.in
+@@ -0,0 +1,21 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++@LIT_SITE_CFG_IN_HEADER@
++
++import lit.llvm
++lit.llvm.initialize(lit_config, config)
++config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
++config.stablehlo_tools_dir = "@STABLEHLO_TOOLS_DIR@"
++lit_config.load_config(config, "@STABLEHLO_SOURCE_DIR@" + "/stablehlo/experimental/tests/lit.cfg.py")
+diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynamism.mlir
+@@ -0,0 +1,344 @@
++// RUN: experimental-stablehlo-opt --experimental-stablehlo-canonicalize-dynamism --split-input-file --verify-diagnostics %s | FileCheck %s
++
 +// CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
 +func.func @dynamic_reduce_window_success_static_result_type(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<2x2xf32> {
 +  //           CHECK-NOT: stablehlo.dynamic_reduce_window
@@ -1076,11 +2367,11 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
 +  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
 +  //          CHECK-NEXT: }) {
-+  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
-+  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
++  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
++  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
 +  //          CHECK-SAME: } : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -1108,11 +2399,11 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
 +  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
 +  //          CHECK-NEXT: }) {
-+  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   base_dilations = array<i64: 2, 1>,
 +  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
-+  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
-+  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME:   window_dilations = array<i64: 3, 1>,
++  //          CHECK-SAME:   window_dimensions = array<i64: 2, 1>,
++  //          CHECK-SAME:   window_strides = array<i64: 4, 1>
 +  //          CHECK-SAME: } : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
 +  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
 +  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
@@ -1230,17 +2521,6 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 +  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
 +  func.return %0 : tensor<f32>
-+}
-+
-+// -----
-+
- // CHECK-LABEL: func @dynamic_reshape_success
- func.func @dynamic_reshape_success(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
-   // CHECK-NOT: stablehlo.dynamic_reshape
-@@ -452,6 +618,185 @@
-   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
-   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x?xf32>
-   return %1 : tensor<1x?xf32>
 +}
 +
 +// -----
@@ -1420,16 +2700,13 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +  %k = stablehlo.constant dense<3> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<4xi32>)
 +  return %1#0, %1#1 : tensor<3xf32>, tensor<4xi32>
- }
- 
- // -----
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
---- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -607,12 +607,55 @@
- 
- // -----
- 
++}
+diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
+@@ -0,0 +1,42 @@
++// RUN: experimental-stablehlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
++
 +// CHECK-LABEL: @main
 +func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<*xf32> {
 +  // CHECK: stablehlo.dynamic_reduce_window{{.*}} -> tensor<2x2xf32>
@@ -1447,16 +2724,6 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
 +func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 +  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
 +  func.return %0 : tensor<f32>
-+}
-+
-+// -----
-+
- // CHECK-LABEL: @refine_dynamic_reshape
- func.func @refine_dynamic_reshape(%arg0: tensor<4xf32>) -> tensor<*xf32> {
-   // CHECK: stablehlo.dynamic_reshape{{.*}} -> tensor<1x4xf32>
-   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
-   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<*xf32>
-   func.return %1 : tensor<*xf32>
 +}
 +
 +// -----
@@ -1479,36 +2746,444 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
 +  %k = stablehlo.constant dense<4> : tensor<ui64>
 +  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
 +  return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
- }
- 
- // -----
-diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
---- stablehlo/stablehlo/transforms/Passes.td
-+++ stablehlo/stablehlo/transforms/Passes.td
-@@ -25,6 +25,7 @@
-     For example, if the output_shape operand of DynamicReshapeOp is a constant
-     value, then the operation can be transformed to ReshapeOp.
-   }];
-+  let dependentDialects = ["mlir::chlo::ChloDialect"];
- }
- 
- def StablehloLegalizeToVhloPass : Pass<"stablehlo-legalize-to-vhlo", "ModuleOp"> {
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
---- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
-+++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
-@@ -24,6 +24,8 @@
- #include "mlir/Interfaces/InferTypeOpInterface.h"
- #include "mlir/Support/LogicalResult.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++}
+diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/tools/CMakeLists.txt
+@@ -0,0 +1,41 @@
++# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set(LLVM_OPTIONAL_SOURCES
++  StablehloOptMain.cpp
++)
++
++# stablehlo-opt
++get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
++get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
++get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
++set(LIBS
++        ${dialect_libs}
++        ${conversion_libs}
++        ${extension_libs}
++        ExperimentalStablehloPasses
++        MLIROptLib
++        StablehloRegister
++        StablehloTestUtils
++        StablehloPasses
++        InterpreterOps
++        StablehloTOSATransforms
++        )
++add_llvm_executable(experimental-stablehlo-opt StablehloOptMain.cpp)
++llvm_update_compile_flags(experimental-stablehlo-opt)
++target_link_libraries(experimental-stablehlo-opt PRIVATE ${LIBS})
++
++mlir_check_all_link_libraries(experimental-stablehlo-opt)
++
+diff --ruN a/stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp
+--- stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp
++++ stablehlo/stablehlo/experimental/tools/StablehloOptMain.cpp
+@@ -0,0 +1,46 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "mlir/Dialect/Tosa/IR/TosaOps.h"
++#include "mlir/Dialect/Tosa/Transforms/Passes.h"
++#include "mlir/InitAllDialects.h"
++#include "mlir/InitAllExtensions.h"
++#include "mlir/InitAllPasses.h"
++#include "mlir/Tools/mlir-opt/MlirOptMain.h"
++#include "stablehlo/conversions/tosa/transforms/Passes.h"
++#include "stablehlo/dialect/Register.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/reference/InterpreterOps.h"
++#include "stablehlo/tests/TestUtils.h"
++#include "stablehlo/transforms/Passes.h"
++
++int main(int argc, char **argv) {
++  mlir::registerAllPasses();
++  mlir::hlo::registerAllTestPasses();
++  mlir::stablehlo::registerPassPipelines();
++  mlir::stablehlo::registerPasses();
++  mlir::stablehlo::experimental::registerPasses();
++  mlir::tosa::registerStablehloLegalizeToTosaPassPass();
++  mlir::tosa::registerStablehloPrepareForTosaPassPass();
++
++  mlir::DialectRegistry registry;
++  mlir::registerAllDialects(registry);
++  mlir::registerAllExtensions(registry);
++  mlir::stablehlo::registerAllDialects(registry);
++  registry.insert<mlir::stablehlo::interpreter::InterpreterDialect>();
++
++  return failed(
++      mlir::MlirOptMain(argc, argv, "Experimental StableHLO optimizer driver\n", registry));
++}
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt b/stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
+--- stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
++++ stablehlo/stablehlo/experimental/transforms/CMakeLists.txt
+@@ -0,0 +1,40 @@
++# Copyright 2023 The StableHLO Authors.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      https://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++set(LLVM_TARGET_DEFINITIONS Passes.td)
++mlir_tablegen(Passes.h.inc -gen-pass-decls)
++add_public_tablegen_target(ExperimentalPassesIncGen)
++
++add_mlir_dialect_library(ExperimentalStablehloPasses
++  PARTIAL_SOURCES_INTENDED
++  ChloRecomposeOps.cpp
++  StablehloCanonicalizeDynamism.cpp
++  StablehloRefineShapes.cpp
++
++  DEPENDS
++  ExperimentalPassesIncGen
++
++  LINK_LIBS PUBLIC
++  ChloOps
++  MLIRFuncDialect
++  MLIRIR
++  MLIRInferTypeOpInterface
++  MLIRSupport
++  MLIRTransformUtils
++  ExperimentalStablehloOps
++  StablehloBase
++  StablehloOps
++  StablehloPasses
++  StablehloTypeInference
++)
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp b/stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
+--- stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
++++ stablehlo/stablehlo/experimental/transforms/ChloRecomposeOps.cpp
+@@ -0,0 +1,168 @@
++/* Copyright 2024 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstdint>
++#include <functional>
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Attributes.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 +#include "stablehlo/dialect/ChloOps.h"
-+#include "stablehlo/dialect/ExperimentalOps.h"
- #include "stablehlo/dialect/StablehloOps.h"
- #include "stablehlo/transforms/Passes.h"
- 
-@@ -198,6 +200,54 @@
-   }
- };
- 
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_CHLORECOMPOSEOPSPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
++FailureOr<DictionaryAttr> getCustomCallOpAttributes(CustomCallOp op,
++                                                    PatternRewriter& rewriter) {
++  auto attrs = op->getAttrOfType<DictionaryAttr>("mhlo.attributes");
++  if (!attrs)
++    return rewriter.notifyMatchFailure(
++        op, "Expected mhlo.attributes dictionary attribute.");
++  return attrs;
++}
++
++LogicalResult verifyCustomCallOpAttributes(
++    CustomCallOp op, PatternRewriter& rewriter,
++    std::function<LogicalResult(NamedAttribute)> verifyFn) {
++  auto attrs = getCustomCallOpAttributes(op, rewriter);
++  if (failed(attrs)) return failure();
++
++  for (auto attr : attrs->getValue()) {
++    if (failed(verifyFn(attr))) return failure();
++  }
++  return success();
++}
++
++// Experimental and public ops in MHLO that do not exist yet in StableHLO
++// can be encoded as a StableHLO CustomCallOp to allow round-tripping
++// between dialects. Some of these ops are CHLO ops that are accelerated by XLA.
++// For these ops we can recompose to CHLO.
++//
++// Example:
++//  %0 = stablehlo.custom_call @mhlo.topk(...) {...}
++//  ==>
++//   %0 = "chlo.topk"(...) {...}
++template <typename OpType>
++LogicalResult recomposeChloOpFromCustomCall(stablehlo::CustomCallOp op,
++                                            PatternRewriter& rewriter) {
++  // Only call_target_name, backend_config, called_computations, mhlo.version,
++  // and mhlo.attributes are compatible with the extensibility protocol.
++  auto isSupportedAttrName = [](NamedAttribute attr) {
++    auto name = attr.getName();
++    return name == "call_target_name" || name == "backend_config" ||
++           name == "called_computations" || name == "mhlo.attributes" ||
++           name == "mhlo.version";
++  };
++  if (!llvm::all_of(op->getAttrs(), isSupportedAttrName) ||
++      !op.getBackendConfig().empty()) {
++    return rewriter.notifyMatchFailure(
++        op, "CHLO Recompose custom call did not have required attributes.");
++  }
++  if (!op.getCalledComputations().empty())
++    return rewriter.notifyMatchFailure(op, "Ops with regions not supported.");
++
++  auto attrs = getCustomCallOpAttributes(op, rewriter);
++  if (failed(attrs)) return failure();
++
++  rewriter.replaceOpWithNewOp<OpType>(op, op->getResultTypes(),
++                                      op->getOperands(), attrs->getValue());
++  return success();
++}
++
++struct TopKOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.topk") return failure();
++    auto res = verifyCustomCallOpAttributes(
++        op, rewriter, [&](NamedAttribute attr) -> LogicalResult {
++          if (attr.getName() != "largest") return success();
++          if (attr.getValue().cast<BoolAttr>().getValue() == false)
++            return rewriter.notifyMatchFailure(
++                op, "largest = false is not supported.");
++          return success();
++        });
++    if (failed(res)) return failure();
++    return recomposeChloOpFromCustomCall<chlo::TopKOp>(op, rewriter);
++  }
++};
++
++struct TanOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.tan") return failure();
++    return recomposeChloOpFromCustomCall<chlo::TanOp>(op, rewriter);
++  }
++};
++
++struct ErfOpRecomposePattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter& rewriter) const override {
++    if (op.getCallTargetName() != "mhlo.erf") return failure();
++    return recomposeChloOpFromCustomCall<chlo::ErfOp>(op, rewriter);
++  }
++};
++
++}  // namespace
++
++struct ChloRecomposeOpsPass
++    : public impl::ChloRecomposeOpsPassBase<ChloRecomposeOpsPass> {
++  using ChloRecomposeOpsPassBase::ChloRecomposeOpsPassBase;
++
++  void runOnOperation() override {
++    // Do a single traversal to recompose CustomCallOp to CHLO ops.
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 1;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::ExistingOps;
++
++    RewritePatternSet patterns(&getContext());
++    patterns.add<TopKOpRecomposePattern>(&getContext());
++    patterns.add<TanOpRecomposePattern>(&getContext());
++    patterns.add<ErfOpRecomposePattern>(&getContext());
++
++    // Only apply to CustomCallOps
++    auto moduleOp = getOperation();
++    llvm::SmallVector<Operation*> candidateOps;
++    moduleOp.walk([&](CustomCallOp op) { candidateOps.push_back(op); });
++
++    if (failed(applyOpPatternsAndFold(candidateOps, std::move(patterns),
++                                      config))) {
++      moduleOp.emitError("Failed to converge ChloRecomposeOps in ")
++          << config.maxIterations << " iterations";
++      return signalPassFailure();
++    }
++  }
++};
++
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.h b/stablehlo/stablehlo/experimental/transforms/Passes.h
+--- stablehlo/stablehlo/experimental/transforms/Passes.h
++++ stablehlo/stablehlo/experimental/transforms/Passes.h
+@@ -0,0 +1,36 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_EXPERIMENTAL_TRANSFORMS_PASSES_H
++#define STABLEHLO_EXPERIMENTAL_TRANSFORMS_PASSES_H
++
++#include <memory>
++
++#include "mlir/Pass/Pass.h"
++#include "mlir/Transforms/DialectConversion.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DECL
++#define GEN_PASS_REGISTRATION
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_EXPERIMENTAL_TRANSFORMS_PASSES_H
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/Passes.td b/stablehlo/stablehlo/experimental/transforms/Passes.td
+--- stablehlo/stablehlo/experimental/transforms/Passes.td
++++ stablehlo/stablehlo/experimental/transforms/Passes.td
+@@ -0,0 +1,39 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++include "mlir/Pass/PassBase.td"
++
++def StablehloCanonicalizeDynamismPass : Pass<"experimental-stablehlo-canonicalize-dynamism", "func::FuncOp"> {
++  let summary = "(Experimental) Canonicalizes dynamic StableHLO ops into static ops.";
++  let description = [{
++    Experimental version of the --stablehlo-canonicalize-dynamism pass.
++  }];
++  let dependentDialects = ["mlir::chlo::ChloDialect"];
++}
++
++def StablehloRefineShapesPass : Pass<"experimental-stablehlo-refine-shapes", "ModuleOp"> {
++  let summary = "(Experimental) Refines shapes across a StableHLO program.";
++  let description = [{
++    Experimental version of the --stablehlo-refine-shapes pass.
++  }];
++}
++
++def ChloRecomposeOpsPass : Pass<"experimental-chlo-recompose-ops", "ModuleOp"> {
++  let summary = "(Experimental) Recompose CHLO ops serialized as custom calls.";
++  let description = [{
++    Experimental version of CHLO serialization support.
++  }];
++  let dependentDialects = ["chlo::ChloDialect"];
++}
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -0,0 +1,171 @@
++/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
++   Copyright 2023 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <cstdint>
++
++#include "llvm/ADT/STLExtras.h"
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/ChloOps.h"
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_STABLEHLOCANONICALIZEDYNAMISMPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
 +struct CanonicalizeDynamicReduceWindowOpPattern
 +    : public OpRewritePattern<CustomCallOp> {
 +  using OpRewritePattern::OpRewritePattern;
@@ -1536,10 +3211,10 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
 +      return rewriter.notifyMatchFailure(op, "expected static padding");
 +    auto newOp = rewriter.create<ReduceWindowOp>(
 +        op->getLoc(), op->getResultTypes(), op.getInputs(), op.getInitValues(),
-+        rewriter.getI64TensorAttr(windowDimensions),
-+        rewriter.getI64TensorAttr(windowStrides),
-+        rewriter.getI64TensorAttr(baseDilations),
-+        rewriter.getI64TensorAttr(windowDilations),
++        rewriter.getDenseI64ArrayAttr(windowDimensions),
++        rewriter.getDenseI64ArrayAttr(windowStrides),
++        rewriter.getDenseI64ArrayAttr(baseDilations),
++        rewriter.getDenseI64ArrayAttr(windowDilations),
 +        hlo::getPaddingAttr(&rewriter, padding));
 +
 +    // Inline the called computation into newOp.
@@ -1553,17 +3228,6 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
 +    rewriter.replaceOpWithNewOp<stablehlo::ReturnOp>(
 +        funcReturnOp, funcReturnOp.getOperands());
 +    rewriter.replaceOp(op, newOp->getResults());
-+    return success();
-+  }
-+};
-+
- struct CanonicalizeDynamicReshapeOpPattern
-     : public OpRewritePattern<DynamicReshapeOp> {
-   using OpRewritePattern::OpRewritePattern;
-@@ -210,6 +260,56 @@
-     if (!op.getType().hasStaticShape())
-       return rewriter.notifyMatchFailure(op, "expected static result type");
-     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
 +    return success();
 +  }
 +};
@@ -1614,35 +3278,88 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
 +
 +    rewriter.replaceOpWithNewOp<chlo::TopKOp>(
 +        op, op->getResultTypes(), op.getOperand(), k[0]);
-     return success();
-   }
- };
-@@ -320,7 +420,10 @@
-     patterns.add<CanonicalizeDynamicGatherOpPattern>(&getContext());
-     patterns.add<CanonicalizeDynamicIotaOpPattern>(&getContext());
-     patterns.add<CanonicalizeDynamicPadOpPattern>(&getContext());
++    return success();
++  }
++};
++
++struct StablehloCanonicalizeDynamismPass
++    : public impl::StablehloCanonicalizeDynamismPassBase<
++          StablehloCanonicalizeDynamismPass> {
++  using StablehloCanonicalizeDynamismPassBase::
++      StablehloCanonicalizeDynamismPassBase;
++
++  void runOnOperation() override {
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 2;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::AnyOp;
++
++    RewritePatternSet patterns(&getContext());
++    populateStablehloCanonicalizeDynamismPatterns(&patterns, &getContext());
 +    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
-     patterns.add<CanonicalizeDynamicReshapeOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
-     patterns.add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(
-         &getContext());
-     patterns.add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(&getContext());
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -43,6 +43,7 @@
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- #include "stablehlo/dialect/Base.h"
- #include "stablehlo/dialect/ChloOps.h"
-+#include "stablehlo/dialect/ExperimentalOps.h"
- #include "stablehlo/dialect/StablehloOps.h"
- #include "stablehlo/dialect/TypeInference.h"
- #include "stablehlo/transforms/Passes.h"
-@@ -844,12 +845,97 @@
-   }
- };
- 
++
++    auto funcOp = getOperation();
++    if (failed(applyPatternsAndFoldGreedily(funcOp, std::move(patterns),
++                                            config))) {
++      funcOp.emitError("Failed to converge StablehloCanonicalizeDynamism in ")
++          << config.maxIterations << " iterations";
++      return signalPassFailure();
++    }
++  }
++};
++
++}  // namespace
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
+@@ -0,0 +1,170 @@
++/* Copyright 2022 The StableHLO Authors.
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/transforms/StablehloRefineShapes.h"
++
++#include <cstdint>
++
++#include "llvm/ADT/SmallVector.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/PatternMatch.h"
++#include "mlir/Interfaces/InferTypeOpInterface.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/Base.h"
++#include "stablehlo/dialect/StablehloOps.h"
++#include "stablehlo/dialect/TypeInference.h"
++#include "stablehlo/experimental/dialect/StablehloOps.h"
++#include "stablehlo/experimental/transforms/Passes.h"
++#include "stablehlo/transforms/Passes.h"
++
++namespace mlir {
++namespace stablehlo {
++namespace experimental {
++
++#define GEN_PASS_DEF_STABLEHLOREFINESHAPESPASS
++#include "stablehlo/experimental/transforms/Passes.h.inc"
++
++namespace {
++
 +struct RefineDynamicReduceWindowOpPattern
 +    : public OpRewritePattern<CustomCallOp> {
 +  using OpRewritePattern::OpRewritePattern;
@@ -1675,22 +3392,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
 +    SmallVector<ShapedTypeComponents> inferredReturnTypes;
 +    if (failed(hlo::inferReduceWindowOp(
 +            /*location=*/{}, op.getInputs(), op.getInitValues(),
-+            rewriter.getI64TensorAttr(windowDimensions),
-+            rewriter.getI64TensorAttr(windowStrides),
-+            rewriter.getI64TensorAttr(baseDilations),
-+            rewriter.getI64TensorAttr(windowDilations),
-+            hlo::getPaddingAttr(&rewriter, padding), inferredReturnTypes)))
++            llvm::to_vector(rewriter.getI64TensorAttr(windowDimensions)
++                                .getValues<int64_t>()),
++            llvm::to_vector(
++                rewriter.getI64TensorAttr(windowStrides).getValues<int64_t>()),
++            llvm::to_vector(
++                rewriter.getI64TensorAttr(baseDilations).getValues<int64_t>()),
++            llvm::to_vector(rewriter.getI64TensorAttr(windowDilations)
++                                .getValues<int64_t>()),
++            hlo::getPaddingAttr(&rewriter, padding), op.getBody(),
++            inferredReturnTypes)))
 +      return rewriter.notifyMatchFailure(op, "inferReduceWindowOp failed");
 +    return refineReturnTypes(rewriter, op, inferredReturnTypes);
-+  }
-+};
-+
- struct RefineDynamicReshapeOpPattern
-     : public OpRewritePattern<DynamicReshapeOp> {
-   using OpRewritePattern::OpRewritePattern;
-   LogicalResult matchAndRewrite(DynamicReshapeOp op,
-                                 PatternRewriter& rewriter) const override {
-     return refineReturnShape(rewriter, op, op.getOutputShape());
 +  }
 +};
 +
@@ -1734,18 +3447,104 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
 +
 +    outputShape[operandType.getRank() - 1] = k[0];
 +    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
-   }
- };
- 
-@@ -1181,7 +1267,10 @@
-     patterns.add<RefineDynamicConvOpPattern>(&getContext());
-     patterns.add<RefineDynamicIotaOpPattern>(&getContext());
-     patterns.add<RefineDynamicPadOpPattern>(&getContext());
++  }
++};
++
++struct StablehloRefineShapesPass
++    : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
++  using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
++
++  void runOnOperation() override {
++    auto func = getStablehloRefineShapesTarget(getOperation());
++    if (!func) return signalPassFailure();
++
++    // The algorithm behind this pass consists of a single traversal of the
++    // function. This is sufficient because we only support one function per
++    // program at the moment.
++    // TODO(#1048): Find out why .maxIterations = 1 no longer works.
++    // There have been recent refactors to applyPatternsAndFoldGreedily
++    // upstream, and that might be the reason.
++    GreedyRewriteConfig config;
++    config.useTopDownTraversal = true;
++    config.enableRegionSimplification = true;
++    config.maxIterations = 3;
++    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
++    config.strictMode = GreedyRewriteStrictness::AnyOp;
++
++    RewritePatternSet patterns(&getContext());
++    populateStablehloRefineShapesPatterns(&patterns, &getContext());
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
-     patterns.add<RefineDynamicReshapeOpPattern>(&getContext());
 +    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
-     patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
-     patterns.add<RefineRealDynamicSliceOpPattern>(&getContext());
-     patterns.add<RefineReduceScatterOpPattern>(&getContext());
++    if (failed(
++            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {
++      func.emitError()
++          << "Greedy rewriter in StablehloRefineShapes does not converge after "
++          << config.maxIterations << " iterations.";
++      return signalPassFailure();
++    }
++  }
++};
++
++}  // namespace
++}  // namespace experimental
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce.mlir b/stablehlo/stablehlo/tests/verify_reduce.mlir
+--- stablehlo/stablehlo/tests/verify_reduce.mlir
++++ stablehlo/stablehlo/tests/verify_reduce.mlir
+@@ -490,7 +490,7 @@
+ // -----
+ 
+ func.func @reduce_parsing_pretty_reduce_non_commutative(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
+-  // expected-error@+1 {{expected the inner-op to be a commutative binary-op from stablehlo dialect, zero region, producing single result}}
++  // expected-error@+1 {{expected the inner-op to be a commutative binary-op that matching the reduce op dialect, with zero region, producing single result}}
+  %0 = stablehlo.reduce(%arg0 init: %arg1) applies stablehlo.divide across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
+  func.return %0 : tensor<?xf32>
+ }
+@@ -498,7 +498,7 @@
+ // -----
+ 
+ func.func @reduce_parsing_pretty_reduce_wrong_dialect(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
+-  // expected-error@+1 {{expected the inner-op to be a commutative binary-op from stablehlo dialect, zero region, producing single result}}
++  // expected-error@+1 {{expected the inner-op to be a commutative binary-op that matching the reduce op dialect, with zero region, producing single result}}
+  %0 = stablehlo.reduce(%arg0 init: %arg1) applies std.add across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
+  func.return %0 : tensor<?xf32>
+ }
+@@ -506,7 +506,7 @@
+ // -----
+ 
+ func.func @reduce_parsing_pretty_reduce_non_binary(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
+-  // expected-error@+1 {{expected the inner-op to be a commutative binary-op from stablehlo dialect, zero region, producing single result}}
++  // expected-error@+1 {{expected the inner-op to be a commutative binary-op that matching the reduce op dialect, with zero region, producing single result}}
+  %0 = stablehlo.reduce(%arg0 init: %arg1) applies stablehlo.reshape across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
+  func.return %0 : tensor<?xf32>
+ }
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+@@ -126,9 +126,8 @@
+ 
+     // The canonical form has the constant operand as the RHS.
+     if (isa<IntegerType>(type.getElementType()) && lhsAttr && !rhsAttr) {
+-      rewriter.modifyOpInPlace(op, [op, lhs, rhs] {
+-        op->setOperands(ValueRange{rhs, lhs});
+-      });
++      rewriter.modifyOpInPlace(
++          op, [op, lhs, rhs] { op->setOperands(ValueRange{rhs, lhs}); });
+       return success();
+     }
+ 
+@@ -221,9 +220,8 @@
+ 
+     // The canonical form has the constant operand as the RHS.
+     if (isa<IntegerType>(type.getElementType()) && lhsAttr && !rhsAttr) {
+-      rewriter.modifyOpInPlace(op, [op, lhs, rhs] {
+-        op->setOperands(ValueRange{rhs, lhs});
+-      });
++      rewriter.modifyOpInPlace(
++          op, [op, lhs, rhs] { op->setOperands(ValueRange{rhs, lhs}); });
+       return success();
+     }
+ 
 

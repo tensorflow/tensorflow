@@ -124,6 +124,127 @@ class OptimizeForInferenceTest(test.TestCase):
         graph_def, [], [add_name], dtypes.float32.as_datatype_enum)
     self.assertProtoEquals(expected_output, output)
 
+  def testConvertPlaceholderToConstant(self):
+    """Build the placeholder testing graph."""
+    placeholder_name = "phase_train"
+    relu_name = "r_relu"
+
+    g_def = graph_pb2.GraphDef()
+
+    ph_node = node_def_pb2.NodeDef()
+    ph_node.op = "Placeholder"
+    ph_node.name = placeholder_name
+
+    self.set_attr_dtype(ph_node, "dtype", dtypes.bool)
+    g_def.node.extend([ph_node])
+
+    r_node = self.create_node_def("Relu", relu_name, [placeholder_name])
+    g_def.node.extend([r_node])
+
+    opt_graph_def = optimize_for_inference_lib.optimize_for_inference(
+        g_def,
+        [],
+        [relu_name],
+        dtypes.float32.as_datatype_enum,
+        placeholder_to_const_names=["phase_train=False"],
+    )
+    for node in opt_graph_def.node:
+      self.assertNotEqual("Placeholder", node.op)
+      if node.name == "phase_train":
+        self.assertEqual(node.op, "Const")
+        const_value = optimize_for_inference_lib.values_from_const(node)
+        self.assertEqual(const_value, False)
+
+  def testConvertPlaceholderToConstant2(self):
+    """Build the placeholder testing graph."""
+    placeholder_name = "phase_train"
+    relu_name = "r_relu"
+
+    g_def = graph_pb2.GraphDef()
+
+    ph_node = node_def_pb2.NodeDef()
+    ph_node.op = "Placeholder"
+    ph_node.name = placeholder_name
+
+    self.set_attr_dtype(ph_node, "dtype", dtypes.bool)
+    g_def.node.extend([ph_node])
+
+    r_node = self.create_node_def("Relu", relu_name, [placeholder_name])
+    g_def.node.extend([r_node])
+
+    opt_graph_def = optimize_for_inference_lib.convert_placeholder_to_const(
+        g_def, ["phase_train=True"]
+    )
+    for node in opt_graph_def.node:
+      self.assertNotEqual("Placeholder", node.op)
+      if node.name == "phase_train":
+        self.assertEqual(node.op, "Const")
+        const_value = optimize_for_inference_lib.values_from_const(node)
+        self.assertEqual(const_value, True)
+
+  def testConvertPlaceholderWithDefaultToConstant(self):
+    """Build the placeholder_with_default testing graph."""
+    placeholder_name = "keras_learning_phase"
+    a_constant_name = "a_constant"
+    relu_name = "r_relu"
+
+    g_def = graph_pb2.GraphDef()
+    const_node = self.create_constant_node_def(
+        a_constant_name, value=True, dtype=dtypes.bool, shape=[]
+    )
+    g_def.node.extend([const_node])
+
+    ph_node = self.create_node_def(
+        "PlaceholderWithDefault", placeholder_name, [a_constant_name]
+    )
+    self.set_attr_dtype(ph_node, "dtype", dtypes.bool)
+    g_def.node.extend([ph_node])
+
+    r_node = self.create_node_def("Relu", relu_name, [placeholder_name])
+    g_def.node.extend([r_node])
+
+    opt_graph_def = optimize_for_inference_lib.convert_placeholder_to_const(
+        g_def
+    )
+    for node in opt_graph_def.node:
+      self.assertNotEqual("PlaceholderWithDefault", node.op)
+      if node.name == "keras_learning_phase":
+        self.assertEqual(node.op, "Const")
+        const_value = optimize_for_inference_lib.values_from_const(node)
+        # Notice optimize_for_inference rewrites keras_learning_phase to False
+        self.assertEqual(const_value, False)
+
+  def testConvertPlaceholderWithDefaultToConstant2(self):
+    """Build the placeholder_with_default testing graph."""
+    placeholder_name = "keras_learning_phase"
+    a_constant_name = "a_constant"
+    relu_name = "r_relu"
+
+    g_def = graph_pb2.GraphDef()
+    const_node = self.create_constant_node_def(
+        a_constant_name, value=True, dtype=dtypes.bool, shape=[]
+    )
+    g_def.node.extend([const_node])
+
+    ph_node = self.create_node_def(
+        "PlaceholderWithDefault", placeholder_name, [a_constant_name]
+    )
+    self.set_attr_dtype(ph_node, "dtype", dtypes.bool)
+    g_def.node.extend([ph_node])
+
+    r_node = self.create_node_def("Relu", relu_name, [placeholder_name])
+    g_def.node.extend([r_node])
+
+    opt_graph_def = optimize_for_inference_lib.optimize_for_inference(
+        g_def, [], [relu_name], dtypes.float32.as_datatype_enum
+    )
+    for node in opt_graph_def.node:
+      self.assertNotEqual("PlaceholderWithDefault", node.op)
+      if node.name == "keras_learning_phase":
+        self.assertEqual(node.op, "Const")
+        const_value = optimize_for_inference_lib.values_from_const(node)
+        self.assertEqual(const_value, False)
+
   @test_util.run_deprecated_v1
   def testFoldBatchNorms(self):
     with self.cached_session() as sess:
@@ -349,7 +470,6 @@ class OptimizeForInferenceTest(test.TestCase):
     for node in optimized_graph_def.node:
       self.assertNotEqual("Conv2D", node.op)
       self.assertNotEqual("MirrorPad", node.op)
-
 
   @test_util.run_deprecated_v1
   def testFusePadAndConv(self):

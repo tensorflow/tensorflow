@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -64,6 +65,7 @@ string SafeDeviceDebugString(Device* device) {
     return device->DebugString();
   }
 }
+
 }  // namespace
 
 TensorHandle::PackedTensorHandleData::PackedTensorHandleData(
@@ -275,7 +277,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
            << " device: " << SafeDeviceDebugString(device_)
            << " tensor: " << t.DeviceSafeDebugString();
 }
-
 
 TensorHandle* TensorHandle::CreateEmptyLocalHandle(Device* d, Device* op_device,
                                                    Device* resource_device,
@@ -546,7 +547,6 @@ Status TensorHandle::InferenceShape(
     shape_inference::InferenceContext* const inference_context,
     shape_inference::ShapeHandle* shape_handle) {
   if (IsReady()) {
-    TF_RETURN_IF_ERROR(is_poisoned_);
     std::vector<shape_inference::DimensionHandle> dims_handle;
     int num_dims;
     TF_RETURN_IF_ERROR(NumDims(&num_dims));
@@ -593,7 +593,6 @@ void TensorHandle::SetInferenceShape(
 
 Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   if (IsReady()) {
-    TF_RETURN_IF_ERROR(is_poisoned_);
     return OkStatus();
   }
   if (other->IsReady()) {
@@ -784,8 +783,10 @@ Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64_t op_id,
   mutex_lock l(mu_);
   auto remote_mirror = remote_mirrors_.find(d->name());
   if (remote_mirror != remote_mirrors_.end()) {
-    if (remote_mirror->second.context_view_id() >= ctx->GetContextId()) {
-      return errors::Internal("Attempted to duplicate a remote mirror.");
+    if (remote_mirror->second.context_view_id() > ctx->GetContextId()) {
+      return errors::Internal(
+          "Attempted to duplicate a remote mirror with inconsistent "
+          "arguments.");
     }
     // Remove stale mirror
     remote_mirrors_.erase(remote_mirror);
@@ -806,7 +807,16 @@ Status TensorHandle::AddResourceShapeMirror(const Device* d, int64_t op_id,
   auto mirror = resource_shape_mirrors_.find(d->name());
   if (mirror != resource_shape_mirrors_.end()) {
     if (mirror->second.context_view_id() == ctx->GetContextViewId()) {
-      return errors::Internal(
+      int64_t existing_op_id;
+      int existing_output_num;
+      TF_RETURN_IF_ERROR(mirror->second.OpIdAndOutputNum(false, &existing_op_id,
+                                                         &existing_output_num));
+      if (op_id == existing_op_id && output_num == existing_output_num) {
+        // The mirror has already been added by a concurrent op/function
+        // invocation.
+        return OkStatus();
+      }
+      return absl::InternalError(
           "Attempted to duplicate a resource shape mirror.");
     }
     // Remove stale mirror
@@ -841,7 +851,14 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
     }
     auto& mirror = remote_mirror->second;
     if (mirror.context_view_id() == context_view_id) {
-      return mirror.SetShape(shape);
+      auto status = mirror.SetShape(shape);
+      if (!status.ok()) {
+        // TODO(b/307761242) Return an error or assert that this condition will
+        // never occur.
+        LOG(ERROR) << "SetShape returned " << status.message()
+                   << ". This should never occur.";
+      }
+      return status;
     } else if (mirror.context_view_id() < context_view_id) {
       return errors::Internal(
           absl::Substitute("Unexpected context_view_id ($0) which should not "
@@ -870,7 +887,14 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
   // consuming op/function device, and we (for now) have to aggressively
   // invalidate those copies to avoid any false positives during cluster update.
   if (op_device.empty()) {
-    return data.SetShape(shape);
+    auto status = data.SetShape(shape);
+    if (!status.ok()) {
+      // TODO(anshumang) Return an error or assert that this condition will
+      // never occur.
+      LOG(ERROR) << "SetShape returned " << status.message()
+                 << ". This should never occur.";
+    }
+    return status;
   } else {
     if (!unknown_device_) {
       return errors::Internal("Cannot reset known devices.");
@@ -888,7 +912,14 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
           "Unable to find remote task corresponding to device ",
           device->name());
     }
-    return data.SetShapeAndRemoteTask(shape, remote_task);
+    auto status = data.SetShapeAndRemoteTask(shape, remote_task);
+    if (!status.ok()) {
+      // TODO(anshumang) Return an error or assert that this condition will
+      // never occur.
+      LOG(ERROR) << "SetShape returned " << status
+                 << ". This should never occur.";
+    }
+    return status;
   }
 }
 
@@ -1018,7 +1049,14 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
   if (!dst_cpu) {
-    if (dstd_info->use_pjrt_tensor_buffer) {
+    // PJRT will soon pack int4 tensors when transferring them to device (once
+    // XLA int4 support is implemented), but TF currently represents int4 as
+    // unpacked, so do not use PJRT for int4 tensors.
+    // TODO(b/226482736): Either pack int4, or support unpacked int4 tensors in
+    // PJRT. Also update beginning of comment from future to present tense once
+    // PJRT packs int4 tensors.
+    if (dstd_info->use_pjrt_tensor_buffer && DataType() != DT_INT4 &&
+        DataType() != DT_UINT4) {
       dst_device_context = dstd_info->pjrt_context;
     } else {
       dst_device_context = dstd_info->default_context;

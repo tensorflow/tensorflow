@@ -86,3 +86,17 @@ module attributes { mhlo.spmd_output_sharding = "\08\03\1A\02\01\02\22\02\00\01"
 // CHECK:   tile_assignment_devices: 0
 // CHECK:   tile_assignment_devices: 1
 // CHECK: }
+
+// -----
+
+//         CHECK-LABEL: ModuleWithFrontendAttributes
+module @ModuleWithFrontendAttributes attributes {
+//      CHECK{LITERAL}: frontend_attributes {
+//      CHECK{LITERAL}: key: "attr_name"
+//      CHECK{LITERAL}: value: "attr_value"
+  mhlo.frontend_attributes = { attr_name="attr_value" }
+} {
+  func.func @main(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+    func.return %arg0 : tensor<1xf32>
+  }
+}

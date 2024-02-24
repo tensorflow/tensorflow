@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -983,6 +983,34 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0) {
   }
 }
 
+XLA_TEST_F(CollectiveOpsTest, AllGather_Dim0_UseGlobalDevices) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 2] broadcast(id), dimensions={}
+    a0 = u32[1, 2] constant({{10, 15}})
+    a1 = u32[1, 2] add(id2, a0)
+    allgather = u32[2, 2] all-gather(a1), dimensions={0}, use_global_device_ids=true, channel_id=7, replica_groups={{0, 1}}
+    ROOT out = u32[4] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
+  }
+}
+
 XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
   const char* const kModuleStr = R"(
   HloModule test
@@ -1844,16 +1872,16 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
     %p = u32[2] broadcast(%sum), dimensions={}
 
     %after-all = token[] after-all()
-    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=1, frontend_attributes={
+    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=0, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1,0}}"
     }
-    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=1, control-predecessors={%recv}, frontend_attributes={
+    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=0, control-predecessors={%recv}, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1,0}}"
     }
 
-    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=1
+    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=0
     %recv-data = u32[2] get-tuple-element(%recv-done), index=0
-    %send-done = token[] send-done(%send), channel_id=1, control-predecessors={%recv}
+    %send-done = token[] send-done(%send), channel_id=0, control-predecessors={%recv}
     ROOT copy = u32[2] copy(%recv-data)
   }
   )";

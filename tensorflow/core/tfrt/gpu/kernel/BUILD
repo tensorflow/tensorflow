@@ -3,10 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
+    default_visibility = ["//tensorflow/core/tfrt/saved_model:__pkg__"],
     licenses = ["notice"],
 )
 
@@ -50,7 +47,6 @@ cc_library(
         "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime:serving_device_selector",
         "//tensorflow/core/platform:notification",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -67,6 +63,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/framework:device_id",
+        "@local_tsl//tsl/framework:serving_device_selector",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:statusor",
@@ -93,7 +90,6 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
-        "//tensorflow/core/common_runtime:serving_device_selector_policies",
         "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
@@ -117,10 +113,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gpu_runner",
-        "//tensorflow/core/common_runtime:serving_device_selector_policies",
         "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/runtime",
+        "@local_tsl//tsl/framework:serving_device_selector_policies",
         "@tf_runtime//:hostcontext",
     ],
 )

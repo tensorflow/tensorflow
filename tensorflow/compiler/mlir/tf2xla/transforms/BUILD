@@ -1,10 +1,10 @@
 # Description:
 #    TF2XLA Bridge transforms
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -270,7 +270,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -466,6 +468,7 @@ cc_library(
     hdrs = ["legalization_op_config.h"],
     visibility = [
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
@@ -487,13 +490,12 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],

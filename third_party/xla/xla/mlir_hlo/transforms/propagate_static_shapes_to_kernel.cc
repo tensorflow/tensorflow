@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,7 +91,7 @@ class PropagateStaticShapesToKernelPass
 // 'strides[rank]') corresponding to statically shaped 'memref' with the base
 // pointer and constants. The base pointer is changed to 'pointer_type' if
 // provided.
-static void replaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
+static void replaceStaticMemRefArguments(ValueRange arguments,
                                          MemRefType memref, Type pointerType,
                                          PatternRewriter& rewriter) {
   assert(arguments.size() >= 3 && "expected at least 3 arguments");
@@ -111,8 +111,7 @@ static void replaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
   arguments[2].replaceAllUsesWith(rewriter.create<LLVM::ConstantOp>(
       arguments[2].getLoc(), arguments[2].getType(),
       rewriter.getIntegerAttr(arguments[2].getType(), 0)));
-  auto replace = [&](ArrayRef<int64_t> values,
-                     ArrayRef<BlockArgument> arguments) {
+  auto replace = [&](ArrayRef<int64_t> values, ValueRange arguments) {
     for (auto valAndArg : llvm::zip_first(values, arguments)) {
       auto argument = std::get<1>(valAndArg);
       argument.replaceAllUsesWith(rewriter.create<LLVM::ConstantOp>(
@@ -199,7 +198,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   if (argsToDrop.none()) {
     return rewriter.notifyMatchFailure(funcOp, "no static shapes");
   }
-  rewriter.updateRootInPlace(funcOp, [&] {
+  rewriter.modifyOpInPlace(funcOp, [&] {
     SmallVector<Type> argTypes;
     for (unsigned idx = 0; idx < argsToDrop.size(); ++idx)
       if (!argsToDrop[idx])

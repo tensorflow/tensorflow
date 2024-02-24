@@ -46,6 +46,23 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
   EXPECT_STREQ(stable_delegate_handle->delegate_version,
                tflite::example::kSampleStableDelegateVersion);
   ASSERT_NE(stable_delegate_handle->delegate_plugin, nullptr);
+}
+
+TEST(SampleStableDelegate, LoadFromSharedLibraryTestFile) {
+  // Load the example stable opaque_delegate that implements the ADD operation
+  // from a shared library file.
+  const TfLiteStableDelegate* stable_delegate_handle =
+      LoadDelegateFromSharedLibrary(
+          "tensorflow/lite/delegates/utils/experimental/"
+          "sample_stable_delegate/libtensorflowlite_sample_stable_delegate_for_test.so");
+  ASSERT_NE(stable_delegate_handle, nullptr);
+  EXPECT_STREQ(stable_delegate_handle->delegate_abi_version,
+               TFL_STABLE_DELEGATE_ABI_VERSION);
+  EXPECT_STREQ(stable_delegate_handle->delegate_name,
+               tflite::example::kSampleStableDelegateName);
+  EXPECT_STREQ(stable_delegate_handle->delegate_version,
+               tflite::example::kSampleStableDelegateVersion);
+  ASSERT_NE(stable_delegate_handle->delegate_plugin, nullptr);
 
   // Build TFLiteSettings flatbuffer and pass into opaque_delegate plugin
   // create method.
@@ -60,9 +77,7 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
       stable_delegate_handle->delegate_plugin->create(settings);
   ASSERT_NE(opaque_delegate, nullptr);
 
-  //
   // Create the model and the interpreter
-  //
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
@@ -74,9 +89,7 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
   // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
 
-  //
   // Allocate the tensors and fill the input tensor.
-  //
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   TfLiteTensor* input_tensor =
       TfLiteInterpreterGetInputTensor(interpreter, /*input_index=*/0);
@@ -88,9 +101,7 @@ TEST(SampleStableDelegate, LoadFromSharedLibraryFile) {
                                        input.size() * sizeof(float)),
             kTfLiteOk);
 
-  //
   // Run the interpreter and read the output tensor.
-  //
   ASSERT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
 
   const TfLiteTensor* output_tensor =

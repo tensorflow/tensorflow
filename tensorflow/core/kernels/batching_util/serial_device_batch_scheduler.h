@@ -188,7 +188,8 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
 
   mutex mu_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SerialDeviceBatchScheduler);
+  SerialDeviceBatchScheduler(const SerialDeviceBatchScheduler&) = delete;
+  void operator=(const SerialDeviceBatchScheduler&) = delete;
 };
 
 //////////////////////////////////////////////////////////
@@ -233,7 +234,8 @@ class SDBSQueue : public BatchScheduler<TaskType> {
   int64_t num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
   int64_t num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
   mutable mutex mu_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SDBSQueue);
+  SDBSQueue(const SDBSQueue&) = delete;
+  void operator=(const SDBSQueue&) = delete;
 };
 
 // Batch which remembers when and by whom it was created.
@@ -252,7 +254,8 @@ class SDBSBatch : public Batch<TaskType> {
  private:
   SDBSQueue<TaskType>* queue_;
   const int64_t creation_time_micros_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SDBSBatch);
+  SDBSBatch(const SDBSBatch&) = delete;
+  void operator=(const SDBSBatch&) = delete;
 };
 }  // namespace internal
 
@@ -300,7 +303,7 @@ Status SerialDeviceBatchScheduler<TaskType>::Create(
         "specified");
   }
   scheduler->reset(new SerialDeviceBatchScheduler<TaskType>(options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -346,7 +349,7 @@ Status SerialDeviceBatchScheduler<TaskType>::AddQueue(
                    this->shared_from_this(), options));
   mutex_lock l(mu_);
   queues_and_callbacks_[SDBS_queue_raw] = process_batch_callback;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -513,7 +516,7 @@ Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   }
   // AddBatch must be called outside of lock, since it may call ReleaseBatch.
   if (new_batch != nullptr) scheduler_->AddBatch(new_batch);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>

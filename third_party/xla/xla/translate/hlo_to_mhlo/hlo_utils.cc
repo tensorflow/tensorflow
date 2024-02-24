@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,11 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 
+#include <cstddef>
+#include <type_traits>
+#include <vector>
+
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -25,6 +30,8 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -40,9 +47,22 @@ using xla::StatusOr;
 template <typename CppType>
 ::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
     const ShapedType& type, const LiteralBase& literal) {
-  auto data_span = literal.data<CppType>();
-  return ::mlir::DenseElementsAttr::get(
-      type, llvm::ArrayRef(data_span.data(), data_span.size()));
+  if constexpr (std::is_same_v<CppType, u4> || std::is_same_v<CppType, s4>) {
+    // DenseElementsAttr::get() does not support being passed an i4 array.
+    // Instead, create buffer of padded i4 values and call
+    // DenseElementsAttr::getFromRawBuffer()
+    auto data_span = literal.data<CppType>();
+    std::vector<char> int4_padded_data;
+    int4_padded_data.reserve(literal.element_count());
+    for (size_t i = 0; i < literal.element_count(); i++) {
+      int4_padded_data.push_back(static_cast<char>(data_span[i]));
+    }
+    return ::mlir::DenseElementsAttr::getFromRawBuffer(type, int4_padded_data);
+  } else {
+    auto data_span = literal.data<CppType>();
+    return ::mlir::DenseElementsAttr::get(
+        type, llvm::ArrayRef(data_span.data(), data_span.size()));
+  }
 }
 
 StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
@@ -73,18 +93,6 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
   return makeStridedLinearLayoutMap(strides, /*offset=*/0,
                                     builder.getContext());
 }
-
-template <typename T>
-void CopyDenseElementsBy(mlir::DenseElementsAttr data,
-                         std::vector<uint8_t>* output) {
-  output->resize(data.getNumElements() * sizeof(T));
-  int i = 0;
-  for (T element : data.getValues<T>()) {
-    std::memcpy(&(*output)[i], &element, sizeof(T));
-    i += sizeof(T);
-  }
-}
-
 }  // namespace
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
@@ -121,80 +129,6 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
                         PrimitiveType_Name(element_type));
       },
       element_type);
-}
-
-Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8_t>* output) {
-  mlir::Type element_type = data.getType().getElementType();
-
-  // TODO(hinsu): Support remaining XLA primitive types.
-  if (element_type.isInteger(1)) {
-    CopyDenseElementsBy<bool>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(8)) {
-    CopyDenseElementsBy<uint8_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(16)) {
-    CopyDenseElementsBy<uint16_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(32)) {
-    CopyDenseElementsBy<uint32_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isInteger(64)) {
-    CopyDenseElementsBy<uint64_t>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E5M2()) {
-    CopyDenseElementsBy<tsl::float8_e5m2>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3FN()) {
-    CopyDenseElementsBy<tsl::float8_e4m3fn>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3B11FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e4m3b11>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E5M2FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e5m2fnuz>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isFloat8E4M3FNUZ()) {
-    CopyDenseElementsBy<tsl::float8_e4m3fnuz>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isBF16()) {
-    CopyDenseElementsBy<bfloat16>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF16()) {
-    CopyDenseElementsBy<half>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF32()) {
-    CopyDenseElementsBy<float>(data, output);
-    return OkStatus();
-  }
-  if (element_type.isF64()) {
-    CopyDenseElementsBy<double>(data, output);
-    return OkStatus();
-  }
-  if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
-    if (complex_type.getElementType().isF32()) {
-      CopyDenseElementsBy<complex64>(data, output);
-      return OkStatus();
-    }
-    if (complex_type.getElementType().isF64()) {
-      CopyDenseElementsBy<complex128>(data, output);
-      return OkStatus();
-    }
-  }
-  return Internal("Unsupported type in CopyDenseElementsDataToXlaFormat");
 }
 
 StatusOr<int> GetElementTypeBytes(mlir::Type type) {
@@ -355,6 +289,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kConvolution;
   } else if (isa<mlir::mhlo::SortOp, mlir::lmhlo::SortOp>(op)) {
     return xla::HloOpcode::kSort;
+  } else if (isa<mlir::mhlo::TopKOp>(op)) {
+    return xla::HloOpcode::kTopK;
   } else if (isa<mlir::mhlo::RngBitGeneratorOp>(op)) {
     return xla::HloOpcode::kRngBitGenerator;
   } else if (isa<mlir::mhlo::XlaRngGetAndUpdateStateOp>(op)) {
@@ -373,6 +309,8 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClz;
   } else if (isa<mlir::mhlo::CosineOp, mlir::lmhlo::CosineOp>(op)) {
     return xla::HloOpcode::kCos;
+  } else if (isa<mlir::mhlo::ErfOp>(op)) {
+    return xla::HloOpcode::kErf;
   } else if (isa<mlir::mhlo::ExpOp, mlir::lmhlo::ExpOp>(op)) {
     return xla::HloOpcode::kExp;
   } else if (isa<mlir::mhlo::Expm1Op, mlir::lmhlo::Expm1Op>(op)) {

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -62,6 +62,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace {
@@ -130,30 +131,6 @@ const std::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    se::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
-    const ServiceOptions& options) {
-  se::Platform* platform = options.platform();
-  std::unique_ptr<Backend> execute_backend;
-  if (platform == nullptr) {
-    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
-  }
-  BackendOptions backend_options;
-  backend_options.set_platform(platform);
-  backend_options.set_allowed_devices(options.allowed_devices());
-  TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
-
-  std::unique_ptr<Service> service(
-      new Service(options, std::move(execute_backend)));
-  return std::move(service);
-}
-
 Service::Service(const ServiceOptions& options,
                  std::unique_ptr<Backend> execute_backend)
     : options_(options),
@@ -215,7 +192,7 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
 }
 
 Status Service::ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape) const {
+                                    const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
@@ -227,7 +204,7 @@ Status Service::ValidateResultShape(const Shape& client_shape,
   return OkStatus();
 }
 
-StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
 Service::ResolveAndValidateArguments(
     absl::Span<const GlobalDataHandle* const> arguments,
     absl::Span<se::StreamExecutor* const> stream_executors) const {
@@ -252,7 +229,7 @@ Service::ResolveAndValidateArguments(
   return replicated_arguments;
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options,
@@ -269,7 +246,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
                                  num_threads, aot_options);
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const ShapedBuffer* const> arguments,
     const ExecutionOptions& execution_options,
@@ -282,7 +259,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
                             aot_options);
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
+absl::StatusOr<std::vector<std::unique_ptr<Executable>>>
+Service::BuildExecutables(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
@@ -329,7 +307,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   return std::move(executables);
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Service::BuildAotResults(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
@@ -373,7 +351,7 @@ Service::BuildAotResults(
   return std::move(aot_results);
 }
 
-StatusOr<std::vector<GlobalDataHandle>>
+absl::StatusOr<std::vector<GlobalDataHandle>>
 Service::ExecuteParallelAndRegisterResult(
     absl::Span<Executable* const> executables,
     absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
@@ -452,7 +430,7 @@ Service::ExecuteParallelAndRegisterResult(
   for (int64_t i = 0, end = streams.size(); i < end; ++i) {
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError("failed to complete execution for stream %d: %s", i,
+      return Internal("failed to complete execution for stream %d: %s", i,
                            block_status.message());
     }
   }
@@ -460,7 +438,7 @@ Service::ExecuteParallelAndRegisterResult(
   return result_handles;
 }
 
-StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
+absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
@@ -517,7 +495,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
                                                        result_tag);
 }
 
-StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
+absl::StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
     const ExecutionOptions& execution_options, int64_t requests_size,
     int64_t request_index) const {
   if (execution_options.device_handles().empty()) {
@@ -542,7 +520,8 @@ StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
   return executors;
 }
 
-StatusOr<std::vector<std::vector<const ShapedBuffer*>>> Service::GetArguments(
+absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
+Service::GetArguments(
     const ExecutionOptions& execution_options,
     absl::Span<const GlobalDataHandle* const> arguments) const {
   // Resolve the allocations for the arguments of the computation, and create
@@ -686,16 +665,17 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   Status execution_status = OkStatus();
 
   if (executable_ptrs.size() == 1) {
-    StatusOr<GlobalDataHandle> output_or_status = ExecuteAndRegisterResult(
-        executable_ptrs[0], all_arguments[0], execute_backend_.get(),
-        device_handles[0], computation_names[0], &profile);
+    absl::StatusOr<GlobalDataHandle> output_or_status =
+        ExecuteAndRegisterResult(executable_ptrs[0], all_arguments[0],
+                                 execute_backend_.get(), device_handles[0],
+                                 computation_names[0], &profile);
     if (output_or_status.ok()) {
       outputs.push_back(std::move(output_or_status).value());
     } else {
       execution_status = output_or_status.status();
     }
   } else {
-    StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
+    absl::StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
         ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
                                          execute_backend_.get(), device_handles,
                                          computation_names, &profile);
@@ -765,7 +745,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   return OkStatus();
 }
 
-StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
+absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const HloModuleProto& module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
     se::StreamExecutor* executor, const Compiler::CompileOptions& options,
@@ -773,6 +753,10 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   VLOG(1) << StrFormat(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());
+
+  tsl::profiler::ScopedAnnotation annotation{[&] {
+    return absl::StrCat("XlaCompile:#module=", module_proto.name(), "#");
+  }};
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
@@ -794,21 +778,26 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                     std::move(module), executor, options));
   }
 
+  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
+    return absl::StrCat("XlaCompileBackend:#module=", module_proto.name(), "#");
+  }};
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
 
-  const HloProto* hlo_proto_after_opt = executable->hlo_proto();
+  const BufferAssignmentProto* buffer_assignment_proto_after_opt =
+      executable->buffer_assignment_proto();
 
   // If dumping is enabled RunBackend(...) will emit a hlo_proto in the
   // executable. This contains the buffer_assignment that is only available
   // after RunBackend(). If hlo_proto_before_opt is not null, then we replace
   // its buffer_assignment with the one from after_opt and then store it into
   // the executable.
-  if (hlo_proto_before_opt != nullptr && hlo_proto_after_opt != nullptr) {
+  if (hlo_proto_before_opt != nullptr &&
+      buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        hlo_proto_after_opt->buffer_assignment();
+        std::move(*buffer_assignment_proto_after_opt);
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
   return std::move(executable);
@@ -925,21 +914,6 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   return OkStatus();
 }
 
-Status Service::WaitForExecution(const WaitForExecutionRequest* arg,
-                                 WaitForExecutionResponse* result) {
-  TF_ASSIGN_OR_RETURN(const auto execution,
-                      execution_tracker_.Resolve(arg->execution()));
-
-  TF_RETURN_IF_ERROR(execution->BlockUntilDone());
-
-  *result->mutable_output() = execution->result();
-  *result->mutable_profile() = execution->profile();
-
-  TF_RETURN_IF_ERROR(execution_tracker_.Unregister(arg->execution()));
-  VLOG(1) << "successfully completed 'wait-for-execution' request";
-  return OkStatus();
-}
-
 Status Service::TransferToClient(const TransferToClientRequest* arg,
                                  TransferToClientResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
@@ -951,8 +925,19 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     if (!LayoutUtil::HasLayout(return_shape)) {
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
+    if (return_shape.has_layout() &&
+        return_shape.layout().element_size_in_bits() != 0) {
+      return InvalidArgument(
+          "shape_with_layout cannot have layout's element_size_in_bits field "
+          "set");
+    }
   } else {
     return_shape = Shape(shaped_buffer->on_device_shape());
+    if (return_shape.has_layout() &&
+        return_shape.layout().element_size_in_bits() != 0) {
+      // Literals do not support element_size_in_bits
+      return_shape.mutable_layout()->set_element_size_in_bits(0);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
@@ -1115,7 +1100,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   evaluator.set_dynamic_dimension_inference(&dynamic_dimension_inference);
   evaluator.set_custom_call_handler(
       [](const HloInstruction* custom_call,
-         absl::Span<const Literal*> operands) -> StatusOr<Literal> {
+         absl::Span<const Literal*> operands) -> absl::StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();
           for (int64_t i = 0; i < result.shape().rank(); ++i) {
@@ -1187,7 +1172,7 @@ DeviceHandle Service::SingleComputationDeviceHandle() const {
   return device_handle;
 }
 
-StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
+absl::StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     const Backend& backend, const DeviceHandle& device_handle) const {
   std::vector<se::StreamExecutor*> replicas;
   for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
