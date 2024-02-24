@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/client/client.h"
 
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -124,11 +125,6 @@ class ClientTest : public ::testing::Test {
 };
 
 TEST_F(ClientTest, Init) {
-  if (tsl::testing::kIsOpenSource) {
-    // TODO(b/324824974): Fix this.
-    GTEST_SKIP() << "Non-rootcaused bug: xla::PjRtDeviceAttribute does not "
-                 << "work properly with IFRT proxy in open-source.";
-  }
   EXPECT_EQ(client_->platform_name(), "ifrt-service");
   EXPECT_EQ(client_->platform_version(), "n/a");
   EXPECT_EQ(client_->platform_id(), 42);
@@ -143,7 +139,8 @@ TEST_F(ClientTest, Init) {
   EXPECT_EQ(device0->local_hardware_id(), 1234);
   EXPECT_EQ(device0->device_kind(), "mock");
   EXPECT_THAT(device0->Attributes(),
-              ElementsAre(Pair("name", xla::PjRtDeviceAttribute("device0"))));
+              ElementsAre(Pair(
+                  "name", xla::PjRtDeviceAttribute(std::string("device0")))));
 
   ASSERT_THAT(device0->memory_spaces(), SizeIs(1));
   auto* const memory0 = device0->memory_spaces()[0];
@@ -157,7 +154,8 @@ TEST_F(ClientTest, Init) {
   EXPECT_EQ(device1->local_hardware_id(), 1234);
   EXPECT_EQ(device1->device_kind(), "mock");
   EXPECT_THAT(device1->Attributes(),
-              ElementsAre(Pair("name", xla::PjRtDeviceAttribute("device1"))));
+              ElementsAre(Pair(
+                  "name", xla::PjRtDeviceAttribute(std::string("device1")))));
 
   ASSERT_THAT(device1->memory_spaces(), SizeIs(1));
   auto* const memory1 = device1->memory_spaces()[0];
