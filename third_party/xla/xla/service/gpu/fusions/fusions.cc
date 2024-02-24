@@ -77,45 +77,6 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 }  // namespace
 
 std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-LmhloFusionInfo::GetCopyFusion() const {
-  auto params = GetHloOperands(fusion_op_);
-  auto outputs = GetHloOutputs(fusion_op_);
-  std::vector<mlir::Value> srcs;
-  srcs.reserve(outputs.size());
-
-  for (auto* root : analysis().fusion_roots()) {
-    if (root->opcode() != HloOpcode::kCopy ||
-        root->operand(0)->opcode() != HloOpcode::kParameter ||
-        !LayoutUtil::Equal(root->operand(0)->shape().layout(),
-                           root->shape().layout())) {
-      return std::nullopt;
-    }
-
-    mlir::Value src = params[root->operand(0)->parameter_number()];
-    if (!GetAllocationSlice(src, allocations_).ok()) return std::nullopt;
-
-    srcs.emplace_back(src);
-  }
-
-  auto dsts = std::vector<mlir::Value>(outputs.begin(), outputs.end());
-  DCHECK(srcs.size() == dsts.size());
-  std::vector<BufferAllocation::Slice> src_buffers;
-  std::vector<BufferAllocation::Slice> dst_buffers;
-  for (int i = 0; i < srcs.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
-                        GetAllocationSlice(srcs[i], allocations_));
-    src_buffers.push_back(src_buffer);
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
-                        GetAllocationSlice(dsts[i], allocations_));
-    dst_buffers.push_back(dst_buffer);
-  }
-
-  return std::make_unique<MemcpyFusion>(std::move(src_buffers),
-                                        std::move(dst_buffers), std::move(srcs),
-                                        std::move(dsts));
-}
-
-std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
   for (auto* root : analysis().fusion_roots()) {
@@ -152,10 +113,6 @@ HloFusionInfo::GetCopyFusion() const {
                                         std::move(dst_buffers),
                                         /*srcs=*/std::vector<mlir::Value>(),
                                         /*dsts=*/std::vector<mlir::Value>());
-}
-
-bool LmhloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
-  return CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op_, allocations_);
 }
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {

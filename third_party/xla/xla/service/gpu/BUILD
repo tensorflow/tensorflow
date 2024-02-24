@@ -1324,7 +1324,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:lhlo",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_parser",
         "//xla/service/llvm_ir:buffer_assignment_util",
@@ -1338,6 +1337,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
@@ -1366,7 +1366,6 @@ xla_cc_test(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:lhlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/translate/hlo_to_mhlo:hlo_utils",

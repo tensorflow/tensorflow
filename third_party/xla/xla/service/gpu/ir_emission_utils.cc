@@ -15,11 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/ir_emission_utils.h"
 
-#include <algorithm>
 #include <climits>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <optional>
 #include <queue>
@@ -35,8 +32,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/FPEnv.h"
 #include "llvm/IR/IRBuilder.h"
@@ -47,16 +44,10 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -69,8 +60,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -82,15 +71,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -314,65 +300,6 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(is_thread0, is_block0);
 }
 
-// Given an LMHLO op, returns the operand index of the first output operand.
-//
-// Notice that an operand alised to an output isn't an output, even though in
-// that case WritesMlirBuffer() returns true on that operand.
-//
-// An operand is !WritesMlirBuffer() || equals (aliases) to a later operand. An
-// output is the opposite, being both WritesMlirBuffer() and does not equal to
-// any later operand.
-int PartitionLmhloOperandsAndOutputs(mlir::Operation* op) {
-  CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
-
-  int i;
-  for (i = op->getOperands().size() - 1; i >= 0; i--) {
-    const bool aliased =
-        std::find(op->getOperands().begin() + i + 1, op->getOperands().end(),
-                  op->getOperand(i)) != op->getOperands().end();
-    if (!WritesMlirBuffer(op, op->getOperand(i)) || aliased) {
-      break;
-    }
-  }
-  return i + 1;
-}
-
-llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op) {
-  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return fusion.getInputBuffers();
-  }
-  if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
-    int output_start = PartitionLmhloOperandsAndOutputs(op);
-    llvm::SmallVector<mlir::Value> operands;
-    for (int i = 0; i < output_start; i++) {
-      operands.push_back(op->getOperand(i));
-    }
-    return operands;
-  }
-  if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return op->getOperands();
-  }
-  LOG(FATAL) << "Unexpected op: " << llvm_ir::DumpToString(op);
-}
-
-llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
-  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return fusion.getOutputBuffers();
-  }
-  if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
-    int output_start = PartitionLmhloOperandsAndOutputs(op);
-    llvm::SmallVector<mlir::Value> outputs;
-    for (int i = output_start; i < op->getNumOperands(); i++) {
-      outputs.push_back(op->getOperand(i));
-    }
-    return outputs;
-  }
-  if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return op->getResults();
-  }
-  LOG(FATAL) << "Unexpected op: " << llvm_ir::DumpToString(op);
-}
-
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand) {
   llvm::SmallVector<mlir::MemoryEffects::EffectInstance, 2> effects;
   mlir::cast<mlir::MemoryEffectOpInterface>(op).getEffectsOnValue(operand,
@@ -397,81 +324,6 @@ static int64_t GetMemRefSizeInBytes(mlir::MemRefType type) {
   }
 }
 
-static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
-                                  std::string* constant_name) {
-  auto func_op =
-      mlir::cast<mlir::func::FuncOp>(func_arg.getParentRegion()->getParentOp());
-  if (constant_name) {
-    if (auto constant_name_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
-            func_arg.getArgNumber(), "lmhlo.constant_name")) {
-      *constant_name = constant_name_attr.getValue().str();
-    }
-  }
-  return func_arg.getArgNumber();
-}
-
-absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
-    mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
-    std::string* constant_name) {
-  if (constant_name) {
-    constant_name->clear();
-  }
-
-  int64_t size = GetMemRefSizeInBytes(v.getType().cast<mlir::MemRefType>());
-
-  // We match the following patterns here:
-  //  base := ViewOp(arg) | get_global_memref (global_memref) | arg
-  //  root := base | MemRefReinterpretCastOp(base) | CollapseShapeOp(base)
-
-  if (auto cast = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
-          v.getDefiningOp())) {
-    v = cast.getViewSource();
-  }
-  if (auto collapse_shape =
-          mlir::dyn_cast_or_null<mlir::memref::CollapseShapeOp>(
-              v.getDefiningOp())) {
-    v = collapse_shape.getSrc();
-  }
-
-  if (auto view =
-          mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
-    TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
-
-    const BufferAllocation* allocation = allocations[GetAllocationIndex(
-        view.getSource().cast<mlir::BlockArgument>(), constant_name)];
-    return BufferAllocation::Slice(
-        allocation,
-        mlir::cast<mlir::arith::ConstantOp>(view.getByteShift().getDefiningOp())
-            .getValue()
-            .cast<mlir::IntegerAttr>()
-            .getValue()
-            .getSExtValue(),
-        size);
-  }
-  if (auto get_global = mlir::dyn_cast_or_null<mlir::memref::GetGlobalOp>(
-          v.getDefiningOp())) {
-    auto module = get_global->getParentOfType<mlir::ModuleOp>();
-    if (constant_name) {
-      *constant_name = get_global.getName().str();
-    }
-    auto global = mlir::cast<mlir::memref::GlobalOp>(
-        module.lookupSymbol(get_global.getName()));
-    int64_t index =
-        global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-
-    return BufferAllocation::Slice(allocations[index], 0,
-                                   allocations[index]->size());
-  }
-  if (auto arg = v.dyn_cast<mlir::BlockArgument>()) {
-    return BufferAllocation::Slice(
-        allocations[GetAllocationIndex(arg, constant_name)], 0, size);
-  }
-
-  return Unimplemented(
-      "Operand has to be in the form of ViewOp(arg) or "
-      "StaticMemRefCastOp(ViewOp(arg)) or arg");
-}
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index) {
@@ -480,8 +332,6 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     const std::vector<const HloInstruction*>& roots) {
-  // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
-  // computation instead of a LMHLO FusionOp.
   std::vector<const HloInstruction*> dus_ops;
   for (const HloInstruction* root : roots) {
     while (root->opcode() == HloOpcode::kBitcast) {
@@ -490,33 +340,6 @@ std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
 
     if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
       dus_ops.push_back(root);
-    }
-  }
-
-  return dus_ops;
-}
-
-std::vector<mlir::mhlo::DynamicUpdateSliceOp>
-GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
-  std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops;
-
-  auto fusion_results = fusion.getFusionResults();
-  for (const auto& fusion_result : fusion_results) {
-    // A dynamic slice update is said to be "defining" of a result if that
-    // result is the output of a dynamic slice update, or if that result is
-    // the output of a bitcast of a dynamic slice update---since a bitcast may
-    // be handled here as a no-op.
-    if (auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
-            fusion_result.getDefiningOp())) {
-      dus_ops.push_back(dus);
-    }
-
-    if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(
-            fusion_result.getDefiningOp())) {
-      if (auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
-              bitcast.getOperand().getDefiningOp())) {
-        dus_ops.push_back(dus);
-      }
     }
   }
   return dus_ops;
@@ -566,7 +389,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 
   Shape update_shape = dus_instrs[0]->operand(1)->shape();
 
-  // TODO(anlunx): Reuse this code in both HLO and LMHLO path.
   for (int i = 0; i < dus_instrs.size(); ++i) {
     auto* dus = Cast<HloDynamicUpdateSliceInstruction>(dus_instrs[i]);
 
@@ -675,135 +497,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
                         buffer_assignment->GetUniqueSlice(lhs, {}));
     BufferAllocation::Slice rhs_buffer = output_buffers[i];
     if (lhs_buffer != rhs_buffer) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation* const> allocations) {
-  std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
-      GetOutputDefiningDynamicUpdateSliceOps(fusion);
-
-  // This check could probably be relaxed: if code generation is made to use a
-  // separate parallel loop for each dynamic slice update, then it shouldn't be
-  // necessary for every output to be a dynamic slice update, nor to have the
-  // same shape.
-  if (dus_ops.size() != fusion.getFusionResults().size()) {
-    return false;
-  }
-
-  auto output_buffers = fusion.getOutputBuffers();
-  CHECK_GE(output_buffers.size(), 1);
-  CHECK_EQ(dus_ops.size(), output_buffers.size());
-
-  auto update_shape =
-      dus_ops[0].getUpdate().getType().cast<mlir::ShapedType>().getShape();
-
-  // We can safely assume here that the slices being updated do not overlap, as
-  // constructing a fusion with them would not be safe otherwise.
-  for (auto [dus, output_buffer] : llvm::zip(dus_ops, output_buffers)) {
-    // Dynamic slice updates should have a single path to the root---this to
-    // avoid allowing a dynamic slice update to depend on another, as this would
-    // not be guaranteed to work with the current codegen.
-    if (!dus->hasOneUse()) {
-      return false;
-    }
-
-    // Since the direct consumer of an output dynamic slice update may be a
-    // bitcast, we also check that this bitcast is used a single time.
-    // This property is also important because reads and writes on the parameter
-    // to be updated are done using the shape and layout of the dynamic slice
-    // update. This is a valid approach only if a subsequent bitcast is not read
-    // by any other op within the fusion---as this may result in codegen
-    // accessing elements using the wrong physical layout.
-    auto dus_user = *dus->user_begin();
-    if (auto bitcast = mlir::dyn_cast<mlir::mhlo::BitcastOp>(dus_user)) {
-      if (!bitcast->hasOneUse()) {
-        return false;
-      }
-      dus_user = *bitcast->user_begin();
-    }
-    if (!mlir::isa<mlir::bufferization::MaterializeInDestinationOp>(dus_user)) {
-      return false;
-    }
-    auto operand = dus.getOperand();
-    // A bitcast separating a fusion input from a dynamic slice update can be
-    // treated as a no-op.
-    if (auto bitcast =
-            mlir::dyn_cast<mlir::mhlo::BitcastOp>(operand.getDefiningOp())) {
-      operand = bitcast.getOperand();
-    }
-
-    auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-        operand.getDefiningOp());
-
-    if (!parameter) {
-      return false;
-    }
-
-    // We require that the parameter being updated is only read at the same
-    // index positions by all users, since we otherwise risk a race condition
-    // when updating the parameter inplace.
-    std::queue<mlir::Operation*> q;
-    absl::flat_hash_set<mlir::Operation*> visited;
-    q.push(parameter);
-    visited.insert(parameter);
-    // We have already checked above that the DUS only has one user: a
-    // (possibly bitcasted) MaterializeInDestinationOp. So we don't need to
-    // visit it during the breadth-first search.
-    visited.insert(dus);
-    while (!q.empty()) {
-      auto op = q.front();
-      q.pop();
-      for (auto user : op->getUsers()) {
-        if (mlir::isa<mlir::mhlo::DynamicSliceOp>(user) &&
-            dus->getOperand(0) == user->getOperand(0) &&
-            update_shape == user->getResult(0)
-                                .getType()
-                                .cast<mlir::ShapedType>()
-                                .getShape()) {
-          // We can still emit in-place in this case if the same slice is
-          // accessed by the DUS and the DS. If they don't access the same
-          // slice, the two slices might partially overlap and read/write the
-          // same index at different times, and then we cannot guarantee that we
-          // read before it is overwritten. However if both access only a single
-          // element, there also can be no race condition.
-          if (mlir::ShapedType::getNumElements(update_shape) != 1 &&
-              dus.getStartIndices() !=
-                  mlir::dyn_cast<mlir::mhlo::DynamicSliceOp>(user)
-                      .getStartIndices()) {
-            return false;
-          }
-        } else if (user != dus &&
-                   !user->hasTrait<mlir::OpTrait::Elementwise>() &&
-                   !mlir::isa<mlir::mhlo::BitcastOp, mlir::mhlo::TupleOp>(
-                       user)) {
-          return false;
-        }
-        if (visited.insert(user).second) {
-          q.push(user);
-        }
-      }
-    }
-
-    // This check could probably be relaxed: if code generation is made to use a
-    // separate parallel loop for each dynamic slice update, then it shouldn't
-    // be necessary for the shape to be the same for all the dynamic slice
-    // updates. Note that this equality check purposefully ignores the element
-    // type.
-    if (dus.getUpdate().getType().cast<mlir::ShapedType>().getShape() !=
-        update_shape) {
-      return false;
-    }
-
-    auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
-    auto maybe_rhs = GetAllocationSlice(output_buffer, allocations);
-
-    if (!(maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs)) {
       return false;
     }
   }
@@ -1106,60 +799,6 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
     if (!absl::c_all_of(
             unnested_hlo->fused_instructions_computation()->instructions(),
             hlo_shape_in_range)) {
-      return i64_ty;
-    }
-  }
-
-  return b->getInt32Ty();
-}
-
-llvm::Type* GetIndexTypeForKernel(mlir::Operation* op, int64_t launch_size,
-                                  llvm::IRBuilder<>* b) {
-  auto shape_in_range = [&](const Shape& s) {
-    bool in_range = true;
-    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
-                                      const ShapeIndex& /*index*/) {
-      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-        in_range = false;
-      }
-    });
-
-    return in_range;
-  };
-
-  llvm::Type* i64_ty = b->getInt64Ty();
-  // Check launch dimension
-  if (!IsInt32(launch_size)) {
-    return i64_ty;
-  }
-
-  // Check the size of result tensors
-  for (auto result : GetHloOutputs(op)) {
-    if (!shape_in_range(GetShape(result))) {
-      return i64_ty;
-    }
-  }
-
-  auto hlo_shape_in_range = [&](mlir::Value operand) -> bool {
-    return shape_in_range(GetShape(operand));
-  };
-
-  // Check the size of input tensors
-  if (!absl::c_all_of(op->getOperands(), hlo_shape_in_range)) {
-    return i64_ty;
-  }
-
-  // Check the size of the internal result tensors
-  if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    auto result = fusion.getRegion().walk([&](mlir::Operation* op) {
-      for (mlir::Value result : op->getResults()) {
-        if (!hlo_shape_in_range(result)) {
-          return mlir::WalkResult::interrupt();
-        }
-      }
-      return mlir::WalkResult::advance();
-    });
-    if (result.wasInterrupted()) {
       return i64_ty;
     }
   }
