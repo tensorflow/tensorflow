@@ -2436,7 +2436,11 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     // responsibility to synchronize with this event before submitting any new
     // computations to the stream.
     if (complete) {
-      stream_->ThenRecordEvent(&done_.get());
+      auto recorded = stream_->RecordEvent(&done_.get());
+      if (!recorded.ok()) {
+        done_.SetError(recorded);
+        return PjRtFuture<Status>(done_.GetError());
+      }
       done_.SetStateConcrete();
     }
 
