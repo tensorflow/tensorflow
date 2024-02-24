@@ -134,7 +134,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
                         : Internal("`TransferLiteralFromDevice` failed"));
     });
     if (!status.ok()) {
-      done(status);
+      LOG(ERROR) << "`DoHostCallback` failed: " << status;
     }
   } else {
     done(stream->BlockHostUntilDone());
