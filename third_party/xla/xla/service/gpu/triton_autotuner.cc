@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bits.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/errors.h"

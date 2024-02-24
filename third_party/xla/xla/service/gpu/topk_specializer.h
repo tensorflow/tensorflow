@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_TOPK_SPECIALIZER_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
