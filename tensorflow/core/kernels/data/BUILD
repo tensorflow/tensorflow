@@ -24,6 +24,8 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:mutex",
     ],
 )
 

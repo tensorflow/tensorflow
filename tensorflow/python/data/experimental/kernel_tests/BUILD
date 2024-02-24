@@ -194,6 +194,7 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "global_shuffle_test",
     srcs = ["global_shuffle_test.py"],
+    shard_count = 8,
     deps = [
         "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
