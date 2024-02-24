@@ -155,41 +155,6 @@ cc_library(
 )
 
 cc_library(
-    name = "compilation_pipeline_gpu",
-    srcs = ["compilation_pipeline_gpu.cc"],
-    hdrs = ["compilation_pipeline_gpu.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":compilation_pipeline_options",
-        ":compiler",
-        ":passes",
-        "//xla/mlir/runtime/ir:rt",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:lhlo",
-        "//xla/mlir_hlo:lhlo_gpu",
-        "//xla/runtime:compiler",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:AsyncDialect",
-        "@llvm-project//mlir:AsyncToLLVM",
-        "@llvm-project//mlir:AsyncTransforms",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:ControlFlowDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncToLLVM",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:MemRefDialect",
-        "@llvm-project//mlir:MemRefToLLVM",
-        "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,  # has pipeline registration
-)
-
-cc_library(
     name = "compilation_pipeline_options",
     hdrs = ["compilation_pipeline_options.h"],
     compatible_with = get_compatible_with_portable(),
