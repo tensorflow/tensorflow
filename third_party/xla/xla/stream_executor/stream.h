@@ -169,16 +169,12 @@ class Stream {
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
   // cyclic manner; in that case, behavior is undefined.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenWaitFor(Stream *other);
   absl::Status WaitFor(Stream *other);
 
   // Waits for an event object to be set.
-  // Note that ThenRecordEvent must have been called on the event before
+  // Note that RecordEvent must have been called on the event before
   // you call this function; otherwise the event will be considered complete
   // and this wait will do nothing.
-  ABSL_DEPRECATED("Use absl::Status returning method instead.")
-  Stream &ThenWaitFor(Event *event);
   absl::Status WaitFor(Event *event);
 
   // Inserts the specified event into the end of this stream. Once the stream
