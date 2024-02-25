@@ -74,6 +74,8 @@
 #     release_cpu_windows:             Toolchain and CUDA options for Windows CPU builds.
 
 # Default build options. These are applied first and unconditionally.
+# Export this one as a draft PR.
+# Export a second PR containing chained changes.
 
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line
