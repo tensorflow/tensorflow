@@ -65,7 +65,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
   // TODO(toddw): Should we let the user choose the major/minor ordering?
-  xla::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
+  absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
     return errors::Unknown("Couldn't get XLA program shape: ",
@@ -88,7 +88,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   instance.argument_layouts = std::move(arg_layout_ptrs);
   xla::Shape result_shape(pshape->result());
   instance.result_layout = &result_shape;
-  xla::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
