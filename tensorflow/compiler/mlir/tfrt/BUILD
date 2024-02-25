@@ -528,26 +528,6 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "lhlo-tfrt-opt",
-    srcs = ["lhlo-tfrt-opt.cc"],
-    tags = ["gpu"],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo:lhlo",
-        "@local_xla//xla/mlir_hlo:lhlo_gpu",
-        "@tf_runtime//:init_tfrt_dialects",
-    ],
-)
-
-tf_cc_binary(
     name = "tfrt_translate",
     srcs = ["tools/tfrt_translate/static_registration.cc"],
     visibility = [":friends"],
