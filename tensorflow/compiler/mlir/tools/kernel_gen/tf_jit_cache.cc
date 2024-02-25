@@ -30,7 +30,7 @@ namespace tf_framework {
 
 tensorflow::Status JITCache::Create(JITCache** dst) {
   *dst = new JITCache;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 std::string JITCache::DebugString() const { return "JIT cache"; }
