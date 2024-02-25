@@ -155,7 +155,6 @@ cc_library(
         "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:lhlo",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:type_conversion",
         "@local_xla//xla/service/gpu:gpu_asm_opts_util",
@@ -217,7 +216,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo:lhlo",
         "@local_xla//xla/mlir_hlo:transforms_passes",
     ],
 )
