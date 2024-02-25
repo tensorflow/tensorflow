@@ -374,7 +374,7 @@ class FunctionRecord : public core::RefCounted {
 
   // Get a mutable reference to the FunctionDef owned by the record.
   // Will fail if record is finalized.
-  StatusOr<FunctionDef*> mutable_fdef();
+  absl::StatusOr<FunctionDef*> mutable_fdef();
 
   // Get an immutable access to FunctionRecord properties.
   const FunctionDef& fdef() const;
@@ -565,7 +565,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // reachable from the nodes of `graph` or `func`.
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
-  StatusOr<FunctionLibraryDefinition> ReachableDefinitions(
+  absl::StatusOr<FunctionLibraryDefinition> ReachableDefinitions(
       const std::string& function_name) const;
 
   // Copies the function named `func` from `other` to this
