@@ -51,10 +51,6 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
 
-/// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createTestShapeComponentAnalysisPass();
-
 // Pass to lower index cast on tensors to tensor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass();
 
