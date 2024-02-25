@@ -33,7 +33,7 @@ static Status StatelessShape(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define REGISTER_STATELESS_OP(name)                           \
@@ -109,7 +109,7 @@ REGISTER_OP("StatelessMultinomial")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &num_samples));
       c->set_output(0, c->Matrix(c->Dim(logits_shape, 0), num_samples));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("StatelessRandomBinomial")
@@ -156,7 +156,7 @@ REGISTER_OP("StatelessParameterizedTruncatedNormal")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("StatelessRandomPoisson")
