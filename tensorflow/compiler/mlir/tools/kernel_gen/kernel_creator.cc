@@ -407,7 +407,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 
 }  // namespace
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::chlo::ChloDialect, mlir::mhlo::MhloDialect>();
@@ -429,7 +429,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   return module;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
