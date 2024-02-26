@@ -18,14 +18,17 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_STREAM_H_
 
-#include <functional>
+#include <cstddef>
 #include <memory>
 #include <queue>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 namespace host {
