@@ -20,6 +20,8 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/DialectBase.td"
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def XlaGpuDialect : Dialect {
   let name = "xla_gpu";
@@ -52,7 +54,9 @@ def XLAGPU_AllocateSharedOp : XLAGPU_Op<"allocate_shared"> {
   let assemblyFormat = "attr-dict `:` type($result)";
 }
 
-def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads"> {
+def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads", [
+   TypesMatchWith<"result type matches type of dest",
+                   "operands", "results", "$_self">]> {
   let summary = "Synchronizes threads.";
 
   let description = [{
@@ -63,7 +67,37 @@ def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads"> {
   let arguments = (ins Variadic<AnyRankedTensor>:$operands);
   let results = (outs Variadic<AnyRankedTensor>:$results);
 
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = "operands attr-dict `:` type($operands)";
+}
+
+def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw", [
+    Pure,
+    TypesMatchWith<"result type matches type of dest",
+                   "input", "result", "$_self">]> {
+  let summary = "Atomically updates an element of a tensor.";
+
+  let description = [{
+    Reads an element from a tensor, computes the updated value for it, and
+    writes back the result.
+  }];
+
+  let arguments = (ins AnyRankedTensor:$input, Variadic<Index>:$indices);
+  let results = (outs AnyRankedTensor:$result);
+  // The region takes the current value in the tensor as an argument and yields
+  // the updated value.
+  let regions = (region SizedRegion<1>:$computation);
+
+  let assemblyFormat = [{
+    $input `[` $indices `]` `:` type($input) $computation attr-dict
+  }];
+}
+
+def XLAGPU_YieldOp : XLAGPU_Op<"yield",
+    [HasParent<"::xla::gpu::AtomicRMWOp">, Terminator]> {
+  let summary = "Terminator for atomic_rmw ops.";
+  let arguments = (ins AnyType:$result);
+
+  let assemblyFormat = "$result attr-dict `:` type($result)";
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

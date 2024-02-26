@@ -158,8 +158,7 @@ module {
       scf.yield %inner_loaded_tile : tensor<32x32xf32>
     }
 
-    %synced = xla_gpu.sync_threads %shared
-        : (tensor<32x32xf32>) -> (tensor<32x32xf32>)
+    %synced = xla_gpu.sync_threads %shared : tensor<32x32xf32>
     %written_tile = scf.for %i = %c0 to %c32 step %c1
         iter_args(%written = %out) -> tensor<32x32xf32> {
       %inner_written_tile = scf.for %j = %c0 to %c32 step %c1

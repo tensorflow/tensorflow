@@ -21,6 +21,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project  // IWYU pragma : keep
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project  // IWYU pragma : keep
 
 #define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.h.inc"
