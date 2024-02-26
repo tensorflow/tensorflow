@@ -32,11 +32,11 @@ AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
     const tensorflow::Tensor& tf_tensor, HostContext* host_ctx);
 
 // Creates a TFRT TensorHandle using the shape and data in a tensorflow tensor.
-tensorflow::StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
+absl::StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
     const tensorflow::Tensor& tensor, HostContext* host);
 
 // Creates a tensorflow tensor using the shape and data in a TFRT tensorhandle.
-tensorflow::StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
+absl::StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     const TensorHandle& tensor_handle);
 
 // Converts a tensorflow::Tensor to tfrt::DenseHostTensor.
