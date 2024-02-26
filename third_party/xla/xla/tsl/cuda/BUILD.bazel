@@ -1,16 +1,16 @@
 # Description:
 #   Stubs for dynamically loading CUDA.
 
-load("//tsl/cuda:stub.bzl", "cuda_stub")
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
-    "//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
     "if_cuda_is_configured",
 )
+load("//xla/tsl/cuda:stub.bzl", "cuda_stub")
 
 package(
     licenses = ["notice"],
@@ -38,9 +38,9 @@ cc_library(
     deps = if_cuda_is_configured([
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -62,9 +62,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -86,9 +86,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -101,14 +101,14 @@ cc_library(
     name = "cudart",
     srcs = select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
-        "//tsl:is_cuda_enabled_and_oss": [
+        "@local_tsl//tsl:is_cuda_enabled_and_oss": [
             "cudart.tramp.S",
             "cudart_stub.cc",
         ],
         "//conditions:default": [],
     }),
     linkopts = select({
-        "//tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
+        "@local_tsl//tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
         "//conditions:default": [],
     }),
     local_defines = [
@@ -117,13 +117,13 @@ cc_library(
     textual_hdrs = ["cudart.inc"],
     visibility = ["//visibility:public"],
     deps = select({
-        "//tsl:is_cuda_enabled_and_oss": [
+        "@local_tsl//tsl:is_cuda_enabled_and_oss": [
             ":cuda",
-            "//tsl/platform:dso_loader",
-            "//tsl/platform:load_library",
-            "//tsl/platform:logging",
             "@com_google_absl//absl/container:flat_hash_set",
             "@local_config_cuda//cuda:cuda_headers",
+            "@local_tsl//tsl/platform:dso_loader",
+            "@local_tsl//tsl/platform:load_library",
+            "@local_tsl//tsl/platform:logging",
         ],
         "//conditions:default": [],
     }),
@@ -149,9 +149,9 @@ cc_library(
     deps = if_cuda_is_configured([
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_cuda//cuda:cudnn_header",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -186,9 +186,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -213,9 +213,9 @@ cc_library(
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -238,9 +238,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -263,9 +263,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )
 
@@ -290,8 +290,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_nccl//:nccl_headers",
-        "//tsl/platform:dso_loader",
-        "//tsl/platform:logging",
-        "//tsl/platform:load_library",
+        "@local_tsl//tsl/platform:dso_loader",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:load_library",
     ]),
 )

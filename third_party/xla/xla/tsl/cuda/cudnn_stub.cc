@@ -12,13 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "third_party/gpus/cuda/include/cufft.h"
-#include "third_party/gpus/cuda/include/cufftXt.h"
+
+#include "absl/container/flat_hash_map.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/logging.h"
 
-// Implements the cuFFT API by forwarding to cuFFT loaded from the DSO.
+// Implements the cuDNN API by forwarding to cuDNN loaded from the DSO.
 
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
@@ -27,7 +28,7 @@ void* GetDsoHandle() {
   return nullptr;
 #else
   static auto handle = []() -> void* {
-    auto handle_or = tsl::internal::DsoLoader::GetCufftDsoHandle();
+    auto handle_or = tsl::internal::DsoLoader::GetCudnnDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
@@ -45,7 +46,7 @@ void* LoadSymbol(const char* symbol_name) {
 }
 
 const char* kSymbols[] = {
-#include "tsl/cuda/cufft.inc"
+#include "xla/tsl/cuda/cudnn.inc"
 };
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
@@ -54,18 +55,42 @@ constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
 
 extern "C" {
 
-static cufftResult GetSymbolNotFoundError() { return CUFFT_INTERNAL_ERROR; }
+static size_t GetVersionStub() { return 0; }
 
-extern void* _cufft_tramp_table[];
+static const char* GetErrorStringStub() {
+  return "cuDNN could not be found or could not be loaded.";
+}
 
-void _cufft_tramp_resolve(int i) {
+static cudnnStatus_t GetSymbolNotFoundError() {
+  return CUDNN_STATUS_INTERNAL_ERROR;
+}
+
+static absl::flat_hash_map<std::string_view, void*> const& SymbolOverrides() {
+  static auto* syms = new absl::flat_hash_map<std::string_view, void*>{
+      {"cudnnGetVersion", reinterpret_cast<void*>(&GetVersionStub)},
+      {"cudnnGetMaxDeviceVersion", reinterpret_cast<void*>(&GetVersionStub)},
+      {"cudnnGetCudartVersion", reinterpret_cast<void*>(&GetVersionStub)},
+      {"cudnnGetErrorString", reinterpret_cast<void*>(&GetErrorStringStub)},
+  };
+  return *syms;
+}
+
+extern void* _cudnn_tramp_table[];
+
+void _cudnn_tramp_resolve(int i) {
   CHECK_LE(0, i);
   CHECK_LT(i, kNumSymbols);
   void* p = LoadSymbol(kSymbols[i]);
   if (!p) {
-    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+    const auto& overrides = SymbolOverrides();
+    auto it = overrides.find(kSymbols[i]);
+    if (it == overrides.end()) {
+      p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
+    } else {
+      p = it->second;
+    }
   }
-  _cufft_tramp_table[i] = p;
+  _cudnn_tramp_table[i] = p;
 }
 
 }  // extern "C"

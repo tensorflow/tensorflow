@@ -46,7 +46,7 @@ void *LoadSymbol(const char *symbol_name) {
 }
 
 const char *kSymbols[] = {
-#include "tsl/cuda/cudart.inc"
+#include "xla/tsl/cuda/cudart.inc"
 };
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char *);

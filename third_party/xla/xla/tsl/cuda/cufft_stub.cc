@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,23 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cufft.h"
+#include "third_party/gpus/cuda/include/cufftXt.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/logging.h"
 
-// Implements the CUPTI API by forwarding to CUPTI loaded from the DSO.
+// Implements the cuFFT API by forwarding to cuFFT loaded from the DSO.
 
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void* GetDsoHandle() {
-#if defined(PLATFORM_GOOGLE) && (CUDA_VERSION > 10000)
+#ifdef PLATFORM_GOOGLE
   return nullptr;
 #else
   static auto handle = []() -> void* {
-    auto handle_or = tsl::internal::DsoLoader::GetCuptiDsoHandle();
+    auto handle_or = tsl::internal::DsoLoader::GetCufftDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
@@ -46,7 +45,7 @@ void* LoadSymbol(const char* symbol_name) {
 }
 
 const char* kSymbols[] = {
-#include "tsl/cuda/cupti.inc"
+#include "xla/tsl/cuda/cufft.inc"
 };
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
@@ -55,18 +54,18 @@ constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
 
 extern "C" {
 
-static CUptiResult GetSymbolNotFoundError() { return CUPTI_ERROR_UNKNOWN; }
+static cufftResult GetSymbolNotFoundError() { return CUFFT_INTERNAL_ERROR; }
 
-extern void* _cupti_tramp_table[];
+extern void* _cufft_tramp_table[];
 
-void _cupti_tramp_resolve(int i) {
+void _cufft_tramp_resolve(int i) {
   CHECK_LE(0, i);
   CHECK_LT(i, kNumSymbols);
   void* p = LoadSymbol(kSymbols[i]);
   if (!p) {
     p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
   }
-  _cupti_tramp_table[i] = p;
+  _cufft_tramp_table[i] = p;
 }
 
 }  // extern "C"

@@ -1,9 +1,13 @@
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/stream_executor/build_defs.bzl:
+compiler/xla/tsl/cuda/stub.bzl:
 third_party/BUILD:
 third_party/__init__:.py
 third_party/compute_library/BUILD:
 third_party/compute_library/build_defs.bzl:
+third_party/implib_so/BUILD:
+third_party/implib_so/get_symbols.py:
+third_party/implib_so/make_stub.py:
 third_party/llvm_openmp/BUILD:
 third_party/llvm_openmp/cmake_vars.bzl:
 third_party/llvm_openmp/expand_cmake_vars:.py

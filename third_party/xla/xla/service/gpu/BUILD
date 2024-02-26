@@ -2355,7 +2355,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/cuda:cusolver",
+        "//xla/tsl/cuda:cusolver",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/rocm:rocblas_wrapper",

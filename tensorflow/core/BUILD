@@ -1162,7 +1162,7 @@ alias(
 
 alias(
     name = "cuda",
-    actual = "@local_tsl//tsl/cuda:cudart",
+    actual = "@local_xla//xla/tsl/cuda:cudart",
     visibility = ["//visibility:public"],
 )
 

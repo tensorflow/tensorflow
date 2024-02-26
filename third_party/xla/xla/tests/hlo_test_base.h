@@ -64,7 +64,7 @@ namespace xla {
 //      "gpu",
 //    ],
 //    deps = [
-//      "@local_xla//xla/tests:hlo_test_base",
+//      "//tensorflow/compiler/xla/tests:hlo_test_base",
 //      ...
 //    ],
 //  )

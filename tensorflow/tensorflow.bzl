@@ -1,3 +1,5 @@
+"""Provides build configuration for TensorFlow."""
+
 load(
     "//tensorflow:py.default.bzl",
     _plain_py_binary = "py_binary",
@@ -1924,7 +1926,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda([
-            clean_dep("@local_tsl//tsl/cuda:cudart"),
+            clean_dep("@local_xla//xla/tsl/cuda:cudart"),
         ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),

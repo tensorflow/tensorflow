@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/container/flat_hash_map.h"
-#include "third_party/gpus/cudnn/cudnn.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/logging.h"
 
-// Implements the cuDNN API by forwarding to cuDNN loaded from the DSO.
+// Implements the CUPTI API by forwarding to CUPTI loaded from the DSO.
 
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
 void* GetDsoHandle() {
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) && (CUDA_VERSION > 10000)
   return nullptr;
 #else
   static auto handle = []() -> void* {
-    auto handle_or = tsl::internal::DsoLoader::GetCudnnDsoHandle();
+    auto handle_or = tsl::internal::DsoLoader::GetCuptiDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
@@ -46,7 +46,7 @@ void* LoadSymbol(const char* symbol_name) {
 }
 
 const char* kSymbols[] = {
-#include "tsl/cuda/cudnn.inc"
+#include "xla/tsl/cuda/cupti.inc"
 };
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
@@ -55,42 +55,18 @@ constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
 
 extern "C" {
 
-static size_t GetVersionStub() { return 0; }
+static CUptiResult GetSymbolNotFoundError() { return CUPTI_ERROR_UNKNOWN; }
 
-static const char* GetErrorStringStub() {
-  return "cuDNN could not be found or could not be loaded.";
-}
+extern void* _cupti_tramp_table[];
 
-static cudnnStatus_t GetSymbolNotFoundError() {
-  return CUDNN_STATUS_INTERNAL_ERROR;
-}
-
-static absl::flat_hash_map<std::string_view, void*> const& SymbolOverrides() {
-  static auto* syms = new absl::flat_hash_map<std::string_view, void*>{
-      {"cudnnGetVersion", reinterpret_cast<void*>(&GetVersionStub)},
-      {"cudnnGetMaxDeviceVersion", reinterpret_cast<void*>(&GetVersionStub)},
-      {"cudnnGetCudartVersion", reinterpret_cast<void*>(&GetVersionStub)},
-      {"cudnnGetErrorString", reinterpret_cast<void*>(&GetErrorStringStub)},
-  };
-  return *syms;
-}
-
-extern void* _cudnn_tramp_table[];
-
-void _cudnn_tramp_resolve(int i) {
+void _cupti_tramp_resolve(int i) {
   CHECK_LE(0, i);
   CHECK_LT(i, kNumSymbols);
   void* p = LoadSymbol(kSymbols[i]);
   if (!p) {
-    const auto& overrides = SymbolOverrides();
-    auto it = overrides.find(kSymbols[i]);
-    if (it == overrides.end()) {
-      p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
-    } else {
-      p = it->second;
-    }
+    p = reinterpret_cast<void*>(&GetSymbolNotFoundError);
   }
-  _cudnn_tramp_table[i] = p;
+  _cupti_tramp_table[i] = p;
 }
 
 }  // extern "C"
