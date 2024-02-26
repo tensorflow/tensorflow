@@ -97,3 +97,19 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [":data_type"],
 )
+
+cc_library(
+    name = "quantize",
+    hdrs = ["quantize.h"],
+    deps = [":data_type"],
+)
+
+cc_test(
+    name = "quantize_test",
+    srcs = ["quantize_test.cc"],
+    deps = [
+        ":data_type",
+        ":quantize",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
