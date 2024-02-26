@@ -30,7 +30,6 @@ set(LIBS
         MLIRBufferTransforms
         MLIRHLOGPUTransforms
         MhloRegisterDialects
-        MhloTestAnalysis
         )
 add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS

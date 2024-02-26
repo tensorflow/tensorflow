@@ -229,13 +229,14 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
     // available for an immediate write.
     if (!dst_xla_context->transfer_manager()->CanShapedBufferBeAccessedNow(
             dst_compute_stream->parent(), xla_output->shaped_buffer())) {
-      dst_device_to_device_stream->ThenWaitFor(dst_compute_stream);
+      TF_RETURN_IF_ERROR(
+          dst_device_to_device_stream->WaitFor(dst_compute_stream));
       // If the representation is a tuple, we also must wait for the tuple index
       // buffers to be available on the destination host to device transfer
       // stream.
       if (xla_output->shaped_buffer().on_device_shape().IsTuple()) {
-        dst_xla_context->host_to_device_stream()->ThenWaitFor(
-            dst_compute_stream);
+        TF_RETURN_IF_ERROR(dst_xla_context->host_to_device_stream()->WaitFor(
+            dst_compute_stream));
       }
     }
 
@@ -266,14 +267,15 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
       // must all be satisfied, or add an Event::Merge() API that allows us to
       // build an event that is triggered when all of its dependencies are
       // triggered.
-      dst_device_to_device_stream->ThenWaitFor(
-          dst_xla_context->host_to_device_stream());
+      TF_RETURN_IF_ERROR(dst_device_to_device_stream->WaitFor(
+          dst_xla_context->host_to_device_stream()));
     }
 
     auto definition_event =
         std::make_shared<se::Event>(dst_xla_context->stream()->parent());
     TF_RET_CHECK(definition_event->Init()) << "Event failed to initialize!";
-    dst_device_to_device_stream->ThenRecordEvent(definition_event.get());
+    TF_RETURN_IF_ERROR(
+        dst_device_to_device_stream->RecordEvent(definition_event.get()));
     xla_output->ResetDefinitionEvent(std::move(definition_event),
                                      dst_device_to_device_stream);
 
@@ -289,7 +291,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
     // might not be enqueued to the stream yet, we put it on destination stream.
     TensorReference input_reference(*input);
     std::move(return_substream).release();
-    dst_device_to_device_stream->ThenDoHostCallback(
+    return dst_device_to_device_stream->DoHostCallback(
         [input_reference, done = std::move(done),
          device_to_device_master_stream, dst_device_to_device_stream] {
           if (device_to_device_master_stream) {
@@ -299,8 +301,6 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
           input_reference.Unref();
           done(absl::OkStatus());
         });
-
-    return absl::OkStatus();
   };
   Status status = impl();
   if (!status.ok()) {

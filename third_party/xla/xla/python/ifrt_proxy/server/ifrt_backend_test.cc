@@ -903,9 +903,12 @@ TEST_F(IfrtBackendHandlerTest, CompileSuccess) {
   EXPECT_CALL(*executable, addressable_devices())
       .WillOnce(Return(absl::MakeSpan(addressable_devices)));
   EXPECT_CALL(*executable, Fingerprint()).WillOnce(Return("fingerprint"));
+  EXPECT_CALL(*executable, GetReadyFuture())
+      .WillOnce(Return(Future<absl::Status>(absl::OkStatus())));
 
-  EXPECT_THAT(CompileTestLoadedExecutable(std::move(executable)),
-              IsOkAndHolds(Partially(EquivToProto(R"pb(
+  ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                       CompileTestLoadedExecutable(std::move(executable)));
+  EXPECT_THAT(response, Partially(EquivToProto(R"pb(
                 name: "executable_name"
                 num_devices: 4
                 addressable_device_logical_ids { replica: 0 partition: 0 }
@@ -914,7 +917,8 @@ TEST_F(IfrtBackendHandlerTest, CompileSuccess) {
                 addressable_device_logical_ids { replica: 1 partition: 1 }
                 addressable_device_ids: [ 0, 1, 2, 3 ]
                 fingerprint_value: "fingerprint"
-              )pb"))));
+              )pb")));
+  EXPECT_OK(CheckFuture(response.ready_future_handle()));
 }
 #endif
 

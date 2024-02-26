@@ -51,13 +51,6 @@ class StreamExecutor;
 // device.
 class CommandBuffer {
  public:
-  // Builder constructs nested command buffers owned by a parent command buffer.
-  //
-  // Builder can use arbitrary number of nested execution scopes, the only
-  // requirement is that after builder constructed all commands, they all must
-  // be synchronized with a default execution scope.
-  using Builder = std::function<absl::Status(CommandBuffer*)>;
-
   // Execution scope enables fine-grained synchronization scopes inside
   // commands buffers. Implementation is very backend-specific and for CUDA/ROCM
   // backends it's implemented as DAG edges. By default all commands launched in
@@ -124,6 +117,13 @@ class CommandBuffer {
   //
   TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionScopeId, int64_t);
   static constexpr auto kDefaulExecutionScope = ExecutionScopeId(0);
+
+  // Builder constructs nested command buffers owned by a parent command buffer.
+  //
+  // Builder can use arbitrary number of nested execution scopes, the only
+  // requirement is that after builder constructed all commands, they all must
+  // be synchronized with a default execution scope.
+  using Builder = std::function<absl::Status(CommandBuffer*)>;
 
   // An extension of a `Builder` defined above that builds a nested command
   // buffer in a given execution scope. Builder can use arbitrary number of
@@ -382,13 +382,17 @@ class CommandBuffer {
   //     body_builder()
   //     cond_builder()
   //
+  // We use execution scope builder for the condition because we have to build
+  // condition twice: (1) before the conditional node in the scope defined by
+  // `execution_scope_id` (2) inside the loop body with default execution scope.
   virtual absl::Status While(ExecutionScopeId execution_scope_id,
                              StreamExecutor* executor, DeviceMemory<bool> pred,
-                             Builder cond_builder, Builder body_builder) = 0;
+                             ExecutionScopeBuilder cond_builder,
+                             Builder body_builder) = 0;
 
   // Adds a conditional While operation to default execution scope.
   absl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
-                     Builder cond_builder, Builder body_builder) {
+                     ExecutionScopeBuilder cond_builder, Builder body_builder) {
     return While(kDefaulExecutionScope, executor, pred, cond_builder,
                  body_builder);
   }

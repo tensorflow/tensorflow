@@ -247,7 +247,6 @@ cc_library(
         "//xla/mlir/runtime/transforms:jit_compiler",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
-        "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:transforms_passes",
         "//xla/runtime:custom_call_registry",
@@ -1671,12 +1670,16 @@ cc_library(
 )
 
 cc_library(
+    name = "onednn_util",
+    hdrs = ["onednn_util.h"],
+)
+
+cc_library(
     name = "onednn_matmul_rewriter",
     srcs = ["onednn_matmul_rewriter.cc"],
     hdrs = [
         "onednn_matmul.h",
         "onednn_matmul_rewriter.h",
-        "onednn_util.h",
         "@local_tsl//tsl/util:onednn_util_hdrs",
     ],
     copts = tsl_copts(),
@@ -1684,6 +1687,7 @@ cc_library(
         ":backend_config_proto_cc",
         ":onednn_matmul",
         ":onednn_memory_util",
+        ":onednn_util",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -1707,12 +1711,12 @@ cc_library(
     srcs = ["onednn_ops_rewriter.cc"],
     hdrs = [
         "onednn_ops_rewriter.h",
-        "onednn_util.h",
     ],
     copts = tsl_copts(),
     deps = [
         ":backend_config_proto_cc",
         ":onednn_memory_util",
+        ":onednn_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",

@@ -46,22 +46,10 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 
 //===----------------------------------------------------------------------===//
 // KernelThunk
 //===----------------------------------------------------------------------===//
-
-mlir::Value RemoveTransformingOperations(mlir::Value value) {
-  mlir::Operation* defining_op = value.getDefiningOp();
-  if (auto cast_op = llvm::isa<mlir::memref::ReinterpretCastOp,
-                               mlir::memref::CollapseShapeOp>(defining_op)) {
-    return defining_op->getOperand(0);
-  }
-  return value;
-}
-
-}  // namespace
 
 KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
                          absl::Span<const KernelArgument> kernel_arguments,

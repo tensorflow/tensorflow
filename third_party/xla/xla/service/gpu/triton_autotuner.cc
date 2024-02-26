@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bits.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/errors.h"
@@ -471,7 +472,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     if (root->opcode() == HloOpcode::kReduce) {
       HloInstruction* fusion_instruction =
           entry_computation->AddInstruction(HloInstruction::CreateFusion(
-              root->shape(), ChooseFusionKind(*root), root));
+              root->shape(), ChooseFusionKind(*root, *root), root));
       HloInstruction* init_value = root->mutable_operand(1);
       TF_CHECK_OK(
           entry_computation->ReplaceInstruction(root, fusion_instruction));

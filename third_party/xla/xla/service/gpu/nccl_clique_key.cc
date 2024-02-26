@@ -46,6 +46,8 @@ absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;
 }
 
+int64_t NcclCliqueKey::stream_id() const { return stream_id_; }
+
 std::optional<int64_t> NcclCliqueKey::rank(GlobalDeviceId id) const {
   if (auto it = absl::c_find(devices_, id); it != devices_.end()) {
     return it - devices_.begin();

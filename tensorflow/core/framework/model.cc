@@ -3166,7 +3166,16 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
 Status Model::ToProto(ModelProto* model_proto) {
   tf_shared_lock l(mu_);
   model_proto->set_id_counter(id_counter_);
-  return ModelToProtoHelper(output_, model_proto);
+  TF_RETURN_IF_ERROR(ModelToProtoHelper(output_, model_proto));
+  model_proto->set_id_counter(id_counter_);
+  *model_proto->mutable_optimization_params() = optimization_params_;
+  if (dataset_name_.has_value()) {
+    model_proto->set_dataset_name(dataset_name_.value());
+  }
+  tf_shared_lock gap_lock(gap_mu_);
+  *model_proto->mutable_gap_times() = {gap_times_usec_.begin(),
+                                       gap_times_usec_.end()};
+  return OkStatus();
 }
 
 Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {

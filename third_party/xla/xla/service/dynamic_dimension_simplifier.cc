@@ -23,7 +23,7 @@ namespace xla {
 namespace {
 
 // Concat(Concat(A, B), C) => Concat(A, B, C)
-StatusOr<bool> ConcatForwarding(HloInstruction* concat) {
+absl::StatusOr<bool> ConcatForwarding(HloInstruction* concat) {
   if (concat->opcode() != HloOpcode::kConcatenate) {
     return false;
   }
@@ -51,7 +51,7 @@ StatusOr<bool> ConcatForwarding(HloInstruction* concat) {
 }
 
 // Slice(Concat(A1, A2, ..., An, ...), [n:n+1]) => An
-StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
+absl::StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
   if (slice->opcode() != HloOpcode::kSlice) {
     return false;
   }
@@ -90,7 +90,7 @@ StatusOr<bool> SliceConcatForwarding(HloInstruction* slice) {
 }
 
 // Reshape(Broadcast(A, []->[1]), [1]->[]) ==> A
-StatusOr<bool> ReshapeBroadcastForwarding(HloInstruction* reshape) {
+absl::StatusOr<bool> ReshapeBroadcastForwarding(HloInstruction* reshape) {
   if (reshape->opcode() != HloOpcode::kReshape) {
     return false;
   }
@@ -118,7 +118,7 @@ StatusOr<bool> ReshapeBroadcastForwarding(HloInstruction* reshape) {
 }
 
 // Reshape(Reshape(A, []->[1]), [1]->[]) ==> A
-StatusOr<bool> ReshapeReshapeForwarding(HloInstruction* reshape) {
+absl::StatusOr<bool> ReshapeReshapeForwarding(HloInstruction* reshape) {
   if (reshape->opcode() != HloOpcode::kReshape) {
     return false;
   }
@@ -137,7 +137,7 @@ StatusOr<bool> ReshapeReshapeForwarding(HloInstruction* reshape) {
 }
 
 // Convert(A, T->T) ==> A
-StatusOr<bool> IdentityConvertRemoving(HloInstruction* convert) {
+absl::StatusOr<bool> IdentityConvertRemoving(HloInstruction* convert) {
   if (convert->opcode() != HloOpcode::kConvert) {
     return false;
   }
@@ -150,7 +150,7 @@ StatusOr<bool> IdentityConvertRemoving(HloInstruction* convert) {
 }
 
 // Reshape(A, S->S) ==> A
-StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
+absl::StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
   if (reshape->opcode() != HloOpcode::kReshape) {
     return false;
   }
@@ -164,7 +164,7 @@ StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
 
 }  // namespace
 
-StatusOr<bool> DynamicDimensionSimplifier::Run(
+absl::StatusOr<bool> DynamicDimensionSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

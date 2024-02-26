@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -278,7 +279,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
   kernel->set_name(*kernel_name);
-  kernel->set_kernel_args_packing(spec.kernel_args_packing());
+  kernel->set_args_packing(spec.kernel_args_packing());
   return absl::OkStatus();
 }
 
@@ -480,8 +481,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
     }
   }
 
-  if (cuda_kernel->GetPreferredCacheConfig() !=
-      KernelCacheConfig::kNoPreference) {
+  if (cuda_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
     TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
         cufunc, cuda_kernel->GetGpuCacheConfig()));
   }
@@ -522,7 +522,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   // For device memory array we rely on a custom kernel arguments packing.
   if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.kernel_args_packing();
+    auto& pack = kernel.args_packing();
     if (!pack) {
       return absl::InternalError(
           "Kernel is missing a custom arguments packing function for device "
@@ -632,6 +632,9 @@ DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
       LOG(ERROR) << result.status();
     }
     return DeviceMemoryBase(*result, size);
+  } else if (memory_space ==
+             static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
+    return DeviceMemoryBase(GpuDriver::HostAllocate(context_, size), size);
   }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);

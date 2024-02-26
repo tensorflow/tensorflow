@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
@@ -35,29 +34,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using mlir::lmhlo::SendOp;
-
-namespace impl {
-
-NcclP2PConfig GetNcclP2PConfig(SendOp op, int64_t replica_count,
-                               int64_t partition_count) {
-  return GetNcclP2PConfigForSendRecv(op, replica_count, partition_count);
-}
-
-absl::Status CheckImplementable(SendOp op) {
-  return IsValidOperand(op.getInputs()[0], Thunk::kNcclSend);
-}
-
-}  // namespace impl
-
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, SendOp op,
-                             int64_t replica_count, int64_t partition_count,
-                             const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
-                          /*is_sync=*/false),
-      config_(GetNcclP2PConfig(op, replica_count, partition_count)),
-      buffer_(buffer) {}
-
 NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                              const HloSendInstruction* instr,
                              int64_t replica_count, int64_t partition_count,
@@ -67,21 +43,6 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
       config_(GetNcclP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                           replica_count, partition_count)),
       buffer_(buffer) {}
-
-/*static*/ NcclP2PConfig NcclSendThunk::GetNcclP2PConfig(
-    SendOp op, int64_t replica_count, int64_t partition_count) {
-  return impl::GetNcclP2PConfig(op, replica_count, partition_count);
-}
-
-/*static*/ absl::Status NcclSendThunk::CheckImplementable(
-    mlir::lmhlo::SendOp op, int64_t replica_count, int64_t partition_count) {
-  return AddOpDescription<NcclSendThunk>(impl::CheckImplementable(op), op,
-                                         replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclSendThunk::GetGroupMode(SendOp op) {
-  return GetGroupModeForSendRecv(op);
-}
 
 absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
                                               se::Stream& stream,

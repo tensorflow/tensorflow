@@ -331,6 +331,24 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_CopyStartOp : LHLOGPU_Op<"copy_start"> {
+  let summary = "CopyStart operator";
+  let description = [{
+     Performs memory copies followed by a copy_done instruction.
+  }];
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$input,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64Attr:$memory_space);
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLOGPU_CopyDoneOp : LHLOGPU_Op<"copy_done"> {
+  let summary = "CopyDone operator";
+  let arguments = (ins MHLO_Token:$token);
+}
+
+
 def LHLOGPU_CudnnNormOp : LHLOGPU_Op<"Norm", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$x,

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/Pass.h"  // from @llvm-project

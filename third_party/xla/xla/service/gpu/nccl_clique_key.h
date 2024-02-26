@@ -79,6 +79,8 @@ class NcclCliqueKey {
 
   absl::Span<const GlobalDeviceId> devices() const;
 
+  int64_t stream_id() const;
+
   // Returns the rank of the global device in the clique.
   std::optional<int64_t> rank(GlobalDeviceId id) const;
 
@@ -101,8 +103,8 @@ class NcclCliqueKey {
   friend bool operator>(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
-  const std::vector<GlobalDeviceId> devices_;
-  const int64_t stream_id_;
+  std::vector<GlobalDeviceId> devices_;
+  int64_t stream_id_;
   AsyncStreamKind stream_kind_;
 };
 

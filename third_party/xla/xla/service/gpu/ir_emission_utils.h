@@ -23,18 +23,21 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/literal.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -116,7 +119,6 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
 llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
@@ -130,10 +132,6 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
 
-bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    mlir::lmhlo::FusionOp fusion,
-    absl::Span<const BufferAllocation* const> allocations);
-
 absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
@@ -146,14 +144,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // handled as a no-op.
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     const std::vector<const HloInstruction*>& roots);
-
-// Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
-// A dynamic slice update is said to be "defining" of a result if that result is
-// the output of a dynamic slice update, or if that result is the output of a
-// bitcast of a dynamic slice update---since such bitcast may be handled as a
-// no-op.
-std::vector<mlir::mhlo::DynamicUpdateSliceOp>
-GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
 
 Shape GetShape(mlir::Value value);
 

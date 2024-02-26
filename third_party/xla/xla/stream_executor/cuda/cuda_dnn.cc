@@ -81,7 +81,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
 
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
 #include "third_party/gpus/cudnn/cudnn_adv.h"
 #include "third_party/gpus/cudnn/cudnn_cnn.h"
 #include "third_party/gpus/cudnn/cudnn_ops.h"
@@ -417,24 +417,24 @@ void PreloadCudnnSubLibs(PreloadCudnnType type) {
   switch (type) {
     case PreloadCudnnType::ConvBwdFilter:
     case PreloadCudnnType::ConvBwdData: {
-#if CUDNN_VERSION >= 8004 && CUDNN_VERSION < 9000
+#if CUDNN_VERSION >= 8004 && CUDNN_VERSION < 90000
       cudnnOpsTrainVersionCheck();
       cudnnCnnTrainVersionCheck();
-#endif  // CUDNN_VERSION >= 8004 && CUDNN_VERSION < 9000
+#endif  // CUDNN_VERSION >= 8004 && CUDNN_VERSION < 90000
       [[clang::fallthrough]];
     }
     case PreloadCudnnType::ConvFwd: {
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
       cudnnGraphVersionCheck();
       cudnnOpsVersionCheck();
 #elif CUDNN_VERSION >= 8004
       cudnnOpsInferVersionCheck();
       cudnnCnnInferVersionCheck();
-#endif  // CUDNN_VERSION >= 9000
+#endif  // CUDNN_VERSION >= 90000
       break;
     }
     case PreloadCudnnType::Rnn: {
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
       cudnnOpsVersionCheck();
       cudnnAdvVersionCheck();
 #elif CUDNN_VERSION >= 8004
@@ -442,7 +442,7 @@ void PreloadCudnnSubLibs(PreloadCudnnType type) {
       cudnnAdvInferVersionCheck();
       cudnnOpsTrainVersionCheck();
       cudnnAdvTrainVersionCheck();
-#endif  // CUDNN_VERSION >= 9000
+#endif  // CUDNN_VERSION >= 90000
       break;
     }
   }
@@ -2152,7 +2152,7 @@ absl::Status CreateRnnTempSpace(
         "Sequence lengths for RNN are supported from CUDNN 8.1+");
 #endif  // CUDNN_VERSION >= 8100
   } else {
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
     return tsl::errors::Internal(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
 #else
@@ -2170,7 +2170,7 @@ absl::Status CreateRnnTempSpace(
           /*xDesc=*/input_desc.handles(),
           /*sizeInBytes=*/&reserve_space_size_in_bytes));
     }
-#endif  // CUDNN_VERSION >= 9000
+#endif  // CUDNN_VERSION >= 90000
   }
 
   if (workspace_size_in_bytes > 0) {
@@ -2294,9 +2294,8 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
       reserve_space_allocator, is_training, &workspace, &reserve_space));
 
   const bool is_profiling = output_profile_result != nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                      GpuTimer::CreateIfNeeded(stream, is_profiling));
 
   if (input_desc.is_var_seq_lengths()) {
     // In CUDNN v8, the cudnnRNNForward*** and cudnnRNNForward***Ex have been
@@ -2357,7 +2356,7 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
     }
 #endif  // CUDNN_VERSION >= 8100
   } else {
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
     return tsl::errors::Internal(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
 #else
@@ -2390,7 +2389,7 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
           /*reserveSpace=*/reserve_space.opaque(),
           /*reserveSpaceSizeInBytes=*/reserve_space.size()));
     }
-#endif  // CUDNN_VERSION >= 9000
+#endif  // CUDNN_VERSION >= 90000
   }
 
   if (is_profiling) {
@@ -2445,9 +2444,8 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
                                         nullptr, true, &workspace, nullptr));
 
   const bool is_profiling = output_profile_result != nullptr;
-  TF_ASSIGN_OR_RETURN(
-      std::optional<GpuTimer> timer,
-      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+  TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                      GpuTimer::CreateIfNeeded(stream, is_profiling));
 
   if (input_desc.is_var_seq_lengths()) {
     // In CUDNN v8, the cudnnRNNBackward*** and cudnnRNNBackward***Ex have
@@ -2537,7 +2535,7 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
 #endif  // CUDNN_VERSION >= 8100
     }
   } else {
-#if CUDNN_VERSION >= 9000
+#if CUDNN_VERSION >= 90000
     return tsl::errors::Internal(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
 #else
@@ -2582,7 +2580,7 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
           /*reserveSpace=*/reserve_space_data->opaque(),
           /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
     }
-#endif  // CUDNN_VERSION >= 9000
+#endif  // CUDNN_VERSION >= 90000
   }
 
   if (is_profiling) {
@@ -7791,9 +7789,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                      : static_cast<void*>(&fbeta);
 
     const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(stream, is_profiling));
 
     const auto get_fwd_bugs = [&]() -> absl::Status {
 #if CUDNN_VERSION < 8000
@@ -8270,9 +8267,8 @@ class CudnnExecutionPlanRunner<void(Args...)>
             << "\nVariantPack: " << variantPack.describe();
 
     const bool is_profiling = profile_result != nullptr;
-    TF_ASSIGN_OR_RETURN(
-        std::optional<GpuTimer> timer,
-        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(stream, is_profiling));
 
     if (sizeof...(Args) == 15) {
       // is training
@@ -8787,9 +8783,9 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
     auto algo = MakeAlgorithmDesc();
 
-    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
-                        GpuTimer::CreateIfNeeded(AsGpuStream(stream),
-                                                 profile_result != nullptr));
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(stream, profile_result != nullptr));
     auto side_input_data_ptr = (side_input_scale_ == 0)
                                    ? output_data.opaque()
                                    : side_input_data.opaque();

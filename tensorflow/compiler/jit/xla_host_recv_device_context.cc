@@ -32,9 +32,17 @@ void XlaHostRecvDeviceContext::CopyDeviceTensorToCPU(
 
   *cpu_tensor = Tensor(dtype, tensor_shape);
 
-  stream_->ThenMemcpy(cpu_tensor->data(), device_memory_base_,
-                      device_memory_base_.size());
-  stream_->ThenRecordEvent(&done_event_.get());
+  status = stream_->Memcpy(cpu_tensor->data(), device_memory_base_,
+                           device_memory_base_.size());
+  if (!status.ok()) {
+    done(status);
+    return;
+  }
+  status = stream_->RecordEvent(&done_event_.get());
+  if (!status.ok()) {
+    done(status);
+    return;
+  }
   if (auto st = stream_->BlockHostUntilDone(); !st.ok()) {
     done_event_.SetError(absl::InternalError(absl::StrFormat(
         "failed to synchronize send operation with a stream: %s",

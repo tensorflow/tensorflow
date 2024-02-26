@@ -73,7 +73,7 @@ Status ExecutionTracker::Unregister(const ExecutionHandle& handle) {
   return OkStatus();
 }
 
-StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(
+absl::StatusOr<const AsyncExecution*> ExecutionTracker::Resolve(
     const ExecutionHandle& handle) {
   absl::MutexLock lock(&execution_mutex_);
   auto it = handle_to_execution_.find(handle.handle());

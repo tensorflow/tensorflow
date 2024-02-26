@@ -765,7 +765,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",

@@ -48,6 +48,8 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+using ExecutionScopeId = CommandBuffer::ExecutionScopeId;
+
 static Platform* GpuPlatform() {
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
@@ -636,7 +638,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   auto transfer_buffers = [&]() -> std::vector<int32_t> {
     std::vector<int32_t> dst(buffers.size(), 0);
     for (size_t i = 0; i < buffers.size(); ++i) {
-      stream.ThenMemcpy(dst.data() + i, buffers[i], sizeof(int32_t));
+      TF_CHECK_OK(stream.Memcpy(dst.data() + i, buffers[i], sizeof(int32_t)));
     }
     return dst;
   };
@@ -1060,10 +1062,11 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   int32_t num_iters = 10;
 
   // Loop cond: loop_counter++ < num_iters;
-  CommandBuffer::Builder cond_builder = [&](CommandBuffer* cond_cmd) {
-    return cond_cmd->Launch(inc_and_cmp, ThreadDim(), BlockDim(), loop_counter,
-                            pred, num_iters);
-  };
+  CommandBuffer::ExecutionScopeBuilder cond_builder =
+      [&](ExecutionScopeId id, CommandBuffer* cond_cmd) {
+        return cond_cmd->Launch(inc_and_cmp, id, ThreadDim(), BlockDim(),
+                                loop_counter, pred, num_iters);
+      };
 
   // Loop body: b = a + b
   CommandBuffer::Builder body_builder = [&](CommandBuffer* body_cmd) {
@@ -1226,8 +1229,8 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
     TF_RETURN_IF_ERROR(cmd_buffer->While(
         s1, executor, pred,
         // Loop cond: loop_counter++ < num_iters;
-        [&](CommandBuffer* cond_cmd) {
-          return cond_cmd->Launch(inc_and_cmp, ThreadDim(), BlockDim(),
+        [&](ExecutionScopeId id, CommandBuffer* cond_cmd) {
+          return cond_cmd->Launch(inc_and_cmp, id, ThreadDim(), BlockDim(),
                                   loop_counter, pred, num_iters);
         },
         // Loop body: b = a + b
@@ -1248,13 +1251,30 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
 
   // Copy `b` and `c` data back to host.
   int32_t b_dst, c_dst;
-  stream.ThenMemcpy(&b_dst, b, sizeof(int32_t));
-  stream.ThenMemcpy(&c_dst, c, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memcpy(&b_dst, b, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memcpy(&c_dst, c, sizeof(int32_t)));
 
   EXPECT_EQ(b_dst, 10);
   EXPECT_EQ(c_dst, 42);
 
-  // Update bit pattern and number of iterations
+  // Check the command buffer structure.
+  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+
+  auto nodes0 = gpu_cmd_buffer->nodes(s0);
+  auto nodes1 = gpu_cmd_buffer->nodes(s1);
+  auto barriers0 = gpu_cmd_buffer->barriers(s0);
+  auto barriers1 = gpu_cmd_buffer->barriers(s1);
+
+  // s0 should have only one real barrier joining while op and memset.
+  ASSERT_EQ(nodes0.size(), 1);
+  ASSERT_EQ(nodes1.size(), 3);
+  ASSERT_EQ(barriers0.size(), 2);
+  ASSERT_EQ(barriers1.size(), 4);
+
+  // The final barrier that joins while and memset.
+  EXPECT_EQ(Deps(barriers0[1]), ExpectedDeps(nodes0[0], nodes1[2]));
+
+  // Update bit pattern and number of iterations.
   TF_ASSERT_OK(cmd_buffer->Update());
   TF_ASSERT_OK(record(cmd_buffer.get(), 43, 20));
 
@@ -1262,8 +1282,8 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   TF_ASSERT_OK(stream.MemZero(&b, sizeof(int32_t)));
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
 
-  stream.ThenMemcpy(&b_dst, b, sizeof(int32_t));
-  stream.ThenMemcpy(&c_dst, c, sizeof(int32_t));
+  TF_ASSERT_OK(stream.Memcpy(&b_dst, b, sizeof(int32_t)));
+  TF_ASSERT_OK(stream.Memcpy(&c_dst, c, sizeof(int32_t)));
 
   EXPECT_EQ(b_dst, 20);
   EXPECT_EQ(c_dst, 43);

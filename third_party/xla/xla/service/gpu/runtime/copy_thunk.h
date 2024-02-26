@@ -38,9 +38,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override {
-    Thunk::ClearCompileTimeInfo();
-  }
+  void ClearCompileTimeInfo() override { Thunk::ClearCompileTimeInfo(); }
 
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
@@ -52,6 +50,24 @@ class DeviceToDeviceCopyThunk : public Thunk {
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
+};
+
+class DeviceToHostCopyThunk : public DeviceToDeviceCopyThunk {
+ public:
+  DeviceToHostCopyThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& source_buffer,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64_t mem_size);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+};
+
+class HostToDeviceCopyThunk : public DeviceToDeviceCopyThunk {
+ public:
+  HostToDeviceCopyThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& source_buffer,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64_t mem_size);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 };
 
 }  // namespace gpu

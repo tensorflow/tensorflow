@@ -1127,7 +1127,6 @@ cc_library(
 cc_library(
     name = "transforms_passes",
     srcs = [
-        "mhlo/analysis/test_shape_component_analysis.cc",
         "transforms/alloc_to_arg_pass.cc",
         "transforms/bufferize.cc",
         "transforms/bufferize_pass.cc",

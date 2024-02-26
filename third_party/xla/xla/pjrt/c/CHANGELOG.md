@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.43
+* Added some new fields to PJRT_Executable_GetCompiledMemoryStats
+
 ## 0.42
 * Renamed all ``priv`` fields to ``extension_start``
 

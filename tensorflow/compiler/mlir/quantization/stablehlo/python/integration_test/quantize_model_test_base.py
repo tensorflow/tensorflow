@@ -169,7 +169,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           )
           out = array_ops.pad(out, paddings, 'CONSTANT')
         elif self.same_scale_op == 'reshape':
-          out = array_ops.reshape(out, (array_ops.size(out), -1))
+          out = array_ops.reshape(out, [-1])
         elif self.same_scale_op == 'select':
           rng = np.random.default_rng(seed=1234)
           condition = ops.convert_to_tensor(

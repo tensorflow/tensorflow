@@ -15,17 +15,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_KERNEL_ARGUMENTS_H_
 #define XLA_SERVICE_GPU_KERNEL_ARGUMENTS_H_
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -34,11 +34,6 @@ namespace gpu {
 // Thread-safe.
 class KernelArgument {
  public:
-  static absl::StatusOr<KernelArgument> Create(
-      absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
-      bool is_written);
-
-  mlir::Value value() const { return value_; }
   const Shape& shape() const { return shape_; }
   const BufferAllocation::Slice& slice() const { return slice_; }
   bool written() const { return written_; }
@@ -50,11 +45,9 @@ class KernelArgument {
   int llvm_arg_index() const { return llvm_arg_index_; }
 
  private:
-  KernelArgument(mlir::Value value, Shape shape, BufferAllocation::Slice slice,
-                 bool written)
-      : value_(value), shape_(shape), slice_(slice), written_(written) {}
+  KernelArgument(Shape shape, BufferAllocation::Slice slice, bool written)
+      : shape_(shape), slice_(slice), written_(written) {}
 
-  mlir::Value value_;
   Shape shape_;
   BufferAllocation::Slice slice_;
   bool aliased_ = true;
@@ -71,16 +64,8 @@ class KernelArgument {
 class KernelArguments {
  public:
   static absl::StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation* const> allocations,
-      mlir::lmhlo::FusionOp fusion);
-
-  static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const HloFusionInstruction* fusion);
-
-  static absl::StatusOr<KernelArguments> Create(
-      absl::Span<const BufferAllocation* const> allocations,
-      mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands);
 
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,

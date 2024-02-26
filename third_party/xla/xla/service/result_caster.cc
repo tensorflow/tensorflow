@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<std::optional<Shape>> MaybeInferShape(
+absl::StatusOr<std::optional<Shape>> MaybeInferShape(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kDot:
@@ -51,7 +51,7 @@ bool ResultCaster::InstructionMatchesPattern(HloInstruction* instruction) {
   return inferred_shape.element_type() != instruction->shape().element_type();
 }
 
-StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
     HloInstruction* instruction) {
   auto* computation = instruction->parent();
   Shape inferred_shape = MaybeInferShape(instruction).value().value();

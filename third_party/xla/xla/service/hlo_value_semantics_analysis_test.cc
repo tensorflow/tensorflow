@@ -620,5 +620,38 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
             0);
 }
 
+class EinsumHeightAnalysisTest : public HloTestBase {
+ public:
+  int GetInstructionHeight(const EinsumHeightMap& height_map,
+                           HloComputation* computation,
+                           absl::string_view name) {
+    HloInstruction* instruction = computation->GetInstructionWithName(name);
+    auto height_iter = height_map.find(instruction);
+    EXPECT_NE(height_iter, height_map.end());
+    return height_iter->second.element({});
+  }
+};
+
+TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kMnistHlo,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
+      EinsumHeightAnalysis::Run(*module->entry_computation(), {}));
+  const EinsumHeightMap& einsum_height_map =
+      einsum_height_analysis->GetEinsumHeightMap();
+  HloComputation* computation = module->GetComputationWithName("body.49");
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.63"), 1);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.67"), 2);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.71"), 3);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.89"), 4);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.96"), 5);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.92"), 5);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.99"), 6);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.85"), 4);
+}
+
 }  // namespace
 }  // namespace xla

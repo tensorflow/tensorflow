@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> MultiOutputFusion::Run(
+absl::StatusOr<bool> MultiOutputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -210,6 +211,12 @@ class PjRtLoadedExecutable final
   absl::string_view name() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->name();
+  }
+
+  Future<absl::Status> GetReadyFuture() const override {
+    // PjRtCompiler blocks until compilation finishes and returns only the
+    // executables that are ready.
+    return Future<absl::Status>(absl::OkStatus());
   }
 
   std::optional<std::vector<OpSharding>> GetParameterShardings()

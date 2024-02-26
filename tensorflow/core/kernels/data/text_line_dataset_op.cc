@@ -281,6 +281,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
+  LogFilenames(filenames);
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,
                         zlib_compression_options);

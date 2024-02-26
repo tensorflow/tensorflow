@@ -165,7 +165,8 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
 // Determines the fusion kind to be used when fusing into `consumer`.
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer);
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
+                                            const HloInstruction& consumer);
 
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,

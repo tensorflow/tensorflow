@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/nccl_api.h"
@@ -35,8 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -44,9 +41,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-using mlir::lmhlo_gpu::AllReduceStartOp;
-using mlir::lmhlo_gpu::ReduceScatterStartOp;
 
 absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
@@ -132,19 +126,6 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
   return absl::OkStatus();
 }
 
-template <typename OpT>
-absl::Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
-  for (mlir::Value operand : op.getInputs()) {
-    TF_RETURN_IF_ERROR(IsValidOperand(operand, reduction_op));
-  }
-  if (!NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
-           op.getComputation())
-           .has_value()) {
-    return absl::UnimplementedError("Unrecognized reduction computation");
-  }
-  return absl::OkStatus();
-}
-
 template <typename HloInstType>
 NcclAllReduceConfig GetNcclAllReduceConfigInst(HloInstType* inst) {
   std::optional<ReductionKind> reduction_kind =
@@ -157,75 +138,12 @@ NcclAllReduceConfig GetNcclAllReduceConfigInst(HloInstType* inst) {
   return config;
 }
 
-template <typename OpT>
-NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
-  std::optional<ReductionKind> reduction_kind =
-      NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
-          op.getComputation());
-  CHECK(reduction_kind.has_value());
-
-  NcclAllReduceConfig config;
-  config.config =
-      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
-  config.reduction_kind = *reduction_kind;
-  return config;
-}
-
-template <typename OpT>
-CollectiveOpGroupMode GetGroupMode(OpT op) {
-  return GetNcclAllReduceConfig(op).config.group_mode;
-}
-
 template <typename HloInstType>
 CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
   return GetNcclAllReduceConfigInst(inst).config.group_mode;
 }
 
 }  // namespace impl
-
-std::optional<ReductionKind>
-NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
-    mlir::Region& computation) {
-  mlir::Block& block = computation.front();
-  absl::StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
-  if (!reduction_op.ok()) return std::nullopt;
-  absl::StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
-  if (!opcode.ok()) return std::nullopt;
-  // Match the operation to a reduction kind. We can represent and/or of pred as
-  // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-  PrimitiveType type =
-      TypeToShape(block.getArgument(0).getType()).element_type();
-  if (type == PRED) {
-    switch (opcode.value()) {
-      case HloOpcode::kAnd:
-        return ReductionKind::MIN;
-      case HloOpcode::kOr:
-        return ReductionKind::MAX;
-      default:
-        return std::nullopt;
-    }
-  } else if (primitive_util::IsComplexType(type)) {
-    // Only addition is supported for complex types.
-    if (*opcode == HloOpcode::kAdd) {
-      return ReductionKind::SUM;
-    } else {
-      return std::nullopt;
-    }
-  } else {
-    switch (*opcode) {
-      case HloOpcode::kAdd:
-        return ReductionKind::SUM;
-      case HloOpcode::kMultiply:
-        return ReductionKind::PRODUCT;
-      case HloOpcode::kMaximum:
-        return ReductionKind::MAX;
-      case HloOpcode::kMinimum:
-        return ReductionKind::MIN;
-      default:
-        return std::nullopt;
-    }
-  }
-}
 
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
@@ -236,15 +154,6 @@ NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-NcclAllReduceStartThunk::NcclAllReduceStartThunk(ThunkInfo thunk_info,
-                                                 NcclApi* nccl_api,
-                                                 AllReduceStartOp op,
-                                                 std::vector<Buffer> buffers)
-    : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclAllReduceStart,
-                                          thunk_info, nccl_api,
-                                          impl::GetNcclAllReduceConfig(op),
-                                          std::move(buffers), op.getIsSync()) {}
-
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloAllReduceInstruction* inst, std::vector<Buffer> buffers)
@@ -254,23 +163,11 @@ NcclAllReduceStartThunk::NcclAllReduceStartThunk(
           IsSyncCollective(inst)) {}
 
 absl::Status NcclAllReduceStartThunk::CheckImplementable(
-    AllReduceStartOp op, int64_t replica_count, int64_t partition_count) {
-  return AddOpDescription<NcclAllReduceStartThunk>(
-      impl::CheckImplementable(op, Thunk::kNcclAllReduceStart), op,
-      replica_count, partition_count);
-}
-
-absl::Status NcclAllReduceStartThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclAllReduceStartThunk>(
       impl::CheckImplementableInst(inst, Thunk::kNcclAllReduceStart), inst,
       replica_count, partition_count);
-}
-
-CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
-    AllReduceStartOp op) {
-  return impl::GetGroupMode(op);
 }
 
 CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
@@ -290,14 +187,6 @@ absl::Status NcclAllReduceStartThunk::RunNcclCollective(
 }
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, NcclApi* nccl_api, ReduceScatterStartOp op,
-    std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclReduceScatterStart,
-                                          thunk_info, nccl_api,
-                                          impl::GetNcclAllReduceConfig(op),
-                                          std::move(buffers), op.getIsSync()) {}
-
-NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloReduceScatterInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
@@ -308,23 +197,11 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
               .is_sync()) {}
 
 /*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
-    ReduceScatterStartOp op, int64_t replica_count, int64_t partition_count) {
-  return AddOpDescription<NcclReduceScatterStartThunk>(
-      impl::CheckImplementable(op, Thunk::kNcclReduceScatterStart), op,
-      replica_count, partition_count);
-}
-
-/*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
     const HloReduceScatterInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclReduceScatterStartThunk>(
       impl::CheckImplementableInst(inst, Thunk::kNcclReduceScatterStart), inst,
       replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclReduceScatterStartThunk::GetGroupMode(
-    ReduceScatterStartOp op) {
-  return impl::GetGroupMode(op);
 }
 
 /*static*/ CollectiveOpGroupMode NcclReduceScatterStartThunk::GetGroupMode(

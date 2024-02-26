@@ -1662,6 +1662,24 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "batch_kernels_auto_warmup_test",
+    size = "small",
+    srcs = ["batch_kernels_auto_warmup_test.cc"],
+    features = ["-layering_check"],
+    deps = [
+        ":batch_kernel_test_util",
+        ":batch_kernels",
+        ":function_ops",
+        ":shape_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/batching_util:warmup",
+        "@local_tsl//tsl/platform:blocking_counter",
+    ],
+)
+
+tf_cc_test(
     name = "batch_kernels_env_test",
     size = "small",
     srcs = ["batch_kernels_env_test.cc"],

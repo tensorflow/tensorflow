@@ -67,7 +67,7 @@ absl::StatusOr<std::string> AddTensorToBundleWriter(
   }
 
   Tensor const_tensor{};
-  if (const tsl::Status status = mlir::tfg::ConvertToTensor(
+  if (const absl::Status status = mlir::tfg::ConvertToTensor(
           /*attr=*/const_op.getValue(), /*output_tensor=*/&const_tensor);
       !status.ok()) {
     return status;

@@ -27,7 +27,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
 using ::stablehlo::quantization::StaticRangePtqPreset;
@@ -35,14 +34,8 @@ using ::tensorflow::quantization::CalibrationOptions;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,
-                             const QuantizationSpecs& quantization_specs,
-                             const DebuggerConfig& debugger_config) {
+                             const QuantizationSpecs& quantization_specs) {
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
-  if (debugger_config.debugger_type() !=
-      DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {
-    pm.addPass(CreateAddDumpTensorOpPass(debugger_config.debugger_type(),
-                                         debugger_config.log_dir_path()));
-  }
   pm.addNestedPass<func::FuncOp>(
       CreateInsertCustomAggregationOpsPass(calibration_options));
   pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
@@ -89,10 +82,13 @@ void AddStablehloQuantToIntPasses(OpPassManager& pm) {
   pm.addPass(createInlinerPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
-  pm.addNestedPass<func::FuncOp>(createConvertMHLOQuantToIntPass(
-      /*legalize_chlo=*/true));
+  pm.addNestedPass<func::FuncOp>(mhlo::createMhloQuantLegalizeToIntPass());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
+  // Integer graph optimization relies on chlo broadcast ops for easier handling
+  // of dynamic shapes. Therefore we lower chlo ops after optimization.
   pm.addNestedPass<func::FuncOp>(CreateOptimizeIntGraphPass());
+  pm.addNestedPass<func::FuncOp>(mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   pm.addPass(createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mhlo::createHloLegalizeToStablehloPass());

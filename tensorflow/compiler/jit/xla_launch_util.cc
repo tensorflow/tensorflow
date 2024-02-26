@@ -308,8 +308,8 @@ Status SetOutputForConstant(
       // stream now otherwise we will create a race condition.
       auto* gpu_device_context =
           static_cast<GPUDeviceContext*>(ctx->op_device_context());
-      gpu_device_context->stream()->ThenWaitFor(
-          gpu_device_context->host_to_device_stream());
+      TF_RETURN_IF_ERROR(gpu_device_context->stream()->WaitFor(
+          gpu_device_context->host_to_device_stream()));
     }
   } else {
     // No copy required.
@@ -392,7 +392,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     if (!definition_event->Init()) {
       return errors::Internal("Failed to initialize tensor definition event.");
     }
-    stream->ThenRecordEvent(definition_event.get());
+    TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
   }
 
   for (const XlaOutputDescription& descr : compilation_result->outputs) {

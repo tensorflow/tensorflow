@@ -87,7 +87,7 @@ class FlattenCallGraphTest : public HloTestBase {
     return builder.Build();
   }
 
-  StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
+  absl::StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
     FlattenCallGraph flatten;
     TF_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;

@@ -2867,6 +2867,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
+        "//xla/service/cpu:onednn_util",
         "@local_tsl//tsl/platform:platform_port",
     ],
 )

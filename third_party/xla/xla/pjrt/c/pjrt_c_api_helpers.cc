@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -944,6 +943,13 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
 
 absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable) {
+  // TODO(jieying): To be removed after 03/2024.
+  if (api->pjrt_api_version.major_version == 0 &&
+      api->pjrt_api_version.minor_version < 40) {
+    return absl::UnimplementedError(
+        "GetCompiledMemoryStats requires a plugin with PJRT C API version >= "
+        "0.40");
+  }
   PJRT_Executable_GetCompiledMemoryStats_Args args;
   args.struct_size = PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -956,6 +962,12 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   results.output_size_in_bytes = args.output_size_in_bytes;
   results.alias_size_in_bytes = args.alias_size_in_bytes;
   results.temp_size_in_bytes = args.temp_size_in_bytes;
+  results.host_generated_code_size_in_bytes =
+      args.host_generated_code_size_in_bytes;
+  results.host_argument_size_in_bytes = args.host_argument_size_in_bytes;
+  results.host_output_size_in_bytes = args.host_output_size_in_bytes;
+  results.host_alias_size_in_bytes = args.host_alias_size_in_bytes;
+  results.host_temp_size_in_bytes = args.host_temp_size_in_bytes;
   return results;
 }
 

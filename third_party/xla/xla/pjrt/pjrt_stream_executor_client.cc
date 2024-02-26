@@ -1733,7 +1733,9 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
               // remains valid until after any transfers have completed.
               auto status = src_local_device->ThenRelease(
                   transfer_stream, std::move(src_device_buffer));
-              LOG(ERROR) << "ThenRelease failed due to: " << status;
+              if (!status.ok()) {
+                LOG(ERROR) << "ThenRelease failed due to: " << status;
+              }
             }
             return;
           }
@@ -1756,7 +1758,9 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
 
     auto status = src_local_device->ThenRelease(transfer_stream,
                                                 std::move(src_device_buffer));
-    LOG(ERROR) << "ThenRelease failed due to: " << status;
+    if (!status.ok()) {
+      LOG(ERROR) << "ThenRelease failed due to: " << status;
+    }
   };
 
   src_device_buffer->definition_events()[0]->ExecuteOrAddToFutureTasks(
@@ -2432,7 +2436,11 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
     // responsibility to synchronize with this event before submitting any new
     // computations to the stream.
     if (complete) {
-      stream_->ThenRecordEvent(&done_.get());
+      auto recorded = stream_->RecordEvent(&done_.get());
+      if (!recorded.ok()) {
+        done_.SetError(recorded);
+        return PjRtFuture<Status>(done_.GetError());
+      }
       done_.SetStateConcrete();
     }
 

@@ -1,3 +1,18 @@
+load(
+    "//tensorflow:py.default.bzl",
+    _plain_py_binary = "py_binary",
+    _plain_py_library = "py_library",
+    _plain_py_test = "py_test",
+)
+load("@bazel_skylib//lib:new_sets.bzl", "sets")
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "cuda_library",
+    "if_cuda",
+    "if_cuda_exec",
+)
+
 #
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
@@ -19,28 +34,12 @@ load(
     "cc_test",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "tsl_gpu_library",
-    _cc_header_only_library = "cc_header_only_library",
-    _if_cuda_or_rocm = "if_cuda_or_rocm",
-    _if_nccl = "if_nccl",
-    _transitive_hdrs = "transitive_hdrs",
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
 )
 load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
-    "if_tensorrt_exec",
-)
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_library",
-    "if_cuda",
-    "if_cuda_exec",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "rocm_copts",
+    "//third_party/llvm_openmp:openmp.bzl",
+    "windows_llvm_openmp_linkopts",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -55,26 +54,29 @@ load(
     "if_mkldnn_openmp",
 )
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "rocm_copts",
+)
+load(
+    "@local_tsl//tsl:tsl.bzl",
+    "tsl_gpu_library",
+    _cc_header_only_library = "cc_header_only_library",
+    _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_nccl = "if_nccl",
+    _transitive_hdrs = "transitive_hdrs",
+)
+load(
     "@local_tsl//tsl/mkl:build_defs.bzl",
     "onednn_v3_define",
 )
 load(
-    "//third_party/compute_library:build_defs.bzl",
-    "if_enable_acl",
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+    "if_tensorrt_exec",
 )
-load(
-    "//third_party/llvm_openmp:openmp.bzl",
-    "windows_llvm_openmp_linkopts",
-)
-load(
-    "//tensorflow:py.default.bzl",
-    _plain_py_binary = "py_binary",
-    _plain_py_library = "py_library",
-    _plain_py_test = "py_test",
-)
-load("@bazel_skylib//lib:new_sets.bzl", "sets")
-load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
+# buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
 

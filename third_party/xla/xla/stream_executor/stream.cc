@@ -81,68 +81,15 @@ std::string ToVlogString(uint64_t i) { return absl::StrCat(i); }
 
 std::string ToVlogString(float f) { return absl::StrCat(f); }
 
-// Used together with PARAM to VLOG calls made to the stream. Intended
-// to be used like this:
-//
-//   VLOG(1) << CallStr("MyFunction", this, {PARAM(a), PARAM(b)});
-//
-// where a and b are the parameters to MyFunction.
-//
-// See VLOG_CALL for a short-hand for this. This way of doing it saves
-// a tremendous amount of boilerplate code given how many functions
-// there are on Stream and how many parameters they each have.
-std::string CallStr(const char *function_name, Stream *stream,
-                    std::vector<std::pair<const char *, std::string>> params) {
-  // Do not call this function unless VLOG is on since just
-  // constructing all the strings in params is expensive.
-  CHECK(VLOG_IS_ON(1));
-
-  std::string str = absl::StrCat(stream->DebugStreamPointers(),
-                                 " Called Stream::", function_name, "(");
-  const char *separator = "";
-  for (const auto &param : params) {
-    absl::StrAppend(&str, separator, param.first, "=", param.second);
-    separator = ", ";
-  }
-  absl::StrAppend(&str, ")");
-  if (VLOG_IS_ON(10)) {
-    absl::StrAppend(&str, " ", tsl::CurrentStackTrace(), "\n");
-  }
-  return str;
-}
-
-// Use this macro to avoid having to type every parameter twice to log
-// it with VLOG and CallStr.
-#define PARAM(parameter) \
-  { #parameter, ToVlogString(parameter) }
-
-// Use this macro to avoid having to type out the name of each
-// function and to save some boilerplate. Intended to be used like this:
-//
-//   VLOG_CALL(PARAM(a), PARAM(b))
-//
-// This saves a tremendous amount of boilerplate compared to the alternative:
-//
-//   VLOG(1) << "Calling MyFunction(a=" << ToVlogString(a)
-//           << ", b=" << ToVlogString(b);
-//
-// Note here that most of the parameter names are not short and that
-// most of the functions take many more than 2 parameters.
-#define VLOG_CALL(...) VLOG(1) << CallStr(__func__, this, {__VA_ARGS__})
-
 }  // namespace
 
 Stream::Stream(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->GetStreamImplementation()),
       allocated_(false),
-      status_(absl::InternalError("Uninitialized stream")) {
-  VLOG_CALL(PARAM(parent));
-}
+      status_(absl::InternalError("Uninitialized stream")) {}
 
 Stream::~Stream() {
-  VLOG_CALL();
-
   // Ensure the stream is completed.
   auto status = BlockHostUntilDone();
   if (!status.ok()) {
@@ -185,8 +132,6 @@ absl::Status Stream::RefreshStatus() {
 }
 
 absl::Status Stream::Initialize() {
-  VLOG_CALL();
-
   absl::MutexLock lock(&mu_);
   if (allocated_) {
     return absl::InternalError(
@@ -208,8 +153,6 @@ absl::Status Stream::Initialize() {
 }
 
 Stream &Stream::Init() {
-  VLOG_CALL();
-
   absl::Status status = Initialize();
   if (!status.ok()) {
     LOG(ERROR) << status;
@@ -219,8 +162,6 @@ Stream &Stream::Init() {
 }
 
 Stream &Stream::ThenRecordEvent(Event *event) {
-  VLOG_CALL(PARAM(event));
-
   absl::Status status = RecordEvent(event);
   if (!status.ok()) {
     LOG(ERROR) << "Error recording event in stream: " << status.message()
@@ -323,36 +264,6 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
              << sub_stream->DebugStreamPointers();
 }
 
-Stream &Stream::ThenWaitFor(Stream *other) {
-  VLOG_CALL(PARAM(other));
-
-  CHECK(this != other) << "stream cannot wait for itself";
-  if (ok() && other->ok()) {
-    CheckStatus(WaitFor(other));
-  } else {
-    SetError();
-    LOG(INFO) << DebugStreamPointers() << " did not wait for "
-              << other->DebugStreamPointers();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenWaitFor(Event *event) {
-  VLOG_CALL(PARAM(event));
-
-  if (ok()) {
-    absl::Status status = WaitFor(event);
-    if (!status.ok()) {
-      LOG(ERROR) << "Error waiting for event in stream: " << status.message()
-                 << "; not marking stream as bad, as the Event object may be "
-                 << "at fault. Monitor for further errors.";
-    }
-  } else {
-    LOG(INFO) << DebugStreamPointers() << " did not wait for an event.";
-  }
-  return *this;
-}
-
 absl::Status Stream::WaitFor(Stream *other) {
   if (this == other) {
     return absl::InternalError("stream cannot wait for itself");
@@ -369,8 +280,6 @@ absl::Status Stream::WaitFor(Event *event) {
 
 Stream &Stream::ThenMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
                            uint64_t size) {
-  VLOG_CALL(PARAM(host_dst), PARAM(gpu_src), PARAM(size));
-
   CheckStatus(Memcpy(host_dst, gpu_src, size));
   return *this;
 }
@@ -385,8 +294,6 @@ absl::Status Stream::Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
 
 Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
                            uint64_t size) {
-  VLOG_CALL(PARAM(gpu_dst), PARAM(host_src), PARAM(size));
-
   CheckStatus(Memcpy(gpu_dst, host_src, size));
   return *this;
 }
@@ -401,8 +308,6 @@ absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
 
 Stream &Stream::ThenMemcpy(DeviceMemoryBase *gpu_dst,
                            const DeviceMemoryBase &gpu_src, uint64_t size) {
-  VLOG_CALL(PARAM(gpu_dst), PARAM(gpu_src), PARAM(size));
-
   CheckStatus(Memcpy(gpu_dst, gpu_src, size));
   return *this;
 }
@@ -415,13 +320,6 @@ absl::Status Stream::Memcpy(DeviceMemoryBase *gpu_dst,
   return absl::InternalError("failed to memcpy");
 }
 
-Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64_t size) {
-  VLOG_CALL(PARAM(location), PARAM(size));
-
-  CheckStatus(MemZero(location, size));
-  return *this;
-}
-
 absl::Status Stream::MemZero(DeviceMemoryBase *location, uint64_t size) {
   return parent_->MemZero(this, location, size);
 }
@@ -431,30 +329,11 @@ absl::Status Stream::Memset32(DeviceMemoryBase *location, uint32_t pattern,
   return parent_->Memset32(this, location, pattern, size);
 }
 
-Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
-  return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
-    std::move(cb)();
-    return absl::OkStatus();
-  });
-}
-
 absl::Status Stream::DoHostCallback(absl::AnyInvocable<void() &&> callback) {
   return DoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
     std::move(cb)();
     return absl::OkStatus();
   });
-}
-
-Stream &Stream::ThenDoHostCallbackWithStatus(
-    absl::AnyInvocable<absl::Status() &&> callback) {
-  VLOG_CALL(PARAM(callback));
-
-  if (!ok()) {
-    LOG(INFO) << DebugStreamPointers()
-              << " was in error state before adding host callback";
-  }
-  CheckStatus(DoHostCallbackWithStatus(std::move(callback)));
-  return *this;
 }
 
 absl::Status Stream::DoHostCallbackWithStatus(
@@ -465,17 +344,7 @@ absl::Status Stream::DoHostCallbackWithStatus(
   return absl::InternalError("failed to host callback");
 }
 
-void Stream::CheckError(bool operation_retcode) {
-  if (operation_retcode) {
-    return;
-  }
-  absl::MutexLock lock(&mu_);
-  status_ = absl::InternalError("Unknown error");
-}
-
 absl::Status Stream::BlockHostUntilDone() {
-  VLOG_CALL();
-
   if (!ok()) {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
@@ -485,10 +354,7 @@ absl::Status Stream::BlockHostUntilDone() {
     return status;
   }
 
-  absl::Status error = parent_->BlockHostUntilDone(this);
-  CheckError(error.ok());
-
-  return error;
+  return parent_->BlockHostUntilDone(this);
 }
 
 std::string Stream::DebugStreamPointers() const {

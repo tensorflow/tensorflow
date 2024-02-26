@@ -49,7 +49,7 @@ SchedulerConfig GetDefaultSchedConfig() {
   return sched_cfg;
 }
 
-StatusOr<bool> RunScheduler(
+absl::StatusOr<bool> RunScheduler(
     HloModule* module, const SchedulerConfig& sched_config,
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
@@ -82,7 +82,7 @@ StatusOr<bool> RunScheduler(
 class LatencyHidingSchedulerTest : public HloTestBase,
                                    public ::testing::WithParamInterface<bool> {
  public:
-  StatusOr<std::unique_ptr<HloModule>> ParseHloText(
+  absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }

@@ -245,42 +245,38 @@ class Kernel {
   // nullary, unary, ...).
   virtual unsigned Arity() const = 0;
 
-  void set_metadata(const KernelMetadata &metadata) { metadata_ = metadata; }
-
-  const KernelMetadata &metadata() const { return metadata_; }
-
-  // Sets the preferred cache configuration for a kernel. This is just a
-  // suggestion to the runtime, and may not be honored during execution.
-  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
-
-  // Gets the preferred cache configuration for a kernel.
-  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
-
   // Returns the maximum number of blocks (per multiprocessor) occupied by the
   // kernel given the number of threads per block and shared memory size.
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
-  // Sets custom kernels arguments packing function for a kernel.
-  void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
-    kernel_args_packing_ = std::move(kernel_args_packing);
+  KernelCacheConfig cache_config() const { return cache_config_; }
+  void set_cache_config(KernelCacheConfig cache_config) {
+    cache_config_ = std::move(cache_config);
   }
 
-  const KernelArgsPacking &kernel_args_packing() const {
-    return kernel_args_packing_;
+  const KernelMetadata &metadata() const { return metadata_; }
+  void set_metadata(KernelMetadata metadata) {
+    metadata_ = std::move(metadata);
   }
 
-  void set_name(absl::string_view name);
+  const KernelArgsPacking &args_packing() const { return args_packing_; }
+  void set_args_packing(KernelArgsPacking args_packing) {
+    args_packing_ = std::move(args_packing);
+  }
+
   std::string_view name() const { return name_; }
+  void set_name(absl::string_view name);
+
   std::string_view demangled_name() const { return demangled_name_; }
 
  private:
   std::string name_;
   std::string demangled_name_;
 
+  KernelCacheConfig cache_config_ = KernelCacheConfig::kNoPreference;
   KernelMetadata metadata_;
-
-  KernelArgsPacking kernel_args_packing_;
+  KernelArgsPacking args_packing_;
 };
 
 //===----------------------------------------------------------------------===//

@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/passes.h"
 
 int main(int argc, char **argv) {
@@ -34,7 +35,8 @@ int main(int argc, char **argv) {
                   mlir::affine::AffineDialect, mlir::arith::ArithDialect,
                   mlir::math::MathDialect, mlir::scf::SCFDialect,
                   mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect,
-                  mlir::gpu::GPUDialect, mlir::mhlo::MhloDialect>();
+                  mlir::gpu::GPUDialect, mlir::mhlo::MhloDialect,
+                  xla::gpu::XlaGpuDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::registerCanonicalizerPass();
   xla::gpu::registerGpuFusionTransformsPasses();

@@ -13,9 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "mhlo/IR/hlo_ops.td"
+include "stablehlo/dialect/ChloOps.td"
+
+def IsDefinedByConvOrDotGeneralOp : Constraint<Or<[
+  CPred<"$0.getDefiningOp<mhlo::ConvolutionOp>()">,
+  CPred<"$0.getDefiningOp<mhlo::DotGeneralOp>()">]>>;
+
+def IsNull : Constraint<CPred<"!$0">>;
 
 // This pattern optimizes:
 //   conv/dot_general + a + b -> conv/dot_general + (a + b)
@@ -23,36 +31,20 @@ include "mhlo/IR/hlo_ops.td"
 //   conv/dot_general + a - b -> conv/dot_general + (a - b)
 //   conv/dot_general - a + b -> conv/dot_general - (a - b)
 foreach OpsTuple = [
-    [MHLO_AddOp, MHLO_AddOp, MHLO_AddOp],
-    [MHLO_SubtractOp, MHLO_SubtractOp, MHLO_AddOp],
-    [MHLO_AddOp, MHLO_SubtractOp, MHLO_SubtractOp],
-    [MHLO_SubtractOp, MHLO_AddOp, MHLO_SubtractOp]] in {
+    [CHLO_BroadcastAddOp, CHLO_BroadcastAddOp, CHLO_BroadcastAddOp],
+    [CHLO_BroadcastSubOp, CHLO_BroadcastSubOp, CHLO_BroadcastAddOp],
+    [CHLO_BroadcastAddOp, CHLO_BroadcastSubOp, CHLO_BroadcastSubOp],
+    [CHLO_BroadcastSubOp, CHLO_BroadcastAddOp, CHLO_BroadcastSubOp]] in {
   def optimizeConsecutiveConv#OpsTuple[0]#OpsTuple[1] : Pat<
     (OpsTuple[1]
-      (OpsTuple[0]
-        (MHLO_ConvolutionOp:$conv $lhs, $rhs, $window_strides, $padding,
-          $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
-          $feature_group_count, $batch_group_count, $precision_config),
-        $zp_offset),
-      $bias),
+      (OpsTuple[0] $input, $zp_offset, $broadcast_dims_1),
+      $bias, $broadcast_dims_2),
     (OpsTuple[0]
-      (MHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding, $lhs_dilation,
-        $rhs_dilation, $window_reversal, $dimension_numbers,
-        $feature_group_count, $batch_group_count, $precision_config,
-        (returnType $conv)),
-      (OpsTuple[2] $zp_offset, $bias)),
-    [(TensorOf<[AnyInteger]> $conv)]>;
-
-  def optimizeConsecutiveDotGeneral#OpsTuple[0]#OpsTuple[1] : Pat<
-    (OpsTuple[1]
-      (OpsTuple[0]
-        (MHLO_DotGeneralOp:$dot $lhs, $rhs, $dimension_numbers,
-          $precision_config),
-        $zp_offset),
-      $bias),
-    (OpsTuple[0]
-      (MHLO_DotGeneralOp $lhs, $rhs,$dimension_numbers, $precision_config,
-        (returnType $dot)),
-      (OpsTuple[2] $zp_offset, $bias)),
-    [(TensorOf<[AnyInteger]> $dot)]>;
+      $input,
+      (OpsTuple[2] $zp_offset, $bias, $broadcast_dims_2), $broadcast_dims_1),
+    [
+      (IsNull $broadcast_dims_1),
+      (IsNull $broadcast_dims_2),
+      (TensorOf<[AnyInteger]> $input),
+      (IsDefinedByConvOrDotGeneralOp $input)]>;
 }

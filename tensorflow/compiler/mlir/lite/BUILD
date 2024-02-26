@@ -1383,7 +1383,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:transforms",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantize_passes",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",  # buildcleaner: keep; prevents undefined reference
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",

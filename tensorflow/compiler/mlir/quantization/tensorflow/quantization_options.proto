@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package tensorflow.quantization;
 
-import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
 import "tensorflow/core/framework/tensor.proto";
 
 option cc_enable_arenas = true;
@@ -204,7 +203,32 @@ message RepresentativeDatasetFile {
 message DebuggerOptions {
   // Type of quantization debugger. Depending on the type, inputs and outputs
   // are wired differently.
-  stablehlo.quantization.DebuggerConfig.DebuggerType debugger_type = 1;
+  // NEXT ID: 4
+  enum DebuggerType {
+    DEBUGGER_TYPE_UNSPECIFIED = 0;
+    // DEBUGGER_TYPE_WHOLE_MODEL creates two tf.Savedmodel - unquantized and
+    // quantized model with DumpTensor added to outputs of quantizable layers.
+    // The DumpTensor dumps entire value of its input to a specified file. When
+    // DEBUGGER_TYPE_WHOLE_MODEL is used unquantized_dump_model_path has to be
+    // specified.
+    DEBUGGER_TYPE_WHOLE_MODEL = 1;
+    // DEBUGGER_TYPE_INT_PER_LAYER creates a debugging model with both quantized
+    // and unquantized layers. The unquantized layer's input come from the
+    // previous quantized layer (Please note that this part is different part
+    // from DEBUGGER_TYPE_FLOAT_PER_LAYER). Each layer in the debugging model
+    // has a DumpTensor, and it is used to save the entire value of outputs from
+    // both the quantized and unquantized layer.
+    DEBUGGER_TYPE_INT_PER_LAYER = 2;
+    // DEBUGGER_TYPE_FLOAT_PER_LAYER creates a debugging model with both
+    // quantized and unquantized layers. The unquantized layer's input come from
+    // the previous unquantized layer (Please note that this part is different
+    // part from DEBUGGER_TYPE_INT_PER_LAYER). Each layer in the debugging model
+    // has a DumpTensor, and it is used to save the entire value of outputs from
+    // both the quantized and unquantized layer.
+    DEBUGGER_TYPE_FLOAT_PER_LAYER = 3;
+  }
+
+  DebuggerType debugger_type = 1;
 
   // Path to save unquantized model with dump tensor ops attached.
   // Used when debugger_type is WHOLE_MODEL.

@@ -16,29 +16,14 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <vector>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -46,63 +31,6 @@ namespace xla {
 namespace gpu {
 
 class IrEmissionUtilsTest : public HloTestBase {};
-
-TEST_F(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::lmhlo::LmhloDialect>();
-  registry.insert<mlir::func::FuncDialect>();
-  mlir::MLIRContext context(registry);
-
-  auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
-    func.func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
-      "lmhlo.add" (%arg0, %arg1, %arg2) : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "lmhlo.terminator" () : () -> ()
-    }
-  )",
-                                                        &context);
-  mlir::func::FuncOp func =
-      mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.getBody().front().front();
-  EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
-}
-
-TEST_F(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::lmhlo::LmhloDialect>();
-  registry.insert<mlir::func::FuncDialect>();
-  mlir::MLIRContext context(registry);
-
-  auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
-    func.func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
-      "lmhlo.add" (%arg0, %arg1, %arg0) : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "lmhlo.terminator" () : () -> ()
-    }
-  )",
-                                                        &context);
-  mlir::func::FuncOp func =
-      mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.getBody().front().front();
-  EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
-}
-
-TEST_F(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::lmhlo::LmhloDialect>();
-  registry.insert<mlir::func::FuncDialect>();
-  mlir::MLIRContext context(registry);
-
-  auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
-    func.func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
-      "lmhlo.add" (%arg0, %arg1, %arg1) : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "lmhlo.terminator" () : () -> ()
-    }
-  )",
-                                                        &context);
-  mlir::func::FuncOp func =
-      mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.getBody().front().front();
-  EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
-}
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
   const char* hlo = R"(

@@ -233,7 +233,7 @@ class FallbackToFlexOps
 };
 
 bool FallbackToFlexOps::ConvertToFlexOp(Operation *op) {
-  tensorflow::StatusOr<std::unique_ptr<tensorflow::NodeDef>> node_def =
+  absl::StatusOr<std::unique_ptr<tensorflow::NodeDef>> node_def =
       tensorflow::ConvertTFDialectOpToNodeDef(
           op, /*name=*/"", /*ignore_unregistered_attrs=*/true);
   if (!node_def.ok()) {

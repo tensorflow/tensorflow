@@ -103,6 +103,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 
@@ -546,11 +547,40 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   }
 
   if (transfer_size != 0) {
-    // D2H request holds a non-owned pointer into sub_buffer base address
-    // that needs to outlive the transfer until the stream callback is invoked.
-    auto status = stream->Memcpy(dst, *sub_buffer, transfer_size);
-    if (!status.ok()) {
-      return PjRtFuture<absl::Status>(status);
+    if (should_stage_host_to_device_transfers()) {
+      if (host_memory_allocator() == nullptr) {
+        return PjRtFuture<absl::Status>(InvalidArgument(
+            "host_memory_allocator should be initialized for staging buffer "
+            "transfer."));
+      }
+      void* ptr = host_memory_allocator()->AllocateRaw(
+          tsl::Allocator::kAllocatorAlignment, transfer_size);
+
+      std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
+          ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
+            host_memory_allocator->DeallocateRaw(ptr);
+          });
+      if (auto status =
+              stream->Memcpy(staging_buffer.get(), *sub_buffer, transfer_size);
+          !status.ok()) {
+        return PjRtFuture<absl::Status>(status);
+      }
+      auto copy_to_staging_buffer = [dst, transfer_size,
+                                     staging_buffer]() mutable {
+        std::memcpy(dst, staging_buffer.get(), transfer_size);
+      };
+      if (auto status = stream->DoHostCallback(copy_to_staging_buffer);
+          !status.ok()) {
+        return PjRtFuture<absl::Status>(status);
+      }
+    } else {
+      // D2H request holds a non-owned pointer into sub_buffer base address
+      // that needs to outlive the transfer until the stream callback is
+      // invoked.
+      auto status = stream->Memcpy(dst, *sub_buffer, transfer_size);
+      if (!status.ok()) {
+        return PjRtFuture<absl::Status>(status);
+      }
     }
   }
 
@@ -858,6 +888,16 @@ GetStreamExecutorGpuDeviceAllocator(
                             ordinal_and_device.second->compute_stream(),
                             /*memory_space=*/1);
   }
+
+  for (const auto& ordinal_and_device : addressable_devices) {
+    auto host_allocator =
+        GetGpuHostAllocator(ordinal_and_device.second->executor());
+    allocators.emplace_back(std::move(host_allocator),
+                            ordinal_and_device.second->compute_stream(),
+                            /*memory_space=*/
+                            static_cast<int>(se::MemoryType::kHost));
+  }
+
   return std::make_unique<se::MultiDeviceAdapter>(platform,
                                                   std::move(allocators));
 }

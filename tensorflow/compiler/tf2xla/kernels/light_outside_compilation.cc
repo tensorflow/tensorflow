@@ -548,8 +548,8 @@ Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
       void* location = static_cast<char*>(allocated->data()) +
                        xla::ShapeUtil::ByteSizeOf(xla_shape);
       se::DeviceMemoryBase m{location, num_dimensions * sizeof(int32_t)};
-      stream->ThenMemcpy(&m, shape_info.data(),
-                         num_dimensions * sizeof(int32_t));
+      TF_RETURN_IF_ERROR(stream->Memcpy(&m, shape_info.data(),
+                                        num_dimensions * sizeof(int32_t)));
     }
   }
   return absl::OkStatus();

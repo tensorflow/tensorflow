@@ -173,8 +173,7 @@ absl::Status BlasLt::Init() {
 
   VLOG(2) << "MatrixLayout::Create: num_rows: " << m.num_rows
           << " num_cols:" << (int)m.num_cols << ", order: " << (int)m.order
-          << ","
-          << " batchsz " << m.batch_size
+          << "," << " batchsz " << m.batch_size
           << " leaddimstride: " << m.leading_dim_stride
           << " batch_stride: " << m.batch_stride;
 
@@ -387,9 +386,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
     DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
     blas::ProfileResult* profile_result) const {
-  TF_ASSIGN_OR_RETURN(
-      std::optional<gpu::GpuTimer> timer,
-      gpu::GpuTimer::CreateIfNeeded(gpu::AsGpuStream(stream), profile_result));
+  TF_ASSIGN_OR_RETURN(std::optional<gpu::GpuTimer> timer,
+                      gpu::GpuTimer::CreateIfNeeded(stream, profile_result));
 
   void* workspace = nullptr;
   if (algorithm.workspace_size > 0) {

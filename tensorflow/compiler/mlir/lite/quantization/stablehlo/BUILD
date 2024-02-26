@@ -37,7 +37,6 @@ tf_cc_test(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",  # buildcleaner: keep; prevents undefined reference
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton_impl",  # buildcleaner: keep; prevents undefined reference
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

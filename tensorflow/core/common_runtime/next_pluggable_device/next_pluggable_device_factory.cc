@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-StatusOr<xla::Shape> DeviceShapeRepresentation(
+absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
     const TensorShape& shape, DataType type, bool use_fast_memory,
     XlaLayoutPreference layout_preference) {
   xla::Shape xla_shape;

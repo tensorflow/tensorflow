@@ -43,17 +43,6 @@ func.func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
 // CHECK-NEXT:    return %2 : tensor<4x?xf32>
 }
 
-func.func @transpose_unranked_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-
-// CHECK-LABEL:   transpose_unranked_2d
-// CHECK-NEXT:    %0 = "tfl.pseudo_const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
-// CHECK-NEXT:    %1 = "tfl.cast"(%0) : (tensor<2xi64>) -> tensor<2xi32>
-// CHECK-NEXT:    %2 = "tfl.transpose"(%arg0, %1) : (tensor<*xf32>, tensor<2xi32>) -> tensor<*xf32>
-// CHECK-NEXT:    return %2 : tensor<*xf32>
-}
-
 // - dot_general
 //
 

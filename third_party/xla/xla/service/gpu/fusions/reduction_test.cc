@@ -40,7 +40,7 @@ class ReductionTest : public HloTestBase {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
 
-StatusOr<std::unique_ptr<ReductionFusion>> GetReductionFusion(
+absl::StatusOr<std::unique_ptr<ReductionFusion>> GetReductionFusion(
     const HloFusionAnalysis& analysis) {
   TF_ASSIGN_OR_RETURN(
       auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));

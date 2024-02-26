@@ -50,7 +50,7 @@ class GatherExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* gather_inst) override;
 
  private:

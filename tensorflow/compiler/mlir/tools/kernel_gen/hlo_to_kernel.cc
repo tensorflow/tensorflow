@@ -79,8 +79,8 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
 }
 
 // Compiles the given MLIR module via LLVM into an executable binary format.
-StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
-                                   mlir::ModuleOp module) {
+absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
+                                         mlir::ModuleOp module) {
   // Translate the module.
   llvm::LLVMContext llvm_context;
   mlir::registerLLVMDialectTranslation(*module->getContext());

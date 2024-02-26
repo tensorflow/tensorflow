@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace mlir {
@@ -239,7 +238,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQuantizeTypePass();
 
 // Create a pass that inserts dump tensor to quantizable layer's output.
 std::unique_ptr<OperationPass<ModuleOp>> CreateAddDumpTensorOpPass(
-    ::stablehlo::quantization::DebuggerConfig::DebuggerType debugger_type,
+    tensorflow::quantization::DebuggerOptions::DebuggerType debugger_type,
     std::string log_dir_path);
 
 // Creates a pass that add QuantizationUnitLoc to quantizable layers.

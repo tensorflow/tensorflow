@@ -212,7 +212,7 @@ void BM_SmallTopk(benchmark::State& state) {
   }
 
   for (auto _ : state) {
-    auto timer = se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(&stream));
+    auto timer = se::gpu::GpuTimer::Create(&stream);
     CHECK_OK(timer.status());
     CHECK_OK(RunTopk(&stream, Get(T()), *input_buffer, n, *output_values,
                      *output_indices, k, batch_size));
