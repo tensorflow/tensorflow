@@ -403,7 +403,7 @@ class SampledADDMMTest(test_util.TensorFlowTestCase):
       alpha = 0.75
       beta = 0.25
     
-      ind, res, ds = math_ops.sampled_addmm(indices,
+      _, res, _ = math_ops.sampled_addmm(indices,
                                    values,
                                    dense_shape,
                                    mat1,
@@ -433,7 +433,7 @@ class SampledADDMMTest(test_util.TensorFlowTestCase):
       alpha = 0.4
       beta = 0.6
  
-      ind, res, ds = math_ops.sampled_addmm(indices,
+      _, res, _ = math_ops.sampled_addmm(indices,
                                    values,
                                    dense_shape,
                                    mat1,

@@ -4868,9 +4868,11 @@ def sampled_addmm(indices,
       alpha=1.0,
       output_type=dtypes.float32
 ):
-  """Multiplies matrix `mat1` by matrix `mat2` at the locations defined by
+  """Performs the sampled matrix multiplication of two dense matrices. 
+  
+  Multiplies matrix `mat1` by matrix `mat2` at the locations defined by
   `indices`. The product is scaled and added to `values`, 
-  producing `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`
+  producing `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`.
 
   The function `spy(indices)` is the sparsity pattern matrix derived from
   `indices`.
@@ -4976,17 +4978,14 @@ def sampled_addmm(indices,
     beta: Number to be multipled with `values`. Defaults to 1.0.
     alpha: Number to be multiplied with the sampled dot product of `mat1` and
       `mat2`. Defaults to 1.0.
-    output_type: the output datatype if needed. Defaults to float32.
+    output_type: The output datatype if needed. Defaults to float32.
 
   Returns:
-    A tuple of three `tf.Tensor` objects (indices, result, dense_shape) making
-    up the components of a `SparseTensor` representing the result of the
+    A tuple representing the `SparseTensor` components of the result of the 
     operation.
 
-    result = `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`
-
-    The function `spy(indices)` is the sparsity pattern matrix derived from
-    `indices`. 
+  Raises:
+    ValueError: If `dense_shape` does not match the shape of the product.
   """
   indices = ops.convert_to_tensor(indices)
   values = ops.convert_to_tensor(values, dtype=output_type)
