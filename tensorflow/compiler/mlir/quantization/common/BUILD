@@ -102,6 +102,7 @@ cc_library(
     hdrs = ["test_base.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
         "//tensorflow/compiler/mlir/tensorflow",

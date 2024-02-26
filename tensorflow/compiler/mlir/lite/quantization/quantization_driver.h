@@ -120,16 +120,27 @@ class QuantizationDriver {
   // The entry point of the quantization parameters propagation.
   void Run();
 
- private:
-  // This is used to identify an operand or result of an op. The second element
-  // of this pair is the index of the operand or result.
-  using OpValue = std::pair<mlir::Operation*, int>;
-
   // Sets up the states for all the op results in the function.
   void Initialize();
 
   // Propagates the quantization parameters across all the ops.
   bool PropagateParamsAndReturnIfChanged();
+
+  // Inserts the Quantize and Dequantize ops according to the propagation
+  // result.
+  void Finalize();
+
+  llvm::SmallVector<BlockArgument, 4> GetArgs() { return args_; }
+
+  // Returns the state of the block argument.
+  QuantState& GetArgQuantState(BlockArgument arg) {
+    return states_[arg_states_[arg]];
+  }
+
+ private:
+  // This is used to identify an operand or result of an op. The second element
+  // of this pair is the index of the operand or result.
+  using OpValue = std::pair<mlir::Operation*, int>;
 
   // Duplicates the constant op if it has multiple uses, and replaces
   // target_op->operand[operand_index] with the newly created op. This also
@@ -150,10 +161,6 @@ class QuantizationDriver {
                             const std::vector<int>& input_indices,
                             QuantParams params, int& input_index,
                             int& filter_index);
-
-  // Inserts the Quantize and Dequantize ops according to the propagation
-  // result.
-  void Finalize();
 
   // Preprocesses the constants by doing the following:
   //   - Duplicates constants if it is used by multiple ops. For example, if a
@@ -249,11 +256,6 @@ class QuantizationDriver {
   // Returns the state of the index-th result of the op.
   QuantState& GetResultQuantState(Operation* op, int index) {
     return states_[result_states_[{op, index}]];
-  }
-
-  // Returns the state of the block argument.
-  QuantState& GetArgQuantState(BlockArgument arg) {
-    return states_[arg_states_[arg]];
   }
 
   // Returns the states of the index-th operand of the op.
