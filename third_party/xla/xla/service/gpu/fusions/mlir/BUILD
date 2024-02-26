@@ -44,6 +44,7 @@ xla_cc_test(
     srcs = ["computation_partitioner_test.cc"],
     deps = [
         ":computation_partitioner",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",

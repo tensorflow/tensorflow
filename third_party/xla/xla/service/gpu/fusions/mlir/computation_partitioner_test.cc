@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -111,6 +112,29 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
   ASSERT_THAT(computation.subgraphs(), SizeIs(1));
   EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
   EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order, SizeIs(3));
+}
+
+TEST_F(ComputationPartitionerTest, EnforcePartitioning) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %p0 = f32[64, 32] parameter(0)
+      %p1 = f32[64, 32] parameter(1)
+      %add = f32[64, 32] add(p0, p1)
+      %transpose = f32[32, 64] transpose(%add), dimensions={1, 0}
+      %exp = f32[32, 64] exponential(%transpose)
+      ROOT %root = f32[32, 64] tanh(%exp)
+    })")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(fusion, [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kTranspose;
+  });
+  ASSERT_THAT(computation.subgraphs(), SizeIs(2));
+  EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
+  EXPECT_THAT(computation.GetRootSubgraph().instructions_post_order, SizeIs(2));
 }
 
 TEST_F(ComputationPartitionerTest, PartiallyMergable) {

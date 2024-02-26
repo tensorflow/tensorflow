@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_COMPUTATION_PARTITIONER_H_
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -56,7 +57,9 @@ namespace mlir_converter {
 // (and will) be inlined, e. g. containing only a constant or only a broadcast.
 class PartitionedComputation {
  public:
-  explicit PartitionedComputation(const HloComputation* computation);
+  explicit PartitionedComputation(
+      const HloComputation* computation,
+      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr);
 
   struct Subgraph {
     // A unique name of the subgraph. Used for function names.

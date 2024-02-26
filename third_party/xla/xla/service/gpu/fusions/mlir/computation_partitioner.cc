@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -52,7 +53,8 @@ namespace mlir_converter {
 namespace {
 
 absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
-    const HloComputation& computation) {
+    const HloComputation& computation,
+    std::function<bool(const HloInstruction*)> is_subgraph_root) {
   constexpr int kRootIndexing = 0;
   int next_indexing = 1;
   absl::flat_hash_map<const HloInstruction*, int> indexing;
@@ -62,15 +64,16 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     auto it = indexing.find(instr);
     if (it != indexing.end()) return it->second;
 
+    if (is_subgraph_root(instr)) {
+      return indexing[instr] = next_indexing++;
+    }
     if (instr->opcode() != HloOpcode::kTuple &&
         !HloInstruction::IsOpElementwise(instr->opcode())) {
       return indexing[instr] = next_indexing++;
     }
-
     if (instr->user_count() == 0) {
       return indexing[instr] = kRootIndexing;
     }
-
     // If all users have the same indexing, we can reuse it.
     std::optional<int> instr_indexing = std::nullopt;
     for (auto* user : instr->users()) {
@@ -84,32 +87,38 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
     }
     return indexing[instr] = instr_indexing ? *instr_indexing : next_indexing++;
   };
-
   for (auto* instr : computation.instructions()) {
     indexing_for_instr(instr);
   }
-
   return indexing;
 }
 
 }  // namespace
 
 PartitionedComputation::PartitionedComputation(
-    const HloComputation* computation)
+    const HloComputation* computation,
+    std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
+  if (!is_subgraph_root) {
+    is_subgraph_root = [](const HloInstruction*) { return false; };
+  }
+
   // For each instruction, figure out what function it goes in. Parameters don't
   // count.
   absl::node_hash_map<const HloInstruction*,
                       tensorflow::UnionFind<const HloInstruction*>>
       disjoint_sets;
-  auto indexing = PartitionGraphByIndexing(*computation);
+  auto indexing = PartitionGraphByIndexing(*computation, is_subgraph_root);
   for (auto* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) continue;
     disjoint_sets[instruction].Get() = instruction;
   }
   for (auto* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) continue;
-    bool can_merge =
+
+    // If the instruction has to become a subgraph root, then we do not merge.
+    bool can_merge = !is_subgraph_root(instruction);
+    can_merge &=
         instruction->user_count() == 1 ||
         (instruction->user_count() > 1 &&
          absl::c_all_of(instruction->users(), [&](const HloInstruction* user) {
@@ -127,8 +136,8 @@ PartitionedComputation::PartitionedComputation(
       // which has the benefit of leading to slightly easier to read IR.
       return user->opcode() == HloOpcode::kConcatenate;
     };
-    can_merge &= !absl::c_any_of(instruction->users(), is_bad_gather);
-    can_merge &= !absl::c_any_of(instruction->users(), is_concat);
+    can_merge &= absl::c_none_of(instruction->users(), is_bad_gather);
+    can_merge &= absl::c_none_of(instruction->users(), is_concat);
     if (can_merge) {
       auto& set = disjoint_sets[instruction];
       for (auto* user : instruction->users()) {
