@@ -55,10 +55,6 @@ limitations under the License.
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/threadpool.h"
 
-static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
-static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
-static constexpr bool FLAGS_gpuexec_cuda_device_0_only = false;
-
 #define RETURN_IF_CUDA_RES_ERROR(expr, ...)                              \
   do {                                                                   \
     CUresult _res = (expr);                                              \
@@ -149,8 +145,6 @@ thread_local struct ThreadLocalData {
 }  // namespace
 
 ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
-  if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
-
   auto* tls = &tls_data;
 
   // If this is an outermost scope, we must not assume that the CUDA context has
@@ -188,8 +182,6 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
 }
 
 ScopedActivateContext::~ScopedActivateContext() {
-  if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
-
   auto* tls = &tls_data;
 
   if (kVerifyGpuContext) {
@@ -265,12 +257,7 @@ std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
 // Actually performs the work of CUDA initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInit() {
-  CUresult res = CUDA_ERROR_NO_DEVICE;
-  if (FLAGS_gpuexec_cuda_driver_inject_init_error) {
-    LOG(ERROR) << "injecting CUDA init error; initialization will fail";
-  } else {
-    res = cuInit(0 /* = flags */);
-  }
+  CUresult res = cuInit(0 /* = flags */);
 
   if (res == CUDA_SUCCESS) {
     return absl::OkStatus();
@@ -2160,9 +2147,6 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     return 0;
   }
 
-  if (FLAGS_gpuexec_cuda_device_0_only && device_count > 1) {
-    device_count = 1;
-  }
   return device_count;
 }
 
@@ -2419,7 +2403,7 @@ absl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
 
 /* static */ bool GpuDriver::GetDeviceTotalMemory(CUdevice device,
                                                   uint64_t* result) {
-  size_t value = -1;
+  size_t value{};
   CUresult res = cuDeviceTotalMem(&value, device);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to query total available memory: " << ToString(res);
