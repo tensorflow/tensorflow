@@ -99,7 +99,7 @@ TEST(UtilsTest, AssignOrReturnInImport) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_IMPORT(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(
+        absl::StatusOr<int>(
             tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
     return tensorflow::OkStatus();
   }();
@@ -113,7 +113,7 @@ TEST(UtilsTest, AssignOrReturnInCompile) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_COMPILE(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(
+        absl::StatusOr<int>(
             tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
     return tensorflow::OkStatus();
   }();
@@ -128,7 +128,7 @@ TEST(UtilsTest, AssignOrReturnInInit) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_INIT(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(
+        absl::StatusOr<int>(
             tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
     return tensorflow::OkStatus();
   }();
