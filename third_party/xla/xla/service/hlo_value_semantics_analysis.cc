@@ -655,6 +655,11 @@ EinsumHeightMap::iterator EinsumHeightAnalysis::GetHeightTreeOrDie(
   return height_iter;
 }
 
+bool EinsumHeightAnalysis::HasHeightFor(
+    const HloInstruction* instruction) const {
+  return einsum_height_map_.contains(instruction);
+}
+
 absl::Status EinsumHeightAnalysis::SetInstructionHeight(
     const HloInstruction* instruction, int height) {
   auto height_iter = GetOrCreateHeightTree(instruction);
@@ -670,6 +675,11 @@ absl::Status EinsumHeightAnalysis::SetInstructionHeight(
   SetHeight(height_tree, height);
   return OkStatus();
 }
+
+#define RETURN_IF_HEIGHT_EXISTS(instruction) \
+  if (HasHeightFor(instruction)) {           \
+    return OkStatus();                       \
+  }
 
 absl::Status EinsumHeightAnalysis::HandleHeightIncrementInstruction(
     HloInstruction* instruction) {
@@ -706,6 +716,7 @@ absl::Status EinsumHeightAnalysis::HandleCalledComputation(
 }
 
 absl::Status EinsumHeightAnalysis::DefaultAction(HloInstruction* instruction) {
+  RETURN_IF_HEIGHT_EXISTS(instruction);
   int instruction_height = GetMaxOperandHeight(instruction, einsum_height_map_);
   return SetInstructionHeight(instruction, instruction_height);
 }
@@ -732,11 +743,13 @@ absl::Status EinsumHeightAnalysis::HandleTupleLike(HloInstruction* tuple_like) {
 }
 
 absl::Status EinsumHeightAnalysis::HandleTuple(HloInstruction* tuple) {
+  RETURN_IF_HEIGHT_EXISTS(tuple);
   return HandleTupleLike(tuple);
 }
 
 absl::Status EinsumHeightAnalysis::HandleGetTupleElement(
     HloInstruction* get_tuple_element) {
+  RETURN_IF_HEIGHT_EXISTS(get_tuple_element);
   auto height_iter = GetOrCreateHeightTree(get_tuple_element);
   ShapeTree<int>& height_tree = height_iter->second;
   auto tuple_height_iter = GetHeightTreeOrDie(get_tuple_element->operand(0));
@@ -747,15 +760,18 @@ absl::Status EinsumHeightAnalysis::HandleGetTupleElement(
 }
 
 absl::Status EinsumHeightAnalysis::HandleDot(HloInstruction* dot) {
+  RETURN_IF_HEIGHT_EXISTS(dot);
   return HandleHeightIncrementInstruction(dot);
 }
 
 absl::Status EinsumHeightAnalysis::HandleConvolution(
     HloInstruction* convolution) {
+  RETURN_IF_HEIGHT_EXISTS(convolution);
   return HandleHeightIncrementInstruction(convolution);
 }
 
 absl::Status EinsumHeightAnalysis::HandleCall(HloInstruction* call) {
+  RETURN_IF_HEIGHT_EXISTS(call);
   TF_RETURN_IF_ERROR(HandleCalledComputation(*(call->called_computations()[0]),
                                              call->mutable_operands()));
   auto root_height_iter =
@@ -765,10 +781,12 @@ absl::Status EinsumHeightAnalysis::HandleCall(HloInstruction* call) {
 }
 
 absl::Status EinsumHeightAnalysis::HandleFusion(HloInstruction* fusion) {
+  RETURN_IF_HEIGHT_EXISTS(fusion);
   return HandleCall(fusion);
 }
 
 absl::Status EinsumHeightAnalysis::HandleWhile(HloInstruction* xla_while) {
+  RETURN_IF_HEIGHT_EXISTS(xla_while);
   TF_RETURN_IF_ERROR(HandleCalledComputation(*(xla_while->while_condition()),
                                              xla_while->mutable_operands()));
   TF_RETURN_IF_ERROR(HandleCalledComputation(*(xla_while->while_body()),
@@ -780,6 +798,7 @@ absl::Status EinsumHeightAnalysis::HandleWhile(HloInstruction* xla_while) {
 
 absl::Status EinsumHeightAnalysis::HandleConditional(
     HloInstruction* conditional) {
+  RETURN_IF_HEIGHT_EXISTS(conditional);
   auto conditional_height_iter = GetOrCreateHeightTree(conditional);
   ShapeTree<int>& height_tree = conditional_height_iter->second;
   for (HloComputation* computation : conditional->branch_computations()) {
@@ -793,6 +812,7 @@ absl::Status EinsumHeightAnalysis::HandleConditional(
 }
 
 absl::Status EinsumHeightAnalysis::HandleSend(HloInstruction* send) {
+  RETURN_IF_HEIGHT_EXISTS(send);
   HloInstruction* send_buffer = send->mutable_operand(0);
   auto send_buffer_height_iter = GetHeightTreeOrDie(send_buffer);
   const ShapeTree<int>& send_buffer_height_tree =
@@ -805,8 +825,10 @@ absl::Status EinsumHeightAnalysis::HandleSend(HloInstruction* send) {
 }
 
 absl::Status EinsumHeightAnalysis::HandleRecv(HloInstruction* recv) {
+  RETURN_IF_HEIGHT_EXISTS(recv);
   TF_ASSIGN_OR_RETURN(HloInstruction * send,
                       send_recv_group_map_->GetMatchingSendOrRecv(recv));
+  TF_RETURN_IF_ERROR(send->Accept(this));
   HloInstruction* send_buffer = send->mutable_operand(0);
   auto send_buffer_height_iter = GetHeightTreeOrDie(send_buffer);
   const ShapeTree<int>& send_buffer_height_tree =
@@ -819,11 +841,13 @@ absl::Status EinsumHeightAnalysis::HandleRecv(HloInstruction* recv) {
 }
 
 absl::Status EinsumHeightAnalysis::HandleSendDone(HloInstruction* send_done) {
+  RETURN_IF_HEIGHT_EXISTS(send_done);
   GetOrCreateHeightTree(send_done);
   return OkStatus();
 }
 
 absl::Status EinsumHeightAnalysis::HandleRecvDone(HloInstruction* recv_done) {
+  RETURN_IF_HEIGHT_EXISTS(recv_done);
   HloInstruction* recv = recv_done->mutable_operand(0);
   auto recv_height_iter = GetHeightTreeOrDie(recv);
   const ShapeTree<int>& recv_height_tree = recv_height_iter->second;
@@ -834,6 +858,7 @@ absl::Status EinsumHeightAnalysis::HandleRecvDone(HloInstruction* recv_done) {
 }
 
 absl::Status EinsumHeightAnalysis::HandleAllReduce(HloInstruction* all_reduce) {
+  RETURN_IF_HEIGHT_EXISTS(all_reduce);
   if (all_reduce->shape().IsArray()) {
     return DefaultAction(all_reduce);
   }
@@ -1497,10 +1522,30 @@ absl::Status HloValueSemanticsPropagation::DefaultAction(
   TF_ASSIGN_OR_RETURN(
       HloValueSemantics semantics,
       ComputeSemanticsFromOperands(instruction, operand_indices));
-  const HloValueSemantics* semantics_ptr = AddSemantics(semantics);
-  ShapeTree<const HloValueSemantics*> semantics_shape_tree(instruction->shape(),
-                                                           semantics_ptr);
-  analysis_->SetHloValueSemantics(instruction, semantics_shape_tree);
+
+  if (instruction->shape().IsTuple()) {
+    ShapeTree<const HloValueSemantics*> semantics_shape_tree(
+        instruction->shape(), nullptr);
+    semantics_shape_tree.ForEachMutableElement(
+        [this, &semantics, &semantics_shape_tree, instruction](
+            const ShapeIndex& index, const HloValueSemantics** semantics_ptr) {
+          if (semantics_shape_tree.IsLeaf(index)) {
+            HloValueSemantics sub_semantics =
+                CopySemanticsWithNewOrigin(semantics, instruction, index);
+            *semantics_ptr = AddSemantics(sub_semantics);
+          } else {
+            HloValueSemantics sub_semantics(
+                HloValueSemanticLabel::kTupleOrToken, {instruction, index});
+            *semantics_ptr = AddSemantics(sub_semantics);
+          }
+        });
+    analysis_->SetHloValueSemantics(instruction, semantics_shape_tree);
+  } else {
+    const HloValueSemantics* semantics_ptr = AddSemantics(semantics);
+    ShapeTree<const HloValueSemantics*> semantics_shape_tree(
+        instruction->shape(), semantics_ptr);
+    analysis_->SetHloValueSemantics(instruction, semantics_shape_tree);
+  }
   return OkStatus();
 }
 
@@ -1735,48 +1780,65 @@ absl::Status HloValueSemanticsPropagation::HandleCopyDone(
                                        {0});
   return OkStatus();
 }
-absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteStart(
-    HloInstruction* collective_permute_start) {
-  RETURN_IF_ALREADY_PROPAGATED(collective_permute_start);
+
+absl::Status HloValueSemanticsPropagation::HandleCollectiveStart(
+    HloInstruction* collective_start) {
+  RETURN_IF_ALREADY_PROPAGATED(collective_start);
   ShapeTree<const HloValueSemantics*> semantics_shape_tree(
-      collective_permute_start->shape());
+      collective_start->shape());
   const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(collective_permute_start->operand(0));
+      analysis_->GetInstructionSemantics(collective_start->operand(0));
   analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
                                        operand_semantics_shape_tree, {}, {0});
   analysis_->DeepCopyHloValueSemantics(semantics_shape_tree,
                                        operand_semantics_shape_tree, {}, {1});
   semantics_shape_tree.ForEachMutableElement(
-      [this, collective_permute_start](const ShapeIndex& shape_index,
-                                       const HloValueSemantics** semantics) {
+      [this, collective_start](const ShapeIndex& shape_index,
+                               const HloValueSemantics** semantics) {
         if (shape_index.empty()) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kTupleOrToken,
-              {collective_permute_start, {}});
+              HloValueSemanticLabel::kTupleOrToken, {collective_start, {}});
         }
         if (shape_index == ShapeIndex{2}) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom,
-              {collective_permute_start, shape_index});
+              HloValueSemanticLabel::kRandom, {collective_start, shape_index});
         }
         if (shape_index == ShapeIndex{3}) {
           *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kRandom,
-              {collective_permute_start, shape_index});
+              HloValueSemanticLabel::kRandom, {collective_start, shape_index});
         }
       });
-  analysis_->SetHloValueSemantics(collective_permute_start,
-                                  semantics_shape_tree);
+  analysis_->SetHloValueSemantics(collective_start, semantics_shape_tree);
   return OkStatus();
+}
+
+absl::Status HloValueSemanticsPropagation::HandleCollectiveDone(
+    HloInstruction* collective_done) {
+  RETURN_IF_ALREADY_PROPAGATED(collective_done);
+  const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
+      analysis_->GetInstructionSemantics(collective_done->operand(0));
+  analysis_->DeepCopyHloValueSemantics(collective_done,
+                                       operand_semantics_shape_tree, {1});
+  return OkStatus();
+}
+
+absl::Status HloValueSemanticsPropagation::HandleAllGatherStart(
+    HloInstruction* all_gather_start) {
+  return HandleCollectiveStart(all_gather_start);
+}
+
+absl::Status HloValueSemanticsPropagation::HandleAllGatherDone(
+    HloInstruction* all_gather_done) {
+  return HandleCollectiveDone(all_gather_done);
+}
+
+absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteStart(
+    HloInstruction* collective_permute_start) {
+  return HandleCollectiveStart(collective_permute_start);
 }
 absl::Status HloValueSemanticsPropagation::HandleCollectivePermuteDone(
     HloInstruction* collective_permute_done) {
-  RETURN_IF_ALREADY_PROPAGATED(collective_permute_done);
-  const ShapeTree<const HloValueSemantics*>& operand_semantics_shape_tree =
-      analysis_->GetInstructionSemantics(collective_permute_done->operand(0));
-  analysis_->DeepCopyHloValueSemantics(collective_permute_done,
-                                       operand_semantics_shape_tree, {1});
-  return OkStatus();
+  return HandleCollectiveDone(collective_permute_done);
 }
 absl::Status HloValueSemanticsPropagation::HandleGather(
     HloInstruction* gather) {

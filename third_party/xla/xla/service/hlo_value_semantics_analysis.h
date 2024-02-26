@@ -172,6 +172,7 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
       const HloInstruction* instruction);
   EinsumHeightMap::iterator GetHeightTreeOrDie(
       const HloInstruction* instruction);
+  bool HasHeightFor(const HloInstruction* instruction) const;
   Status SetInstructionHeight(const HloInstruction* instruction, int height);
   Status SetInstructionHeight(const HloInstruction* instruction,
                               const ShapeTree<int>& height);
@@ -335,6 +336,8 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
       HloInstruction* dynamic_update_slice) override;
   Status HandleCopyStart(HloInstruction* copy_start) override;
   Status HandleCopyDone(HloInstruction* copy_done) override;
+  Status HandleAllGatherStart(HloInstruction* all_gather_start) override;
+  Status HandleAllGatherDone(HloInstruction* all_gather_done) override;
   Status HandleCollectivePermuteStart(
       HloInstruction* collective_permute_start) override;
   Status HandleCollectivePermuteDone(
@@ -412,6 +415,8 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
       absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
   Status HandleTupleLike(HloInstruction* tuple_like);
+  Status HandleCollectiveStart(HloInstruction* collective_start);
+  Status HandleCollectiveDone(HloInstruction* collective_done);
   HloValueSemanticsAnalysis* analysis_;
 };
 
