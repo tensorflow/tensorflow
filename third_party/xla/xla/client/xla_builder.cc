@@ -1014,28 +1014,6 @@ StatusOr<XlaOp> BroadcastToTargetRank(
   return xla::BroadcastInDim(origin, target_size, broadcast_dimensions);
 }
 
-// For ternary ops, only scalar broadcasting is supported.
-// Return the non-scalar shape that all scalars should be broadcasted too
-// Returns status if non-scalar operands do not match.
-StatusOr<std::optional<Shape>> InferScalarBroadcastShape(
-    const Shape* lhs_shape, const Shape* rhs_shape, const Shape* ehs_shape) {
-  // The shape is not scalar, it may have unbounded/bounded dynamic
-  // dimensions.
-  std::optional<Shape> broadcasted_shape;
-  for (const Shape* shape : {lhs_shape, rhs_shape, ehs_shape}) {
-    if (!shape->IsArray() || shape->rank() == 0) continue;
-    if (!broadcasted_shape.has_value()) {
-      broadcasted_shape = ShapeUtil::MakeStaticShape(*shape);
-    }
-    // TODO(jpienaar): The case where we need to compute the broadcasted
-    // shape by considering multiple of the shapes is not implemented.
-    // Consider reusing getBroadcastedType from mlir/Dialect/Traits.h.
-    TF_RET_CHECK(ShapeUtil::SameDimensions(broadcasted_shape.value(), *shape))
-        << "Unimplemented implicit broadcast.";
-  }
-  return broadcasted_shape;
-}
-
 }  // namespace
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
@@ -1135,7 +1113,8 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
 
       TF_ASSIGN_OR_RETURN(
           std::optional<Shape> non_scalar_shape,
-          InferScalarBroadcastShape(lhs_shape, rhs_shape, ehs_shape));
+          ShapeInference::InferScalarBroadcastShape(
+              absl::Span<const Shape>({*lhs_shape, *rhs_shape, *ehs_shape})));
 
       // Scalar broadcast if mix of scalars and non-scalars
       if (non_scalar_shape.has_value()) {

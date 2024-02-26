@@ -1188,6 +1188,26 @@ ShapeInference::InferElementwiseBinaryOpShape(
   }
 }
 
+/* static */ absl::StatusOr<std::optional<Shape>>
+ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
+  // The shape is not scalar, it may have unbounded/bounded dynamic
+  // dimensions. Inferring the proper shape per op is out of scope of this
+  // function.
+  std::optional<Shape> broadcasted_shape;
+  for (const Shape& shape : shapes) {
+    if (!shape.IsArray() || shape.rank() == 0) continue;
+    if (!broadcasted_shape.has_value()) {
+      broadcasted_shape = shape;
+    }
+    // TODO(jpienaar): The case where we need to compute the broadcasted
+    // shape by considering multiple of the shapes is not implemented.
+    // Consider reusing "getBroadcastedType" from mlir/Dialect/Traits.h.
+    TF_RET_CHECK(ShapeUtil::SameDimensions(broadcasted_shape.value(), shape))
+        << "Unimplemented implicit broadcast.";
+  }
+  return broadcasted_shape;
+}
+
 /* static */ absl::StatusOr<Shape> ShapeInference::InferBinaryOpShape(
     HloOpcode opcode, const HloInstruction* lhs, const HloInstruction* rhs) {
   return InferBinaryOpShape(opcode, lhs->shape(), rhs->shape(),

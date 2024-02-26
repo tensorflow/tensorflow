@@ -19,13 +19,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHAPE_INFERENCE_H_
 #define XLA_SERVICE_SHAPE_INFERENCE_H_
 
+#include <cstdint>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,6 +51,13 @@ class ShapeInference {
                                                  const Shape& shape);
   static absl::StatusOr<Shape> InferUnaryOpShape(HloOpcode opcode,
                                                  const HloInstruction* operand);
+
+  // For ternary ops, only scalar broadcasting is supported.
+  // Return the non-scalar shape that all scalars should be broadcasted too
+  // Returns status if non-scalar operands do not match.
+  // Returns first shape when all shapes are scalar.
+  static absl::StatusOr<std::optional<Shape>> InferScalarBroadcastShape(
+      absl::Span<const Shape> shapes);
 
   // Infers the shape produced by applying the given binary operation to the
   // given input shapes.
