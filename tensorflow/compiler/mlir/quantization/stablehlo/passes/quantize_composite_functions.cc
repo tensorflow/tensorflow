@@ -73,11 +73,13 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // (XlaCallModuleOps) with quantized input and output types, which are not
   // allowed in the TF dialect.
   pm.enableVerifier(false);
+
   PrepareQuantizePassOptions options;
   options.enable_per_channel_quantized_weight_ =
       enable_per_channel_quantized_weight_;
   // Change this to user-given bit width once we have custom configuration.
   options.bit_width_ = 8;
+
   pm.addNestedPass<func::FuncOp>(createPrepareQuantizePass(options));
   // QuantizePass modifies FuncOps referenced outside of its given scope
   // and therefore requires a module-level context.

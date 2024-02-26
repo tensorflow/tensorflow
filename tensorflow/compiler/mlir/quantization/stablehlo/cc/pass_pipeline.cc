@@ -50,6 +50,8 @@ void AddPostCalibrationPasses(
   QuantizeCompositeFunctionsPassOptions options;
   options.enable_per_channel_quantized_weight_ =
       static_range_ptq_preset.enable_per_channel_quantized_weight();
+  // For debugging purposes.
+  options.mlir_dump_file_name_ = "quantize_composite_functions";
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass(options));
