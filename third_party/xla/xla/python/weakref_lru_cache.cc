@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ limitations under the License.
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "xla/pjrt/lru_cache.h"
 
 namespace jax {
@@ -227,6 +229,22 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       return fn_(weakref_key, *args, **kwargs);
     }
   }
+  std::vector<pybind11::object> GetKeys() {
+    std::vector<pybind11::object> results;
+    mu_.Lock();
+    for (const auto& wr_key : entries_) {
+      for (const auto& rest : *wr_key.second) {
+        pybind11::tuple result(4);
+        result[0] = wr_key.first.weakref;
+        result[1] = rest.first.context;
+        result[2] = rest.first.args;
+        result[3] = rest.first.kwargs;
+        results.push_back(std::move(result));
+      }
+    }
+    mu_.Unlock();
+    return results;
+  }
   CacheInfo GetCacheInfo() const {
     CacheInfo result;
     result.hits = total_queries_ - misses_;
@@ -265,6 +283,7 @@ void BuildWeakrefLRUCacheAPI(pybind11::module& m) {
       py::class_<WeakrefLRUCache, std::shared_ptr<WeakrefLRUCache>>(
           m, "WeakrefLRUCache")
           .def("__call__", &WeakrefLRUCache::Call)
+          .def("cache_keys", &WeakrefLRUCache::GetKeys)
           .def("cache_info", &WeakrefLRUCache::GetCacheInfo)
           .def("cache_clear", &WeakrefLRUCache::Clear);
   py::class_<WeakrefLRUCache::CacheInfo>(weakref_lru_cache,

@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tf2xla/internal/utils/dialect_detection_utils.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -29,7 +30,7 @@ using mlir::WalkResult;
 using mlir::func::FuncOp;
 
 #define GEN_PASS_DEF_VERIFYINPUTDIALECTTOEXECUTORPASS
-#include "tensorflow/compiler/mlir/tf2xla/internal/passes/dialect_to_executor_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/mlir_to_graph_passes.h.inc"
 
 class VerifyInputDialectToExecutorPass
     : public impl::VerifyInputDialectToExecutorPassBase<
@@ -47,6 +48,14 @@ void VerifyInputDialectToExecutorPass::runOnOperation() {
   Operation* func_op = getOperation();
 
   auto walk_result = func_op->walk([&](Operation* op) {
+    if (!tensorflow::tf2xla::internal::IsInBridgeAcceptableDialects(op)) {
+      std::string error = "op is in dialect " +
+                          op->getDialect()->getNamespace().str() +
+                          " which is not an accepted dialect";
+      op->emitError() << error;
+      return WalkResult::interrupt();
+    }
+
     if (IsTfDeviceClusterFuncOp(op)) {
       std::string error =
           "failed TF functional to executor validation, op "

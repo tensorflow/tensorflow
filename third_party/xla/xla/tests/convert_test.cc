@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -43,7 +43,9 @@ class ConvertTest : public ClientLibraryTestBase {
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
-    mutable_debug_options()->set_xla_gpu_simplify_all_fp_conversions(false);
+    mutable_debug_options()->add_xla_disable_hlo_passes(
+        "simplify-fp-conversions");
+    mutable_debug_options()->set_xla_allow_excess_precision(false);
   }
 };
 

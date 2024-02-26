@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,8 +46,8 @@ DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
 
 class CollectiveOpsTestE2E : public HloTestBase {
  public:
-  StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
-                                                   int64_t num_replicas) {
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
+                                                         int64_t num_replicas) {
     DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
     return HloTestBase::ExecuteReplicated(
         /*executable_provider*/ [&](int64_t) { return executable; },
@@ -88,7 +88,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
     return debug_options;
   }
 
-  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+  absl::StatusOr<std::unique_ptr<Executable>> CreateExecutable(
       absl::string_view hlo_string, int64_t num_replicas) {
     HloModuleConfig config =
         GetModuleConfigForTest(/*replica_count=*/num_replicas);
@@ -100,7 +100,10 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
   }
 
   bool IsAsync(const HloInstruction* inst) {
-    return !inst->backend_config<gpu::CollectiveBackendConfig>()->is_sync();
+    return !inst->backend_config<gpu::GpuBackendConfig>()
+                .value()
+                .collective_backend_config()
+                .is_sync();
   }
 
   const int64_t num_devices_;

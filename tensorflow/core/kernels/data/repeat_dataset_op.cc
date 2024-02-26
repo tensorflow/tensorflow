@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,6 +76,50 @@ bool HasDataServiceInput(const DatasetBase* dataset) {
   }
   return false;
 }
+
+// Updates an input split provider with the appropriate cardinality count based
+// on how many times it is repeated.
+class RepeatedSplitProvider : public SplitProvider {
+ public:
+  explicit RepeatedSplitProvider(std::unique_ptr<SplitProvider> split_provider,
+                                 int64_t count)
+      : split_provider_(std::move(split_provider)), count_(count) {}
+
+  // Updates the cardinality based on the times the input dataset is repeated.
+  int64_t Cardinality() const override {
+    if (split_provider_->Cardinality() == 0 || count_ == 0) {
+      return 0;
+    }
+    // From tensorflow/python/data/ops/repeat_op.py, the repeat op uses -1 for
+    // infinite repetitions.
+    if (count_ < 0) {
+      return kInfiniteCardinality;
+    }
+    if (split_provider_->Cardinality() < 0) {
+      return split_provider_->Cardinality();
+    }
+    return split_provider_->Cardinality() * count_;
+  }
+
+  // The following are the same as the input split provider.
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override {
+    return split_provider_->GetNext(split, end_of_splits);
+  }
+  absl::Status Reset() override { return split_provider_->Reset(); }
+  absl::Status Save(std::function<std::string(std::string)> full_name,
+                    IteratorStateWriter* writer) override {
+    return split_provider_->Save(full_name, writer);
+  }
+  absl::Status Restore(std::function<std::string(std::string)> full_name,
+                       IteratorStateReader* reader) override {
+    return split_provider_->Restore(full_name, reader);
+  }
+  void Cancel() override { split_provider_->Cancel(); }
+
+ private:
+  const std::unique_ptr<SplitProvider> split_provider_;
+  const int64_t count_;
+};
 }  // namespace
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
@@ -95,6 +143,19 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return std::make_unique<FiniteIterator>(FiniteIterator::Params{
           this, name_utils::IteratorPrefix(kFiniteRepeat, prefix)});
     }
+  }
+
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
+    std::vector<std::unique_ptr<SplitProvider>> input_split_providers;
+    TF_RETURN_IF_ERROR(input_->MakeSplitProviders(&input_split_providers));
+
+    split_providers->clear();
+    for (auto& split_provider : input_split_providers) {
+      split_providers->push_back(std::make_unique<RepeatedSplitProvider>(
+          std::move(split_provider), count_));
+    }
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -127,7 +188,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -149,7 +210,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Node* count = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -164,7 +225,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -176,11 +237,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 
@@ -203,16 +264,17 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
       while (i_ < dataset()->count_) {
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
+        input_impl_.reset();
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
         }
@@ -221,7 +283,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       }
       *end_of_sequence = true;
       input_impl_.reset();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -240,7 +302,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -257,7 +319,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -302,12 +364,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           // Otherwise, this iterator could loop infinitely.
           if (!has_data_service_input_) {
             input_impl_.reset();
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
         first_call_ = false;
         if (!*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
@@ -335,7 +397,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -354,7 +416,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         first_call_ = false;
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

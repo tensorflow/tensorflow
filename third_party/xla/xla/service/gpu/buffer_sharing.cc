@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,10 +79,10 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   stream_executor::GpuDeviceInfoProto device_info;
   stream_executor::DeviceDescription device_description(device_info);
   auto analysis = HloFusionAnalysis::Create(fusion, &device_description);
-  bool is_reduction_emitter = analysis->GetEmitterFusionKind() ==
+  bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
                               HloFusionAnalysis::EmitterFusionKind::kReduction;
   const HloInstruction* reduction_hero =
-      is_reduction_emitter ? reduction_hero = analysis->FindHeroReduction()
+      is_reduction_emitter ? reduction_hero = analysis.FindHeroReduction()
                            : nullptr;
 
   // We need to make sure that the fusion parameter is accessed in the same
@@ -211,7 +211,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
       // The matrix bias operand can be overwritten in-place.
       if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
         GemmBackendConfig config =
-            std::move(user->backend_config<GemmBackendConfig>()).value();
+            std::move(user->backend_config<GpuBackendConfig>())
+                ->gemm_backend_config();
         return (config.beta() != 0.) && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.

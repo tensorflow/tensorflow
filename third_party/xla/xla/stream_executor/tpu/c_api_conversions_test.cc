@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace ApiConverter {
 
@@ -130,26 +130,23 @@ void XlaLayout_ToC(const xla::Layout& cpp_layout) {
       MakeSpan(c_layout.minor_to_major);
   EXPECT_EQ(cpp_minor_to_major, c_minor_to_major);
 
-  absl::Span<const xla::DimLevelType> cpp_dim_level_types =
-      cpp_layout.dim_level_types();
   absl::Span<const int> c_dim_level_types = MakeSpan(c_layout.dim_level_types);
-  EXPECT_EQ(cpp_dim_level_types.size(), c_dim_level_types.size());
+  EXPECT_EQ(cpp_layout.dim_level_types_size(), c_dim_level_types.size());
   for (int i = 0; i < c_dim_level_types.size(); ++i) {
-    EXPECT_EQ(static_cast<int>(cpp_dim_level_types[i]), c_dim_level_types[i]);
+    EXPECT_EQ(static_cast<int>(cpp_layout.dim_level_type(i)),
+              c_dim_level_types[i]);
   }
 
-  absl::Span<const bool> cpp_dim_unique = cpp_layout.dim_unique();
   absl::Span<const int> c_dim_unique = MakeSpan(c_layout.dim_unique);
-  EXPECT_EQ(cpp_dim_unique.size(), c_dim_unique.size());
+  EXPECT_EQ(cpp_layout.dim_unique_size(), c_dim_unique.size());
   for (int i = 0; i < c_dim_unique.size(); ++i) {
-    EXPECT_EQ(cpp_dim_unique[i], static_cast<bool>(c_dim_unique[i]));
+    EXPECT_EQ(cpp_layout.dim_unique(i), static_cast<bool>(c_dim_unique[i]));
   }
 
-  absl::Span<const bool> cpp_dim_ordered = cpp_layout.dim_ordered();
   absl::Span<const int> c_dim_ordered = MakeSpan(c_layout.dim_ordered);
-  EXPECT_EQ(cpp_dim_ordered.size(), c_dim_ordered.size());
+  EXPECT_EQ(cpp_layout.dim_ordered_size(), c_dim_ordered.size());
   for (int i = 0; i < c_dim_ordered.size(); ++i) {
-    EXPECT_EQ(cpp_dim_ordered[i], static_cast<bool>(c_dim_ordered[i]));
+    EXPECT_EQ(cpp_layout.dim_ordered(i), static_cast<bool>(c_dim_ordered[i]));
   }
 
   absl::Span<const xla::Tile> cpp_tiles = cpp_layout.tiles();

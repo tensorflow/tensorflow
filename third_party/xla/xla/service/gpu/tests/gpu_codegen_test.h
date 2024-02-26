@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 
@@ -30,7 +31,7 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
  public:
   GpuCodegenTest()
       : is_built_with_rocm_(
-            se::MultiPlatformManager::PlatformWithName("ROCM").ok()) {}
+            se::PlatformManager::PlatformWithName("ROCM").ok()) {}
 
  protected:
   // Converts LLVM match to be platform-specific.

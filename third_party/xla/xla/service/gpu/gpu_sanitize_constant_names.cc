@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ namespace xla {
 
 namespace gpu {
 
-StatusOr<bool> GpuSanitizeConstantNames::Run(
+absl::StatusOr<bool> GpuSanitizeConstantNames::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -57,6 +57,9 @@ StatusOr<bool> GpuSanitizeConstantNames::Run(
       std::string sanitized_name = llvm_ir::SanitizeConstantName(*instr);
       instr->SetAndSanitizeName(sanitized_name);
       instr->UniquifyName(&instr_name_uniquer);
+      // Register this new name with the module's instruction_name_uniquer to
+      // avoid name collision that might happen in future.
+      module->instruction_name_uniquer().GetUniqueName(instr->name());
       changed = true;
     }
   }

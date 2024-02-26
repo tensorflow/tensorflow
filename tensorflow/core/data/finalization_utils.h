@@ -26,8 +26,8 @@ namespace data {
 
 // Returns the finalized version of the dataset. The returned DatasetBase is
 // unowned and lives for as long as this dataset.
-StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
-                                           const DatasetBase* dataset);
+absl::StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
+                                                 const DatasetBase* dataset);
 
 }  // namespace data
 }  // namespace tensorflow

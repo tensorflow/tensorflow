@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,6 +50,27 @@ struct MemrefInfoPOD {
   void* data;
 };
 
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+  MemrefInfoHandler result(new MemrefInfoPOD);
+
+  const auto& shape = literal->shape();
+  result->dtype = shape.element_type();
+  result->rank = shape.rank();
+  auto dimensions = shape.dimensions();
+  std::copy(dimensions.begin(), dimensions.end(),
+            absl::MakeSpan(result->dims).begin());
+
+  int64_t stride = 1;
+  for (int i : shape.layout().minor_to_major()) {
+    result->strides[i] = stride;
+    stride *= dimensions.at(i);
+  }
+
+  result->data = const_cast<void*>(literal->untyped_data());
+
+  return result;
+}
+
 StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
                                        const llvm_ir::IrArray& ir_array) {
   const Shape& shape = ir_array.GetShape();
@@ -96,10 +117,8 @@ StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
   // Allocate MemrefInfo on the stack
   llvm::Value* memref_info_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
       memref_info_type, "memref.info", &builder);
-  llvm::Value* memref_life_start =
-      builder.CreateLifetimeStart(memref_info_ptr, builder.getInt64(-1));
-  llvm::Value* memref_store =
-      builder.CreateStore(memref_info_val, memref_info_ptr);
+  builder.CreateLifetimeStart(memref_info_ptr, builder.getInt64(-1));
+  builder.CreateStore(memref_info_val, memref_info_ptr);
 
   return {&builder, memref_info_ptr};
 }
@@ -145,6 +164,10 @@ void MemrefInfo::Print() {
   }
   std::cout << "]\n";
 }
+
+int64_t MemrefInfo::GetChannels() const { return pod_->dims[pod_->rank - 1]; }
+
+int64_t MemrefInfo::GetRank() const { return pod_->rank; }
 
 }  // namespace cpu
 }  // namespace xla

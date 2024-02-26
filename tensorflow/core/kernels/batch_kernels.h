@@ -34,9 +34,9 @@ ABSL_CONST_INIT extern const int64_t kInitialInflightBatches;
 ABSL_CONST_INIT extern const int64_t kBatchesToAverageOver;
 ABSL_CONST_INIT extern const int64_t kMaxInflightBatches;
 
-namespace internal {
+namespace test_util {
 class BatchFunctionKernelTestAccess;
-}
+}  // namespace test_util
 
 // Records the usage of attribute `enable_large_batch_splitting`.
 void RecordBatchSplitUsage(
@@ -71,7 +71,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final;
 
  private:
-  friend class internal::BatchFunctionKernelTestAccess;
+  friend class test_util::BatchFunctionKernelTestAccess;
 
   // Validates 'allowed_batch_sizes_'. The entries must increase monotonically.
   // If large batch split is not enabled, the last one must equal
@@ -111,8 +111,8 @@ class BatchFunctionKernel : public AsyncOpKernel {
   std::vector<int32> low_priority_allowed_batch_sizes_;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
-  bool enable_large_batch_splitting_;
-  bool has_attribute_enable_large_batch_splitting_;
+  bool enable_large_batch_splitting_ = false;
+  bool has_attribute_enable_large_batch_splitting_ = false;
   bool enable_adaptive_batch_threads_ = false;
 
   mutex mu_;

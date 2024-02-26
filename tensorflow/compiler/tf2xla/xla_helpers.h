@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include <string>
+
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
@@ -32,6 +34,15 @@ limitations under the License.
 namespace tensorflow {
 
 using XlaLayoutPreference = mlir::XlaLayoutPreference;
+
+inline std::string GetDeviceToHostChannelName(absl::string_view channel_key,
+                                              int index) {
+  return absl::StrCat(channel_key, "_dtoh_", index);
+}
+inline std::string GetHostToDeviceChannelName(absl::string_view channel_key,
+                                              int index) {
+  return absl::StrCat(channel_key, "_htod_", index);
+}
 
 // Helper methods for building XLA computations.
 class XlaHelpers {

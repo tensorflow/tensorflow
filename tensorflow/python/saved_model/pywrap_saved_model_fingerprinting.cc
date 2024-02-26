@@ -85,8 +85,8 @@ void DefineFingerprintingModule(py::module main_module) {
 
   m.def(
       "CreateFingerprintDef",
-      [](std::string export_dir) -> StatusOr<py::bytes> {
-        StatusOr<FingerprintDef> fingerprint =
+      [](std::string export_dir) -> absl::StatusOr<py::bytes> {
+        absl::StatusOr<FingerprintDef> fingerprint =
             fingerprinting::CreateFingerprintDef(export_dir);
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
@@ -105,7 +105,7 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "ReadSavedModelFingerprint",
       [](std::string export_dir) {
-        StatusOr<FingerprintDef> fingerprint =
+        absl::StatusOr<FingerprintDef> fingerprint =
             fingerprinting::ReadSavedModelFingerprint(export_dir);
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
@@ -135,7 +135,7 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "SingleprintFromFP",
       [](std::string export_dir) {
-        StatusOr<std::string> singleprint =
+        absl::StatusOr<std::string> singleprint =
             fingerprinting::Singleprint(export_dir);
         if (singleprint.ok()) {
           return py::str(singleprint.value());
@@ -153,7 +153,7 @@ void DefineFingerprintingModule(py::module main_module) {
   m.def(
       "SingleprintFromSM",
       [](std::string export_dir) {
-        StatusOr<FingerprintDef> fingerprint_def =
+        absl::StatusOr<FingerprintDef> fingerprint_def =
             fingerprinting::CreateFingerprintDef(export_dir);
         if (!fingerprint_def.ok()) {
           throw FingerprintException(
@@ -164,7 +164,7 @@ void DefineFingerprintingModule(py::module main_module) {
                   .c_str());
         }
 
-        StatusOr<std::string> singleprint =
+        absl::StatusOr<std::string> singleprint =
             fingerprinting::Singleprint(fingerprint_def.value());
         if (!singleprint.ok()) {
           throw FingerprintException(
@@ -184,7 +184,7 @@ void DefineFingerprintingModule(py::module main_module) {
       "Singleprint",
       [](uint64 graph_def_program_hash, uint64 signature_def_hash,
          uint64 saved_object_graph_hash, uint64 checkpoint_hash) {
-        StatusOr<std::string> singleprint = fingerprinting::Singleprint(
+        absl::StatusOr<std::string> singleprint = fingerprinting::Singleprint(
             graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
             checkpoint_hash);
         if (singleprint.ok()) {

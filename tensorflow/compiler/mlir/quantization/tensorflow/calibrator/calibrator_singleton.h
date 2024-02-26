@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,6 +37,7 @@ namespace calibrator {
 
 using tensorflow::quantization::CalibrationOptions;
 
+// TODO: b/315084876 - Move to stablehlo quantizer directory.
 class CalibratorSingleton {
  public:
   // Clears the collected information.
@@ -65,11 +68,19 @@ class CalibratorSingleton {
   static std::optional<CalibrationStatistics> GetStatistics(
       absl::string_view id);
 
+  // Issues a new node ID that uniquely identifies a set of calibration
+  // statistics.
+  static int64_t IssueNewId();
+
  private:
   static CalibratorSingleton& GetInstance();
   static absl::Mutex lock_;
   static void AssignIfNotExists(std::string id_str,
                                 const CalibrationOptions& calib_opts);
+
+  // Indicates the next id for a set of calibration statistics. For every new ID
+  // issued this will be incremented atomically.
+  std::atomic<int64_t> next_id_{0};
 
   absl::flat_hash_map<std::string,
                       std::unique_ptr<CalibrationStatisticsCollectorBase>>

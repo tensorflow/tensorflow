@@ -16,12 +16,6 @@ from typing import Any
 
 class PyFunctionLibrary:
 
-  # LINT.IfChange(assign_ids_to_custom_aggregator_ops)
-  def assign_ids_to_custom_aggregator_ops(
-      self, exported_model_serialized: bytes
-  ) -> bytes: ...
-  # LINT.ThenChange()
-
   # LINT.IfChange(save_exported_model)
   def save_exported_model(
       self,
@@ -39,19 +33,17 @@ class PyFunctionLibrary:
       saved_model_path: str,
       signature_keys: list[str],
       tags: set[str],
-      exported_model_serialized: bytes,
       calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
-      representative_dataset: Any,
-  ) -> bytes: ...
+      # Value type: RepresentativeDatasetFile.
+      representative_dataset_file_map_serialized: dict[str, bytes],
+  ) -> None: ...
   # LINT.ThenChange()
 
-  # LINT.IfChange(enable_dump_tensor)
-  def enable_dump_tensor(self, graph_def_serialized: bytes) -> bytes: ...
-  # LINT.ThenChange()
-
-  # LINT.IfChange(change_dump_tensor_file_name)
-  def change_dump_tensor_file_name(
-      self, graph_def_serialized: bytes
-  ) -> bytes: ...
+  # LINT.IfChange(get_calibration_min_max_value)
+  def get_calibration_min_max_value(
+      self,
+      calibration_statistics_serialized: bytes,
+      calibration_options_serialized: bytes,
+  ) -> tuple[float, float]: ...
   # LINT.ThenChange()

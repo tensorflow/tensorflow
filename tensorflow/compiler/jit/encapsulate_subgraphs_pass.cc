@@ -479,7 +479,7 @@ Status Encapsulator::Subgraph::RecordArg(
   int dst_slot = edge->dst_input();
   args_by_dst_[InputTensor(dst_node, dst_slot)] = arg_index;
   graph_->AddEdge(args_[arg_index], 0, dst_image, dst_slot);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::Subgraph::RecordControlResult(
@@ -488,7 +488,7 @@ Status Encapsulator::Subgraph::RecordControlResult(
   Node* src_node = edge->src();
   Node* src_image = node_images.at(src_node);
   control_output_nodes_.insert(src_image->name());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::Subgraph::RecordResult(
@@ -516,7 +516,7 @@ Status Encapsulator::Subgraph::RecordResult(
     TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(ret_def));
     graph_->AddEdge(src_image, src_slot, ret, 0);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
@@ -532,7 +532,7 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
 
     TF_ASSIGN_OR_RETURN(sequencer_, graph_out->AddNode(seq_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void Encapsulator::Subgraph::ConnectSequencerToCallNode(Graph* graph_out) {
@@ -617,7 +617,7 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   } else if (!FunctionDefsEqual(*original_fdef, fdef)) {
     TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::Subgraph::ReplaceFunctionDef(
@@ -636,7 +636,7 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
   }
 
   TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::Subgraph::AddFunctionCallNode(
@@ -647,7 +647,7 @@ Status Encapsulator::Subgraph::AddFunctionCallNode(
   // Copy the assigned device and the key_annotation over.
   call_node_->set_assigned_device_name(device_);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
@@ -660,7 +660,7 @@ Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsInSubgraph(const string& func_id) { return !func_id.empty(); }
@@ -677,7 +677,7 @@ Status Encapsulator::CopySubgraphNodes(
     image->ClearAttr(group_attribute_);
     (*node_images)[node] = image;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::CopySubgraphEdges(
@@ -748,7 +748,7 @@ Status Encapsulator::CopySubgraphEdges(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
@@ -793,7 +793,7 @@ Status Encapsulator::BuildFunctionDefs(
     TF_RETURN_IF_ERROR(subgraph.BuildFunctionDef(
         name, rewrite_subgraph_fn, reuse_existing_functions, library));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::CopyNodesToOutputGraph(
@@ -810,7 +810,7 @@ Status Encapsulator::CopyNodesToOutputGraph(
   }
   (*node_images)[graph_in_->source_node()] = graph_out->source_node();
   (*node_images)[graph_in_->sink_node()] = graph_out->sink_node();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::AddFunctionCallNodes(
@@ -820,7 +820,7 @@ Status Encapsulator::AddFunctionCallNodes(
     TF_RETURN_IF_ERROR(
         subgraph_entry.second.AddFunctionCallNode(node_images, graph_out));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::FindOutputImageOfEdgeSrc(
@@ -836,7 +836,7 @@ Status Encapsulator::FindOutputImageOfEdgeSrc(
     // the output graph.
     *src_image = node_images.at(original_src_node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int Encapsulator::FindOutputSlotOfEdgeSrc(const string& src_func_id,
@@ -867,7 +867,7 @@ Status Encapsulator::FindOutputImageOfEdgeDst(
     // in the output graph.
     *dst_image = node_images.at(original_dst_node);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int Encapsulator::FindOutputSlotOfEdgeDst(const string& src_func_id,
@@ -910,7 +910,7 @@ Status Encapsulator::CopyEdgeToOutputGraph(
                                 /* allow_duplicates= */ true);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int src_output = FindOutputSlotOfEdgeSrc(src_func_id, dst_func_id, edge);
@@ -924,7 +924,7 @@ Status Encapsulator::CopyEdgeToOutputGraph(
           .second) {
     graph_out->AddEdge(src_image, src_output, dst_image, dst_input);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::AddEdgesToOutputGraph(
@@ -961,7 +961,7 @@ Status Encapsulator::AddEdgesToOutputGraph(
     subgraph.ConnectSequencerToCallNode(graph_out);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -1068,7 +1068,7 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
                                           fbody.get(), inline_opts));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Encapsulator::BuildOutputGraph(Graph* graph_out,
@@ -1080,7 +1080,7 @@ Status Encapsulator::BuildOutputGraph(Graph* graph_out,
   TF_RETURN_IF_ERROR(AddFunctionCallNodes(node_images, graph_out));
   TF_RETURN_IF_ERROR(AddEdgesToOutputGraph(node_images, graph_out));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // anonymous namespace
@@ -1101,7 +1101,7 @@ Status EncapsulateSubgraphsInFunctions(
   TF_RETURN_IF_ERROR(encapsulator.BuildOutputGraph(out.get(), library));
 
   *graph_out = std::move(out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Finds the types of the _Arg nodes, indexed by position.
@@ -1117,7 +1117,7 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
       (*types)[index] = n->output_type(0);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Renumber the indices of _Arg nodes in a graph, according to
@@ -1135,7 +1135,7 @@ static Status RenumberArguments(Graph* graph,
       n->AddAttr("index", permutation[index]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EncapsulateSubgraphsPass::Run(
@@ -1154,7 +1154,7 @@ Status EncapsulateSubgraphsPass::Run(
     // and doesn't require auto clustering.
     if (n->type_string() == "TPUExecute" ||
         n->type_string() == "TPUExecuteAndUpdateVariables") {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -1288,7 +1288,7 @@ Status EncapsulateSubgraphsPass::Run(
         AddNodeAttr(kXlaCompiledKernelAttr, true, node);
         AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
         AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
-        return OkStatus();
+        return absl::OkStatus();
       };
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -1311,7 +1311,7 @@ Status EncapsulateSubgraphsPass::Run(
     VLOG(3) << "Has ref vars = " << has_ref_vars
             << ", node: " << node->def().DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsXlaCompiledKernel(const Node& node) {

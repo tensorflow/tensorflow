@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,20 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -45,33 +49,15 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
   shared_memory_bytes_ = shared_memory_bytes;
 }
 
-Kernel::Kernel(Kernel &&from)
-    : parent_(from.parent_),
-      implementation_(std::move(from.implementation_)),
-      name_(std::move(from.name_)),
-      demangled_name_(std::move(from.demangled_name_)),
-      metadata_(from.metadata_) {
-  from.parent_ = nullptr;
-}
+//===----------------------------------------------------------------------===//
+// Kernel
+//===----------------------------------------------------------------------===//
 
-Kernel::Kernel(StreamExecutor *parent)
-    : parent_(parent),
-      implementation_(parent->implementation()->CreateKernelImplementation()) {}
-
-Kernel::~Kernel() {
-  if (parent_) {
-    parent_->UnloadKernel(this);
-  }
-}
-
-unsigned Kernel::Arity() const { return implementation_->Arity(); }
-
-void Kernel::SetPreferredCacheConfig(KernelCacheConfig config) {
-  return implementation_->SetPreferredCacheConfig(config);
-}
-
-KernelCacheConfig Kernel::GetPreferredCacheConfig() const {
-  return implementation_->GetPreferredCacheConfig();
+absl::StatusOr<std::unique_ptr<Kernel>> Kernel::Create(
+    StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
+  TF_ASSIGN_OR_RETURN(auto kernel, executor->implementation()->CreateKernel());
+  TF_RETURN_IF_ERROR(executor->GetKernel(spec, kernel.get()));
+  return kernel;
 }
 
 void Kernel::set_name(absl::string_view name) {

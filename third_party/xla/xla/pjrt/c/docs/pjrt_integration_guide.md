@@ -132,17 +132,21 @@ print(jax.jit(lambda x: x * 2)(1.))
 # => 2.0
 
 # pmap
-arr = jax.numpy.arange(jax.device_count())
-print(jax.pmap(lambda x: x + jax.lax.psum(x, 'i'),
-               axis_name='i')(arr))
+
+arr = jax.numpy.arange(jax.device_count()) print(jax.pmap(lambda x: x +
+jax.lax.psum(x, 'i'), axis_name='i')(arr))
+
 # single device: [0]
+
 # 4 devices: [6 7 8 9]
+
 ```
 (We'll add instructions for running the jax unit tests against your plugin soon!)
 
 ## Example: JAX CUDA plugin
 
 1. PJRT C API implementation through wrapper ([pjrt\_c\_api\_gpu.h](https://github.com/openxla/xla/blob/c23fbd601a017be25726fd6d624b22daa6a8a4e5/xla/pjrt/c/pjrt_c_api_gpu.h)).
-1. Set up the entry point for the package ([setup.py](https://github.com/google/jax/blob/main/plugins/cuda/setup.py)).
+1. Set up the entry point for the package ([setup.py](https://github.com/google/jax/blob/main/jax_plugins/cuda/setup.py)).
 1. Implement an initialize() method ([\_\_init\_\_.py](https://github.com/google/jax/blob/a10854786b6d1bc92a65dd314916b151640789af/plugins/cuda/__init__.py#L31-L51)).
 1. Can be tested with any jax tests for CUDA.
+```

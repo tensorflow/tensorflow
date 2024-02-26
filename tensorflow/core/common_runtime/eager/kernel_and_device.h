@@ -60,14 +60,19 @@ class FunctionLibraryRuntime;
 
 const int64_t kInvalidOpId = -1;
 
-// This struc is used for:
-// 1. setting op_id and step_id, is_component_function for single-client
+// This struct is used for:
+// 1. Setting `op_id` and `step_id`, `is_component_function` for single-client
 // remote function scenario,
-// 2. setting step_id for multi-client parallel_device scenario.
+// 2. Setting `step_id` for multi-client parallel_device scenario.
+// 3. Supplying an overriding, private `FunctionLibraryDefinition` for component
+// functions.
 struct EagerFunctionParams {
   int64_t op_id = kInvalidOpId;
   bool is_component_function;
   std::optional<int64_t> step_id = std::nullopt;
+  FunctionLibraryDefinition* func_lib_def_override =
+      nullptr;  // Not owned (owned by `EagerContext`). If not null, functions
+                // called by the function will be looked up in this library.
 };
 
 class EagerKernelArgs : public FunctionArgsInterface {
@@ -113,8 +118,10 @@ class KernelAndDevice : public core::RefCounted {
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(bool log_device_placement, const NodeDef& ndef,
-                      GraphCollector* graph_collector) = 0;
+  virtual Status Init(
+      bool log_device_placement, const NodeDef& ndef,
+      GraphCollector* graph_collector,
+      const absl::optional<EagerFunctionParams>& eager_func_params) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
@@ -215,8 +222,10 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   ~KernelAndDeviceOp() override = default;
 
-  Status Init(bool log_device_placement, const NodeDef& ndef,
-              GraphCollector* graph_collector) override;
+  Status Init(
+      bool log_device_placement, const NodeDef& ndef,
+      GraphCollector* graph_collector,
+      const absl::optional<EagerFunctionParams>& eager_func_params) override;
 
   Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
@@ -316,11 +325,15 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsCrossProcess() override { return is_cross_process_; }
 
-  Status InstantiateFunc(bool log_device_placement, const NodeDef& ndef,
-                         GraphCollector* graph_collector);
+  Status InstantiateFunc(
+      bool log_device_placement, const NodeDef& ndef,
+      GraphCollector* graph_collector,
+      const absl::optional<EagerFunctionParams>& eager_func_params);
 
-  Status Init(bool log_device_placement, const NodeDef& ndef,
-              GraphCollector* graph_collector) override;
+  Status Init(
+      bool log_device_placement, const NodeDef& ndef,
+      GraphCollector* graph_collector,
+      const absl::optional<EagerFunctionParams>& eager_func_params) override;
 
   Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,

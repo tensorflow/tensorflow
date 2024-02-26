@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 using ::int64_t;
@@ -835,6 +835,11 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
+LogicalResult ExportXlaOp(CollectiveBroadcastOp, OpLoweringContext) {
+  // TODO: b/314330871 - Implement MHLO export for CollectiveBroadcastOp.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ComputeReshapeShapeOp, OpLoweringContext) {
   // This op should've been removed during PrepareForExport.
   return failure();
@@ -944,21 +949,49 @@ LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
     return failure();
-  TensorType operand_type = op.getOperand().getType().cast<TensorType>();
-  TensorType result_type = op.getType();
-  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
-    return failure();
+  }
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+
   auto all_gather_dim = op.getAllGatherDim();
-  int64_t shard_count = result_type.getDimSize(all_gather_dim) /
-                        operand_type.getDimSize(all_gather_dim);
-  value_map[op] = xla::AllGather(
-      operand, all_gather_dim, shard_count,
-      Convert_replica_groups(op.getReplicaGroups()),
-      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
-      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  int64_t shard_count = 0;
+  for (size_t i = 0; i < operands.size(); ++i) {
+    TensorType operand_type = op.getOperand(i).getType().cast<TensorType>();
+    TensorType result_type = op.getType(i).cast<TensorType>();
+    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
+      return failure();
+    if (i == 0) {
+      shard_count = result_type.getDimSize(all_gather_dim) /
+                    operand_type.getDimSize(all_gather_dim);
+    }
+  }
+
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape_or->has_layout()) {
+      layout = shape_or->layout();
+    }
+    auto tuple = xla::AllGatherTuple(
+        operands, all_gather_dim, shard_count,
+        Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    value_map[op->getResults()[0]] = xla::AllGather(
+        operands[0], all_gather_dim, shard_count,
+        Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  }
+
   return success();
 }
 
@@ -1058,18 +1091,16 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   for (auto* user : op.getResult().getUsers()) {
     if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncStart's return value must have "
-                  "the same group_id and called_computation";
+                  "the same called_computation";
       }
     } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncStart's return value must have "
-                  "the same group_id and called_computation";
+                  "the same called_computation";
       }
     } else {
       return op.emitOpError() << "Users of AsyncStart's return value must be "
@@ -1090,8 +1121,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     TensorType operand_type =
-        all_gather_op.getOperand().getType().cast<TensorType>();
-    TensorType result_type = all_gather_op.getType();
+        all_gather_op.getOperand(0).getType().cast<TensorType>();
+    TensorType result_type = all_gather_op.getType(0).cast<TensorType>();
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
     if (operands.size() != 1) return failure();
@@ -1182,23 +1213,12 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
       ctx.converter->GetLoweredComputation(callee);
   computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
       op.getExecutionThread().str());
-  if (op.getGroupId()) {
-    auto [xla_op, computation_id] =
-        xla::internal::XlaBuilderFriend::BuildAsyncStart(
-            ctx.builder, operands, op.getExecutionThread().str(),
-            *op.getGroupId(), computation, xla::TypeToShape(result.getType()));
-    value_map[result] = xla_op;
-    computation.mutable_proto()->mutable_computations(0)->set_id(
-        computation_id);
-  } else {
-    auto [xla_op, computation_id] =
-        xla::internal::XlaBuilderFriend::BuildAsyncStart(
-            ctx.builder, operands, op.getExecutionThread().str(), computation,
-            xla::TypeToShape(result.getType()));
-    value_map[result] = xla_op;
-    computation.mutable_proto()->mutable_computations(0)->set_id(
-        computation_id);
-  }
+  auto [xla_op, computation_id] =
+      xla::internal::XlaBuilderFriend::BuildAsyncStart(
+          ctx.builder, operands, op.getExecutionThread().str(), computation,
+          xla::TypeToShape(result.getType()));
+  value_map[result] = xla_op;
+  computation.mutable_proto()->mutable_computations(0)->set_id(computation_id);
   return success();
 }
 
@@ -1217,15 +1237,13 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
 
   for (auto* user : op.getResult().getUsers()) {
     if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncUpdate's return value must have "
                   "the same group_id and called_computation";
       }
     } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncUpdate's return value must have "
                   "the same group_id and called_computation";
@@ -1246,17 +1264,10 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
   xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
-  if (op.getGroupId()) {
-    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
-        ctx.builder, operand, op.getExecutionThread().str(), *op.getGroupId(),
-        computation.proto().computations(0).id(),
-        xla::TypeToShape(result.getType()));
-  } else {
-    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
-        ctx.builder, operand, op.getExecutionThread().str(),
-        computation.proto().computations(0).id(),
-        xla::TypeToShape(result.getType()));
-  }
+  value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
+      ctx.builder, operand, op.getExecutionThread().str(),
+      computation.proto().computations(0).id(),
+      xla::TypeToShape(result.getType()));
   return success();
 }
 
@@ -1285,7 +1296,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllGatherDone(
-            ctx.builder, operand, xla::TypeToShape(all_gather_op.getType()));
+            ctx.builder, operand, xla::TypeToShape(all_gather_op.getType(0)));
     return success();
   }
   auto all_reduce_op =
@@ -1353,16 +1364,9 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   }
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  xla::XlaOp exportedOp;
-  if (op.getGroupId()) {
-    exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
-        ctx.builder, operand, op.getExecutionThread().str(), *op.getGroupId(),
-        computation.proto().computations(0).id(), data_shape);
-  } else {
-    exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
-        ctx.builder, operand, op.getExecutionThread().str(),
-        computation.proto().computations(0).id(), data_shape);
-  }
+  xla::XlaOp exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
+      ctx.builder, operand, op.getExecutionThread().str(),
+      computation.proto().computations(0).id(), data_shape);
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = exportedOp;
   } else {
@@ -3228,6 +3232,15 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
+      auto buffer_donor =
+          f.getArgAttrOfType<mlir::BoolAttr>(i, "jax.buffer_donor");
+      if (buffer_donor) {
+        if (use_tuple_args_) {
+          builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
+        } else {
+          builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
+        }
+      }
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
       if (!aliasing_output) continue;
@@ -3513,7 +3526,7 @@ xla::Status PrepareForExport(mlir::ModuleOp module) {
   }
   if (failed(pm.run(module)))
     return tsl::errors::Internal("Unable to prepare for XLA export");
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -3590,7 +3603,7 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
       converter.BuildStackFramesIndexProto();
   hlo_module.mutable_stack_frame_index()->Swap(&stack_frame_index);
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
@@ -3635,7 +3648,7 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     }
   }
 
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace mlir

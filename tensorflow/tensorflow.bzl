@@ -1,3 +1,18 @@
+load(
+    "//tensorflow:py.default.bzl",
+    _plain_py_binary = "py_binary",
+    _plain_py_library = "py_library",
+    _plain_py_test = "py_test",
+)
+load("@bazel_skylib//lib:new_sets.bzl", "sets")
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load(
+    "@local_config_cuda//cuda:build_defs.bzl",
+    "cuda_library",
+    "if_cuda",
+    "if_cuda_exec",
+)
+
 #
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
@@ -19,28 +34,12 @@ load(
     "cc_test",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "tsl_gpu_library",
-    _cc_header_only_library = "cc_header_only_library",
-    _if_cuda_or_rocm = "if_cuda_or_rocm",
-    _if_nccl = "if_nccl",
-    _transitive_hdrs = "transitive_hdrs",
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
 )
 load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
-    "if_tensorrt_exec",
-)
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_library",
-    "if_cuda",
-    "if_cuda_exec",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-    "rocm_copts",
+    "//third_party/llvm_openmp:openmp.bzl",
+    "windows_llvm_openmp_linkopts",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -55,26 +54,29 @@ load(
     "if_mkldnn_openmp",
 )
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "rocm_copts",
+)
+load(
+    "@local_tsl//tsl:tsl.bzl",
+    "tsl_gpu_library",
+    _cc_header_only_library = "cc_header_only_library",
+    _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_nccl = "if_nccl",
+    _transitive_hdrs = "transitive_hdrs",
+)
+load(
     "@local_tsl//tsl/mkl:build_defs.bzl",
     "onednn_v3_define",
 )
 load(
-    "//third_party/compute_library:build_defs.bzl",
-    "if_enable_acl",
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+    "if_tensorrt_exec",
 )
-load(
-    "//third_party/llvm_openmp:openmp.bzl",
-    "windows_llvm_openmp_linkopts",
-)
-load(
-    "//tensorflow:py.default.bzl",
-    _plain_py_binary = "py_binary",
-    _plain_py_library = "py_library",
-    _plain_py_test = "py_test",
-)
-load("@bazel_skylib//lib:new_sets.bzl", "sets")
-load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
+# buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
 
@@ -82,7 +84,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -1631,22 +1633,23 @@ def tf_gpu_cc_test(
         linkopts = [],
         **kwargs):
     targets = []
-    tf_cc_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        args = args,
-        data = data,
-        extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
-        kernels = kernels,
-        linkopts = linkopts,
-        linkstatic = linkstatic,
-        suffix = "_cpu",
-        tags = tags,
-        deps = deps,
-        **kwargs
-    )
-    targets.append(name + "_cpu")
+    if "gpu" not in tags:
+        tf_cc_test(
+            name = name,
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
+            kernels = kernels,
+            linkopts = linkopts,
+            linkstatic = linkstatic,
+            suffix = "_cpu",
+            tags = tags,
+            deps = deps,
+            **kwargs
+        )
+        targets.append(name + "_cpu")
     tf_cc_test(
         name = name,
         size = size,
@@ -2333,7 +2336,7 @@ def tf_custom_op_py_library(
 # module init functions are not exported unless
 # they contain one of the keywords in the version file
 # this prevents custom python modules.
-# This function attempts to append init_module_name to list of
+# This function attempts to append PyInit_module_name to list of
 # exported functions in version script
 def _append_init_to_versionscript_impl(ctx):
     mod_name = ctx.attr.module_name
@@ -2342,7 +2345,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "global:": "global:\n     init_%s;\n     _init_%s;\n     PyInit_*;\n     _PyInit_*;" % (mod_name, mod_name),
+                "global:": "global:\n     PyInit_*;\n     _PyInit_*;",
             },
             is_executable = False,
         )
@@ -2351,7 +2354,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "*tensorflow*": "*tensorflow*\ninit_%s\n_init_%s\nPyInit_*\n_PyInit_*\n" % (mod_name, mod_name),
+                "*tensorflow*": "*tensorflow*\nPyInit_*\n_PyInit_*\n",
             },
             is_executable = False,
         )
@@ -2546,7 +2549,7 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
         }),
         data = data + select({
             "//conditions:default": kernels,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
+            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
         }),
         exec_properties = exec_properties,
         **kwargs
@@ -3049,8 +3052,6 @@ def pybind_extension_opensource(
     filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
-        "init%s" % sname,
-        "init_%s" % sname,
         "PyInit_%s" % sname,
     ] + additional_exported_symbols
 
@@ -3410,9 +3411,6 @@ def tf_monitoring_python_deps():
 # Teams sharing the same repo can provide their own ops_to_register.h file using
 # this function, and pass in -Ipath/to/repo flag when building the target.
 def tf_selective_registration_deps():
-    return []
-
-def tf_jit_compilation_passes_extra_deps():
     return []
 
 def if_mlir(if_true, if_false = []):

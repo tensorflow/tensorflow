@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/call_frame.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -42,6 +43,7 @@ namespace xla::ffi {
 
 struct CallOptions {
   const ServiceExecutableRunOptions* run_options = nullptr;
+  const HloComputation* called_computation = nullptr;
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
@@ -58,9 +60,10 @@ Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
 // XLA FFI registry
 //===----------------------------------------------------------------------===//
 
-// Returns registered FFI handler for a given name, or an error if it's not
-// found in the static registry.
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name);
+// Returns registered FFI handler for a given name and platform, or an error if
+// it's not found in the static registry.
+absl::StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
+                                             std::string_view platform);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation

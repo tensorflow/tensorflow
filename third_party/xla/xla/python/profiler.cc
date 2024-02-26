@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ limitations under the License.
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/profiler/internal/traceme_wrapper.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/status.h"
@@ -60,10 +60,10 @@ tensorflow::ProfileOptions DefaultPythonProfileOptions() {
 }
 
 const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
-  const PJRT_Structure_Base* next =
-      reinterpret_cast<const PJRT_Structure_Base*>(pjrt_api->extension_start);
+  const PJRT_Extension_Base* next =
+      reinterpret_cast<const PJRT_Extension_Base*>(pjrt_api->extension_start);
   while (next != nullptr &&
-         next->type != PJRT_Structure_Type::PJRT_Structure_Type_Profiler) {
+         next->type != PJRT_Extension_Type::PJRT_Extension_Type_Profiler) {
     next = next->next;
   }
   if (next == nullptr) {

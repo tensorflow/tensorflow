@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -191,8 +191,6 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
       shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
-  CHECK(llvm::cast<llvm::PointerType>(base_ptr_->getType())
-            ->isOpaqueOrPointeeTypeMatches(pointee_type));
   int depth = 0;
   element_type_ = pointee_type;
   while (llvm::ArrayType* array_type =
@@ -375,6 +373,13 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
   return index;
 }
 
+IrArray::Index IrArray::Index::SourceIndexOfBitcast(
+    const Shape& operand_shape, llvm::IRBuilder<>* builder) const {
+  auto shape = ShapeUtil::MakeShape(F32, dims_);
+  *shape.mutable_layout() = layout_;
+  return SourceIndexOfBitcast(shape, operand_shape, builder);
+}
+
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64_t> dimension_mapping,
@@ -553,8 +558,19 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* type = PrimitiveTypeToIrType(shape_.element_type(), module);
   if (!primitive_util::Is4BitType(shape_.element_type())) {
-    return b->CreateInBoundsGEP(type, base_ptr_, index.linear(),
-                                llvm_ir::AsStringRef(name));
+    auto linear_index = llvm::dyn_cast<llvm::BinaryOperator>(index.linear());
+    if (linear_index && (linear_index->getOpcode() == llvm::Instruction::Add)) {
+      llvm::Value* index_operand_0 = linear_index->getOperand(0);
+      llvm::Value* index_operand_1 = linear_index->getOperand(1);
+      llvm::Value* ptr_address =
+          b->CreateGEP(type, base_ptr_, index_operand_0, "");
+
+      return b->CreateInBoundsGEP(type, ptr_address, index_operand_1,
+                                  llvm_ir::AsStringRef(name));
+    } else {
+      return b->CreateInBoundsGEP(type, base_ptr_, index.linear(),
+                                  llvm_ir::AsStringRef(name));
+    }
   }
 
   // Handle int4 case by dividing index by 2. Int4 arrays are represented in

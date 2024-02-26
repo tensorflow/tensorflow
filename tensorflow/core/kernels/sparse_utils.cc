@@ -176,7 +176,7 @@ Status ValidateSparseTensorShape(const Tensor& indices, const Tensor& values,
                                    shape.NumElements(), ") do not match");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a debug string for the index tuple in indices(row, :).
@@ -215,7 +215,7 @@ Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Ensures all sparse indices are within correct bounds and are
@@ -229,7 +229,7 @@ Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
   int64_t ndims = indices.dim_size(1);
 
   if (nnz == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // First set of indices must be within range.
@@ -282,7 +282,7 @@ Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
     }
   }  // for i in [1, nnz)
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -300,7 +300,7 @@ Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
     case IndexValidation::kNone: {
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define REGISTER_SPARSE_UTIL_FUNCTIONS(TypeIndex)                           \

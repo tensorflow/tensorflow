@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,27 @@ limitations under the License.
 
 #include "xla/python/ifrt/mock.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+
+#include <gmock/gmock.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/literal.h"
+#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -171,9 +188,17 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
       .WillByDefault([this]() -> const xla::PjRtDeviceDescription& {
         return delegated_->description();
       });
-  ON_CALL(*this, id).WillByDefault([this]() { return delegated_->id(); });
+  ON_CALL(*this, global_device_id).WillByDefault([this]() {
+    return delegated_->global_device_id();
+  });
   ON_CALL(*this, process_index).WillByDefault([this]() {
     return delegated_->process_index();
+  });
+  ON_CALL(*this, local_device_id).WillByDefault([this]() {
+    return delegated_->local_device_id();
+  });
+  ON_CALL(*this, local_hardware_id_typed).WillByDefault([this]() {
+    return delegated_->local_hardware_id_typed();
   });
   ON_CALL(*this, local_hardware_id).WillByDefault([this]() {
     return delegated_->local_hardware_id();
@@ -187,9 +212,12 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
   ON_CALL(*this, ToString).WillByDefault([this]() {
     return delegated_->ToString();
   });
-  ON_CALL(*this, Attributes).WillByDefault([this]() {
-    return delegated_->Attributes();
-  });
+  ON_CALL(*this, Attributes)
+      .WillByDefault(
+          [this]()
+              -> const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& {
+            return delegated_->Attributes();
+          });
   ON_CALL(*this, CreateAsyncTrackingEvent)
       .WillByDefault([this](absl::string_view description) {
         return delegated_->CreateAsyncTrackingEvent(description);

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/literal_test_util.h"
@@ -673,8 +674,7 @@ XLA_TEST_F(LocalClientExecuteTest,
   // Try to run a computation on a stream for a platform (CPU) which does not
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
-      se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
-          .value();
+      se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
   se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).value());
   wrong_stream.Init();
 
@@ -691,8 +691,7 @@ XLA_TEST_F(LocalClientExecuteTest,
 XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_CPU(AllocatorDoesNotMatchPlatform)) {
   se::Platform* wrong_platform =
-      se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
-          .value();
+      se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
   TestAllocator allocator(wrong_platform);
 
   XlaBuilder builder(TestName());

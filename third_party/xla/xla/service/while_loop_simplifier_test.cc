@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1122,6 +1122,65 @@ TEST_F(WhileLoopSimplifierTest, NotRemoveCompare) {
   EXPECT_FALSE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
                    .Run(m.get())
                    .value());
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveDynUpdSlice) {
+  const std::string hlo_string = R"(
+HloModule jit_scan
+
+%region_0.6 (arg_tuple.7: (s32[], f32[], f32[3], f32[3])) -> (s32[], f32[], f32[3], f32[3]) {
+  %arg_tuple.7 = (s32[], f32[], f32[3]{0}, f32[3]{0}) parameter(0)
+  %get-tuple-element.8 = s32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=0
+  %constant.12 = s32[] constant(1)
+  %add.28 = s32[] add(s32[] %get-tuple-element.8, s32[] %constant.12)
+  %get-tuple-element.9 = f32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=1
+  %sine.15 = f32[] sine(f32[] %get-tuple-element.9)
+  %get-tuple-element.10 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=2
+  %cosine.16 = f32[] cosine(f32[] %get-tuple-element.9)
+  %reshape.18 = f32[1]{0} reshape(f32[] %cosine.16)
+  %constant.14 = s32[] constant(0)
+  %compare.19 = pred[] compare(s32[] %get-tuple-element.8, s32[] %constant.14), direction=LT
+  %constant.13 = s32[] constant(3)
+  %add.20 = s32[] add(s32[] %get-tuple-element.8, s32[] %constant.13)
+  %select.21 = s32[] select(pred[] %compare.19, s32[] %add.20, s32[] %get-tuple-element.8)
+  %dynamic-update-slice.22 = f32[3]{0} dynamic-update-slice(f32[3]{0} %get-tuple-element.10, f32[1]{0} %reshape.18, s32[] %select.21)
+  %get-tuple-element.11 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.7), index=3
+  %dynamic-update-slice.27 = f32[3]{0} dynamic-update-slice(f32[3]{0} %get-tuple-element.11, f32[1]{0} %reshape.18, s32[] %select.21)
+  ROOT %tuple.29 = (s32[], f32[], f32[3]{0}, f32[3]{0}) tuple(s32[] %add.28, f32[] %sine.15, f32[3]{0} %dynamic-update-slice.22, f32[3]{0} %dynamic-update-slice.27)
+}
+
+%region_1.30 (arg_tuple.31: (s32[], f32[], f32[3], f32[3])) -> pred[] {
+  %arg_tuple.31 = (s32[], f32[], f32[3]{0}, f32[3]{0}) parameter(0)
+  %get-tuple-element.32 = s32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %arg_tuple.31), index=0
+  %constant.36 = s32[] constant(3)
+  ROOT %compare.37 = pred[] compare(s32[] %get-tuple-element.32, s32[] %constant.36), direction=LT
+}
+
+ENTRY %main.44 (Arg_0.1: f32[]) -> (f32[], f32[3], f32[3]) {
+  %constant.4 = s32[] constant(0)
+  %Arg_0.1 = f32[] parameter(0), sharding={replicated}
+  %constant.2 = f32[] constant(0)
+  %broadcast.3 = f32[3]{0} broadcast(f32[] %constant.2), dimensions={}
+  %tuple.5 = (s32[], f32[], f32[3]{0}, f32[3]{0}) tuple(s32[] %constant.4, f32[] %Arg_0.1, f32[3]{0} %broadcast.3, f32[3]{0} %broadcast.3)
+  %while.38 = (s32[], f32[], f32[3]{0}, f32[3]{0}) while((s32[], f32[], f32[3]{0}, f32[3]{0}) %tuple.5), condition=%region_1.30, body=%region_0.6
+  %get-tuple-element.40 = f32[] get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %while.38), index=1
+  %get-tuple-element.41 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %while.38), index=2
+  %get-tuple-element.42 = f32[3]{0} get-tuple-element((s32[], f32[], f32[3]{0}, f32[3]{0}) %while.38), index=3
+  ROOT %tuple.43 = (f32[], f32[3]{0}, f32[3]{0}) tuple(f32[] %get-tuple-element.40, f32[3]{0} %get-tuple-element.41, f32[3]{0} %get-tuple-element.42)
+})";
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+  HloInstruction* new_while = FindFirstWhile(m.get());
+  Shape new_while_shape = ParseShape("(s32[], f32[], f32[3]{0})").value();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 //  static const MultiKernelLoaderSpec &SaxpySpec() {
 //    static auto *mkls =
 //        (new MultiKernelLoaderSpec{4 /* = arity */})
-//            ->AddCudaPtxOnDisk(ptx_file_path, ptx_kernel_name);
+//            ->AddCudaPtxInMemory(ptx_bytes, ptx_kernel_name);
 //    };
 //
 //    return *mkls;
@@ -34,7 +34,7 @@ limitations under the License.
 //
 // This lazily instantiates an object that describes how to load CUDA PTX
 // present on disk that implements saxpy for the CUDA platform. The
-// CudaPtxOnDisk object is a subtype of KernelLoaderSpec -- KernelLoaderSpec
+// CudaPtxInMemory object is a subtype of KernelLoaderSpec -- KernelLoaderSpec
 // describes how to load a kernel for subsequent launching on a single platform.
 //
 // For the loader functionality that accepts these KernelLoaderSpecs in order
@@ -52,15 +52,15 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
+class Kernel;                     // defined in kernel.h
 class KernelArgs;                 // defined in kernel.h
 class KernelArgsPackedArrayBase;  // defined in kernel.h
 
@@ -103,61 +103,6 @@ class InProcessSymbol : public KernelLoaderSpec {
 
  private:
   void *symbol_;
-};
-
-// An abstract kernel loader spec that has an associated file path, where
-// there's a canonical suffix for the filename; e.g. see CudaPtxOnDisk whose
-// canonical filename suffix is ".ptx".
-class OnDiskKernelLoaderSpec : public KernelLoaderSpec {
- public:
-  ~OnDiskKernelLoaderSpec() override {}
-
-  // Returns the path to the on-disk loadable kernel file.
-  const std::string &filename() const { return filename_; }
-
-  // Returns the canonical suffix for this on-disk kernel loader spec format;
-  // e.g. PTX files on disk have a canonical suffix of ".ptx".
-  virtual const char *CanonicalSuffix() const = 0;
-
- protected:
-  OnDiskKernelLoaderSpec(absl::string_view filename,
-                         absl::string_view kernel_name);
-
-  std::string filename_;
-
- private:
-  OnDiskKernelLoaderSpec(const OnDiskKernelLoaderSpec &) = delete;
-  void operator=(const OnDiskKernelLoaderSpec &) = delete;
-};
-
-// Kernel loader specification for PTX text that resides on disk.
-class CudaPtxOnDisk : public OnDiskKernelLoaderSpec {
- public:
-  CudaPtxOnDisk(absl::string_view filename, absl::string_view kernel_name);
-  ~CudaPtxOnDisk() override {}
-
-  const char *CanonicalSuffix() const override { return ".ptx"; }
-
- private:
-  CudaPtxOnDisk(const CudaPtxOnDisk &) = delete;
-  void operator=(const CudaPtxOnDisk &) = delete;
-};
-
-// Kernel loader specification for CUBIN binary that resides on disk.
-class CudaCubinOnDisk : public OnDiskKernelLoaderSpec {
- public:
-  CudaCubinOnDisk(absl::string_view filename, absl::string_view kernel_name);
-  ~CudaCubinOnDisk() override {}
-
-  const std::string &filename() const { return filename_; }
-
-  const char *CanonicalSuffix() const override { return ".cubin"; }
-
- private:
-  std::string filename_;
-
-  CudaCubinOnDisk(const CudaCubinOnDisk &) = delete;
-  void operator=(const CudaCubinOnDisk &) = delete;
 };
 
 // Kernel loader specification for PTX text that resides in memory.
@@ -261,8 +206,8 @@ class MultiKernelLoaderSpec {
   // registering custom CUDA C++ kernels with non-trivial C++ API with a
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
-      std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
-          const KernelArgs &args)>;
+      std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
+          const Kernel &kernel, const KernelArgs &args)>;
 
   explicit MultiKernelLoaderSpec(
       size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
@@ -273,8 +218,6 @@ class MultiKernelLoaderSpec {
   // Convenience getters for testing whether these platform variants have
   // kernel loader specifications available.
   bool has_in_process_symbol() const { return in_process_symbol_ != nullptr; }
-  bool has_cuda_ptx_on_disk() const { return cuda_ptx_on_disk_ != nullptr; }
-  bool has_cuda_cubin_on_disk() const { return cuda_cubin_on_disk_ != nullptr; }
   bool has_cuda_cubin_in_memory() const {
     return cuda_cubin_in_memory_ != nullptr;
   }
@@ -285,14 +228,6 @@ class MultiKernelLoaderSpec {
   const InProcessSymbol &in_process_symbol() const {
     CHECK(has_in_process_symbol());
     return *in_process_symbol_;
-  }
-  const CudaPtxOnDisk &cuda_ptx_on_disk() const {
-    CHECK(has_cuda_ptx_on_disk());
-    return *cuda_ptx_on_disk_;
-  }
-  const CudaCubinOnDisk &cuda_cubin_on_disk() const {
-    CHECK(has_cuda_cubin_on_disk());
-    return *cuda_cubin_on_disk_;
   }
   const CudaCubinInMemory &cuda_cubin_in_memory() const {
     CHECK(has_cuda_cubin_in_memory());
@@ -311,22 +246,10 @@ class MultiKernelLoaderSpec {
   // mangled by the compiler if it is not declared in an extern "C" scope.
   MultiKernelLoaderSpec *AddInProcessSymbol(void *symbol,
                                             absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddCudaPtxOnDisk(absl::string_view filename,
-                                          absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddCudaCubinOnDisk(absl::string_view filename,
-                                            absl::string_view kernel_name);
   MultiKernelLoaderSpec *AddCudaCubinInMemory(const char *cubin_bytes,
                                               absl::string_view kernel_name);
   MultiKernelLoaderSpec *AddCudaPtxInMemory(absl::string_view ptx,
                                             absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddCudaCompressedPtxInMemory(
-      absl::string_view ptx, absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddCudaPtxInMemory(
-      std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-      absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddCudaCompressedPtxInMemory(
-      std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-      absl::string_view kernel_name);
 
   const KernelArgsPacking &kernel_args_packing() const {
     return kernel_args_packing_;
@@ -335,10 +258,6 @@ class MultiKernelLoaderSpec {
  private:
   std::shared_ptr<InProcessSymbol>
       in_process_symbol_;  // In process symbol pointer.
-  std::shared_ptr<CudaPtxOnDisk>
-      cuda_ptx_on_disk_;  // PTX text that resides in a file.
-  std::shared_ptr<CudaCubinOnDisk>
-      cuda_cubin_on_disk_;  // Binary CUDA program in a file.
   std::shared_ptr<CudaCubinInMemory>
       cuda_cubin_in_memory_;  // Binary CUDA program in memory.
   std::shared_ptr<CudaPtxInMemory>

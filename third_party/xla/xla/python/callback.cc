@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,11 +70,14 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
     if (strides == results_[i].expected_strides) {
       std::memcpy(outputs[i], array.data(), results_[i].size_in_bytes);
     } else {
-      xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
-          transpose_cache_.GetOrCreate(
-              xla::primitive_util::ByteWidth(results_[i].type), dims,
-              results_[i].reversed_layout,
-              /*input_layout=*/xla::TransposePlan::Striding{strides});
+      xla::TransposePlan::Options options;
+      options.elem_size_in_bytes =
+          xla::primitive_util::ByteWidth(results_[i].type);
+      options.dims = dims;
+      options.permutation = results_[i].reversed_layout;
+      options.input_layout = xla::TransposePlan::Striding{strides};
+      absl::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
+          transpose_cache_.GetOrCreate(options);
       if (!plan.ok()) {
         return std::move(plan).status();
       }
@@ -99,7 +102,7 @@ Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
   return PrepareAndCallInternal(result, arg_ptrs);
 }
 
-StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
+absl::StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
   py::object result_object;
   try {
     result_object = callable_(*py::reinterpret_borrow<py::args>(args));
@@ -147,7 +150,7 @@ StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
   return result_tuple;
 }
 
-StatusOr<py::tuple> CpuCallback::Call(py::tuple args) {
+absl::StatusOr<py::tuple> CpuCallback::Call(py::tuple args) {
   return CallInternal(std::move(args));
 }
 

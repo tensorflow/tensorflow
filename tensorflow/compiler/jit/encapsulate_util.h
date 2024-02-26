@@ -116,7 +116,8 @@ struct XlaClusterInfo {
 // dependencies and control dependencies. cluster_deps maps the name name of an
 // outside compilation cluster to a set of names of outside compilation clusters
 // that it depends on.
-tsl::StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+absl::StatusOr<
+    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name);
 

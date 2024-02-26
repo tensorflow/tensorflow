@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.16.0'
+_VERSION = '2.17.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -100,11 +100,12 @@ REQUIRED_PACKAGES = [
     (
         'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
     ),
+    'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0, < 1.15',
+    'wrapt >= 1.11.0',
     # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
     'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
@@ -120,9 +121,8 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.16.0.a',
-    'tf-estimator-nightly ~= 2.14.0.dev',
-    'keras-nightly ~= 3.0.0.dev',
+    'tb-nightly ~= 2.17.0.a',
+    'keras-nightly ~= 3.1.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -155,9 +155,15 @@ if collaborator_build:
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
       _VERSION + ';platform_system=="Windows"',
-      # Install the TensorFlow package built by Apple if the user is running
-      # macOS on an Apple Silicon machine.
-      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      # Starting with TF 2.16, Apple Silicon packages are uploaded directly
+      # to the "tensorflow" project on PyPI. In order to not break users who
+      # are still using `tensorflow-macos`, we upload an empty installer wheel
+      # to "tensorflow-macos" and add "tensorflow" as its dependency. Please
+      # note that this will go away in TF 2.17 and `tensorflow-macos` will be
+      # considered deprecated. Installer packages are not uploaded to
+      # `tf-nightly-macos`, `tf-nightly` is added below only to avoid breaking
+      # CI builds.
+      standard_or_nightly('tensorflow', 'tf-nightly') + '==' +
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
@@ -167,21 +173,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.2.5.6',
-    'nvidia-cuda-cupti-cu12 == 12.2.142',
-    'nvidia-cuda-nvcc-cu12 == 12.2.140',
-    'nvidia-cuda-nvrtc-cu12 == 12.2.140',
-    'nvidia-cuda-runtime-cu12 == 12.2.140',
-    'nvidia-cudnn-cu12 == 8.9.4.25',
-    'nvidia-cufft-cu12 == 11.0.8.103',
-    'nvidia-curand-cu12 == 10.3.3.141',
-    'nvidia-cusolver-cu12 == 11.5.2.141',
-    'nvidia-cusparse-cu12 == 12.1.2.141',
-    'nvidia-nccl-cu12 == 2.18.3',
-    'nvidia-nvjitlink-cu12 == 12.2.140',
-    'tensorrt == 8.6.1.post1',
-    'tensorrt-bindings == 8.6.1',
-    'tensorrt-libs == 8.6.1',
+    'nvidia-cublas-cu12 == 12.3.4.1',
+    'nvidia-cuda-cupti-cu12 == 12.3.101',
+    'nvidia-cuda-nvcc-cu12 == 12.3.107',
+    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
+    'nvidia-cuda-runtime-cu12 == 12.3.101',
+    'nvidia-cudnn-cu12 == 8.9.7.29',
+    'nvidia-cufft-cu12 == 11.0.12.1',
+    'nvidia-curand-cu12 == 10.3.4.107',
+    'nvidia-cusolver-cu12 == 11.5.4.101',
+    'nvidia-cusparse-cu12 == 12.2.0.103',
+    'nvidia-nccl-cu12 == 2.19.3',
+    'nvidia-nvjitlink-cu12 == 12.3.101',
 ]
 
 DOCLINES = __doc__.split('\n')
@@ -203,10 +206,6 @@ CONSOLE_SCRIPTS = [
     # We exclude it anyway if building tf_nightly.
     standard_or_nightly('tensorboard = tensorboard.main:run_main', None),
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
-    (
-        'estimator_ckpt_converter ='
-        ' tensorflow_estimator.python.estimator.tools.checkpoint_converter:main'
-    ),
 ]
 CONSOLE_SCRIPTS = [s for s in CONSOLE_SCRIPTS if s is not None]
 # pylint: enable=line-too-long
@@ -256,6 +255,10 @@ class InstallHeaders(Command):
 
   def mkdir_and_copy_file(self, header):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
+    # Windows platform uses "\" in path strings, the external header location
+    # expects "/" in paths. Hence, we replaced "\" with "/" for this reason
+    if platform.system() == 'Windows':
+      install_dir = install_dir.replace('\\', '/')
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
@@ -327,19 +330,27 @@ for path in so_lib_paths:
 # $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
 # libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  # For tensorflow-tpu releases, use a set libtpu-nightly version;
+  # For tensorflow-tpu releases, use a set libtpu version;
   # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '0.1.dev20231018',
+      '2.16.0rc0',
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
           - datetime.timedelta(hours=8)
       ).strftime('%Y%m%d'),
   )
-  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  if _libtpu_version.startswith('0.1'):
+    REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  else:
+    REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
+  CONSOLE_SCRIPTS.extend([
+      'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
+      ('start_grpc_tpu_service = '
+       'tensorflow.python.tools.grpc_tpu_worker_service:run'),
+  ])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'

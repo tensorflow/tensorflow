@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,17 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
 
+#include <atomic>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/device_id.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 
 #if GOOGLE_CUDA
@@ -33,7 +34,6 @@ limitations under the License.
 
 #define TF_CUDA_MALLOC_ASYNC_SUPPORTED CUDA_VERSION >= 11020
 #endif  // GOOGLE_CUDA
-
 
 namespace stream_executor {
 
@@ -87,12 +87,6 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   bool ClearStats() override;
 
   void SetStreamAndPreallocateMemory(void* stream) override;
-
-  // With the right VLOG set, it prints:
-  // - the number of ptr currently allocated per size (histogram).
-  // - each ptr value and its size.
-  // - If CUDA_VERSION >= 11030, print cudaMallocAsync statistics.
-  void PrintAllocatorStatistics();
 
   static int GetInstantiatedCountTestOnly() { return number_instantiated_; }
 

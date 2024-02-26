@@ -22,6 +22,8 @@ limitations under the License.
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
@@ -33,12 +35,13 @@ namespace py = ::pybind11;
 
 namespace {
 
-using ::tensorflow::GraphDef;
+using ::stablehlo::quantization::MinMaxValue;
 using ::tensorflow::SignatureDef;
+using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
-using ::tensorflow::quantization::QuantizationOptions;
+using ::tensorflow::quantization::RepresentativeDatasetFile;
 
 // A "trampoline" class that redirects virtual function calls to the python
 // implementation.
@@ -48,12 +51,6 @@ using ::tensorflow::quantization::QuantizationOptions;
 class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
  public:
   using PyFunctionLibrary::PyFunctionLibrary;
-
-  ExportedModel AssignIdsToCustomAggregatorOps(
-      const ExportedModel& exported_model) const override {
-    PYBIND11_OVERRIDE_PURE(ExportedModel, PyFunctionLibrary,
-                           assign_ids_to_custom_aggregator_ops, exported_model);
-  }
 
   void SaveExportedModel(const absl::string_view dst_saved_model_path,
                          const ExportedModel& exported_model,
@@ -66,28 +63,26 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
                            src_saved_model_path, tags, signature_def_map);
   }
 
-  ExportedModel RunCalibration(
+  void RunCalibration(
       const absl::string_view saved_model_path,
       const std::vector<std::string>& signature_keys,
       const std::unordered_set<std::string>& tags,
-      const ExportedModel& exported_model,
       const CalibrationOptions& calibration_options,
       const bool force_graph_mode_calibration,
-      const py::object representative_dataset) const override {
-    PYBIND11_OVERRIDE_PURE(
-        ExportedModel, PyFunctionLibrary, run_calibration, saved_model_path,
-        signature_keys, tags, exported_model, calibration_options,
-        force_graph_mode_calibration, representative_dataset);
+      const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+          representative_dataset_file_map) const override {
+    PYBIND11_OVERRIDE_PURE(void, PyFunctionLibrary, run_calibration,
+                           saved_model_path, signature_keys, tags,
+                           calibration_options, force_graph_mode_calibration,
+                           representative_dataset_file_map);
   }
 
-  GraphDef EnableDumpTensor(const GraphDef& graph_def) const override {
-    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary, enable_dump_tensor,
-                           graph_def);
-  }
-
-  GraphDef ChangeDumpTensorFileName(const GraphDef& graph_def) const override {
-    PYBIND11_OVERRIDE_PURE(GraphDef, PyFunctionLibrary,
-                           change_dump_tensor_file_name, graph_def);
+  MinMaxValue GetCalibrationMinMaxValue(
+      const CalibrationStatistics& calibration_statistics,
+      const CalibrationOptions& calibration_options) const override {
+    PYBIND11_OVERRIDE_PURE(MinMaxValue, PyFunctionLibrary,
+                           get_calibration_min_max_value,
+                           calibration_statistics, calibration_options);
   }
 };
 
@@ -97,9 +92,6 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
   py::class_<PyFunctionLibrary, PyFunctionLibraryTrampoline>(
       m, "PyFunctionLibrary")
       .def(py::init<>())
-      .def("assign_ids_to_custom_aggregator_ops",
-           &PyFunctionLibrary::AssignIdsToCustomAggregatorOps,
-           py::arg("exported_model_serialized"))
       .def("save_exported_model", &PyFunctionLibrary::SaveExportedModel,
            py::arg("dst_saved_model_path"),
            py::arg("exported_model_serialized"),
@@ -107,13 +99,11 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
            py::arg("serialized_signature_def_map"))
       .def("run_calibration", &PyFunctionLibrary::RunCalibration,
            py::arg("saved_model_path"), py::arg("signature_keys"),
-           py::arg("tags"), py::arg("exported_model_serialized"),
-           py::arg("calibration_options_serialized"),
+           py::arg("tags"), py::arg("calibration_options_serialized"),
            py::arg("force_graph_mode_calibration"),
-           py::arg("representative_dataset"))
-      .def("enable_dump_tensor", &PyFunctionLibrary::EnableDumpTensor,
-           py::arg("graph_def_serialized"))
-      .def("change_dump_tensor_file_name",
-           &PyFunctionLibrary::ChangeDumpTensorFileName,
-           py::arg("graph_def_serialized"));
+           py::arg("representative_dataset_file_map_serialized"))
+      .def("get_calibration_min_max_value",
+           &PyFunctionLibrary::GetCalibrationMinMaxValue,
+           py::arg("calibration_statistics_serialized"),
+           py::arg("calibration_options_serialized"));
 }

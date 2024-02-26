@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/types.h"
@@ -58,7 +59,7 @@ class GenericTransferManagerTest : public ::testing::Test {
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(
         se::Platform * platform,
-        se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId));
+        se::PlatformManager::PlatformWithId(se::host::kHostPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
     stream_.emplace(stream_executor_);
     stream_->Init();

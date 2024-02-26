@@ -103,6 +103,7 @@ tensorflow::Status RunTFXLABridge(
   }
 
   PassManager bridge(module.getContext());
+  bridge.enableVerifier();
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -175,7 +176,7 @@ absl::Status RunClusteringPipelineOnSubmodule(
     clustering_pipeline_status = RunTFXLABridge(
         submodule,
         [](OpPassManager &pm) {
-          internal::AddBridgeClusteringPipelinePasses(pm);
+          internal::AddReplicatedBridgeClusteringPipelinePasses(pm);
         },
         /*module_name=*/"", /*dump_prefix=*/"tf_xla_clustering_bridge_v1");
     if (num_submodules > 1) {

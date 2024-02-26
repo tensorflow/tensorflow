@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,11 +43,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "xla/mlir/runtime/ir/rt_dialect.h"
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace runtime {
@@ -112,7 +114,8 @@ static void PrintPassPipeline(const mlir::PassManager& pm) {
 }
 
 static LogicalResult RunPipeline(
-    ModuleOp module, const std::function<void(PassManager&)>& create_pipeline,
+    ModuleOp module,
+    const std::function<absl::Status(PassManager&)>& create_pipeline,
     int verification_level) {
   if (!create_pipeline) return success();
 
@@ -136,7 +139,11 @@ static LogicalResult RunPipeline(
     pm.enableTiming(timing);
   }
   PassManager passes(&pm);
-  create_pipeline(passes);
+  absl::Status pipeline_created = create_pipeline(passes);
+  if (!pipeline_created.ok()) {
+    llvm::errs() << pipeline_created.message() << "\n";
+    return mlir::failure();
+  }
 
   if (DebugJitCompiler()) {
     PrintPassPipeline(pm);
@@ -422,6 +429,11 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
   if (!llvm_module)
     return compiler->Error("failed to translate module to LLVM IR");
 
+  std::string llvm_module_string;
+  if (compiler->options().embed_ir_in_executable) {
+    llvm_module_string = llvm_ir::DumpToString(llvm_module.get());
+  }
+
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
       std::move(llvm_ctx), std::move(llvm_module), engine_options, exported);
@@ -441,7 +453,7 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
 
   return Executable(compiler->name(), std::move(memory_mapper),
                     std::move(*engine), std::move(functions), specialization,
-                    time_to_compile);
+                    time_to_compile, std::move(llvm_module_string));
 }
 
 // TODO(ezhulenev): Currently it's possible to specialize only one function. It

@@ -40,7 +40,7 @@ namespace {
 int get_c_dimension_idx(const Layout& layout, llvm::StringRef data_format) {
   // If format is "N...C", the bias is added to the last dimension.
   int c_dim_idx = layout.sharding_spec_strs().size() - 1;
-  if (data_format.startswith("NC")) {
+  if (data_format.starts_with("NC")) {
     // If format is "NC...", the bias is added to the 'C' dimension.
     c_dim_idx = layout.sharding_spec_strs().size() - 3;
   }

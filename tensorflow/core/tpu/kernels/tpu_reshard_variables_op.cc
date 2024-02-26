@@ -205,7 +205,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
                                                      shaped_buffer)) {
     TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
         transfer_stream_ptr.get(), shaped_buffer));
-    stream->ThenWaitFor(transfer_stream_ptr.get());
+    TF_RETURN_IF_ERROR(stream->WaitFor(transfer_stream_ptr.get()));
   } else {
     TF_RETURN_IF_ERROR(
         transfer_manager->WriteRootTupleIndexTable(stream, shaped_buffer));
@@ -245,7 +245,7 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
                  transfer_stream_ptr.get(),
                  tpu_program_group->tpu_program(core_index)));
 
-  stream->ThenRecordEvent(definition_event.get());
+  TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
 
   // Assign the new buffers to the variables.
   xla::ScopedShapedBuffer result = output.ConsumeResult();

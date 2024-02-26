@@ -106,13 +106,13 @@ Status XlaResourceOpKindForNode(
   }
   if (should_ignore) {
     *out_resource_op_kind = std::nullopt;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(n.type_string());
   if (op_info) {
     *out_resource_op_kind = op_info->kind();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // We conservatively assume that functions will both read and write resource
@@ -124,7 +124,7 @@ Status XlaResourceOpKindForNode(
     *out_resource_op_kind = std::nullopt;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns true if a control or data dependence from a TensorFlow operation of
@@ -314,6 +314,6 @@ Status ComputeIncompatibleResourceOperationPairs(
   std::sort(result->begin(), result->end());
   CHECK(std::unique(result->begin(), result->end()) == result->end());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tensorflow

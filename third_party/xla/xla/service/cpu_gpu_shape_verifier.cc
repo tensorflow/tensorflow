@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,11 +32,13 @@ Status VerifyS4U4Usage(HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
     case HloOpcode::kConstant:
+    case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
+    case HloOpcode::kSlice:
     case HloOpcode::kTuple:
       break;
     default:

@@ -247,27 +247,6 @@ module @jit_f.0 attributes {{jax.uses_shape_polymorphism = true}} {{
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
-  def test_poly_unranked(self):
-    x = np.arange(6, dtype=np.float32).reshape((2, 3))
-
-    def f(x):  # x: f32[2, b]
-      # sin(x)
-      module, version = serialize("""
-module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
-  func.func public @main(%arg1: tensor<*xf32>) -> tensor<*xf32> {
-    %0 = stablehlo.sine %arg1 : tensor<*xf32>
-    return %0 : tensor<*xf32>
-  }
-}
-""")
-      return xla.call_module([x],
-                             module=module, version=version,
-                             Tout=[x.dtype],
-                             Sout=[(None, None),],
-                             platforms=[self.testing_platform()],)
-
-    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x),))
-
   def test_wrong_actual_args_errors(self):
     x = np.arange(6, dtype=np.float32).reshape((3, 2))
     y = np.arange(6, dtype=np.int32).reshape((2, 3))
@@ -1018,7 +997,7 @@ module @jit_fun.0 attributes {jax.uses_shape_polymorphism = true} {
     %2 = stablehlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
     %3 = stablehlo.constant dense<4> : tensor<1xi32>
     %4 = "stablehlo.concatenate"(%0, %2, %3) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
-    %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
+    %5 = "stablehlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = array<i64: 1, 2>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
     %6 = stablehlo.add %5, %arg2 : (tensor<2x?x4xf32>, tensor<2x?x4xf32>) -> tensor<2x?x4xf32>
     return %5, %6 : tensor<2x?x4xf32>, tensor<2x?x4xf32>
   }

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
@@ -56,13 +55,14 @@ class GpuPriorityFusion : public InstructionFusion {
   static bool IsExpensive(const HloInstruction& instruction);
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   std::unique_ptr<FusionQueue> GetFusionQueue(
       HloComputation* computation) override;
+
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
 
@@ -72,6 +72,10 @@ class GpuPriorityFusion : public InstructionFusion {
  private:
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
+
+  // Consumes a unit of compiler fuel and returns true if we should
+  // continue with the transformation.
+  bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
 
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;
@@ -83,11 +87,6 @@ class GpuPriorityFusion : public InstructionFusion {
   // null, logging is disabled.
   std::unique_ptr<FusionProcessDumpProto> fusion_process_dump_;
 
-  // Keep track of the number of times each instruction inside a fusion node is
-  // indexed with different index vectors.
-  absl::Mutex fusion_node_evaluations_mutex_;
-  absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
-      fusion_node_evaluations_;
   HloFusionAnalysisCache fusion_analysis_cache_;
 };
 

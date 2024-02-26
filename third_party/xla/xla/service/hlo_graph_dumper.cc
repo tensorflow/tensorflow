@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,14 +22,17 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
@@ -98,8 +101,9 @@ class NodeFilter {
   NodeFilter() : filter_([](const HloInstruction*) { return kNormalNode; }) {}
 
   explicit NodeFilter(
-      std::function<NodeFilterResult(const HloInstruction* instr)> filter)
-      : filter_(std::move(filter)) {}
+      std::function<NodeFilterResult(const HloInstruction* instr)> filter,
+      std::optional<int> num_rendered = std::nullopt)
+      : filter_(std::move(filter)), num_rendered_(num_rendered) {}
 
   bool Show(const HloInstruction* instr) const {
     return filter_(instr) != kHideNode;
@@ -120,8 +124,12 @@ class NodeFilter {
            result == kSomeUsersOmitted;
   }
 
+  // Returns an optionally recorded number of nodes which will be rendered.
+  std::optional<int> GetNumRendered() const { return num_rendered_; }
+
  private:
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
+  std::optional<int> num_rendered_;
 };
 
 // We arbitrarily set this as the boundary between "large" and "small"
@@ -644,6 +652,11 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
     return false;
   }
 
+  if (subcomp->WhileCallInstruction() != nullptr &&
+      !hlo_render_options_.show_while_subcomputations) {
+    return false;
+  }
+
   // Show the subcomputation if we're showing any of its members.
   return absl::c_any_of(
       subcomp->instructions(),
@@ -1081,6 +1094,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
+    case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
@@ -1196,6 +1210,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
@@ -1346,18 +1361,20 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
   // !show_backend_config, but this is simpler, and it's not too noisy.)
   std::vector<std::pair<std::string, std::string>> props;
   if (gpu::IsCustomCallToDnnConvolution(*instr)) {
-    StatusOr<gpu::CudnnConvBackendConfig> config =
-        instr->backend_config<gpu::CudnnConvBackendConfig>();
+    StatusOr<gpu::GpuBackendConfig> config =
+        instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
-      props = ExtractCudnnConvBackendConfigProps(*config);
+      props = ExtractCudnnConvBackendConfigProps(
+          config->cudnn_conv_backend_config());
     }
   } else if (gpu::IsCublasGemm(*instr)) {
-    StatusOr<gpu::GemmBackendConfig> config =
-        instr->backend_config<gpu::GemmBackendConfig>();
+    StatusOr<gpu::GpuBackendConfig> config =
+        instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
       // shape), so we hide them by default.
-      props = ExtractGemmBackendConfigProps(*config, instr);
+      props =
+          ExtractGemmBackendConfigProps(config->gemm_backend_config(), instr);
     }
   }
 
@@ -1392,11 +1409,12 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
   for (const auto& line : instr->ExtraAttributesToString(
            HloPrintOptions().set_print_subcomputation_mode(
                HloPrintOptions::PrintSubcomputationMode::kOff))) {
-    // Some instructions have giant device identifier fields, so truncate their
-    // length to 128.
+    // Some instructions have giant device identifier or control-predecessor
+    // fields, so truncate their length to 128.
     constexpr int kMaxDeviceIdFieldLen = 128;
     if ((absl::StartsWith(line, "replica_groups=") ||
-         absl::StartsWith(line, "source_target_pairs=")) &&
+         absl::StartsWith(line, "source_target_pairs=") ||
+         absl::StartsWith(line, "control-predecessors=")) &&
         line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
           StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
@@ -1575,8 +1593,20 @@ NodeFilter MakeNodeRadiusAroundFilter(
     // are not interesting to the graph at hand.
     if (instr == root || instr->opcode() != HloOpcode::kTuple) {
       for (const HloInstruction* operand : instr->operands()) {
+        // Special logic for handling bitcasts: since sometimes bitcasts are not
+        // fused, they create a lot of extra nodes in the graph, with exactly
+        // one input and output. Adding such nodes does not "really" increase
+        // the size of the graph (since they don't add extra information), and
+        // stopping the rendering early cuts off important information (you
+        // almost never want the rendering to be cutoff at the bitcast: you'd
+        // like to see its parent).
         if (!nodes.contains(operand)) {
-          worklist.push_back({operand, depth + 1});
+          int new_depth = (operand->opcode() == HloOpcode::kBitcast ||
+                           instr->opcode() == HloOpcode::kBitcast)
+                              ? depth
+                              : depth + 1;
+
+          worklist.push_back({operand, new_depth});
         }
       }
     }
@@ -1643,17 +1673,19 @@ NodeFilter MakeNodeRadiusAroundFilter(
   // Highlight the root node.
   nodes[root] = kHighlightNode;
 
-  return NodeFilter([=](const HloInstruction* instr) {
-    auto it = nodes.find(instr);
-    if (it != nodes.end()) {
-      return it->second;
-    }
-    // Show all nodes in subcomputations.
-    if (instr->parent() != root->parent()) {
-      return kNormalNode;
-    }
-    return kHideNode;
-  });
+  return NodeFilter(
+      [=](const HloInstruction* instr) {
+        auto it = nodes.find(instr);
+        if (it != nodes.end()) {
+          return it->second;
+        }
+        // Show all nodes in subcomputations.
+        if (instr->parent() != root->parent()) {
+          return kNormalNode;
+        }
+        return kHideNode;
+      },
+      nodes.size());
 }
 
 // Gets a node filter that includes nodes on all paths from `from` to `to`.  If
@@ -1752,7 +1784,6 @@ static std::pair<int, int> FusionVisualizerStateKey(
                         computation.unique_id());
 }
 
-
 }  // namespace
 
 // Compress with zlib + b64 encode.
@@ -1801,7 +1832,7 @@ StatusOr<std::string> WrapFusionExplorer(
     const FusionVisualizerProgress& visualizer_progress,
     absl::string_view graph_title) {
   if (visualizer_progress.frames.empty()) {
-    return InternalError("Empty");
+    return Internal("Empty");
   }
 
   std::string dot_graphs =
@@ -1901,7 +1932,7 @@ StatusOr<std::string> WrapFusionExplorer(
       var area = document.getElementById('rendered');
       area.innerHTML = `${svg}<style>${css_data}</style>`;
       var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, });
+          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
       var to_highlight = frame[2].length ?
         document.querySelector(`${frame[2]}`) : null;
       if (to_highlight) {
@@ -1909,6 +1940,14 @@ StatusOr<std::string> WrapFusionExplorer(
       }
       document.getElementById('performance_note').innerText =
         `Rendering took ${(performance.now() - render_start).toFixed(2)}ms`;
+
+      // Change cursor.
+      let text_nodes = document.getElementsByTagName("text");
+      for (var el of text_nodes) {
+        if (title_to_id.has(el.innerHTML)) {
+          el.style.cursor = "pointer";
+        }
+      }
     };
     if (renderCache[dot_ptr]) {
       render_callback(renderCache[dot_ptr]);
@@ -1978,6 +2017,20 @@ StatusOr<std::string> WrapFusionExplorer(
       window.loaded = true;
       renderFrameList();
       renderCurrentFrame();
+    });
+
+    window.title_to_id = new Map();
+    for (let i=0; i < frames.length; i++) {
+       title_to_id.set(frames[i][1], i);
+     }
+
+    // Navigate to next elements on click.
+    document.addEventListener("click", (event) => {
+      let txt = event.target.innerHTML;
+      if (title_to_id.has(txt)) {
+        let id = title_to_id.get(txt);
+        window.location.hash = `#frame${id}`;
+      }
     });
   });
 
@@ -2089,6 +2142,44 @@ StatusOr<std::string> RenderGraph(const HloComputation& computation,
                                           hlo_render_options, NodeFilter())
                                  .Dump();
   return WrapDotInFormat(computation, rendered_dot, format);
+}
+
+StatusOr<std::string> RenderAllComputationsToHtml(const HloModule& module) {
+  FusionVisualizerProgress progress;
+
+  std::vector<HloInstruction*> instrs =
+      module.entry_computation()->MakeInstructionPostOrder();
+  absl::c_reverse(instrs);
+  for (const HloInstruction* instr : instrs) {
+    if (absl::c_linear_search(
+            std::vector<HloOpcode>{HloOpcode::kConstant,
+                                   HloOpcode::kGetTupleElement},
+            instr->opcode())) {
+      continue;
+    }
+
+    HloRenderOptions opts;
+    opts.show_fusion_subcomputations = true;
+    opts.show_backend_config = true;
+    opts.show_while_subcomputations = instr->opcode() == HloOpcode::kWhile;
+
+    // Dynamically adjusts the radius with a magical cutoff of 100.
+    static constexpr int64_t max_nodes_to_render = 100;
+    absl::flat_hash_set<const HloInstruction*> render_boundary;
+
+    NodeFilter filter = MakeNodeRadiusAroundFilter(instr, 2, render_boundary);
+    if (filter.GetNumRendered().value_or(1) > max_nodes_to_render) {
+      filter = MakeNodeRadiusAroundFilter(instr, 1, render_boundary);
+    }
+
+    std::string dot =
+        HloDotDumper(module.entry_computation(), instr->name(),
+                     module.config().debug_options(), opts, filter)
+            .Dump();
+    progress.AddState(dot, instr->name(), std::nullopt);
+  }
+
+  return WrapFusionExplorer(progress, module.name());
 }
 
 StatusOr<std::string> RenderNeighborhoodAround(

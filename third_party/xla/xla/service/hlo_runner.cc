@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -639,6 +639,11 @@ HloRunner::CreateExecutableWithBufferAssignment(
     if (buffer_assignment_proto != nullptr) {
       LOG(WARNING) << "Ignoring buffer assignment provided because hlo passes "
                       "are enabled.";
+    }
+    // Setup intra-op threads in module config
+    if (backend().eigen_intra_op_thread_pool() != nullptr) {
+      module->mutable_config().set_intra_op_parallelism_threads(
+          backend().eigen_intra_op_thread_pool()->NumThreads());
     }
     auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(

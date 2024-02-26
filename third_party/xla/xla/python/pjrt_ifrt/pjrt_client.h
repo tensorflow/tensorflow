@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -111,18 +111,8 @@ class PjRtClient final
     DCHECK(this);
     return pjrt_client_->platform_id();
   }
-  absl::flat_hash_map<std::string, ClientAttribute> attributes()
-      const override {
-    std::optional<PjRtPluginAttributes> attributes =
-        pjrt_client_->plugin_attributes();
-    if (!attributes.has_value()) {
-      return {};
-    }
-    return {{"pjrt_c_api_major_version",
-             ClientAttribute(attributes->pjrt_c_api_major_version)},
-            {"pjrt_c_api_minor_version",
-             ClientAttribute(attributes->pjrt_c_api_minor_version)}};
-  }
+
+  absl::flat_hash_map<std::string, ClientAttribute> attributes() const override;
 
   int device_count() const override {
     DCHECK(this);

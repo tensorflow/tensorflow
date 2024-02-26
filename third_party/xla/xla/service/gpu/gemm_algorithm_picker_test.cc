@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,9 +44,33 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
+
+  void SetUp() override {
+    const auto& gpu_cc = backend()
+                             .default_stream_executor()
+                             ->GetDeviceDescription()
+                             .gpu_compute_capability();
+
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
+      if (GetDebugOptionsForTest().xla_gpu_enable_cublaslt() &&
+          !procm->has_hipblaslt()) {
+        GTEST_SKIP() << "No gpublas-lt support on this architecture!";
+      }
+    }
+  }
 };
 
 TEST_P(GemmAlgorithmPickerTest, SetAlgorithm) {
+  auto comp = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .cuda_compute_capability();
+  if (comp.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Skipping this test for Ampere+ as it is supported and "
+                    "recommended with "
+                    "the Nvidia Volta+ GPUs.";
+  }
+
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -111,12 +135,23 @@ ENTRY main {
                 GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
-                          dot->backend_config<GemmBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          dot->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 
 TEST_P(GemmAlgorithmPickerTest, GetAlgorithmWithoutDevice) {
+  auto comp = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .cuda_compute_capability();
+  if (comp.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Skipping this test for Ampere+ as it is supported and "
+                    "recommended with "
+                    "the Nvidia Volta+ GPUs.";
+  }
+
   constexpr absl::string_view kHlo = R"(
 HloModule module
 
@@ -189,8 +224,10 @@ ENTRY main {
                 GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
-                          dot->backend_config<GemmBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          dot->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
+
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 

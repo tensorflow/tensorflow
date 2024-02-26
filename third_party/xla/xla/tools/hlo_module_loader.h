@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,7 +39,7 @@ struct Config {
 
 // Given a string composed by multiple lines, strip the log headers, if present
 // at the beginning of each line.
-std::string StripLogHeaders(const std::string& hlo_string);
+std::string StripLogHeaders(std::string_view hlo_string);
 
 // Loads an HLO module from a string.
 // The data can have the followings formats:
@@ -54,9 +55,9 @@ std::string StripLogHeaders(const std::string& hlo_string);
 // modifications before use. If the buffer assignment proto pointer is not null
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, const std::string& format,
-    hlo_module_loader_details::Config ovr_config =
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
+    const std::string& data, std::string_view format,
+    const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
     BufferAssignmentProto* buffer_assignment_proto = nullptr);
@@ -76,11 +77,10 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
 // modifications before use. If the buffer assignment proto pointer is not null
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
-    const std::string& path,
-    hlo_module_loader_details::Config ovr_config =
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
+    const std::string& path, std::string format = "",
+    const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
-    std::string format = "",
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
     BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
@@ -88,8 +88,8 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
 // The data format must be one of the following:
 // 1) A binary proto (format "pb")
 // 2) A text proto (format "pbtxt")
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
-    const std::string& data, absl::string_view format);
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromData(const std::string& data, std::string_view format);
 
 // Loads an HLO snapshot from file, only for its inputs
 // The file must be one of the following:
@@ -97,8 +97,8 @@ StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
 // 2) A text proto (with a .pbtxt extension)
 // If the format is specified (not empty), it overrides the one guessed from the
 // file extension.
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromFile(
-    const std::string& path, std::string format = "");
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromFile(const std::string& path, std::string format = "");
 
 }  // namespace xla
 

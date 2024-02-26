@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <utility>
+#include <tuple>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -55,9 +55,7 @@ class ComposableSplitterBase : public Splitter {
   //   ChunkedMessage: Metadata about the chunked fields.)
   // If the message is not split, `chunks` should only contain the original
   // message.
-  absl::StatusOr<
-      std::pair<std::vector<MessageBytes>*, ::proto_splitter::ChunkedMessage*>>
-  Split() override;
+  absl::StatusOr<ChunkedProto> Split() override;
 
   // Serializes a proto to disk.
   // The writer writes all chunks into a Riegeli file. The chunk metadata
@@ -66,9 +64,11 @@ class ComposableSplitterBase : public Splitter {
   //     attach a `.pb` or `.cpb` (chunked pb) suffix depending on whether the
   //     proto is split.
   absl::Status Write(std::string file_prefix) override;
-  absl::StatusOr<std::string> WriteToString();
+  // The bool field record whether it's saved as a chunked protobuf (true) or
+  // regular protobuf (false).
+  absl::StatusOr<std::tuple<std::string, bool>> WriteToString();
 #if !IS_OSS
-  absl::StatusOr<absl::Cord> WriteToCord();
+  absl::StatusOr<std::tuple<absl::Cord, bool>> WriteToCord();
 #endif
 
   VersionDef Version() override;
@@ -106,7 +106,7 @@ class ComposableSplitterBase : public Splitter {
   bool built_;
   tsl::protobuf::Message* message_;
   std::vector<MessageBytes> chunks_;
-  ::proto_splitter::ChunkedMessage chunked_message_;
+  ::tensorflow::proto_splitter::ChunkedMessage chunked_message_;
   ComposableSplitterBase* parent_splitter_;
   std::vector<FieldType>* fields_in_parent_;
   size_t size_ = 0;

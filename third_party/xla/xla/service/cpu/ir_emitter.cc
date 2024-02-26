@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1169,35 +1169,36 @@ Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
   return OkStatus();
 }
 
+// Data types supported by ReduceScatter and AllReduce.
+static bool DataTypeIsSupportedByReduceScatter(PrimitiveType datatype) {
+  // TODO(cheshire): Fix duplication wrt. cpu_runtime
+  switch (datatype) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+    case C64:
+    case C128:
+      return true;
+    default:
+      return false;
+  }
+}
+
 Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   CHECK_GE(crs->operand_count(), 1);
   PrimitiveType datatype = crs->operand(0)->shape().element_type();
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(crs));
 
-  bool is_datatype_supported = [&] {
-    // TODO(cheshire): Fix duplication wrt. cpu_runtime
-    switch (datatype) {
-      case PRED:
-      case S8:
-      case U8:
-      case S16:
-      case U16:
-      case S32:
-      case U32:
-      case S64:
-      case U64:
-      case F16:
-      case F32:
-      case F64:
-      case C64:
-      case C128:
-        return true;
-      default:
-        return false;
-    }
-  }();
-
-  if (!is_datatype_supported) {
+  if (!DataTypeIsSupportedByReduceScatter(datatype)) {
     return Unimplemented("AllReduce for datatype '%s' is not supported",
                          primitive_util::LowercasePrimitiveTypeName(datatype));
   }
@@ -1285,7 +1286,59 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
-  return Unimplemented("ReduceScatter is not implemented on CPU.");
+  CHECK_EQ(rs->operand_count(), 1);
+  PrimitiveType datatype = rs->operand(0)->shape().element_type();
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rs));
+
+  if (!DataTypeIsSupportedByReduceScatter(datatype)) {
+    return Unimplemented("ReduceScatter for datatype '%s' is not supported",
+                         primitive_util::LowercasePrimitiveTypeName(datatype));
+  }
+
+  if (!MatchReductionComputation(rs->to_apply()).has_value()) {
+    return Unimplemented("ReduceScatter for computation '%s' is not supported",
+                         rs->to_apply()->ToString());
+  }
+
+  std::string replica_groups = ReplicaGroupsToString(rs->replica_groups());
+  int32_t replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  Shape shape = rs->operand(0)->shape();
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      assignment_.GetUniqueSlice(rs->operand(0), {}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(rs, {}));
+  llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
+
+  bool use_global_device_ids =
+      Cast<HloReduceScatterInstruction>(rs)->use_global_device_ids();
+
+  EmitCallToFunc(
+      runtime::kReduceScatterSymbolName,
+      {/*run_options=*/GetExecutableRunOptionsArgument(),
+       /*replica_groups_str=*/replica_groups_v,
+       /*replica_groups_str_size=*/b_.getInt32(replica_groups_size),
+
+       /*channel_id_present=*/
+       b_.getInt32(static_cast<int32_t>(rs->channel_id().has_value())),
+       /*use_global_device_ids=*/
+       b_.getInt32(static_cast<int32_t>(use_global_device_ids)),
+       /*op_id=*/
+       b_.getInt64(rs->channel_id().has_value() ? *rs->channel_id()
+                                                : rs->GetModule()->unique_id()),
+       /*reduction_kind=*/
+       b_.getInt32(
+           static_cast<int32_t>(*MatchReductionComputation(rs->to_apply()))),
+       /*element_type=*/
+       b_.getInt32(static_cast<int32_t>(datatype)),
+       /*shape=*/b_.getInt64(ShapeUtil::ElementsIn(rs->shape())),
+       /*input_buffer=*/input_buffer,
+       /*output_buffer=*/output_buffer},
+      b_.getVoidTy());
+
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
@@ -1339,6 +1392,57 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
                      /*destination_buffers=*/output_buffers,
                  },
                  b_.getVoidTy());
+
+  llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
+  return OkStatus();
+}
+
+Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
+
+  std::string replica_groups =
+      ReplicaGroupsToString(instruction->replica_groups());
+  int32_t replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  std::vector<llvm::Value*> input_buffer_ptrs;
+  std::vector<llvm::Value*> output_buffer_ptrs;
+
+  const HloInstruction* op = instruction->operand(0);
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice in_slice,
+                      assignment_.GetUniqueSlice(op, {}));
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+                      assignment_.GetUniqueSlice(instruction, {}));
+  const Shape& operand_shape = op->shape();
+  CHECK(op->shape().IsArray())
+      << "Operand to all-gather must be arrays: " << instruction->ToString();
+  llvm::Value* output_buffer = EmitBufferPointer(out_slice, operand_shape);
+  llvm::Value* input_buffer = GetEmittedValueFor(op);
+  int64_t buffer_size = in_slice.size();
+
+  bool use_global_device_ids =
+      Cast<HloAllGatherInstruction>(instruction)->use_global_device_ids();
+
+  EmitCallToFunc(
+      runtime::kAllGatherSymbolName,
+      {
+          /*run_options=*/GetExecutableRunOptionsArgument(),
+          /*channel_id_present=*/
+          b_.getInt32(
+              static_cast<int32_t>(instruction->channel_id().has_value())),
+          /*use_global_device_ids=*/
+          b_.getInt32(static_cast<int32_t>(use_global_device_ids)),
+          /*op_id=*/
+          b_.getInt64(instruction->channel_id().has_value()
+                          ? *instruction->channel_id()
+                          : instruction->GetModule()->unique_id()),
+          /*replica_groups_str=*/replica_groups_v,
+          /*replica_groups_str_size=*/b_.getInt32(replica_groups_size),
+          /*buffer_size=*/b_.getInt64(buffer_size),
+          /*source_buffer=*/input_buffer,
+          /*destination_buffer=*/output_buffer,
+      },
+      b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
   return OkStatus();
@@ -2112,7 +2216,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
     if (padding_dimension.edge_padding_low() < 0 ||
         padding_dimension.edge_padding_high() < 0) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "Encountered negative padding in IrEmitter on CPU. "
           "This should have been eliminated at the HLO level. ",
           pad->ToString());
@@ -2378,13 +2482,16 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   const HloInstruction* input = hlo->operand(0);
   const int64_t k = hlo->shape().tuple_shapes(0).dimensions().back();
   const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
-  TF_RET_CHECK(input->shape().element_type() == F32);
+  TF_RET_CHECK(input->shape().element_type() == F32) << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      hlo->shape().tuple_shapes(0).layout()));
+      hlo->shape().tuple_shapes(0).layout()))
+      << hlo->ToString();
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
-      hlo->shape().tuple_shapes(1).layout()));
+      hlo->shape().tuple_shapes(1).layout()))
+      << hlo->ToString();
   TF_RET_CHECK(
-      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()));
+      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()))
+      << hlo->ToString();
 
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice values_slice,
                       assignment_.GetUniqueSlice(hlo->operand(0), {}));
@@ -2410,18 +2517,47 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
-  auto lhs = custom_call->operand(0);
-  llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
-  auto lhs_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, lhs_array);
+Status IrEmitter::HandleOneDnnMatMulCalls(HloInstruction* custom_call,
+                                          std::string runtime_symbol_name) {
+  // We would like to emit LLVM IR for the following function call
+  //      custom_call_target(void* result, void** args)
+  // args can be thought of an array of pointers allocated on the stack,
+  // i.e., alloca [nargs x ptr], as such
+  //      args[0]: ptr to nargs
+  //      args[1]: ptr to ExecutableRunOptions
+  //      args[2]: ptr to OneDnnMatMulConfig
+  //      args[3...]: ptrs to operands
+  //  This allows us to pass variable number of operands to the
+  //  custom_call_target function.
+  //
+  //  Currently, we assume that neither operands nor results are packed into
+  //  tuple(s).
 
-  auto rhs = custom_call->operand(1);
-  llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
-  auto rhs_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, rhs_array);
+  // First three arguments: nargs, ExecutableRunOptions, and
+  // OneDnnMatMulConfig.
+  const int nargs_offset = 3;
+  const int num_operands = custom_call->operand_count();
+  const int nargs = nargs_offset + num_operands;
+  int arg_indx = 0;
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
-  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
-  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+  llvm::Type* i64_type = b_.getInt64Ty();
+  llvm::Type* ptr_type = b_.getPtrTy();
+  llvm::ArrayType* ptr_array_type = llvm::ArrayType::get(ptr_type, nargs);
+  llvm::Value* args_val = llvm::UndefValue::get(ptr_array_type);
+
+  // Insert nargs.
+  llvm::Value* nargs_val = b_.getInt64(nargs);
+  llvm::Value* nargs_ptr =
+      llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
+  b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  b_.CreateStore(nargs_val, nargs_ptr);
+  args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
+
+  // Insert ExecutableRunOptions.
+  llvm::Value* run_opts_val = GetExecutableRunOptionsArgument();
+  args_val = b_.CreateInsertValue(args_val, run_opts_val, arg_indx++);
+
+  // Insert OneDnnMatMulConfig.
 
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   auto backend_config = typed_custom_call->backend_config<BackendConfig>();
@@ -2429,19 +2565,143 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   matmul_config.CopyFrom(backend_config->onednn_matmul_config());
   std::string str_config;
   matmul_config.SerializeToString(&str_config);
+  llvm::Value* matmul_config_val =
+      b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
+  args_val = b_.CreateInsertValue(args_val, matmul_config_val, arg_indx++);
 
-  EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
+  // Insert operands.
+  std::vector<StackAlloca> operands_stack_alloca;
+  operands_stack_alloca.reserve(num_operands);
+  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
+                    [this](HloInstruction* instr) {
+                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
+                      return GetAllocaAndEmitMemrefInfo(b_, ir_array);
+                    });
+  for (int i = 0; i < num_operands; ++i) {
+    args_val = b_.CreateInsertValue(args_val, operands_stack_alloca[i].value,
+                                    arg_indx++);
+  }
+  TF_RET_CHECK(nargs == arg_indx)
+      << "Number of arguments don't equal the last argument index.";
+
+  llvm::Value* args_ptr =
+      llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "matmul.args", &b_);
+  b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  b_.CreateStore(args_val, args_ptr);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
+  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+
+  EmitCallToFunc(std::move(runtime_symbol_name),
+                 {result_stack_alloca.value, args_ptr}, b_.getVoidTy());
+
+  // Lifetime ends for all stack allocations.
+  b_.CreateLifetimeEnd(nargs_ptr, b_.getInt64(-1));
+  for (int i = 0; i < num_operands; ++i) {
+    operands_stack_alloca[i].EmitLifetimeEnd();
+  }
+  b_.CreateLifetimeEnd(args_ptr, b_.getInt64(-1));
+  result_stack_alloca.EmitLifetimeEnd();
+
+  return OkStatus();
+}
+
+Status IrEmitter::HandleOneDnnLayerNorm(HloInstruction* custom_call) {
+  //      args[0]: ptr to nargs
+  //      args[1]: ptr to ExecutableRunOptions
+  //      args[2]: ptr to OneDnnLayerNormConfig
+  //      args[3...]: ptrs to operands
+
+  // First three arguments: nargs, ExecutableRunOptions, and
+  // OneDnnLayerNormConfig.
+  const int nargs_offset = 3;
+  const int num_operands = custom_call->operand_count();
+  const int nargs = nargs_offset + num_operands;
+  int arg_indx = 0;
+
+  llvm::Type* i64_type = b_.getInt64Ty();
+  llvm::Type* ptr_type = b_.getPtrTy();
+  llvm::ArrayType* ptr_array_type = llvm::ArrayType::get(ptr_type, nargs);
+  llvm::Value* args_val = llvm::UndefValue::get(ptr_array_type);
+
+  // Insert nargs.
+  llvm::Value* nargs_val = b_.getInt64(nargs);
+  llvm::Value* nargs_ptr =
+      llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
+  b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  b_.CreateStore(nargs_val, nargs_ptr);
+  args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
+
+  // Insert ExecutableRunOptions.
+  llvm::Value* run_opts_val = GetExecutableRunOptionsArgument();
+  args_val = b_.CreateInsertValue(args_val, run_opts_val, arg_indx++);
+
+  // Insert OneDnnLayerNormConfig.
+  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
+  auto backend_config = typed_custom_call->backend_config<BackendConfig>();
+  OneDnnLayerNormConfig ln_config;
+  ln_config.CopyFrom(backend_config->onednn_layer_norm_config());
+  std::string str_config;
+  ln_config.SerializeToString(&str_config);
+  llvm::Value* ln_config_val =
+      b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
+  args_val = b_.CreateInsertValue(args_val, ln_config_val, arg_indx++);
+
+  // Insert operands.
+  std::vector<StackAlloca> operands_stack_alloca;
+  operands_stack_alloca.reserve(num_operands);
+  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
+                    [this](HloInstruction* instr) {
+                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
+                      return GetAllocaAndEmitMemrefInfo(b_, ir_array);
+                    });
+  for (int i = 0; i < num_operands; ++i) {
+    args_val = b_.CreateInsertValue(args_val, operands_stack_alloca[i].value,
+                                    arg_indx++);
+  }
+
+  llvm::Value* args_ptr =
+      llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "layernorm.args", &b_);
+  b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  b_.CreateStore(args_val, args_ptr);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
+  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+
+  EmitCallToFunc(runtime::kOneDnnLayerNormSymbolName,
+                 {result_stack_alloca.value, args_ptr}, b_.getVoidTy());
+
+  // Lifetime ends for all stack allocations.
+  b_.CreateLifetimeEnd(nargs_ptr, b_.getInt64(-1));
+  for (int i = 0; i < num_operands; ++i) {
+    operands_stack_alloca[i].EmitLifetimeEnd();
+  }
+  b_.CreateLifetimeEnd(args_ptr, b_.getInt64(-1));
+  result_stack_alloca.EmitLifetimeEnd();
+
+  return OkStatus();
+}
+
+Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
+  auto input = custom_call->operand(0);
+  llvm_ir::IrArray input_array(GetIrArrayFor(input));
+  auto input_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, input_array);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
+  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+
+  EmitCallToFunc(runtime::kOneDnnSoftmaxSymbolName,
                  {
                      GetExecutableRunOptionsArgument(),
-                     lhs_stack_alloca.value,
-                     rhs_stack_alloca.value,
+                     input_stack_alloca.value,
                      result_stack_alloca.value,
-                     b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config)),
                  },
                  b_.getVoidTy());
 
-  lhs_stack_alloca.EmitLifetimeEnd();
-  rhs_stack_alloca.EmitLifetimeEnd();
+  input_stack_alloca.EmitLifetimeEnd();
   result_stack_alloca.EmitLifetimeEnd();
 
   return OkStatus();
@@ -2460,7 +2720,18 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   if (custom_call->custom_call_target() == "__onednn$matmul") {
-    return HandleOneDnnMatMul(custom_call);
+    return HandleOneDnnMatMulCalls(custom_call,
+                                   runtime::kOneDnnMatMulSymbolName);
+  }
+  if (custom_call->custom_call_target() == "__onednn$softmax") {
+    return HandleOneDnnSoftmax(custom_call);
+  }
+  if (custom_call->custom_call_target() == "__onednn$layernorm") {
+    return HandleOneDnnLayerNorm(custom_call);
+  }
+  if (custom_call->custom_call_target() == "__onednn$matmul_reorder") {
+    return HandleOneDnnMatMulCalls(custom_call,
+                                   runtime::kOneDnnMatMulReorderSymbolName);
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   absl::Span<HloInstruction* const> operands(custom_call->operands());
@@ -2528,7 +2799,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       break;
     }
     default:
-      return InternalError(
+      return Internal(
           "Unknown custom-call API version enum value: %d (%s)",
           typed_custom_call->api_version(),
           CustomCallApiVersion_Name(typed_custom_call->api_version()));
@@ -2556,7 +2827,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
           const BufferAllocation::Slice slice_b =
               assignment_.GetUniqueSlice(b, index).value();
           if (slice_a != slice_b) {
-            return InternalError(
+            return Internal(
                 "instruction %s %s does not share slice with "
                 "instruction %s %s",
                 a->ToString(), slice_a.ToString(), b->ToString(),

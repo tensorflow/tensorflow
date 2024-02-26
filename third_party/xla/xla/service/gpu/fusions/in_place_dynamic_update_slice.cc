@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,32 +14,36 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
-    IrEmitterContext& ir_emitter_context, int kernel_index) const {
+LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
-  return CalculateLaunchDimensions(update_shape,
-                                   ir_emitter_context.gpu_device_info());
+  return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
-Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
-    llvm::IRBuilder<>* builder, int kernel_index) const {
+absl::Status InPlaceDynamicUpdateSliceFusion::EmitKernel(
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
+    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
+    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {
   // In case a dynamic slice update's output is bitcasted, we need to ensure we
   // write to the output array using the shape and layout of the dynamic slice
   // update. This cast is known to be safe to do iff, in the case the output of
@@ -52,6 +56,7 @@ Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
   }
 
   auto* fused_computation = fusion.fused_instructions_computation();
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (auto [index, input] : llvm::enumerate(inputs)) {
     auto fused_operand = fused_computation->parameter_instruction(index);

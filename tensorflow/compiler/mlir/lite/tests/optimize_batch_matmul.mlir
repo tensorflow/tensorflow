@@ -101,3 +101,18 @@ func.func @Batchmatmul2FullyconnectedNonConstY(%arg0: tensor<4x128x2xf32>, %arg1
   // CHECK: %[[BMM_RES:.*]] = "tfl.batch_matmul"
   // CHECK-NEXT: return %[[BMM_RES]]
 }
+
+// CHECK-LABEL: Batchmatmul2FullyconnectedQDQ
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @Batchmatmul2FullyconnectedQDQ(%arg0: tensor<4x128x2xf32>, %arg1: tensor<2x1xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<[[1.0], [2.0]]> : tensor<2x1xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>} : (tensor<2x1xf32>) -> tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>
+  %2 = "tfl.dequantize"(%1) : (tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<2x1xf32>
+  %3 = "tfl.batch_matmul"(%arg0, %2) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %3 : tensor<4x128x1xf32>
+  // CHECK: %[[TRANSPOSED_X:.*]] = "tfl.transpose"
+  // CHECK-SAME: (tensor<2x1xf32>, tensor<2xi32>) -> tensor<1x2xf32>
+  // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[TRANSPOSED_X]]
+  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-NEXT: return %[[FC_RES]]
+}

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "absl/base/optimization.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
@@ -38,11 +42,20 @@ static const char* ToString(cudaError_t error) {
     }                                                       \
   } while (0)
 
-tsl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
+absl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
+  VLOG(2) << "Get CUDA function from a symbol: " << symbol;
   cudaFunction_t func;
   RETURN_IF_CUDA_RES_ERROR(cudaGetFuncBySymbol(&func, symbol),
                            "Failed call to cudaGetFuncBySymbol");
   return reinterpret_cast<CUfunction>(func);
+}
+
+absl::StatusOr<int32_t> GpuRuntime::GetRuntimeVersion() {
+  VLOG(2) << "Get CUDA runtime version";
+  int32_t version;
+  RETURN_IF_CUDA_RES_ERROR(cudaRuntimeGetVersion(&version),
+                           "Failed call to cudaGetRuntimeVersion");
+  return version;
 }
 
 }  // namespace stream_executor::gpu

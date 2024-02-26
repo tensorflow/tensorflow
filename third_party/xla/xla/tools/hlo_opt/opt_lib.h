@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,34 +18,57 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
-#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/types.h"
 
 namespace xla {
 
-// Platform-specific provider of `hlo_translate` functionality.
-struct OptProvider {
+// Platform-specific provider of `hlo-opt` functionality.
+class OptProvider {
+ public:
   // Generates textual output for a given stage on a given platform, returns
   // empty optional if the stage is not supported.
-  virtual StatusOr<std::optional<std::string>> GenerateStage(
-      std::unique_ptr<HloModule> module, absl::string_view stage) = 0;
+  virtual absl::StatusOr<std::optional<std::string>> GenerateStage(
+      std::unique_ptr<HloModule> module, absl::string_view stage);
 
   virtual ~OptProvider() = default;
 
-  virtual std::vector<std::string> SupportedStages() = 0;
+  // Returns a set of stages supported by the opt provider.
+  virtual std::set<std::string> SupportedStages();
 
+  // Registers a given provider for a given platform.
   static void RegisterForPlatform(
-      se::Platform::Id platform,
-      std::unique_ptr<OptProvider> translate_provider);
+      std::string platform, std::unique_ptr<OptProvider> translate_provider);
 
-  static OptProvider* ProviderForPlatform(se::Platform::Id platform);
+  // Gets a provider for a given platform.
+  static absl::StatusOr<OptProvider *> ProviderForPlatform(
+      std::string platform);
+
+ protected:
+  // Returns platform name associated with the provider.
+  virtual std::string GetPlatformName() = 0;
+
+  // Returns a stream executor for the provider (could be nullptr).
+  virtual absl::StatusOr<se::StreamExecutor *> GetExecutor();
+
+  // Generates executable from a given input module.
+  absl::StatusOr<std::unique_ptr<Executable>> GetExecutable(
+      std::unique_ptr<HloModule> input_module);
+
+  // Generates optimized HLO.
+  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedHlo(
+      std::unique_ptr<HloModule> input_module);
+
+  // Gets a compiler associated with the provider.
+  virtual absl::StatusOr<Compiler *> GetCompiler();
 };
 
 }  // namespace xla

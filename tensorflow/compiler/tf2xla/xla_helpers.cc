@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -85,7 +86,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 
   *output = input.Clone();
   output->mutable_shape_do_not_use()->Swap(&shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
@@ -109,7 +110,7 @@ Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
       xla::Eq(indices, xla::Iota(builder, iota_shape, axis), broadcast_dims),
       xla::Broadcast(on_value, output_shape.dim_sizes()),
       xla::Broadcast(off_value, output_shape.dim_sizes()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
@@ -246,11 +247,13 @@ Status ResolveDeviceAssignment(
   }
   const std::string& communicator_key =
       params->group.runtime_details.communicator_key;
-  gpu_options.set_nccl_unique_id_callback(
-      [=](const xla::gpu::NcclCliqueKey& key) { return communicator_key; });
+  gpu_options.set_nccl_clique_id_callback(
+      [=](const xla::gpu::NcclCliqueKey& key) {
+        return xla::gpu::NcclCliqueId::FromString(communicator_key);
+      });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace tensorflow

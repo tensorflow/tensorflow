@@ -72,7 +72,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 
   LogicalResult matchAndRewrite(TFL::CustomOp op,
                                 PatternRewriter& rewriter) const override {
-    if (!op.getCustomCode().startswith(kFlexOpNamePrefix)) {
+    if (!op.getCustomCode().starts_with(kFlexOpNamePrefix)) {
       return failure();
     }
 

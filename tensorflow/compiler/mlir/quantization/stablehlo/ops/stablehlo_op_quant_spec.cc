@@ -38,7 +38,7 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
     auto entry_function =
         call_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function");
     StringRef function_name = entry_function.getValue();
-    if (!function_name.startswith("composite_")) {
+    if (!function_name.starts_with("composite_")) {
       return spec;
     }
     if (function_name.contains("conv")) {
@@ -60,8 +60,8 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
                                   quant::GetUniformQuantizedTypeForBias};
       }
     }
-    for (auto quantizable_operand : spec->coeff_op_quant_dim) {
-      spec->quantizable_operands.insert(quantizable_operand.first);
+    for (const auto [operand_idx, per_channel_dim] : spec->coeff_op_quant_dim) {
+      spec->quantizable_operands.insert(operand_idx);
     }
   }
   return spec;
@@ -69,19 +69,19 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
 
 std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
   auto scale_spec = std::make_unique<OpQuantScaleSpec>();
-  // TODO - b/307619822: Add below ops to the spec with unit tests.
-  // mlir::stablehlo::GatherOp, mlir::stablehlo::SliceOp,
-  // mlir::stablehlo::BroadcastInDimOp
-  if (llvm::isa<mlir::stablehlo::ConcatenateOp, mlir::stablehlo::ConvertOp,
-                mlir::stablehlo::PadOp, mlir::stablehlo::ReshapeOp,
-                mlir::stablehlo::SelectOp, mlir::stablehlo::TransposeOp>(op)) {
+  if (llvm::isa<mlir::stablehlo::BroadcastInDimOp,
+                mlir::stablehlo::ConcatenateOp,
+                mlir::stablehlo::DynamicReshapeOp, mlir::stablehlo::GatherOp,
+                mlir::stablehlo::PadOp, mlir::stablehlo::ReduceWindowOp,
+                mlir::stablehlo::ReshapeOp, mlir::stablehlo::SelectOp,
+                mlir::stablehlo::SliceOp, mlir::stablehlo::TransposeOp>(op)) {
     scale_spec->has_same_scale_requirement = true;
   }
   return scale_spec;
 }
 
 bool IsOpQuantizableStableHlo(Operation* op) {
-  if (mlir::isa<func::ConstantOp, mlir::stablehlo::ConstantOp>(op)) {
+  if (isa<func::ConstantOp, mlir::stablehlo::ConstantOp>(op)) {
     // Constant ops do not have QuantizableResult attribute but can be
     // quantized.
     return true;

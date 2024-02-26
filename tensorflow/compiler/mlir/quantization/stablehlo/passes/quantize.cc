@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_pattern.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -55,22 +56,22 @@ struct StableHloQuantizationBase
                                      /*VerifierT=*/void, RootOpT>(
             ctx, quant_params) {}
 
-  static bool IsQuantizableCustomOp(Operation* op,
+  static bool IsQuantizableCustomOp(Operation& op,
                                     const CustomMap& custom_op_map) {
     return false;
   }
 
   static bool AllowDynamicRangeQuantizedOperand(
-      Operation* quantized_op, const CustomMap& custom_op_map) {
+      Operation& quantized_op, const CustomMap& custom_op_map) {
     return false;
   }
 
-  static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
+  static bool AllowDynamicRangeQuantizedResult(Operation& quantized_op,
                                                const CustomMap& custom_op_map) {
     return false;
   }
 
-  static bool IsWeightOnlyOp(Operation* quantized_op,
+  static bool IsWeightOnlyOp(Operation& quantized_op,
                              absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {
@@ -104,19 +105,26 @@ class QuantizePass : public impl::QuantizePassBase<QuantizePass> {
 
   explicit QuantizePass() = default;
 
-  explicit QuantizePass(const QuantizationSpecs& quant_specs)
-      : quant_specs_(quant_specs) {}
+  explicit QuantizePass(const QuantizationSpecs& quant_specs,
+                        bool enable_per_channel_quantized_weight)
+      : quant_specs_(quant_specs),
+        enable_per_channel_quantized_weight_(
+            enable_per_channel_quantized_weight) {}
 
-  QuantizePass(const QuantizePass& other) : quant_specs_(other.quant_specs_) {}
+  QuantizePass(const QuantizePass& other)
+      : quant_specs_(other.quant_specs_),
+        enable_per_channel_quantized_weight_(
+            other.enable_per_channel_quantized_weight_) {}
 
  private:
   void runOnOperation() override;
 
   QuantizationSpecs quant_specs_;
+  bool enable_per_channel_quantized_weight_;
 };
 
 void QuantizePass::runOnOperation() {
-  func::FuncOp func = getOperation();
+  ModuleOp module_op = getOperation();
   MLIRContext& ctx = getContext();
 
   NumericVerifySpec numeric_verify_spec;
@@ -129,22 +137,26 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
+  PopulateQuantizeOpWithRegionPattern(ctx, patterns);
+  PopulateFusedGemmStylePatterns(ctx, patterns,
+                                 enable_per_channel_quantized_weight_);
+  PopulateQuantizeSingularOpPatterns(ctx, patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     // There are cases where no rewrites happen even if a pattern matches,
     // causing this to result in a convergence failure. Consider this as a
     // best-effort.
-    // TODO: b/305469508 - Make QuantizationPattern converge if there are no
-    // patterns that are rewritable.
-    func.emitWarning("Failed to converge pattern at QuantizePass.");
+    module_op.emitWarning("Failed to converge pattern at QuantizePass.");
   }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    const QuantizationSpecs& quantization_specs) {
-  return std::make_unique<QuantizePass>(quantization_specs);
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
+    const QuantizationSpecs& quantization_specs,
+    bool enable_per_channel_quantized_weight) {
+  return std::make_unique<QuantizePass>(quantization_specs,
+                                        enable_per_channel_quantized_weight);
 }
 
 }  // namespace mlir::quant::stablehlo

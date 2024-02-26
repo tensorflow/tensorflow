@@ -42,6 +42,8 @@ JAX_PACKAGES=(
   "typing_extensions"
   "ml_dtypes>=0.3.0"
   "importlib_metadata>=4.6"
+  "flatbuffers"
+  "build"
 )
 
 PACKAGES=(
@@ -74,7 +76,6 @@ PACKAGES=(
   "tb-nightly"
   "tblib"
   "termcolor"
-  "tf-estimator-nightly"
   "werkzeug"
   "wheel"
 )

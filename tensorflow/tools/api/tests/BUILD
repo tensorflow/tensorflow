@@ -31,14 +31,13 @@ py_strict_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",  # b/198669105
+        "no_oss",  # Runs explicitly in OSS
         "no_pip",
         "no_rocm",
         "no_windows",  # Bugs due to some paths.
     ],
     deps = [
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
-        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",

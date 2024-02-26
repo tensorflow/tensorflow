@@ -213,7 +213,7 @@ xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
             TF_LITE_KERNEL_LOG(context,
                                "unsupported zero-point value %d in channel "
                                "%d of INT8 tensor %d in XNNPACK delegate",
-                               quantization_params->zero_point[c], c, t);
+                               quantization_params->zero_point->data[c], c, t);
             return xnn_datatype_invalid;
           }
         }
@@ -380,7 +380,7 @@ class VariableHolder {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "global id mismatch for tensor "
-          "%d, expected %zu, found %zu at VAR_HANDLE node %d",
+          "%d, expected %u, found %u at VAR_HANDLE node %d",
           tensor_id, global_id, it.first->second, node_index);
       return kTfLiteError;
     }
@@ -434,9 +434,10 @@ class VariableHolder {
       for (size_t i = 0; i < NumDimensions(found_tensor); i++) {
         if (found_tensor->dims->data[i] != tensor->dims->data[i]) {
           TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "mismatch between dimension %d of "
+                                   "mismatch between dimension %zu of "
                                    "variable tensor id %d: expected %d, got %d",
-                                   i, local_id, dims[i], tensor->dims->data[i]);
+                                   i, local_id, dims->data[i],
+                                   tensor->dims->data[i]);
           return kTfLiteError;
         }
       }
@@ -532,8 +533,12 @@ class Delegate {
   }
 
   bool enable_latest_operators() const {
+#ifdef XNNPACK_DELEGATE_USE_LATEST_OPS
+    return true;
+#else
     return (options_.flags &
             TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS) != 0;
+#endif
   }
 
   bool support_variable_ops() const {
@@ -552,8 +557,12 @@ class Delegate {
   }
 
   bool transient_indirection_buffer() const {
+#ifdef XNNPACK_DELEGATE_USE_TRANSIENT_INDIRECTION_BUFFERS
+    return true;
+#else
     return (options_.flags &
             TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER) != 0;
+#endif
   }
 
   bool experimental_adaptive_avx_optimization() const {
@@ -896,7 +905,7 @@ class Subgraph {
         const auto it = global_id_to_xnnpack_id.find(global_id);
         if (it == global_id_to_xnnpack_id.end()) {
           TF_LITE_KERNEL_LOG(context,
-                             "could not find variable with global id %zu in "
+                             "could not find variable with global id %u in "
                              "context %p for local tensor %d",
                              global_id, context, t);
           return nullptr;
@@ -1570,7 +1579,7 @@ class Subgraph {
                                      BuiltinOperator op_type, int node_index) {
     if (node->inputs->size != expected_num_inputs) {
       TF_LITE_MAYBE_KERNEL_LOG(
-          context, "unexpected number of inputs (%d != %d) in node #%d",
+          context, "unexpected number of inputs (%d != %d) in node %s #%d",
           node->inputs->size, expected_num_inputs,
           EnumNameBuiltinOperator(op_type), node_index);
       return kTfLiteError;
@@ -2056,8 +2065,8 @@ class Subgraph {
             "unexpected value %d of shape dimension #%d in "
             "tensor #%d in %s node #%d: "
             "expected 1 for non-channel dimensions",
-            tensor.dims[i], i, tensor_index, EnumNameBuiltinOperator(op_type),
-            node_index);
+            tensor.dims->data[i], i, tensor_index,
+            EnumNameBuiltinOperator(op_type), node_index);
         return kTfLiteError;
       }
     }
@@ -2916,7 +2925,7 @@ class Subgraph {
             "failed to delegate %s node #%d input tensor #%d and input tensor "
             "#%d.  Mismatch at dimensions %zu (%d != %d)",
             EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-            node->inputs->data[0], node->inputs->data[1],
+            node->inputs->data[0], node->inputs->data[1], i,
             input1_tensor.dims->data[i], input2_tensor.dims->data[i]);
         return kTfLiteError;
       }
@@ -2926,7 +2935,7 @@ class Subgraph {
             "failed to delegate %s node #%d input tensor #%d and output tensor "
             "#%d.  Mismatch at dimensions %zu (%d != %d)",
             EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-            node->inputs->data[0], node->outputs->data[0],
+            node->inputs->data[0], node->outputs->data[0], i,
             input1_tensor.dims->data[i], output_tensor.dims->data[i]);
         return kTfLiteError;
       }
@@ -3041,7 +3050,7 @@ class Subgraph {
       const TfLiteConcatenationParams* concat_params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 4, 1,
+        CheckNumInputsAndOutputs(logging_context, node, 2, 5, 1,
                                  BuiltinOperator_CONCATENATION, node_index));
     const int num_inputs = NumInputs(node);
 
@@ -3141,6 +3150,16 @@ class Subgraph {
             /*input2_id=*/input_output_tensors.at(node->inputs->data[1]),
             /*input3_id=*/input_output_tensors.at(node->inputs->data[2]),
             /*input4_id=*/input_output_tensors.at(node->inputs->data[3]),
+            /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+            /*flags=*/0);
+      } else if (num_inputs == 5) {
+        status = xnn_define_concatenate5(
+            subgraph, axis,
+            /*input1_id=*/input_output_tensors.at(node->inputs->data[0]),
+            /*input2_id=*/input_output_tensors.at(node->inputs->data[1]),
+            /*input3_id=*/input_output_tensors.at(node->inputs->data[2]),
+            /*input4_id=*/input_output_tensors.at(node->inputs->data[3]),
+            /*input5_id=*/input_output_tensors.at(node->inputs->data[4]),
             /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
             /*flags=*/0);
       }
@@ -3688,8 +3707,9 @@ class Subgraph {
       TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
           logging_context, filter_tensor, node->inputs->data[1], node_index));
     } else {
-      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
-          delegate, logging_context, filter_tensor, node->inputs->data[1],
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
+          delegate, logging_context, filter_tensor,
+          /*expected_quantized_dimension=*/0, node->inputs->data[1],
           node_index));
       if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
         TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
@@ -4255,8 +4275,11 @@ class Subgraph {
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
     int expected_output_dims = 4;
+    uint32_t flags = 0;
     if (!reducer_params->keep_dims) {
       expected_output_dims -= num_reduction_axes;
+    } else {
+      flags = XNN_FLAG_KEEP_DIMS;
     }
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, output_tensor, expected_output_dims,
@@ -4264,7 +4287,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
-    uint32_t flags = 0;
     const float output_min = -std::numeric_limits<float>::infinity();
     const float output_max = +std::numeric_limits<float>::infinity();
 
@@ -4421,6 +4443,7 @@ class Subgraph {
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
     if (subgraph != nullptr) {
+      uint32_t flags = reducer_params->keep_dims ? XNN_FLAG_KEEP_DIMS : 0;
       xnn_status status = xnn_status_success;
       switch (num_reduction_axes) {
         case 1:
@@ -4430,7 +4453,7 @@ class Subgraph {
               /*output_max=*/+std::numeric_limits<float>::infinity(),
               /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
               /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              /*flags=*/0);
+              flags);
           break;
         case 2:
           status = xnn_define_global_average_pooling_2d(
@@ -4439,7 +4462,7 @@ class Subgraph {
               /*output_max=*/+std::numeric_limits<float>::infinity(),
               /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
               /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              /*flags=*/0);
+              flags);
           break;
         default:
           break;
@@ -5184,6 +5207,8 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
+    std::array<size_t, XNN_MAX_TENSOR_DIMS> new_shape;
+    int num_new_dimensions;
     if (node->inputs->size == 2) {
       const TfLiteTensor& shape_tensor = tensors[node->inputs->data[1]];
       TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, shape_tensor,
@@ -5192,8 +5217,29 @@ class Subgraph {
       TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
           logging_context, shape_tensor, /*squeeze_dims=*/true,
           node->inputs->data[1], BuiltinOperator_RESHAPE, node_index));
-      TF_LITE_ENSURE_STATUS(CheckTensorStaticOrPersistentRoAllocation(
-          logging_context, shape_tensor, node->inputs->data[1], node_index));
+      TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+          logging_context, shape_tensor, node->inputs->data[1],
+          BuiltinOperator_RESHAPE, node_index));
+      num_new_dimensions = NumElements(&shape_tensor);
+      for (int i = 0; i < num_new_dimensions; ++i) {
+        if (shape_tensor.data.i32[i] == -1) {
+          new_shape[i] = 0;
+        } else {
+          new_shape[i] = shape_tensor.data.i32[i];
+        }
+      }
+    } else {
+      num_new_dimensions = reshape_params->num_dimensions;
+      if (num_new_dimensions == 1 && reshape_params->shape[0] == 0) {
+        num_new_dimensions = 0;
+      }
+      for (int i = 0; i < num_new_dimensions; ++i) {
+        if (reshape_params->shape[i] == -1) {
+          new_shape[i] = 0;
+        } else {
+          new_shape[i] = reshape_params->shape[i];
+        }
+      }
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -5207,10 +5253,6 @@ class Subgraph {
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
     if (subgraph != nullptr) {
-      std::array<size_t, XNN_MAX_TENSOR_DIMS> new_shape;
-      std::copy(&output_tensor.dims->data[0],
-                &output_tensor.dims->data[NumDimensions(&output_tensor)],
-                new_shape.begin());
       const xnn_status status = xnn_define_static_reshape(
           subgraph, static_cast<size_t>(NumDimensions(&output_tensor)),
           new_shape.data(),
@@ -5449,7 +5491,7 @@ class Subgraph {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
                                  "size %" PRId64
                                  " does not match output shape %d at "
-                                 "dimension %d in SLICE node #%d",
+                                 "dimension %zu in SLICE node #%d",
                                  size[i], output_shape->data[i], i, node_index);
         return kTfLiteError;
       }
@@ -5950,7 +5992,7 @@ class Subgraph {
     for (size_t i = 0; i < num_dims; i++) {
       if (stride_data[i] != 1) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "stride at dimension %d, %d, must be 1"
+                                 "stride at dimension %zu, %d, must be 1"
                                  "in STRIDED_SLICE node #%d",
                                  i, stride_data[i], node_index);
         return kTfLiteError;
@@ -6263,7 +6305,7 @@ class Subgraph {
           logging_context,
           "transpose convolution kernel input channel dimension (%d) "
           "doesn't match filter input channel (%d) in node #%d",
-          input_channels, input_tensor_dims[3]);
+          input_channels, input_tensor_dims[3], node_index);
       return kTfLiteError;
     }
 
@@ -6571,7 +6613,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
 
     if (node->inputs->size != 1) {
       TF_LITE_KERNEL_LOG(
-          context, "unexpected number of inputs (%d) in %s node %d",
+          context, "unexpected number of inputs (%d) in %d node %d",
           node->inputs->size,
           static_cast<BuiltinOperator>(registration->builtin_code),
           producer_index);
@@ -6581,7 +6623,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
 
     if (node->outputs->size != 1) {
       TF_LITE_KERNEL_LOG(
-          context, "unexpected number of outputs (%d) in %s node %d",
+          context, "unexpected number of outputs (%d) in %d node %d",
           node->outputs->size,
           static_cast<BuiltinOperator>(registration->builtin_code),
           producer_index);

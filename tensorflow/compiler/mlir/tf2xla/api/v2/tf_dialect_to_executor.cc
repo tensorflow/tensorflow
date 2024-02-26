@@ -90,8 +90,12 @@ void AddTfDialectToExecutorPasses(OpPassManager &pm) {
   pm.addPass(mlir::createSymbolDCEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
+    bool composite_tpuexecute_side_effects =
+        tensorflow::GetMlirCommonFlags()
+            ->tf_mlir_enable_composite_tpuexecute_side_effects;
     pm.addPass(
-        mlir::tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+        mlir::tf_executor::CreateTFExecutorConvertControlToDataOutputsPass(
+            composite_tpuexecute_side_effects));
   }
   pm.addPass(mlir::TF::CreateVerifySuitableForExportPass());
 }
@@ -126,6 +130,7 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ModuleOp module, llvm::StringRef module_name) {
   PassManager tf_to_executor(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(tf_to_executor);
+  tf_to_executor.enableVerifier();
   AddTfDialectToExecutorPasses(tf_to_executor);
 
   if (VLOG_IS_ON(1) ||

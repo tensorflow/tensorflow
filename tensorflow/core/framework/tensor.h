@@ -57,6 +57,9 @@ Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64_t index);
 Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
                             int64_t dst_offset, int64_t num_slices,
                             Tensor* dst);
+Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
+                                 int64_t dst_offset, int64_t num_slices,
+                                 Tensor* dst);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -714,6 +717,9 @@ class Tensor {
   friend Status batch_util::CopyContiguousSlices(
       const Tensor& src, int64_t src_offset, int64_t dst_offset,
       int64_t num_slices,
+      Tensor* dst);  // For access to base<T>().
+  friend Status batch_util::MaybeMoveContiguousSlices(
+      Tensor& src, int64_t src_offset, int64_t dst_offset, int64_t num_slices,
       Tensor* dst);  // For access to base<T>().
 
   bool CanUseDMA() const;

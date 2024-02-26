@@ -239,6 +239,13 @@ tf_proto_library(
 #     deps = [":op_profile_proto"],
 # )
 #
+# py_proto_library(
+#     name = "op_metrics_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_metrics_proto"],
+# )
+#
 # copybara:uncomment_end
 tf_proto_library(
     name = "task_proto",

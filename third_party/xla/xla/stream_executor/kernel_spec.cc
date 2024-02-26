@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,10 +23,9 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -35,18 +34,6 @@ KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernel_name)
 
 InProcessSymbol::InProcessSymbol(void *symbol, std::string kernel_name)
     : KernelLoaderSpec(std::move(kernel_name)), symbol_(symbol) {}
-
-OnDiskKernelLoaderSpec::OnDiskKernelLoaderSpec(absl::string_view filename,
-                                               absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name), filename_(std::string(filename)) {}
-
-CudaPtxOnDisk::CudaPtxOnDisk(absl::string_view filename,
-                             absl::string_view kernel_name)
-    : OnDiskKernelLoaderSpec(filename, kernel_name) {}
-
-CudaCubinOnDisk::CudaCubinOnDisk(absl::string_view filename,
-                                 absl::string_view kernel_name)
-    : OnDiskKernelLoaderSpec(filename, kernel_name) {}
 
 CudaCubinInMemory::CudaCubinInMemory(const char *bytes,
                                      absl::string_view kernel_name)
@@ -179,24 +166,10 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddInProcessSymbol(
   return this;
 }
 
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxOnDisk(
-    absl::string_view filename, absl::string_view kernel_name) {
-  CHECK(cuda_ptx_on_disk_ == nullptr);
-  cuda_ptx_on_disk_.reset(new CudaPtxOnDisk{filename, kernel_name});
-  return this;
-}
-
 MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinInMemory(
     const char *bytes, absl::string_view kernel_name) {
   CHECK(cuda_cubin_in_memory_ == nullptr);
   cuda_cubin_in_memory_.reset(new CudaCubinInMemory{bytes, kernel_name});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinOnDisk(
-    absl::string_view filename, absl::string_view kernel_name) {
-  CHECK(cuda_cubin_on_disk_ == nullptr);
-  cuda_cubin_on_disk_.reset(new CudaCubinOnDisk{filename, kernel_name});
   return this;
 }
 
@@ -205,32 +178,6 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
   CHECK(cuda_ptx_in_memory_ == nullptr);
   cuda_ptx_in_memory_.reset(
       new CudaPtxInMemory{ptx, kernel_name, false /* ptx_compressed */});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
-    absl::string_view ptx, absl::string_view kernel_name) {
-  CHECK(cuda_ptx_in_memory_ == nullptr);
-  cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{ptx, kernel_name, true /* ptx_compressed */});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
-    std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-    absl::string_view kernel_name) {
-  CHECK(cuda_ptx_in_memory_ == nullptr);
-  cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{spec_list, kernel_name, false /* ptx_compressed */});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
-    std::initializer_list<CudaPtxInMemory::PtxSpec> spec_list,
-    absl::string_view kernel_name) {
-  CHECK(cuda_ptx_in_memory_ == nullptr);
-  cuda_ptx_in_memory_.reset(
-      new CudaPtxInMemory{spec_list, kernel_name, true /* ptx_compressed */});
   return this;
 }
 

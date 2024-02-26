@@ -235,24 +235,28 @@ cc_library_with_tflite(
     deps = ["//tensorflow/lite/core/acceleration/configuration:nnapi_plugin"],
 )
 
-cc_library(
-    name = "hexagon_plugin",
-    srcs = ["hexagon_plugin.cc"],
-    deps = [
-        ":configuration_fbs",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "@com_google_absl//absl/memory",
-    ] + select({
-        "//third_party/bazel_platforms/cpu:aarch64": [
-            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
-        ],
-        "//third_party/bazel_platforms/cpu:armv7": [
-            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
-        ],
-        "//conditions:default": [],
-    }),
-    alwayslink = 1,  # For registration to always run.
-)
+# Commented under b/279852433 because caused an error in the OSS
+# TODO(zhurakovskyi): Uncomment when fixed.
+# copybara:uncomment_begin
+# cc_library(
+#     name = "hexagon_plugin",
+#     srcs = ["hexagon_plugin.cc"],
+#     deps = [
+#         ":configuration_fbs",
+#         "@com_google_absl//absl/memory",
+#         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
+#     ] + select({
+#         "//third_party/bazel_platforms/cpu:aarch64": [
+#             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+#         ],
+#         "//third_party/bazel_platforms/cpu:armv7": [
+#             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+#         ],
+#         "//conditions:default": [],
+#     }),
+#     alwayslink = 1,  # For registration to always run.
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "gpu_plugin",

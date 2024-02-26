@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,6 +44,20 @@ namespace {
   return mhlo::Name##Attr::get(attr.getContext(), hloValue.value())
 
 Attribute convertAttr(Attribute stablehloAttr) {
+  // StableHLO uses DenseArray for some attributes, MHLO is in the process
+  // of integrating this change. In the meantime, convert DenseArray to
+  // DenseElementsAttr.
+  if (auto attr = stablehloAttr.dyn_cast<DenseI64ArrayAttr>()) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
+  if (auto attr = stablehloAttr.dyn_cast<DenseBoolArrayAttr>()) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
+
   // Handle StableHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.

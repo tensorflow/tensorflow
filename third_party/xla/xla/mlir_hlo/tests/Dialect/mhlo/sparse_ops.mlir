@@ -259,7 +259,7 @@ func.func @dot3(%arg0: tensor<4xf64, #SV>,
 // CHECK-LABEL: func @sparse_reduce(
 //  CHECK-SAME: %[[A:.*]]: tensor<10xi64, #{{.*}}>) -> tensor<i64> {
 //       CHECK: %[[C:.*]] = mhlo.constant dense<0> : tensor<i64>
-//       CHECK: %[[T:.*]] = mhlo.reduce(%[[A]] init: %[[C]])  across dimensions = [0] : (tensor<10xi64, #{{.*}}>) -> tensor<i64>
+//       CHECK: %[[T:.*]] = mhlo.reduce(%[[A]] init: %[[C]]) applies mhlo.add across dimensions = [0] : (tensor<10xi64, #{{.*}}>) -> tensor<i64>
 //       CHECK: return %[[T]] : tensor<i64>
 func.func @sparse_reduce(%arg0: tensor<10xi64, #SV>) -> tensor<i64> {
   %0 = mhlo.constant dense<0> : tensor<i64>

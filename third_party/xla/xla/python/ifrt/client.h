@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -124,6 +124,14 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::string_view platform_version() const = 0;
   virtual PlatformId platform_id() const = 0;
 
+  // Returns the attributes of the client. In principle, these try to describe
+  // capabilities of a client rather than being a "feature flag".
+  //
+  // List of officially supported attributes:
+  //
+  // * supports_executable_serialization (bool; default = true): Whether IFRT
+  //   executables produced by this client are serializable. If false, all
+  //   executables from this client are considered not serializable.
   using ClientAttribute = xla::PjRtValueType;
   virtual absl::flat_hash_map<std::string, ClientAttribute> attributes()
       const = 0;

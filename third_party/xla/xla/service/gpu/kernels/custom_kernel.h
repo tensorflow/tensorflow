@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_H_
 
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -47,11 +49,19 @@ class CustomKernel {
                se::BlockDim block_dims, se::ThreadDim thread_dims,
                size_t shared_memory_bytes);
 
+  CustomKernel(std::string name, se::MultiKernelLoaderSpec kernel_spec,
+               se::BlockDim block_dims, se::ThreadDim thread_dims,
+               se::ClusterDim cluster_dims, size_t shared_memory_bytes);
+
+  std::string_view name() const;
+
   const se::MultiKernelLoaderSpec& kernel_spec() const;
 
   se::BlockDim block_dims() const;
 
   se::ThreadDim thread_dims() const;
+
+  std::optional<se::ClusterDim> cluster_dims() const;
 
   size_t shared_memory_bytes() const;
 
@@ -62,6 +72,7 @@ class CustomKernel {
   se::MultiKernelLoaderSpec kernel_spec_;
   se::BlockDim block_dims_;
   se::ThreadDim thread_dims_;
+  std::optional<se::ClusterDim> cluster_dims_;
   size_t shared_memory_bytes_;
 };
 

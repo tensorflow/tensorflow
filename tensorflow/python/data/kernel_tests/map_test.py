@@ -1540,6 +1540,22 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         lambda x: x * 2, num_parallel_calls=num_parallel_calls, name="map")
     self.assertDatasetProduces(dataset, [42])
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testStatusMessage(self, num_parallel_calls):
+    dataset = dataset_ops.Dataset.from_tensors(21).map(
+        lambda x: x // 0, num_parallel_calls=num_parallel_calls, name="map")
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
+
 
 class MapCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                         parameterized.TestCase):

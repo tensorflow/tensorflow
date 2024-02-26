@@ -505,9 +505,10 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
 inline quant::AccumulatorScaleFunc GetUniformQuantizedTypeForBiasWithScale(
     double scale) {
   return [=](const std::vector<quant::QuantParams>& quant_params,
-             bool legacy_float_scale) -> quant::QuantParams {
-    if (auto qtype = quant::GetUniformQuantizedTypeForBias(quant_params,
-                                                           legacy_float_scale)
+             const int adjusted_quant_dim,
+             const bool legacy_float_scale) -> quant::QuantParams {
+    if (auto qtype = quant::GetUniformQuantizedTypeForBias(
+                         quant_params, legacy_float_scale, adjusted_quant_dim)
                          .dyn_cast_or_null<UniformQuantizedType>()) {
       return quant::UniformQuantizedType::get(
           qtype.getFlags(), qtype.getStorageType(), qtype.getExpressedType(),

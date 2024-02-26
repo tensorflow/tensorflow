@@ -6,18 +6,14 @@ tf_module {
   }
   member {
     name: "AutoShardPolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneAlgorithm"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneOptions"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
   member {
@@ -34,7 +30,7 @@ tf_module {
   }
   member {
     name: "ExternalStatePolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "INFINITE_CARDINALITY"

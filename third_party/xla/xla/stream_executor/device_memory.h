@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,12 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <tuple>
+
 #include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -54,15 +59,20 @@ class DeviceMemoryBase {
   // Returns whether the backing memory is the null pointer.
   // A `== nullptr` convenience method is also provided.
   bool is_null() const { return opaque_ == nullptr; }
+
   bool operator==(std::nullptr_t other) const { return is_null(); }
   bool operator!=(std::nullptr_t other) const { return !is_null(); }
+
+  bool operator==(const DeviceMemoryBase &other) const {
+    return opaque_ == other.opaque_ && size_ == other.size_;
+  }
 
   // Provides a partial order between device memory values.
   //
   // This operator is provided so that this object can be used as a key in an
   // ordered map.
   bool operator<(const DeviceMemoryBase &other) const {
-    return opaque() < other.opaque();
+    return std::tie(opaque_, size_) < std::tie(other.opaque_, other.size_);
   }
 
   // Returns the size, in bytes, for the backing memory.
@@ -85,6 +95,19 @@ class DeviceMemoryBase {
     return opaque() == other.opaque() && size() == other.size();
   }
 
+  // Creates a memory region (slice) inside another allocated memory region.
+  // Offset and size are in bytes.
+  DeviceMemoryBase GetByteSlice(uint64_t offset_bytes,
+                                uint64_t size_bytes) const {
+    DCHECK(offset_bytes + size_bytes <= size_)
+        << "requested slice allocation (offset + size) is greater "
+        << "than parent allocation size: (" << offset_bytes << " + "
+        << size_bytes << ") vs. (" << size_ << ")";
+
+    return DeviceMemoryBase(
+        reinterpret_cast<std::byte *>(opaque_) + offset_bytes, size_bytes);
+  }
+
  protected:
   friend class StreamExecutor;
 
@@ -96,7 +119,13 @@ class DeviceMemoryBase {
   }
 
  private:
-  void *opaque_;  // Platform-dependent value representing allocated memory.
+  // Platform-dependent value representing allocated memory.
+  //
+  // User may also constructs the object with `kExternalAllocationMarker`
+  // address and non-zero size, which indicates the case that buffer is
+  // allocated externally (for Gpu backends we use it to allocate memory via
+  // command buffer APIs).
+  void *opaque_;
   uint64_t size_;         // Size in bytes of this allocation.
   uint64_t payload_ = 0;  // Payload data associated with this allocation.
 };
@@ -129,11 +158,19 @@ class DeviceMemory final : public DeviceMemoryBase {
   // Returns whether this is a single-element allocation.
   bool IsScalar() const { return ElementCount() == 1; }
 
-  // Create a typed area of DeviceMemory with a given opaque pointer and the
+  // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
   // distinguish bytes from an element count.
   static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
     return DeviceMemory<ElemT>(opaque, bytes);
+  }
+
+  // Creates a memory region (slice) inside another allocated memory region.
+  // Offset and size are specified in terms of ElemT elements.
+  DeviceMemory<ElemT> GetSlice(uint64_t element_offset,
+                               uint64_t element_count) {
+    return DeviceMemory<ElemT>(GetByteSlice(sizeof(ElemT) * element_offset,
+                                            sizeof(ElemT) * element_count));
   }
 
   // Resets the DeviceMemory data, in MakeFromByteSize fashion.
@@ -155,26 +192,6 @@ class DeviceMemory final : public DeviceMemoryBase {
   // In order to specify the desire to use byte size instead of element count
   // explicitly, use MakeFromByteSize.
   DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
-};
-
-// A class to encapsulate the type and size of a dynamic shared memory
-// buffer. Because the buffer exists solely on the device and is not copyable
-// to the host, memory objects of this type do not maintain buffer pointers
-// on the host.
-template <typename ElemT>
-class SharedDeviceMemory final : public DeviceMemoryBase {
- public:
-  explicit SharedDeviceMemory(uint64_t elem_count)
-      : DeviceMemoryBase(nullptr, elem_count * kElemSize) {}
-
-  static constexpr size_t kElemSize = sizeof(ElemT);
-
-  // Returns the number of elements of type ElemT that constitute this
-  // allocation.
-  uint64_t ElementCount() const { return size() / kElemSize; }
-
-  // Returns whether this is a single-element allocation.
-  bool IsScalar() const { return ElementCount() == 1; }
 };
 
 // Host-side representation of packed-and-aligned vector datatypes on the device

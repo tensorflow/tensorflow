@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/refine_polymorphic_shapes.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status.h"
@@ -178,26 +178,11 @@ StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
 
-  // Legalize CHLO -> [MHLO+Shape] -> StableHLO
-  mlir::PassManager pm(&context);
-  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createShapeLegalizeToHloPass());
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (!mlir::succeeded(pm.run(*module))) {
-    return tsl::errors::InvalidArgument(
-        "CHLO => [MHLO+Shape] => StableHLO failed");
-  }
-
   // Serialize portable artifact
-  std::string buffer;
-  llvm::raw_string_ostream os(buffer);
-  if (failed(mlir::stablehlo::serializePortableArtifact(*module, target, os)))
-    return tsl::errors::InvalidArgument("Failed to serialize StableHLO");
-  return py::bytes(buffer);
+  TF_ASSIGN_OR_RETURN(
+      std::string bytecode,
+      SerializeUsingVersionedStablehlo(*module, target, /*inplace=*/true));
+  return py::bytes(bytecode);
 }
 
 StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {

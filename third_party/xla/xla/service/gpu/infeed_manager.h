@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,8 +48,8 @@ class InfeedManager
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal);
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal);
 
  private:
   se::Stream* stream() const { return stream_.get(); }

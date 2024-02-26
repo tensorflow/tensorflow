@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,13 @@ def Ifrt_ShardingParameter :
 
 def Ifrt_DevicesAttr : AttrDef<Ifrt_Dialect, "IfrtDevices"> {
   let mnemonic = "devices";
-  let summary = "Represents a list of device ids.";
+  let summary = "Represents a list of logical device ids.";
+  let description = [{
+    Logical device ids are 0-based indices within a list of concrete devices
+    an IFRT module is compiled for. These ids are logical in order to
+    ensure that an IFRT IR module is hermetically specified, and thus can
+    be compiled for different concrete device ids without modifications.
+  }];
 
   let parameters = (ins ArrayRefParameter<"int">:$ids);
   let assemblyFormat = "`[` $ids `]`";
@@ -88,7 +94,7 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let genVerifyDecl = 1;
 
   let extraClassDeclaration = [{
-    // Get device ids from `devices_attr`.
+    // Get logical device ids from `devices_attr`.
     ::llvm::ArrayRef<int> getDevices() const;
   }];
 }

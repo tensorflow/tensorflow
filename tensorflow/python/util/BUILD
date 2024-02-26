@@ -91,6 +91,7 @@ tf_python_pybind_extension(
         "_pywrap_utils.pyi",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -354,7 +355,6 @@ pytype_strict_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
-        "//tensorflow_estimator:__subpackages__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -368,7 +368,6 @@ pytype_strict_library(
     srcs = ["tf_contextlib.py"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//learning/brain/analytics:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
@@ -383,7 +382,6 @@ py_strict_library(
     srcs = ["tf_decorator.py"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//learning/brain/analytics:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
@@ -494,6 +492,7 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -929,19 +928,6 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "deprecation_wrapper",
-    srcs = ["deprecation_wrapper.py"],
-    visibility = util_subpackage_visibility,
-    deps = [
-        ":module_wrapper",
-        # global_test_configuration is added here because all major tests depend on this
-        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
-        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
-        "//tensorflow/python:global_test_configuration",
-    ],
-)
-
-py_strict_library(
     name = "module_wrapper",
     srcs = ["module_wrapper.py"],
     visibility = util_subpackage_visibility,
@@ -1040,14 +1026,12 @@ py_strict_library(
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
-        ":compat",
         ":nest_util",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
-        "@pypi_wrapt//:pkg",
         ":_pywrap_utils",
         ":_pywrap_nest",
     ],

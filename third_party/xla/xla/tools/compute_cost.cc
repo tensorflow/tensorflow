@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     return xla::ShapeUtil::ByteSizeOf(shape, 8);
   });
 
-  TF_CHECK_OK(xla::LoadModuleFromFile(input, {}, format)
+  TF_CHECK_OK(xla::LoadModuleFromFile(input, format, {})
                   .value()
                   ->entry_computation()
                   ->root_instruction()

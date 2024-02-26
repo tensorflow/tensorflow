@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -10338,6 +10338,63 @@ ENTRY %entry {
   EXPECT_EQ(add_1->sharding(), output->sharding());
 }
 
+TEST_F(ShardingPropagationTest, PropagateShardAsBetweenInputOutput) {
+  const char* const hlo_string = R"(
+HloModule jit_zeros_like
+
+ENTRY main.6 {
+  Arg_0.1 = s64[8,2]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  custom-call.4 = s64[8,2]{1,0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  constant.2 = s64[] constant(0)
+  broadcast.3 = s64[8,2]{1,0} broadcast(constant.2), dimensions={}
+  ROOT custom-call.5 = s64[8,2]{1,0} custom-call(broadcast.3), custom_call_target="Sharding", sharding={unknown shard_as 0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[4,2]0,1,2,3,4,5,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateShardAsBetweenInputOutput2) {
+  const char* const hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[8]{0:T(256)})->(f32[8]{0:T(256)}, f32[8]{0:T(256)})}, allow_spmd_sharding_propagation_to_output={true,true}, num_partitions=4
+
+ENTRY main.9 {
+  Arg_0.1 = f32[8]{0} parameter(0), sharding={replicated}
+  custom-call.6 = f32[8]{0} custom-call(Arg_0.1), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 0}, metadata={op_name="jit(f)/jit(main)/shard_alike" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=206}
+  custom-call.4 = f32[8]{0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={devices=[4]<=[4]}, metadata={op_name="jit(f)/jit(main)/sharding_constraint[sharding=GSPMDSharding({devices=[4]<=[4]}) resource_env=ResourceEnv(mesh=Mesh(), ()) unconstrained_dims=set()]" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=204}
+  constant.0 = f32[] constant(2)
+  broadcast.0 = f32[8]{0} broadcast(constant.0), dimensions={}
+  multiply.5 = f32[8]{0} multiply(custom-call.4, broadcast.0), metadata={op_name="jit(f)/jit(main)/mul" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=205}
+  custom-call.7 = f32[8]{0} custom-call(multiply.5), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 0}, metadata={op_name="jit(f)/jit(main)/shard_alike" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=206}
+  ROOT tuple.8 = (f32[8]{0}, f32[8]{0}) tuple(custom-call.6, custom-call.7)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{devices=[4]<=[4]}, {devices=[4]<=[4]}}"));
+}
+
 TEST_F(ShardingPropagationTest, LookaheadUsersOfDot) {
   const char* const hlo_string = R"(
 HloModule module
@@ -10386,8 +10443,8 @@ called_computation {
 ENTRY entry_computation {
   p0 = s32[8] parameter(0), sharding={manual}
   p1 = s32[8] parameter(1), sharding={manual}
-  async-start = ((s32[8], s32[8]), s32[8], u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
-  ROOT async-done = s32[8] call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  async-start = ((s32[8], s32[8]), s32[8], u32[]) call-start(p0, p1), async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = s32[8] call-done(async-start)
 }, execution_thread="thread_0" // entry_computation
 
 )";
@@ -10462,8 +10519,8 @@ called_computation {
 ENTRY entry_computation {
   p0 = s32[8] parameter(0), sharding={manual}
   p1 = s32[8] parameter(1), sharding={manual}
-  async-start = ((s32[8], s32[8]), (s32[8], s32[8]), u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
-  ROOT async-done = (s32[8], s32[8]) call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  async-start = ((s32[8], s32[8]), (s32[8], s32[8]), u32[]) call-start(p0, p1), async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = (s32[8], s32[8]) call-done(async-start)
 }, execution_thread="thread_0" // entry_computation
 
 )";

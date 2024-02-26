@@ -676,8 +676,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
-        stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
-            .ok();
+        stream->Memcpy(copy.mutable_data(), wrapped_src, this->bytes()).ok();
     return copy;
   }
 };

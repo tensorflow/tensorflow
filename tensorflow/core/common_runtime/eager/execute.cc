@@ -116,6 +116,10 @@ auto* function_compile_counter =
                                 "The number of times that TF function is "
                                 "called for different compilation options.",
                                 "device", "compilation_option");
+auto* top_level_jit_compilation_counter = monitoring::Counter<1>::New(
+    "/tensorflow/core/tf_top_level_jit_compilation",
+    "The number of times a top-level JIT-compiled function is called.",
+    "device");
 
 const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
@@ -291,8 +295,7 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   const auto& node_def = op->MutableAttrs()->BuildNodeDef();
   const OpDef* op_def = nullptr;
 
-  const FunctionDef* function_def =
-      op->EagerContext().FuncLibDef()->Find(op->Name());
+  const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
@@ -420,8 +423,7 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
     return OkStatus();
   }
 
-  const FunctionDef* function_def =
-      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op->Name());
+  const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
@@ -445,8 +447,7 @@ Status HasTPUReplication(const EagerOperation& op, const EagerContext& ctx,
     return OkStatus();
   }
 
-  const FunctionDef* function_def =
-      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op.Name());
+  const FunctionDef* function_def = op.GetFunctionDef();
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op.Name(), "'");
   }
@@ -513,11 +514,12 @@ Status HasNestedJitCompile(const EagerOperation& op, const EagerContext& ctx,
   std::queue<std::string> function_names;
   function_names.push(op.Name());
 
+  const FunctionLibraryDefinition* func_lib_def = op.FuncLibDef();
+
   while (!function_names.empty()) {
     const string& function_name = function_names.front();
 
-    const FunctionDef* function_def =
-        ctx.pflr()->GetFunctionLibraryDefinition()->Find(function_name);
+    const FunctionDef* function_def = func_lib_def->Find(function_name);
     if (function_def == nullptr) {
       return errors::NotFound("Failed to find function '", function_name, "'");
     }
@@ -567,6 +569,7 @@ Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
     return OkStatus();
   }
 
+  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
   string compilation_option = kDisabled;
   if (!compile_with_xla) {
     bool nested_jit_compile;
@@ -590,9 +593,11 @@ Status UpdateCompileCounter(const EagerOperation* op, const EagerContext& ctx,
         compilation_option = kEnabled;
       }
     }
+  } else {
+    // Top-level JIT compilation
+    top_level_jit_compilation_counter->GetCell(device_type)->IncrementBy(1);
   }
 
-  string device_type = CanonicalizeDeviceType(op->GetDeviceParsedName().type);
   if (device_type == tensorflow::DEVICE_TPU || compile_with_xla) {
     compilation_option = kEnabled;
   }
@@ -1537,8 +1542,8 @@ Status GetOrCreateKernelAndDevice(
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
     }
 
-    TF_RETURN_IF_ERROR(
-        kernel->Init(ctx.LogDevicePlacement(), ndef, graph_collector));
+    TF_RETURN_IF_ERROR(kernel->Init(ctx.LogDevicePlacement(), ndef,
+                                    graph_collector, op->eager_func_params()));
 
     // Exclude tf.data op kernels from being cached. The reason for this is
     // that tf.data op kernels that accept a user-defined function will have a
@@ -1548,8 +1553,7 @@ Status GetOrCreateKernelAndDevice(
     // programs that build input pipeline graphs in a loop.
     const OpDef* op_def;
     if (op->is_function()) {
-      const FunctionDef* function_def =
-          op->EagerContext().FuncLibDef()->Find(op->Name());
+      const FunctionDef* function_def = op->GetFunctionDef();
       if (function_def != nullptr) {
         op_def = &(function_def->signature());
       } else {
@@ -1562,7 +1566,9 @@ Status GetOrCreateKernelAndDevice(
       // TODO(intel-tf): Implement an eviction policy to prevent potential
       // memory growth (https://github.com/tensorflow/tensorflow/issues/58676)
       VLOG(2) << "Caching op " << op->Name();
-      ctx.AddKernelToCache(cache_key, kernel.get());
+      // If the kernel is already in the cache, this discards the passed-in
+      // kernel and returns the cached kernel.
+      kernel = ctx.AddKernelToCache(cache_key, std::move(kernel));
     }
   }
 
@@ -1976,8 +1982,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
       &op->EagerContext(), std::move(request), op_device,
       ctx.GetContextViewId(), eager_client.get(), op->GetCancellationManager(),
-      op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
-      *inputs, {retvals, num_outputs}));
+      op->MutableAttrs()->BuildNodeDef(), op->FuncLibDef(), *inputs,
+      {retvals, num_outputs}));
 
   if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
     string msg = strings::StrCat(

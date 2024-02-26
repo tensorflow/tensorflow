@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -23,11 +25,17 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -105,6 +113,16 @@ Value castToIndex(PatternRewriter& rewriter, Location loc, Value value) {
   auto cast =
       rewriter.create<UnrealizedConversionCastOp>(loc, resultType, value);
   return cast.getResult(0);
+}
+
+void insertShapeAssertionCustomCall(OpBuilder builder, Location loc,
+                                    Value assert) {
+  auto customCall =
+      builder.create<mhlo::CustomCallOp>(loc, TypeRange{}, ValueRange{assert});
+  customCall.setCallTargetName("shape_assertion");
+  customCall.setHasSideEffect(true);
+  customCall->setAttr("error_message",
+                      builder.getStringAttr("Shape assertion failed"));
 }
 
 struct ConvertComputeReshapeShapeOpPattern
@@ -252,6 +270,165 @@ struct ConvertShapeOfOpPattern : public OpRewritePattern<shape::ShapeOfOp> {
   }
 };
 
+struct ConvertConstShapeOpPattern
+    : public OpRewritePattern<shape::ConstShapeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::ConstShapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operandType = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!operandType)
+      return rewriter.notifyMatchFailure(op, "expected ranked operand");
+
+    llvm::SmallVector<int32_t> shape;
+    for (int i : op.getShape().getValues<int64_t>()) {
+      shape.push_back(i);
+    }
+    auto newConst = rewriter.create<mhlo::ConstantOp>(
+        op.getLoc(), DenseElementsAttr::get(
+                         RankedTensorType::get({operandType.getDimSize(0)},
+                                               rewriter.getI32Type()),
+                         ArrayRef(shape)));
+    auto newConstIndex = castToIndex(rewriter, op.getLoc(), newConst);
+    rewriter.replaceOp(op, newConstIndex);
+    return success();
+  }
+};
+
+struct ConvertIndexCastOpPattern : public OpRewritePattern<arith::IndexCastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(arith::IndexCastOp op,
+                                PatternRewriter& rewriter) const override {
+    Value result = op.getIn();
+    if (hasIndexStyle(op.getIn()) && !op.getIn().getType().isa<ShapedType>()) {
+      // Handle a special case of index -> i64.
+      // This is converted to the following sequence:
+      //   unrealized_conversion_cast index -> tensor<i32>
+      //   mhlo.convert tensor<i32> -> tensor<i64>
+      //   unrealized_conversion_cast tensor<i64> -> i64
+      result = castToI32(rewriter, op.getLoc(), result);
+      if (!op.getOut().getType().isInteger(32)) {
+        result = rewriter.create<ConvertOp>(op.getLoc(), result,
+                                            op.getOut().getType());
+      }
+      rewriter.replaceOp(op, rewriter.create<UnrealizedConversionCastOp>(
+                                 op.getLoc(), op.getOut().getType(), result));
+      return success();
+    }
+
+    if (hasIndexStyle(result)) {
+      result = castToI32(rewriter, op.getLoc(), result);
+    } else if (!hasI32Style(result)) {
+      return rewriter.notifyMatchFailure(op,
+                                         "expected input with index/i32 style");
+    }
+
+    if (hasIndexStyle(op.getOut())) {
+      result = castToIndex(rewriter, op.getLoc(), result);
+    } else if (!hasI32Style(op.getOut())) {
+      return rewriter.notifyMatchFailure(
+          op, "expected output with index/i32 style");
+    }
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+struct ConvertMulIOpPattern : public OpRewritePattern<arith::MulIOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(arith::MulIOp op,
+                                PatternRewriter& rewriter) const override {
+    // We only handle index types.
+    if (!hasIndexStyle(op.getLhs()) || !hasIndexStyle(op.getRhs()) ||
+        !hasIndexStyle(op.getResult())) {
+      return rewriter.notifyMatchFailure(op, "expected index type");
+    }
+    Value lhs = op.getLhs();
+    if (auto constIndex =
+            dyn_cast_or_null<arith::ConstantIndexOp>(lhs.getDefiningOp())) {
+      lhs = rewriter.create<ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get<int32_t>(
+                           RankedTensorType::get({}, rewriter.getI32Type()),
+                           static_cast<int32_t>(constIndex.value())));
+    } else {
+      lhs = castToI32(rewriter, op.getLoc(), op.getLhs());
+    }
+    Value rhs = op.getRhs();
+    if (auto constIndex =
+            dyn_cast_or_null<arith::ConstantIndexOp>(rhs.getDefiningOp())) {
+      rhs = rewriter.create<ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get<int32_t>(
+                           RankedTensorType::get({}, rewriter.getI32Type()),
+                           static_cast<int32_t>(constIndex.value())));
+    } else {
+      rhs = castToI32(rewriter, op.getLoc(), op.getRhs());
+    }
+    Value result = rewriter.create<mhlo::MulOp>(op.getLoc(), lhs, rhs);
+    rewriter.replaceOp(op, castToIndex(rewriter, op.getLoc(), result));
+    return success();
+  }
+};
+
+// Pads input tensor<N x i32> by X ones from the left. The number X is
+// determined by input pad. Result is tensor<(X+N) x i32>, where the first X
+// elements are ones.
+Value padFromLeft(PatternRewriter& rewriter, Location loc, Value input,
+                  int64_t pad) {
+  Value padI32 = rewriter.create<ConstantOp>(
+      loc, DenseIntElementsAttr::get<int32_t>(
+               RankedTensorType::get({pad}, rewriter.getI32Type()), 1));
+  return rewriter.create<mhlo::ConcatenateOp>(loc, ValueRange{padI32, input},
+                                              /*dimension=*/0);
+}
+
+struct ConvertShapeBroadcastOpPattern
+    : public OpRewritePattern<shape::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::BroadcastOp op,
+                                PatternRewriter& rewriter) const override {
+    // As defined, op inputs must be 1D tensor or !shape.shape.
+    // We only support inputs of two input 1D tensors.
+    if (op.getShapes().size() != 2) return failure();
+    auto shape1 = castToI32(rewriter, op.getLoc(), op.getShapes().front());
+    auto shape2 = castToI32(rewriter, op.getLoc(), op.getShapes().back());
+    if (!shape1 || !shape2) return failure();
+    auto tensorType1 = shape1.getType().dyn_cast<RankedTensorType>();
+    auto tensorType2 = shape2.getType().dyn_cast<RankedTensorType>();
+    if (!tensorType1 || !tensorType2) return failure();
+
+    // If the two operand shapes are of different sizes, the smaller one is
+    // padded with 1's from the left.
+    if (tensorType1.getDimSize(0) < tensorType2.getDimSize(0)) {
+      shape1 =
+          padFromLeft(rewriter, op.getLoc(), shape1,
+                      tensorType2.getDimSize(0) - tensorType1.getDimSize(0));
+    } else if (tensorType1.getDimSize(0) > tensorType2.getDimSize(0)) {
+      shape2 =
+          padFromLeft(rewriter, op.getLoc(), shape2,
+                      tensorType1.getDimSize(0) - tensorType2.getDimSize(0));
+    }
+
+    // By definition, broadcasted dims are:
+    //   result[i] = lhs[i] if lhs[i] == rhs[i]
+    //             = lhs[i] if rhs[i] == 1
+    //             = rhs[i] if lhs[i] == 1
+    //
+    // We assume that there is shape.cstr_broadcastable check done elsewhere to
+    // make sure the shapes are broadcastable, then we can calculate broadcast
+    // result simply using MaxOp. In case the shapes are not broadcastable, the
+    // result extent tensor is undefined according to spec. So this
+    // implementation is technically correct.
+    auto broadcasted =
+        rewriter.create<mhlo::MaxOp>(op->getLoc(), shape1, shape2);
+
+    auto broadcastedIndex = castToIndex(rewriter, op.getLoc(), broadcasted);
+    if (!broadcastedIndex ||
+        broadcastedIndex.getType() != op.getResult().getType())
+      return rewriter.notifyMatchFailure(op, "cast to index failed");
+    rewriter.replaceOp(op, broadcastedIndex);
+    return success();
+  }
+};
+
 struct ConvertTensorDimPattern : public OpRewritePattern<tensor::DimOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(tensor::DimOp op,
@@ -267,6 +444,229 @@ struct ConvertTensorDimPattern : public OpRewritePattern<tensor::DimOp> {
         op->getLoc(), op.getSource(), constIndex.value());
     auto dimIndex = castToIndex(rewriter, op.getLoc(), dim);
     rewriter.replaceOp(op, dimIndex);
+    return success();
+  }
+};
+
+struct ConvertTensorFromElementsPattern
+    : public OpRewritePattern<tensor::FromElementsOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(tensor::FromElementsOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensorType =
+        op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+    if (!tensorType) {
+      return failure();
+    }
+    if (tensorType.getRank() == 0) {
+      // Handle the special cast of tensor.from_elements i64 -> tensor<i64>
+      // This is converted to unrealized_conversin_cast i64 -> tensor<i64>,
+      // which is later cancelled with previous unrealized_conversin_cast op.
+      rewriter.replaceOp(
+          op, rewriter.create<UnrealizedConversionCastOp>(
+                  op.getLoc(), op.getResult().getType(), op.getElements()[0]));
+      return success();
+    }
+
+    // We only handle 1D tensor with index types. tensor.from_elements spec
+    // allows the same element type only for all input/output.
+    if (tensorType.getRank() != 1) return failure();
+    if (!hasIndexStyle(op.getResult())) return failure();
+
+    SmallVector<Value> elementI32x1;
+    for (size_t i = 0; i < op.getElements().size(); ++i) {
+      if (auto constIndex = dyn_cast_or_null<arith::ConstantIndexOp>(
+              op.getElements()[i].getDefiningOp())) {
+        elementI32x1.push_back(rewriter.create<ConstantOp>(
+            op.getLoc(), DenseIntElementsAttr::get<int32_t>(
+                             RankedTensorType::get({1}, rewriter.getI32Type()),
+                             static_cast<int32_t>(constIndex.value()))));
+      } else {
+        elementI32x1.push_back(rewriter.create<ReshapeOp>(
+            op.getLoc(), RankedTensorType::get({1}, rewriter.getI32Type()),
+            castToI32(rewriter, op->getLoc(), op.getElements()[i])));
+      }
+    }
+    Value tensorI32 =
+        rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), elementI32x1,
+                                             /*dimension=*/0);
+
+    tensorI32 = hasI32Style(op.getResult())
+                    ? tensorI32
+                    : castToIndex(rewriter, op.getLoc(), tensorI32);
+    if (!tensorI32 || tensorI32.getType() != op.getResult().getType())
+      return rewriter.notifyMatchFailure(op, "cast to index failed");
+    rewriter.replaceOp(op, tensorI32);
+    return success();
+  }
+};
+
+struct ConvertCstrBroadcastableOp
+    : public OpRewritePattern<shape::CstrBroadcastableOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
+                                PatternRewriter& rewriter) const override {
+    // As defined, op inputs must be 1D tensor or !shape.shape.
+    // We only support inputs of two 1D tensors.
+    if (op.getShapes().size() != 2) return failure();
+    auto shape1 = castToI32(rewriter, op.getLoc(), op.getShapes().front());
+    auto shape2 = castToI32(rewriter, op.getLoc(), op.getShapes().back());
+    if (!shape1 || !shape2) return failure();
+    auto tensorType1 = shape1.getType().dyn_cast<RankedTensorType>();
+    auto tensorType2 = shape2.getType().dyn_cast<RankedTensorType>();
+    if (!tensorType1 || !tensorType2) return failure();
+
+    // If the two operand shapes are of different sizes, the smaller one is
+    // padded with 1's from the left.
+    if (tensorType1.getDimSize(0) < tensorType2.getDimSize(0)) {
+      shape1 =
+          padFromLeft(rewriter, op.getLoc(), shape1,
+                      tensorType2.getDimSize(0) - tensorType1.getDimSize(0));
+    } else if (tensorType1.getDimSize(0) > tensorType2.getDimSize(0)) {
+      shape2 =
+          padFromLeft(rewriter, op.getLoc(), shape2,
+                      tensorType1.getDimSize(0) - tensorType2.getDimSize(0));
+    }
+
+    // Compute if each dim is broadcastable. A dim is broadcastable iff
+    // dimSize1 == dimSize2 or dimSize1 == 1 or dimSize2 == 1
+    auto allOne = rewriter.create<mhlo::ConstantOp>(
+        op.getLoc(), DenseIntElementsAttr::get<int32_t>(
+                         RankedTensorType::get({tensorType1.getDimSize(0)},
+                                               rewriter.getI32Type()),
+                         static_cast<int32_t>(1)));
+    Value dimSize1Is1 = rewriter.create<mhlo::CompareOp>(
+        op.getLoc(), shape1, allOne, ComparisonDirection::EQ);
+    Value dimSize2Is1 = rewriter.create<mhlo::CompareOp>(
+        op.getLoc(), shape2, allOne, ComparisonDirection::EQ);
+    Value eitherDimSizeIs1 =
+        rewriter.create<mhlo::OrOp>(op.getLoc(), dimSize1Is1, dimSize2Is1);
+    Value dimSizeEq = rewriter.create<mhlo::CompareOp>(
+        op.getLoc(), shape1, shape2, ComparisonDirection::EQ);
+    Value dimBroadcastable =
+        rewriter.create<mhlo::OrOp>(op.getLoc(), eitherDimSizeIs1, dimSizeEq);
+
+    // Iterate over each dim to check that all dims are broadcastable.
+    auto boolType = RankedTensorType::get({1}, rewriter.getI1Type());
+    Value allBroadcastable = rewriter.create<ConstantOp>(
+        op.getLoc(), DenseIntElementsAttr::get<bool>(boolType, true));
+    for (auto i = 0; i < tensorType1.getDimSize(0); ++i) {
+      Value broadcastable = rewriter.create<SliceOp>(
+          op.getLoc(), dimBroadcastable, rewriter.getI64TensorAttr(i),
+          rewriter.getI64TensorAttr(i + 1), rewriter.getI64TensorAttr(1));
+      allBroadcastable =
+          rewriter.create<AndOp>(op.getLoc(), allBroadcastable, broadcastable);
+    }
+    Value allBroadcastableScalar = rewriter.create<ReshapeOp>(
+        op.getLoc(), RankedTensorType::get({}, rewriter.getI1Type()),
+        allBroadcastable);
+
+    // Add CustomCallOp and replace Cstr op with const witness, which is useful
+    // for canonicalizer to remove the shape.assuming region.
+    insertShapeAssertionCustomCall(rewriter, op->getLoc(),
+                                   allBroadcastableScalar);
+    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op.getOperation(), true);
+    return success();
+  }
+};
+
+// As defined in tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.td, the
+// dynamic shape is reshapable if it has only 0 or 1 dynamic dimensions and the
+// number of element can divide the product of the static dimension sizes.
+struct ConvertCstrReshapableOp
+    : public OpRewritePattern<mhlo::CstrReshapableOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(mhlo::CstrReshapableOp op,
+                                PatternRewriter& rewriter) const override {
+    Value numElements;
+    if (auto constIndex = dyn_cast_or_null<arith::ConstantIndexOp>(
+            op.getNumElements().getDefiningOp())) {
+      numElements = rewriter.create<ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get<int32_t>(
+                           RankedTensorType::get({}, rewriter.getI32Type()),
+                           static_cast<int32_t>(constIndex.value())));
+    } else {
+      numElements = castToI32(rewriter, op->getLoc(), op.getNumElements());
+    }
+    Value dyanmicShape =
+        castToI32(rewriter, op->getLoc(), op.getDynamicShape());
+    if (!dyanmicShape || !numElements) return failure();
+    auto dyanmicShapeType =
+        dyanmicShape.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!dyanmicShapeType || dyanmicShapeType.getRank() != 1) return failure();
+
+    auto i32Type = RankedTensorType::get({}, rewriter.getI32Type());
+    Value minusOne = rewriter.create<ConstantOp>(
+        op.getLoc(), DenseIntElementsAttr::get<int32_t>(i32Type, -1));
+    Value one = rewriter.create<ConstantOp>(
+        op.getLoc(), DenseIntElementsAttr::get<int32_t>(i32Type, 1));
+    Value zero = rewriter.create<ConstantOp>(
+        op.getLoc(), DenseIntElementsAttr::get<int32_t>(i32Type, 0));
+    Value productAllDimSizes = one;
+    Value numDyanmicDim = zero;
+    for (auto i = 0; i < dyanmicShapeType.getDimSize(0); ++i) {
+      // Calculate the product of static dimension sizes.
+      Value dimSize = rewriter.create<SliceOp>(
+          op.getLoc(), dyanmicShape, rewriter.getI64TensorAttr(i),
+          rewriter.getI64TensorAttr(i + 1), rewriter.getI64TensorAttr(1));
+      dimSize = rewriter.create<ReshapeOp>(op.getLoc(), i32Type, dimSize);
+      productAllDimSizes =
+          rewriter.create<MulOp>(op.getLoc(), productAllDimSizes, dimSize);
+      // Count number of -1 dims, aka dynamic dimensions.
+      Value eqMinusOne = rewriter.create<CompareOp>(
+          op.getLoc(), dimSize, minusOne, ComparisonDirection::EQ);
+      eqMinusOne =
+          rewriter.create<SelectOp>(op.getLoc(), eqMinusOne, one, zero);
+      numDyanmicDim =
+          rewriter.create<AddOp>(op.getLoc(), numDyanmicDim, eqMinusOne);
+    }
+
+    // Here we handle two situations below. Either one is a valid reshape.
+    // A: There is 1 dynamic dimension and the number of elements can be divided
+    //    by the product of static dim sizes.
+    // B: There is no dynamic dimension and the number of elements equals the
+    //    product of all dim sizes.
+
+    // A.1: Check there is 1 dynamic dim.
+    Value exactlyOneDynamicDim = rewriter.create<CompareOp>(
+        op.getLoc(), numDyanmicDim, one, ComparisonDirection::EQ);
+
+    // A.2: Calculate product of all static dim sizes. Multiple by -1 to cancel
+    // with the dynamic dim size -1.
+    Value productStaticDimSizes =
+        rewriter.create<MulOp>(op.getLoc(), productAllDimSizes, minusOne);
+
+    // A.3: Check number of elements can be divided by product of static dim
+    // sizes.
+    Value rem =
+        rewriter.create<RemOp>(op.getLoc(), numElements, productStaticDimSizes);
+    Value dynamicReshapable = rewriter.create<CompareOp>(
+        op.getLoc(), rem, zero, ComparisonDirection::EQ);
+
+    // A.4: Check both conditions for scenario A are true.
+    dynamicReshapable = rewriter.create<AndOp>(op.getLoc(), dynamicReshapable,
+                                               exactlyOneDynamicDim);
+
+    // B.1: Check there is no dynamic dim.
+    Value noDynamicDim = rewriter.create<CompareOp>(
+        op.getLoc(), numDyanmicDim, zero, ComparisonDirection::EQ);
+
+    // B.2: Check product of all dim sizes equals number of elements.
+    Value staticReshapable = rewriter.create<CompareOp>(
+        op.getLoc(), productAllDimSizes, numElements, ComparisonDirection::EQ);
+
+    // B.3: Check both conditions for scenario B are true.
+    staticReshapable =
+        rewriter.create<AndOp>(op.getLoc(), noDynamicDim, staticReshapable);
+
+    // Check if either scenario is true.
+    Value reshapable =
+        rewriter.create<OrOp>(op.getLoc(), dynamicReshapable, staticReshapable);
+
+    // Add CustomCallOp and replace Cstr op with const witness, which is
+    // useful for canonicalizer to remove the shape.assuming region.
+    insertShapeAssertionCustomCall(rewriter, op->getLoc(), reshapable);
+    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op.getOperation(), true);
     return success();
   }
 };
@@ -302,6 +702,12 @@ struct CastOperandsPattern : public OpRewritePattern<OpType> {
 // needed to support bounded dynamism in MHLO export.
 struct ShapeLegalizeToHloPass
     : public impl::ShapeLegalizeToHloPassBase<ShapeLegalizeToHloPass> {
+  explicit ShapeLegalizeToHloPass(bool legalizeConstraints)
+      : impl::ShapeLegalizeToHloPassBase<
+            ShapeLegalizeToHloPass>::ShapeLegalizeToHloPassBase() {
+    this->legalize_constraints_ = legalizeConstraints;
+  }
+
   void runOnOperation() override {
     // In order to make dynamic MHLO programs compatible with HLO,
     // we need to get rid of all non-MHLO ops as well as the two shape-related
@@ -326,24 +732,28 @@ struct ShapeLegalizeToHloPass
     // Most of these ops are convertible to MHLO, although the representation is
     // going to be pretty laborious for many of them. Luckily, canonicalization
     // is able to remove unnecessary cruft. At the moment, this pass is a
-    // work in progress, so now all of these ops are supported.
+    // work in progress, so not all of these ops are supported.
     //
-    // The only problem (and a big problem at that) are the ops involved in
-    // shape constraints: cstr* ops as well as shape.assuming*. Since HLO does
-    // not support shape constraints, it is currently unclear what to do with
-    // them, unless they can be removed by --symbolic-shape-optimization.
-    // At the moment, this pass is a work in progress, so it does not provide
-    // an answer to this problem yet.
+    // When legalize_constraints_ is set true, cstr* ops are also legalized.
+    // A shape_assertion custom_call is used to check the constraint. And the
+    // shape.assuming region will consume a shape.const_witness that evaluate to
+    // true, so that it can be removed later in a canonicalizer pass.
     ConversionTarget target(getContext());
     target.addIllegalDialect<shape::ShapeDialect>();
     target.addIllegalDialect<tensor::TensorDialect>();
     target.addIllegalOp<mhlo::ComputeReshapeShapeOp>();
     target.addIllegalOp<mhlo::CstrReshapableOp>();
+    target.addIllegalOp<arith::IndexCastOp>();
+    target.addIllegalOp<arith::MulIOp>();
     target.addDynamicallyLegalDialect<mhlo::MhloDialect>([](Operation* op) {
       return !llvm::any_of(op->getOperands(), hasIndexStyle);
     });
     target.addLegalOp<tensor::CastOp>();
     target.addLegalOp<UnrealizedConversionCastOp>();
+    if (this->legalize_constraints_) {
+      target.addLegalOp<shape::ConstWitnessOp, shape::AssumingOp,
+                        shape::AssumingYieldOp>();
+    }
 
     // The patterns do what one might expect, converting between MLIR-style
     // and HLO-style shape computations.
@@ -355,10 +765,20 @@ struct ShapeLegalizeToHloPass
     // everything went right.
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertComputeReshapeShapeOpPattern>(&getContext());
+    patterns.add<ConvertConstShapeOpPattern>(&getContext());
+    patterns.add<ConvertMulIOpPattern>(&getContext());
+    patterns.add<ConvertIndexCastOpPattern>(&getContext());
     patterns.add<ConvertNumElementsOpPattern>(&getContext());
     patterns.add<ConvertShapeOfOpPattern>(&getContext());
+    patterns.add<ConvertShapeBroadcastOpPattern>(&getContext());
     patterns.add<CastOperandsPattern<DynamicBroadcastInDimOp>>(&getContext());
+    patterns.add<CastOperandsPattern<DynamicReshapeOp>>(&getContext());
     patterns.add<ConvertTensorDimPattern>(&getContext());
+    patterns.add<ConvertTensorFromElementsPattern>(&getContext());
+    if (this->legalize_constraints_) {
+      patterns.add<ConvertCstrBroadcastableOp>(&getContext());
+      patterns.add<ConvertCstrReshapableOp>(&getContext());
+    }
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       return signalPassFailure();
@@ -367,9 +787,9 @@ struct ShapeLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<func::FuncOp>>
-createShapeLegalizeToHloPass() {
-  return std::make_unique<ShapeLegalizeToHloPass>();
+std::unique_ptr<mlir::OperationPass<func::FuncOp>> createShapeLegalizeToHloPass(
+    bool legalizeConstraints) {
+  return std::make_unique<ShapeLegalizeToHloPass>(legalizeConstraints);
 }
 
 }  // namespace mhlo

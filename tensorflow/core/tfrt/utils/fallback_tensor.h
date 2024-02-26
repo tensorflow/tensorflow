@@ -80,8 +80,8 @@ class FallbackTensor {
     return *this;
   }
 
-  FallbackTensor(FallbackTensor&&) = default;
-  FallbackTensor& operator=(FallbackTensor&&) = default;
+  FallbackTensor(FallbackTensor&&) noexcept = default;
+  FallbackTensor& operator=(FallbackTensor&&) noexcept = default;
 
   const TensorBuffer* buffer() const {
     return tensorflow::DMAHelper::buffer(&tensor());

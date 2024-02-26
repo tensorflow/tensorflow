@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "deallocation/IR/deallocation_ops.h"
 #include "deallocation/transforms/passes.h"
 #include "lhlo/IR/lhlo_ops.h"
 #include "lhlo/transforms/passes.h"
@@ -43,7 +42,6 @@ int main(int argc, char** argv) {
   registerAllExtensions(registry);
   mhlo::registerAllMhloDialects(registry);
   stablehlo::registerAllDialects(registry);
-  registry.insert<deallocation::DeallocationDialect, lmhlo::LmhloDialect,
-                  lmhlo_gpu::LmhloGpuDialect>();
+  registry.insert<lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   return failed(MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

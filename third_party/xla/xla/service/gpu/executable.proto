@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/hlo.proto";
+import "xla/xla.proto";
 
 message XlaRuntimeGpuExecutableProto {
   message ConstantInfoProto {
@@ -36,4 +37,11 @@ message XlaRuntimeGpuExecutableProto {
 
   // Constants required by the serialized executable.
   repeated ConstantInfoProto constants = 5;
+}
+
+message CompilationResultProto {
+  HloModuleProtoWithConfig hlo_module_with_config = 1;
+  BufferAssignmentProto buffer_assignment = 2;
+  string asm_text = 3;
+  bytes binary = 4;
 }

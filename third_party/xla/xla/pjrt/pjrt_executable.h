@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/executable_metadata.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/service/compiler.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -260,12 +261,13 @@ struct ExecuteOptions {
       const ExecuteOptionsProto& proto);
 };
 
-// Static device memory usage for a compiled program.
+// Static memory usage for a compiled program.
 // The on-device memory needed to run an executable is at least
 //   generated_code_size_in_bytes
 //   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
 //   + temp_size_in_bytes.
 struct CompiledMemoryStats {
+  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
   int64_t generated_code_size_in_bytes = 0;
   int64_t argument_size_in_bytes = 0;
   int64_t output_size_in_bytes = 0;
@@ -273,8 +275,49 @@ struct CompiledMemoryStats {
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
 
+  // Host memory usage stats.
+  int64_t host_generated_code_size_in_bytes = 0;
+  int64_t host_argument_size_in_bytes = 0;
+  int64_t host_output_size_in_bytes = 0;
+  int64_t host_alias_size_in_bytes = 0;
+  int64_t host_temp_size_in_bytes = 0;
+
   std::string serialized_hlo_proto = "";
   std::string DebugString() const;
+
+  CompiledMemoryStatsProto ToProto() {
+    CompiledMemoryStatsProto proto;
+    proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
+    proto.set_argument_size_in_bytes(argument_size_in_bytes);
+    proto.set_output_size_in_bytes(output_size_in_bytes);
+    proto.set_alias_size_in_bytes(alias_size_in_bytes);
+    proto.set_temp_size_in_bytes(temp_size_in_bytes);
+    proto.mutable_hlo_proto()->ParseFromString(serialized_hlo_proto);
+    proto.set_host_generated_code_size_in_bytes(
+        host_generated_code_size_in_bytes);
+    proto.set_host_argument_size_in_bytes(host_argument_size_in_bytes);
+    proto.set_host_output_size_in_bytes(host_output_size_in_bytes);
+    proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
+    proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
+    return proto;
+  }
+
+  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto) {
+    CompiledMemoryStats stats;
+    stats.generated_code_size_in_bytes = proto.generated_code_size_in_bytes();
+    stats.argument_size_in_bytes = proto.argument_size_in_bytes();
+    stats.output_size_in_bytes = proto.alias_size_in_bytes();
+    stats.alias_size_in_bytes = proto.alias_size_in_bytes();
+    stats.temp_size_in_bytes = proto.temp_size_in_bytes();
+    stats.serialized_hlo_proto = proto.hlo_proto().SerializeAsString();
+    stats.host_generated_code_size_in_bytes =
+        proto.host_generated_code_size_in_bytes();
+    stats.host_argument_size_in_bytes = proto.host_argument_size_in_bytes();
+    stats.host_output_size_in_bytes = proto.host_output_size_in_bytes();
+    stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
+    stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
+    return stats;
+  }
 };
 
 class PjRtExecutable {

@@ -63,6 +63,40 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
   let hasVerifier = 1;
 }
 
+def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
+  let summary = "Loads a variable tensor as an IFRT array";
+
+  let description = [{
+    This op loads a variable tensor as an IFRT array and binds it with the specified name.
+
+    This op is an replacement of `tf.ReadVariableOp` in the case that a constant
+    variable tensor is an input to the tpu program invoked by `tf.IfrtCall`.
+
+    After a `tf.ReadVariableOp` is lowered into `tf.IfrtLoadVariableOp`, the `tf.IfrtCall` kernel
+    will bind the loaded IFRT array by name with the tpu program's input.
+
+    `tf.IfrtLoadVariableOp` converts the tensor into an IFRT array based on device and sharding
+    configuration specified in `VariableDeviceShardingConfigProto`.
+
+    This op returns a scalar string tensor containing the loaded variable name, which can be
+    used as a key to look for the loaded IFRT array in runtime.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The variable tensor to be loaded}], []>:$variable,
+    DefaultValuedStrAttr<StrAttr, "">:$device_sharding_config_proto_text,
+    DefaultValuedAttr<StrAttr, "">:$name
+  );
+
+  let results = (outs
+    TF_StrTensor:$array_key
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+}
+
+
 def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
   let summary = "Invokes a program via IFRT on a device";
 
@@ -75,14 +109,14 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
     that the outlined function is compiled into an executable and is available
     for lookup from `IfrtCall` TF ops.
 
-    This op also takes `variable_names` attribute to bind the variables (weights)
-    by names.
+    `variable_arg_indices` is a sorted (ascending order) array and indicates which
+    element of `args` is a key to a loaded array corresponding to a variable.
   }];
 
   let arguments = (ins
     Variadic<TF_Tensor> : $args,
     I64Attr : $program_id,
-    StrArrayAttr : $variable_names
+    I32ArrayAttr : $variable_arg_indices
   );
 
   let results = (outs Variadic<TF_Tensor> : $results);

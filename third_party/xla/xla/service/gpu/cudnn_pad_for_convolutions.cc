@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,34 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -68,9 +83,9 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
 }
 
 // Modifies the given convolution to have the given input and result shapes.
-static Status PadConv(HloCustomCallInstruction* conv,
-                      absl::Span<const Shape> new_input_shapes,
-                      const Shape& new_result_shape) {
+static absl::Status PadConv(HloCustomCallInstruction* conv,
+                            absl::Span<const Shape> new_input_shapes,
+                            const Shape& new_result_shape) {
   CHECK_EQ(0, conv->shape().tuple_shapes(1).dimensions(0))
       << "conv must use 0 scratch bytes, i.e. this pass must be run "
          "before CudnnConvAlgorithmPicker.";
@@ -147,11 +162,11 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 // new_input_shapes.  Notice that new_input_shapes is a vector for multiple
 // input tensors. This function shall return true if padding is necessary or
 // false otherwise in addition to status.
-static StatusOr<bool> ResolveAndPad(
+static absl::StatusOr<bool> ResolveAndPad(
     HloCustomCallInstruction* conv,
-    std::function<StatusOr<bool>(HloCustomCallInstruction* conv,
-                                 std::vector<Shape>* new_input_shapes,
-                                 Shape* new_result_shape)>
+    std::function<absl::StatusOr<bool>(HloCustomCallInstruction* conv,
+                                       std::vector<Shape>* new_input_shapes,
+                                       Shape* new_result_shape)>
         resolve_pad_shapes) {
   std::vector<Shape> new_input_shapes;
   Shape new_result_shape;
@@ -177,7 +192,7 @@ static StatusOr<bool> ResolveAndPad(
 // Don't run this pass on GPUs without tensor cores -- it will make them slower!
 //
 // TODO(jlebar): Also pad dots.
-static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
+static absl::StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
@@ -299,7 +314,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
 
 // Adds padding to cudnn integer convolutions to make input and output feature
 // maps multiples of pad_to (usually 4 or 32).
-StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
+absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
     int pad_to, const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
     Shape* new_result_shape_ptr) {
@@ -471,7 +486,7 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   return changed;
 }
 
-StatusOr<bool> CudnnPadForConvolutions::Run(
+absl::StatusOr<bool> CudnnPadForConvolutions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

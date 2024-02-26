@@ -130,11 +130,7 @@ func.func @reduce(%arg0: tensor<1x16x16x320xf32>, %arg3 : tensor<f32>) -> tensor
 }
 
 //CHECK:func.func private @reduce(%arg0: tensor<1x16x16x320xf32>, %arg1: tensor<f32>) -> tensor<1x320xf32> {
-//CHECK-NEXT: %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [1, 2] : (tensor<1x16x16x320xf32>, tensor<f32>) -> tensor<1x320xf32>
-//CHECK-NEXT: reducer(%arg2: tensor<f32>, %arg3: tensor<f32>) {
-//CHECK-NEXT:  %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
-//CHECK-NEXT:  return %1 : tensor<f32>
-//CHECK-NEXT: }
+//CHECK-NEXT: %0 = stablehlo.reduce(%arg0 init: %arg1) applies stablehlo.add across dimensions = [1, 2] : (tensor<1x16x16x320xf32>, tensor<f32>) -> tensor<1x320xf32>
 //CHECK-NEXT: return %0 : tensor<1x320xf32>
 //CHECK-NEXT:}
 
@@ -320,7 +316,7 @@ func.func @dynamic_update_slice(%arg0: tensor<4x4xi64>, %arg1: tensor<2x3xi64>, 
 
 func.func @dyanmic_slice(%arg0: tensor<3x3xi64>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<3x3xi64> {
   %0 = "stablehlo.dynamic_slice"(%arg0, %arg1, %arg2) {
-    slice_sizes = dense<[3, 3]> : tensor<2xi64>
+    slice_sizes = array<i64: 3, 3>
   } : (tensor<3x3xi64>, tensor<i64>, tensor<i64>) -> tensor<3x3xi64>
   return %0 : tensor<3x3xi64>
 }
@@ -355,7 +351,7 @@ func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tens
     ^bb0(%arg23: tensor<f32>, %arg24: tensor<f32>):
       %1112 = stablehlo.add %arg23, %arg24 : tensor<f32>
       stablehlo.return %1112 : tensor<f32>
-    }) {base_dilations = dense<1> : tensor<3xi64>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = dense<1> : tensor<3xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+  }) {base_dilations = array<i64: 1, 1, 1>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = array<i64: 1, 1, 1>, window_dimensions = array<i64: 1, 160, 1>, window_strides = array<i64: 1, 1, 1>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
   return %0 : tensor<1x160x1xf32>
 }
 
@@ -364,7 +360,7 @@ func.func @reduce_window(%arg0: tensor<1x160x1xf32>, %arg1: tensor<f32>) -> tens
 //CHECK-NEXT:  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
 //CHECK-NEXT:   %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
 //CHECK-NEXT:   stablehlo.return %1 : tensor<f32>
-//CHECK-NEXT{LITERAL}:  }) {base_dilations = dense<1> : tensor<3xi64>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = dense<1> : tensor<3xi64>, window_dimensions = dense<[1, 160, 1]> : tensor<3xi64>, window_strides = dense<1> : tensor<3xi64>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
+//CHECK-NEXT{LITERAL}:  }) {base_dilations = array<i64: 1, 1, 1>, padding = dense<[[0, 0], [159, 0], [0, 0]]> : tensor<3x2xi64>, window_dilations = array<i64: 1, 1, 1>, window_dimensions = array<i64: 1, 160, 1>, window_strides = array<i64: 1, 1, 1>} : (tensor<1x160x1xf32>, tensor<f32>) -> tensor<1x160x1xf32>
 //CHECK-NEXT: return %0 : tensor<1x160x1xf32>
 //CHECK-NEXT:}
 
@@ -511,7 +507,7 @@ func.func @gather(%operand: tensor<3x4x2xi32>, %start_indices: tensor<2x3x2xi64>
     collapsed_slice_dims = [0],
     start_index_map = [1, 0],
     index_vector_dim = 2>,
-  slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>,
+  slice_sizes = array<i64: 1, 2, 2>,
   indices_are_sorted = false
   } : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
   return %result : tensor<2x3x2x2xi32>
@@ -519,12 +515,12 @@ func.func @gather(%operand: tensor<3x4x2xi32>, %start_indices: tensor<2x3x2xi64>
 
 
 // CHECK: func.func private @gather(%arg0: tensor<3x4x2xi32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32> {
-// CHECK-NEXT: %0 = "stablehlo.gather"(%arg0, %arg1) {dimension_numbers = #stablehlo.gather<offset_dims = [2, 3], collapsed_slice_dims = [0], start_index_map = [1, 0], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+// CHECK-NEXT: %0 = "stablehlo.gather"(%arg0, %arg1) {dimension_numbers = #stablehlo.gather<offset_dims = [2, 3], collapsed_slice_dims = [0], start_index_map = [1, 0], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = array<i64: 1, 2, 2>} : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
 // CHECK-NEXT: return %0 : tensor<2x3x2x2xi32>
 // CHECK-NEXT:}
 
 func.func @transpose(%arg0: tensor<2x3x2xi32>) -> tensor<2x3x2xi32> {
-  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
+  %0 = "stablehlo.transpose"(%arg0) {permutation = array<i64: 2, 1, 0>} : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
   return %0 : tensor<2x3x2xi32>
 }
 

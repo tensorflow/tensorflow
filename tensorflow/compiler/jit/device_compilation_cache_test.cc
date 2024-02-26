@@ -96,7 +96,7 @@ TEST(DeviceCompilationCacheTest, RequestCountUnchangedOnStore) {
   EXPECT_EQ(cache_value.request_count, 3);
 
   auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
-  cache->Store(key, DeviceCompileState::kCompiled, OkStatus(),
+  cache->Store(key, DeviceCompileState::kCompiled, absl::OkStatus(),
                std::move(compilation_result), std::nullopt);
   cache_value = cache->LookupOrCreate(key);
 
@@ -109,7 +109,7 @@ TEST(DeviceCompilationCacheTest, StoreLookup) {
   TF_ASSERT_OK_AND_ASSIGN(auto key, BuildSampleSignature("foo"));
   auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
   auto executable = std::make_unique<FakeExecutable>("foo_exe");
-  cache->Store(key, DeviceCompileState::kCompiled, OkStatus(),
+  cache->Store(key, DeviceCompileState::kCompiled, absl::OkStatus(),
                std::move(compilation_result), std::move(executable));
   auto cache_value = cache->Lookup(key);
 
@@ -127,7 +127,7 @@ TEST(DeviceCompilationCacheTest, StoreLookupOrCreate) {
   TF_ASSERT_OK_AND_ASSIGN(auto key, BuildSampleSignature("foo"));
   auto compilation_result = std::make_unique<XlaCompiler::CompilationResult>();
   auto executable = std::make_unique<FakeExecutable>("foo_exe");
-  cache->Store(key, DeviceCompileState::kCompiled, OkStatus(),
+  cache->Store(key, DeviceCompileState::kCompiled, absl::OkStatus(),
                std::move(compilation_result), std::move(executable));
   auto cache_value = cache->LookupOrCreate(key);
 
@@ -198,7 +198,7 @@ TEST(DeviceCompilationCacheTest, StoreMultipleEntries) {
   cache->Store(key1, DeviceCompileState::kCompiled,
                errors::InvalidArgument("Invalid argument."),
                std::move(compilation_result1), std::move(executable1));
-  cache->Store(key2, DeviceCompileState::kCompiling, OkStatus(),
+  cache->Store(key2, DeviceCompileState::kCompiling, absl::OkStatus(),
                std::move(compilation_result2), std::move(executable2));
   auto cache_value_1 = cache->Lookup(key1);
   auto cache_value_2 = cache->Lookup(key2);

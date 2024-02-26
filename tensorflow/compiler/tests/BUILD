@@ -1017,6 +1017,7 @@ tf_xla_py_strict_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_aarch64",  # TODO(b/315533266)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1763,6 +1764,7 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "variable_ops_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["variable_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
@@ -2161,9 +2163,9 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = [
         "config-cuda-only",
-        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
@@ -2182,9 +2184,9 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = [
         "config-cuda-only",
-        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],

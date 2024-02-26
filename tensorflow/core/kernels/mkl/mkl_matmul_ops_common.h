@@ -49,9 +49,13 @@ namespace tensorflow {
 #define SET_MKL_LAYOUT(md) SetMklLayout(&md)
 #define TSCALED_BIAS Tbias
 #else
-#define APPEND_ELTWISE(scale, alg, alpha, beta) append_eltwise(alg, alpha, beta)
-#define APPEND_ELTWISE_RELU6(scale, alpha, beta) \
-  append_eltwise(dnnl::algorithm::eltwise_clip, 0.0, alpha)
+#define APPEND_ELTWISE(scale, alg, alpha, beta) \
+  append_eltwise(alg, alpha, beta);             \
+  (void)scale
+#define APPEND_ELTWISE_RELU6(scale, alpha, beta)             \
+  append_eltwise(dnnl::algorithm::eltwise_clip, 0.0, alpha); \
+  (void)scale;                                               \
+  (void)beta
 #define OUTPUT_SCALE_DCHECK                  \
   (post_op_param.name == "src_scale") ||     \
       (post_op_param.name == "wei_scale") || \
@@ -702,8 +706,7 @@ class MklDnnMatMulOpBase : public OpKernel {
   }
 
   virtual bool IsCachedBiasValid(float, float)
-      TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
-    tf_shared_lock lock(bias_cache_mutex_);
+      TF_SHARED_LOCKS_REQUIRED(bias_cache_mutex_) {
     return false;
   }
 

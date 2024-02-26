@@ -48,6 +48,11 @@ namespace {
 struct FunctionalControlFlowToRegions
     : public impl::FunctionalControlFlowToRegionsPassBase<
           FunctionalControlFlowToRegions> {
+  FunctionalControlFlowToRegions() = default;
+  explicit FunctionalControlFlowToRegions(bool allow_passthrough_args)
+      : FunctionalControlFlowToRegionsPassBase(
+            FunctionalControlFlowToRegionsPassOptions{allow_passthrough_args}) {
+  }
   void runOnOperation() override;
 };
 
@@ -102,7 +107,9 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
       return cond;
 
   OpBuilder builder(op);
-  return builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  Value to_bool = builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  CopyDeviceAndUnderscoredAttributes(op, to_bool.getDefiningOp());
+  return to_bool;
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
@@ -248,6 +255,11 @@ void FunctionalControlFlowToRegions::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFFunctionalControlFlowToRegions() {
   return std::make_unique<FunctionalControlFlowToRegions>();
+}
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFFunctionalControlFlowToRegions(
+    bool allow_passthrough_args) {
+  return std::make_unique<FunctionalControlFlowToRegions>(
+      allow_passthrough_args);
 }
 
 }  // namespace TF

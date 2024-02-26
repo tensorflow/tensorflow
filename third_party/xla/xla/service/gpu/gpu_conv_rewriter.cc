@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,6 +42,30 @@ namespace gpu {
 namespace {
 using ConvolutionMatch = std::optional<
     std::tuple<Window, ConvolutionDimensionNumbers, HloInstruction*>>;
+
+// Determine whether conv2d is equal to conv1d.
+bool MaybeConv1dToConv2d(HloInstruction* conv) {
+  if (conv->window().dimensions().size() != 2) {
+    return false;
+  }
+  if (conv->operand(1)->opcode() != HloOpcode::kReshape) {
+    return false;
+  }
+  auto filter = conv->operand(1);
+  std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
+      filter->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
+  if (reshape_degenerate.has_value() &&
+      reshape_degenerate->deleted_dimensions.empty() &&
+      reshape_degenerate->inserted_dimensions.size() == 1) {
+    auto dnums = conv->convolution_dimension_numbers();
+    for (auto dim : dnums.kernel_spatial_dimensions()) {
+      if (dim == reshape_degenerate->inserted_dimensions[0]) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
   const ConvolutionDimensionNumbers& dnums =
@@ -145,10 +169,18 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   // convolutions have very small kernel dimensions, while in the backward pass
   // "kernel dimensions" are large. If kernel dimensions are smaller than the
   // output dimensions, return foward conv; otherwise proceed with backward
-  // filter conv.
-  if ((kernel_spatial_dims.empty() ||
-       conv->operand(1)->shape().dimensions(kernel_spatial_dims[0]) <=
-           conv->shape().dimensions(output_spatial_dims[0])) &&
+  // filter conv. But for conv1d, it is not same. Due to conv1d always reshape
+  // 1D-filter to 2D-filter, even backward or forward will exist one small
+  // kernel dimension. We should handle this special case.
+  int small_kernel_dimension_num = 0;
+  for (int i = 0; i < kernel_spatial_dims.size(); ++i) {
+    if (conv->operand(1)->shape().dimensions(kernel_spatial_dims[i]) <=
+        conv->shape().dimensions(output_spatial_dims[i])) {
+      small_kernel_dimension_num += 1;
+    }
+  }
+  if ((kernel_spatial_dims.empty() || small_kernel_dimension_num > 1 ||
+       (!MaybeConv1dToConv2d(conv) && small_kernel_dimension_num == 1)) &&
       !window_util::HasWindowDilation(conv->window())) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "
@@ -309,10 +341,18 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
       reverse_filter->opcode() == HloOpcode::kReverse &&
       absl::c_is_permutation(dnums.kernel_spatial_dimensions(),
                              reverse_filter->dimensions());
+  // For conv1d which reshape to conv2d, filter reverse pattern is
+  // reshape(reverse(filter)). It seems we can reuse conv2d backward input
+  // pattern matcher, but after algsimp pass, this pattern will change to
+  // reverse(reshape(filter)) and fail to match. So matching conv1d backward
+  // input need different processing logic.
+  bool is_reversed_conv1d_filter =
+      MaybeConv1dToConv2d(conv) &&
+      reverse_filter->operand(0)->opcode() == HloOpcode::kReverse;
   bool is_1x1_filter =
       absl::c_all_of(conv->window().dimensions(),
                      [](const WindowDimension& d) { return d.size() == 1; });
-  if (!is_reversed_filter &&
+  if (!is_reversed_filter && !is_reversed_conv1d_filter &&
       !(window_util::HasBaseDilation(conv->window()) &&
         (reverse_filter->IsConstant() || is_1x1_filter))) {
     VLOG(1) << "Can't match to backwards convolution. Either filter is not "
@@ -484,6 +524,10 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   // One reverse is subsumed by the cuDNN call.
   if (rhs->opcode() == HloOpcode::kReverse) {
     rhs = rhs->mutable_operand(0);
+  } else if (is_reversed_conv1d_filter) {
+    auto src = rhs->mutable_operand(0)->mutable_operand(0);
+    rhs = conv->parent()->AddInstruction(
+        HloInstruction::CreateReshape(rhs->shape(), src));
   }
   if (conv->feature_group_count() == 1) {
     return std::make_tuple(new_window, dnums, rhs);
@@ -662,7 +706,8 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 
 // Helper function to create a custom_call instruction to replace the given
 // conv instruction
-static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
+static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
+    HloInstruction* conv) {
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -696,7 +741,7 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
 }
 
 // Tries to rewrite a single convolution into a call to cudnn/miopen.
-StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
+absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
   TF_ASSIGN_OR_RETURN(HloInstruction * custom_call,
@@ -705,8 +750,10 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     return false;
   }
 
-  TF_RETURN_IF_ERROR(
-      custom_call->set_backend_config(GetDefaultBackendConfig()));
+  GpuBackendConfig gpu_backend_config;
+  *gpu_backend_config.mutable_cudnn_conv_backend_config() =
+      GetDefaultBackendConfig();
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << custom_call->ToString();
@@ -722,7 +769,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
 // Rewrites the convolutions in the given computation into calls to
 // cudnn/miopen.
 // Returns true if it made any changes.
-StatusOr<bool> RunOnComputation(HloComputation* computation) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
   std::vector<HloInstruction*> convs;
   for (auto* hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kConvolution) {
@@ -739,7 +786,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> GpuConvRewriter::Run(
+absl::StatusOr<bool> GpuConvRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), before:\n" + module->ToString());

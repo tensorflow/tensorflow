@@ -204,15 +204,11 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
-      OP_REQUIRES_ASYNC(
+      OP_REQUIRES_OK_ASYNC(
           c,
-          stream
-              ->ThenMemcpy(nnz_per_batch_host.mutable_data() /*host_dst*/,
-                           nnz_per_batch_device_ptr /*gpu_src*/,
-                           batch_size * sizeof(int32) /*size*/)
-              .ok(),
-          errors::Internal("DenseToSparseMatrixGPUOp: failed to copy "
-                           "nnz_per_batch from device"),
+          stream->Memcpy(nnz_per_batch_host.mutable_data() /*host_dst*/,
+                         nnz_per_batch_device_ptr /*gpu_src*/,
+                         batch_size * sizeof(int32) /*size*/),
           done);
     }
 

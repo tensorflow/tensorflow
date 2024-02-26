@@ -64,7 +64,7 @@ static mlir::LogicalResult FilterTfgSpecificArgResultAttributes(
     mlir::NamedAttrList list;
     for (mlir::NamedAttribute attr : std::get<1>(it).getValue()) {
       // Skip if the attribute has "tfg" prefix.
-      if (attr.getName().getValue().startswith("tfg")) continue;
+      if (attr.getName().getValue().starts_with("tfg")) continue;
       list.append(attr);
     }
     output_attrs.push_back(list.getDictionary(context));

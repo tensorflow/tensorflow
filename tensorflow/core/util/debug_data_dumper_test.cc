@@ -112,7 +112,7 @@ TEST(DebugDataDumper, DumpGraphToFileTest) {
 
   std::string dumpFilename =
       io::JoinPath(dir, "DumpGraphToFileTest.0000.main.tag.pbtxt");
-  EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
+  EXPECT_EQ(absl::OkStatus(), Env::Default()->FileExists(dumpFilename));
 }
 
 TEST(DebugDataDumper, DumpGraphLongFileNameCrashTest) {
@@ -152,7 +152,7 @@ TEST(DebugDataDumper, DumpOpCreationStacktracesTest) {
 
   std::string dumpFilename =
       io::JoinPath(dir, "DumpOpCreationStacktracesTest.0000.main.test.csv");
-  EXPECT_EQ(OkStatus(), Env::Default()->FileExists(dumpFilename));
+  EXPECT_EQ(absl::OkStatus(), Env::Default()->FileExists(dumpFilename));
 }
 
 TEST(DebugDataDumper, NoDumpOpCreationStacktracesTest) {

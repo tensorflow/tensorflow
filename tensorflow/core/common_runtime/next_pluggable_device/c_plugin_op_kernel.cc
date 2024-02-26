@@ -251,6 +251,11 @@ std::string_view CPluginOpKernelContext::GetOpKernelName() const {
   return {op_kernel_name.data, op_kernel_name.len};
 }
 
+std::string_view CPluginOpKernelContext::GetDeviceName() const {
+  TF_StringView device_name = TF_GetDeviceName(ctx_);
+  return {device_name.data, device_name.len};
+}
+
 Status CPluginOpKernelContext::GetConfigProto(
     const ConfigProto** config_proto) const {
   TF_BufferPtr serialized_config_proto_ptr(TF_NewBuffer());

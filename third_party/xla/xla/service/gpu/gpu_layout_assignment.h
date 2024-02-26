@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_LAYOUT_ASSIGNMENT_H_
 #define XLA_SERVICE_GPU_GPU_LAYOUT_ASSIGNMENT_H_
 
+#include <cstdint>
+#include <initializer_list>
+
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/status.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -31,35 +37,39 @@ class GpuLayoutAssignment : public LayoutAssignment {
  public:
   explicit GpuLayoutAssignment(
       ComputationLayout* entry_computation_layout,
-      se::StreamExecutor* stream_executor,
+      const se::GpuComputeCapability& gpu_version,
+      const se::dnn::VersionInfo& dnn_version,
       ChannelLayoutConstraints* channel_constraints = nullptr)
       : LayoutAssignment(entry_computation_layout, channel_constraints),
-        stream_executor_(stream_executor) {}
+        gpu_version_(gpu_version),
+        dnn_version_(dnn_version) {}
   ~GpuLayoutAssignment() override = default;
 
  protected:
-  Status AddBackendConstraints(LayoutConstraints* constraints) override;
+  absl::Status AddBackendConstraints(LayoutConstraints* constraints) override;
 
  private:
-  Status AddBackendConstraintsToDnnConvCustomCall(
+  absl::Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
 
   // dim_groups are ordered from major to minor dimensions.
-  Status SetOperandMajorToMinorLayout(
+  absl::Status SetOperandMajorToMinorLayout(
       const HloInstruction* instruction, int64_t operand,
       std::initializer_list<absl::Span<const int64_t>> dim_groups);
 
-  Status SetDotOperandLayout(const HloInstruction* instruction, int64_t operand,
-                             absl::Span<const int64_t> batch_dims,
-                             absl::Span<const int64_t> row_dims,
-                             absl::Span<const int64_t> col_dims);
+  absl::Status SetDotOperandLayout(const HloInstruction* instruction,
+                                   int64_t operand,
+                                   absl::Span<const int64_t> batch_dims,
+                                   absl::Span<const int64_t> row_dims,
+                                   absl::Span<const int64_t> col_dims);
 
-  Status SetDotLayout(const HloInstruction* instruction,
-                      LayoutConstraints* constraints);
+  absl::Status SetDotLayout(const HloInstruction* instruction,
+                            LayoutConstraints* constraints);
 
   bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
 
-  se::StreamExecutor* stream_executor_;
+  const se::GpuComputeCapability gpu_version_;
+  const se::dnn::VersionInfo dnn_version_;
 };
 
 }  // namespace gpu

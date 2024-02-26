@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
@@ -23,9 +26,7 @@ namespace {
 
 class StreamSearchTest : public ::testing::Test {
  public:
-  Platform* GetPlatform() {
-    return *MultiPlatformManager::PlatformWithName("CUDA");
-  }
+  Platform* GetPlatform() { return *PlatformManager::PlatformWithName("CUDA"); }
 };
 
 TEST_F(StreamSearchTest, NoMatchBadPtr) {
@@ -34,7 +35,7 @@ TEST_F(StreamSearchTest, NoMatchBadPtr) {
   StreamExecutorConfig config;
   config.gpu_stream = bad_ptr;
 
-  tsl::StatusOr<StreamExecutor*> found_executor =
+  absl::StatusOr<StreamExecutor*> found_executor =
       GetPlatform()->GetExecutor(config);
 
   // No executor found.
@@ -42,7 +43,8 @@ TEST_F(StreamSearchTest, NoMatchBadPtr) {
 }
 
 TEST_F(StreamSearchTest, FoundPrevExecutor) {
-  tsl::StatusOr<StreamExecutor*> executor = GetPlatform()->ExecutorForDevice(0);
+  absl::StatusOr<StreamExecutor*> executor =
+      GetPlatform()->ExecutorForDevice(0);
   EXPECT_TRUE(executor.ok());
 
   Stream s(*executor);
@@ -57,7 +59,8 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   StreamExecutorConfig c;
   c.gpu_stream = gpu_ptr;
 
-  tsl::StatusOr<StreamExecutor*> found_executor = GetPlatform()->GetExecutor(c);
+  absl::StatusOr<StreamExecutor*> found_executor =
+      GetPlatform()->GetExecutor(c);
   EXPECT_TRUE(found_executor.ok());
   EXPECT_EQ(*found_executor, *executor);
 

@@ -15,7 +15,6 @@
 """Defines a wrapper class for overridden python method definitions."""
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Optional
-import uuid
 
 from absl import logging
 
@@ -23,11 +22,9 @@ from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_algorithm
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
-from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
@@ -502,101 +499,12 @@ def _run_graph_for_calibration(
   logging.info('Calibration step complete.')
 
 
-def _get_min_max_from_calibrator(
-    node_id: bytes,
-    calib_opts: quantization_options_pb2.CalibrationOptions,
-) -> tuple[float, float]:
-  """Calculate min and max from statistics using calibration options.
-
-  Args:
-    node_id: bytes of node id.
-    calib_opts: Calibration options used for calculating min and max.
-
-  Returns:
-    (min_value, max_value): Min and max calculated using calib_opts.
-
-  Raises:
-    ValueError: Unsupported calibration method is given.
-  """
-  statistics: calibration_statistics_pb2.CalibrationStatistics = (
-      pywrap_calibration.get_statistics_from_calibrator(node_id)
-  )
-  min_value, max_value = calibration_algorithm.get_min_max_value(
-      statistics, calib_opts
-  )
-  return min_value, max_value
-
-
-def _add_calibration_statistics(
-    graph_def: graph_pb2.GraphDef,
-    calib_opts: quantization_options_pb2.CalibrationOptions,
-) -> None:
-  """Adds calibration statistics to the graph def.
-
-  This function must be run after running the graph with a representative
-  dataset. Retrieves calibration statistics from the global calibrator and adds
-  them to the corresponding nodes as attributes.
-
-  Args:
-    graph_def: GraphDef to add calibration statistics to.
-    calib_opts: Calibration options to calculate min and max.
-  """
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op != 'CustomAggregator':
-        continue
-
-      node_id = node_def.attr['id'].s
-      try:
-        min_value, max_value = _get_min_max_from_calibrator(node_id, calib_opts)
-        pywrap_calibration.clear_data_from_calibrator(node_id)
-
-        node_def.attr['min'].f = min_value
-        node_def.attr['max'].f = max_value
-      except ValueError:
-        logging.warning(
-            (
-                'CustomAggregator id "%s" from FunctionDef "%s" does not have '
-                'min or max values. Parts of this function are not quantized.'
-            ),
-            node_id.decode('utf-8'),
-            function_def.signature.name,
-        )
-
-
 class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
   """Wrapper class for overridden python method definitions.
 
   This class contains python methods that overrides C++ virtual functions
   declared in `pywrap_function_lib.PyFunctionLibrary`.
   """
-
-  # LINT.IfChange(assign_ids_to_custom_aggregator_ops)
-  def assign_ids_to_custom_aggregator_ops(
-      self,
-      exported_model_serialized: bytes,
-  ) -> bytes:
-    # LINT.ThenChange(py_function_lib.h:assign_ids_to_custom_aggregator_ops)
-    """Assigns UUIDs to each CustomAggregator op find in the graph def.
-
-    Args:
-      exported_model_serialized: Serialized `ExportedModel` instance.
-
-    Returns:
-      Serialized `ExportedModel` whose CustomAggregator ops are assigned UUIDs
-      to their `id` attributes.
-    """
-    exported_model = exported_model_pb2.ExportedModel.FromString(
-        exported_model_serialized
-    )
-
-    graph_def = exported_model.graph_def
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op == 'CustomAggregator':
-          node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
-
-    return exported_model.SerializeToString()
 
   # LINT.IfChange(save_exported_model)
   def save_exported_model(
@@ -651,11 +559,10 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       saved_model_path: str,
       signature_keys: list[str],
       tags: set[str],
-      exported_model_serialized: bytes,
       calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
-      representative_dataset: rd.RepresentativeDatasetOrMapping,
-  ) -> bytes:
+      representative_dataset_file_map_serialized: dict[str, bytes],
+  ) -> None:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
     """Runs calibration and adds calibration statistics to exported model.
 
@@ -664,17 +571,33 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       signature_keys: List of signature keys corresponding to SignatureDefs to
         run calibration on.
       tags: A set of tags that identify the MetaGraphDef.
-      exported_model_serialized: Serialized `ExportedModel` that corresponds to
-        the SavedModel at `saved_model_path`.
       calibration_options_serialized: Serialized `CalibrationOptions`.
       force_graph_mode_calibration: If True, runs the calibration in graph mode.
-      representative_dataset: Representative dataset to run calibration.
+      representative_dataset_file_map_serialized: Signature key ->
+        `RepresentativeDatasetFile` mapping for running the calibration step.
+        Each dataset file stores the representative dataset for the function
+        matching the signature key.
 
     Returns:
       Updated exported model (serialized) where the collected calibration
       statistics are added to `CustomerAggregator` nodes at the `min` and `max`
       attributes.
     """
+    dataset_file_map = {}
+    for (
+        signature_key,
+        dataset_file_serialized,
+    ) in representative_dataset_file_map_serialized.items():
+      dataset_file_map[signature_key] = (
+          quantization_options_pb2.RepresentativeDatasetFile.FromString(
+              dataset_file_serialized
+          )
+      )
+
+    repr_dataset_map = rd.TfRecordRepresentativeDatasetLoader(
+        dataset_file_map=dataset_file_map
+    ).load()
+
     # Uses the representative dataset to collect statistics for calibration.
     # After this operation, min & max values are stored separately in a global
     # CalibratorSingleton instance.
@@ -682,73 +605,36 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         saved_model_path,
         signature_keys,
         tags,
-        representative_dataset,
+        repr_dataset_map,
         force_graph_mode_calibration,
     )
 
-    exported_model = exported_model_pb2.ExportedModel.FromString(
-        exported_model_serialized
-    )
-    calibration_options = (
+  # LINT.IfChange(get_calibration_min_max_value)
+  def get_calibration_min_max_value(
+      self,
+      calibration_statistics_serialized: bytes,
+      calibration_options_serialized: bytes,
+  ) -> tuple[float, float]:
+    """Calculates min and max values from statistics.
+
+    Args:
+      calibration_statistics_serialized: Serialized `CalibrationStatistics`.
+        This will be the source to calculate min and max values from.
+      calibration_options_serialized: Serialized `CalibrationOptions`. Specifies
+        how the min / max should be calculated.
+
+    Returns:
+      (min_value, max_value): Min and max calculated using calib_opts.
+
+    Raises:
+      ValueError: Unsupported calibration method is given.
+    """
+    # LINT.ThenChange(py_function_lib.h:get_calibration_min_max_value)
+    return calibration_algorithm.get_min_max_value(
+        calibration_statistics_pb2.CalibrationStatistics.FromString(
+            calibration_statistics_serialized
+        ),
         quantization_options_pb2.CalibrationOptions.FromString(
             calibration_options_serialized
-        )
+        ),
     )
-    _add_calibration_statistics(exported_model.graph_def, calibration_options)
-
-    return exported_model.SerializeToString()
-
-  # TODO: b/312371048 - Rewrite this in c++.
-  # LINT.IfChange(enable_dump_tensor)
-  def enable_dump_tensor(self, graph_def_serialized: bytes) -> bytes:
-    """Enable DumpTensor in the graph def.
-
-    DumpTensor is disabled by default to avoid logging data during calibration.
-    This function is called after calibration to enable DumpTensor.
-
-    Args:
-      graph_def_serialized: Serialized `GraphDef` to enable DumpTensor
-
-    Returns:
-      Updated serialized GraphDef where DumpTensors are enabled.
-    """
-    # LINT.ThenChange(py_function_lib.h:enable_dump_tensor)
-    graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op != 'DumpTensor':
-          continue
-
-        node_def.attr['enabled'].b = True
-
-    return graph_def.SerializeToString()
-
-  # TODO: b/312371048 - Rewrite this in c++.
-  # LINT.IfChange(change_dump_tensor_file_name)
-  def change_dump_tensor_file_name(self, graph_def_serialized: bytes) -> bytes:
-    # LINT.ThenChange(py_function_lib.h:change_dump_tensor_file_name)
-    """Change file_name used by DumpTensor to quantized_tensor_data.pb.
-
-    In whole model verify, DumpTensor in unquantized model uses file_name
-    unquantized_tensor_data.pb.
-    After unquantized dump model is created, this function allows quantized dump
-    model to use quantized_tensor_data.pb as file_name.
-
-    Args:
-      graph_def_serialized: Serialized `GraphDef` to change file_name of
-        DumpTensor
-
-    Returns:
-      Serialized GraphDef with updated file names for DumpTensors.
-    """
-    graph_def = graph_pb2.GraphDef.FromString(graph_def_serialized)
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op != 'DumpTensor':
-          continue
-
-        node_def.attr['file_name'].s = 'quantized_tensor_data.pb'.encode(
-            'utf-8'
-        )
-
-    return graph_def.SerializeToString()

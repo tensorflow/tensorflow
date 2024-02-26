@@ -13,15 +13,61 @@
 # limitations under the License.
 # ==============================================================================
 """StableHLO Quantizer."""
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
+from typing import Mapping
+
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
+from tensorflow.compiler.mlir.quantization.stablehlo.python import pywrap_quantization
+from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
+from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.saved_model import loader_impl
+
+# Mapping of signature def key -> SignatureDef.
+_SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
+
+
+def _serialize_signature_def_map(
+    signature_def_map: _SignatureDefMap,
+) -> dict[str, bytes]:
+  """Serializes SignatureDef values in `signature_def_map`.
+
+  Args:
+    signature_def_map: Signature key -> SignatureDef mapping.
+
+  Returns:
+    Signature def map where the values (`SignatureDef`) are serialized.
+  """
+  signature_def_map_serialized = {}
+  for key, signature_def in signature_def_map.items():
+    signature_def_map_serialized[key] = signature_def.SerializeToString()
+
+  return signature_def_map_serialized
+
+
+def _populate_default_quantization_config(
+    config: qc.QuantizationConfig,
+) -> qc.QuantizationConfig:
+  """Populates `QuantizationConfig` with default values.
+
+  Args:
+    config: User-provided quantization config.
+
+  Returns:
+    Updated `QuantizationConfig` after populating default values to fields that
+    the user did not explicitly specify.
+  """
+  pipeline_config = config.pipeline_config
+  if not pipeline_config.HasField('unpack_quantized_types'):
+    pipeline_config.unpack_quantized_types = True
+
+  return config
 
 
 # TODO: b/310594193 - Export API to pip package.
 def quantize_saved_model(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    config: quant_opts_pb2.QuantizationOptions,
+    config: qc.QuantizationConfig,
 ) -> None:
   """Quantizes a saved model.
 
@@ -35,15 +81,36 @@ def quantize_saved_model(
     single representative dataset.
   """
   if not (
-      config.quantization_method.preset_method
-      == quant_opts_pb2.QuantizationMethod.PresetMethod.METHOD_STATIC_RANGE_INT8
-      and len(config.representative_datasets) == 1
+      config.HasField('static_range_ptq_preset')
+      and len(config.static_range_ptq_preset.representative_datasets) == 1
   ):
     raise ValueError(
         '`quantize_saved_model` currently only supports static-range PTQ with a'
         ' single signature.'
     )
 
-  # TODO: b/307624867 - Remove TF Quantizer dependency and replace it with
-  # StableHLO Quantizer components.
-  quantize_model.quantize(src_saved_model_path, dst_saved_model_path, config)
+  config = qc.QuantizationConfig.FromString(
+      pywrap_quantization.populate_default_configs(config.SerializeToString())
+  )
+
+  signature_def_map = save_model.get_signatures_from_saved_model(
+      src_saved_model_path,
+      signature_keys=None,
+      tags=set(config.tf_saved_model.tags),
+  )
+
+  loader = loader_impl.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      config.tf_saved_model.tags
+  ).meta_info_def.function_aliases
+
+  signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
+  pywrap_quantization.static_range_ptq(
+      src_saved_model_path,
+      dst_saved_model_path,
+      quantization_config_serialized=config.SerializeToString(),
+      signature_keys=list(signature_def_map.keys()),
+      signature_def_map_serialized=signature_def_map_serialized,
+      function_aliases=dict(function_aliases),
+      py_function_library=py_function_lib.PyFunctionLibrary(),
+  )

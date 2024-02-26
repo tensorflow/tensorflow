@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -325,6 +326,21 @@ TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("shape must have 2 dimensions, but has 1 dimensions")));
+}
+
+TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
+  auto device_list = GetDevices({0, 1});
+  auto xla_hlo_sharding = xla::HloSharding::Tile(
+      xla::TileAssignment((absl::Span<const int64_t>){2}));
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      DynamicShape dynamic_shape,
+      DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
+  EXPECT_THAT(sharding->Disassemble(dynamic_shape),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("can only disassemble static shape")));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, HloShardingTest,

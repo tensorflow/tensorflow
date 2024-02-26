@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -127,6 +127,12 @@ int main(int argc, char** argv) {
           "iterations", &opts.iterations,
           "The number of times to run the module. Each iteration will be run "
           "with different input data."),
+      tsl::Flag(
+          "isolate_instructions", &opts.isolate_instructions,
+          "Rather than executing the entire module at once, run every "
+          "instruction individually, including the top-level and control-flow "
+          "dependent computations (e.g. inside conditions, calls). Skip "
+          "instructions inside fused computations etc."),
       tsl::Flag("different_random_seeds", &different_random_seeds,
                 "Whether each iteration should use a different random seed for "
                 "the HloModuleConfig."),
@@ -194,8 +200,7 @@ int main(int argc, char** argv) {
   }
 
   if (!reference_platform_name.empty()) {
-    std::cerr << failure_count << "/" << iteration_count
-              << " runs miscompared.\n";
+    std::cerr << failure_count << "/" << iteration_count << " runs failed.\n";
   }
 
   return failure_count == 0 ? 0 : -1;

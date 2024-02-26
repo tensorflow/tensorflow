@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
+absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
     absl::Span<const Shape> input_shapes, const Shape& output_shape,
     HloInputOutputAliasConfig* alias_config,
     HloBufferDonorConfig* buffer_donor_config) {
@@ -130,7 +130,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   return changed;
 }
 
-StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
+absl::StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We exactly follow HloInputOutputAliasConfig::Verify to create input_shapes

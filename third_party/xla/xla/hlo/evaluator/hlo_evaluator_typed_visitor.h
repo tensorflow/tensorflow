@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -243,6 +243,18 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return OkStatus();
     }
     return UnsupportedTypeError(ceil);
+  }
+
+  Status HandleErf(const HloInstruction* erf) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          parent_->evaluated_[erf],
+          ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
+            return std::erf(elem_operand);
+          }));
+      return OkStatus();
+    }
+    return UnsupportedTypeError(erf);
   }
 
   Status HandleExp(const HloInstruction* exp) override {
@@ -511,15 +523,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         parent_->evaluated_[power],
         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
                                       ElementwiseT rhs_el) {
-          // Case 0: 1^x = 1
-          if (lhs_el == ElementwiseT(1)) {
+          // Case 0: 1^x = 1 and x^0 = 1, regardless of X, see
+          // Branch Cuts for Complex Elementary Functions or Much Ado About
+          // Nothing's Sign Bit, W. Kahan, Section 10.
+          if (lhs_el == ElementwiseT(1) || rhs_el == ElementwiseT(0)) {
             return static_cast<ElementwiseT>(1);
           }
-          // Case 1: 0^0 = 1
-          if (lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)) {
-            return static_cast<ElementwiseT>(1);
-          }
-          // Case 2:
+          // Case 1:
           // 1. inf^(a + 0i) = inf, if a > 0.
           // 2. inf^(a + 0i) = 0, if a < 0.
           if constexpr (is_complex_v<ElementwiseT>) {
@@ -539,7 +549,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return static_cast<ElementwiseT>(0);
             }
           }
-          // Case 3:
+          // Case 2:
           // Fallback to pow.
           if constexpr (std::is_same_v<ElementwiseT, bool>) {
             return lhs_el || !rhs_el;
@@ -1595,7 +1605,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
  private:
-  StatusOr<Literal> ElementWiseUnaryOp(
+  absl::StatusOr<Literal> ElementWiseUnaryOp(
       const HloInstruction* instruction,
       const std::function<ElementwiseT(ElementwiseT)>& unary_op) {
     const Literal& operand_literal =
@@ -1608,7 +1618,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return std::move(result_literal);
   }
 
-  StatusOr<Literal> ElementWiseBinaryOp(
+  absl::StatusOr<Literal> ElementWiseBinaryOp(
       const HloInstruction* instruction,
       const std::function<ElementwiseT(ElementwiseT, ElementwiseT)>&
           binary_op) {
@@ -1633,7 +1643,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   template <typename LhsType, typename RhsType, typename EhsType>
-  StatusOr<Literal> ElementwiseTernaryOp(
+  absl::StatusOr<Literal> ElementwiseTernaryOp(
       const HloInstruction* instruction,
       const std::function<ReturnT(LhsType, RhsType, EhsType)>& ternary_op) {
     const auto& shape = instruction->shape();

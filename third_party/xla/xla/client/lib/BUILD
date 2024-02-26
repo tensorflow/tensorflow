@@ -1,11 +1,13 @@
 # Common computation builders for XLA.
 
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla/client:friends"]),
     licenses = ["notice"],
 )
 
@@ -16,7 +18,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-    visibility = ["//visibility:public"],
 )
 
 # Generate test_suites for all backends, named "${backend}_tests".
@@ -26,7 +27,6 @@ cc_library(
     name = "arithmetic",
     srcs = ["arithmetic.cc"],
     hdrs = ["arithmetic.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
         "//xla:shape_util",
@@ -61,10 +61,8 @@ cc_library(
     hdrs = [
         "comparators.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
@@ -97,7 +95,6 @@ cc_library(
     name = "constants",
     srcs = ["constants.cc"],
     hdrs = ["constants.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal_util",
         "//xla:shape_util",
@@ -105,7 +102,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -113,7 +110,6 @@ cc_library(
     name = "broadcast",
     srcs = ["broadcast.cc"],
     hdrs = ["broadcast.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",
@@ -145,12 +141,10 @@ cc_library(
     name = "conv_grad_size_util",
     srcs = ["conv_grad_size_util.cc"],
     hdrs = ["conv_grad_size_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
         "//xla/client:padding",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -158,10 +152,8 @@ cc_library(
     name = "dynamic_shaped_ops",
     srcs = ["dynamic_shaped_ops.cc"],
     hdrs = ["dynamic_shaped_ops.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
@@ -177,7 +169,6 @@ cc_library(
     name = "loops",
     srcs = ["loops.cc"],
     hdrs = ["loops.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
         "//xla:shape_util",
@@ -194,7 +185,6 @@ cc_library(
     name = "math",
     srcs = ["math.cc"],
     hdrs = ["math.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -232,7 +222,6 @@ cc_library(
     name = "matrix",
     srcs = ["matrix.cc"],
     hdrs = ["matrix.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -263,11 +252,9 @@ xla_test(
         ":matrix",
         ":slicing",
         "//xla:status",
-        "//xla:status_macros",
         "//xla:statusor",
         "//xla:test",
         "//xla:types",
-        "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
         "//xla/tests:test_macros_header",
@@ -280,7 +267,6 @@ cc_library(
     name = "pooling",
     srcs = ["pooling.cc"],
     hdrs = ["pooling.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -307,7 +293,6 @@ cc_library(
     name = "prng",
     srcs = ["prng.cc"],
     hdrs = ["prng.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
         "//xla:shape_util",
@@ -340,7 +325,6 @@ cc_library(
     name = "qr",
     srcs = ["qr.cc"],
     hdrs = ["qr.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -355,7 +339,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -380,7 +363,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -388,7 +370,6 @@ cc_library(
     name = "lu_decomposition",
     srcs = ["lu_decomposition.cc"],
     hdrs = ["lu_decomposition.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_util",
         "//xla:statusor",
@@ -402,7 +383,6 @@ cc_library(
     name = "approx_topk",
     srcs = ["approx_topk.cc"],
     hdrs = ["approx_topk.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":approx_topk_shape",
         "//xla:shape_util",
@@ -419,7 +399,6 @@ cc_library(
     name = "approx_topk_shape",
     srcs = ["approx_topk_shape.cc"],
     hdrs = ["approx_topk_shape.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla:util",
@@ -430,7 +409,6 @@ cc_library(
     name = "slicing",
     srcs = ["slicing.cc"],
     hdrs = ["slicing.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -465,7 +443,6 @@ cc_library(
     name = "sorting",
     srcs = ["sorting.cc"],
     hdrs = ["sorting.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":comparators",
         ":constants",
@@ -496,7 +473,6 @@ xla_test(
 cc_library(
     name = "quantize",
     hdrs = ["quantize.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
         "//xla:types",
@@ -504,7 +480,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -532,7 +507,6 @@ cc_library(
     name = "testing",
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:execution_options_util",
         "//xla:literal",
@@ -547,7 +521,6 @@ cc_library(
         "//xla/client:xla_computation",
         "//xla/tests:test_utils",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
@@ -556,7 +529,6 @@ cc_library(
     name = "self_adjoint_eig",
     srcs = ["self_adjoint_eig.cc"],
     hdrs = ["self_adjoint_eig.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":comparators",
@@ -573,7 +545,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -602,7 +573,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -610,7 +580,6 @@ cc_library(
     name = "svd",
     srcs = ["svd.cc"],
     hdrs = ["svd.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":comparators",
@@ -626,7 +595,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -655,7 +623,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -663,7 +630,6 @@ cc_library(
     name = "tridiagonal",
     srcs = ["tridiagonal.cc"],
     hdrs = ["tridiagonal.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":constants",
         ":loops",
@@ -685,18 +651,13 @@ xla_test(
     shard_count = 10,
     tags = ["optonly"],
     deps = [
-        ":constants",
         ":slicing",
         ":tridiagonal",
-        "//xla:array2d",
-        "//xla:error_spec",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:test",
         "//xla/client:xla_builder",
         "//xla/tests:client_library_test_base",
-        "//xla/tests:literal_test_util",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
     ],
@@ -706,7 +667,6 @@ cc_library(
     name = "logdet",
     srcs = ["logdet.cc"],
     hdrs = ["logdet.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -721,7 +681,6 @@ cc_library(
         "//xla:statusor",
         "//xla/client:xla_builder",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -745,7 +704,6 @@ xla_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -753,7 +711,6 @@ cc_library(
     name = "tuple",
     srcs = ["tuple.cc"],
     hdrs = ["tuple.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:shape_tree",
         "//xla:shape_util",
@@ -780,6 +737,5 @@ xla_test(
         "//xla/tests:client_library_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )

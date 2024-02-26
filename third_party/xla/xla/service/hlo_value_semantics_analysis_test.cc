@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -567,7 +567,7 @@ TEST_F(EinsumDepthAnalysisTest, MnistTrainingLoop) {
                                                        /*num_partitions=*/1));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module->entry_computation()));
+      EinsumDepthAnalysis::Run(*module->entry_computation(), {}));
   const EinsumDepthMap& einsum_depth_map =
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("body.49");
@@ -593,7 +593,7 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
     branch1 {
       fparam = f32[4] parameter(0)
       %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
     }
 
     branch2 {
@@ -612,12 +612,45 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module->entry_computation()));
+      EinsumDepthAnalysis::Run(*module->entry_computation(), {}));
   const EinsumDepthMap& einsum_depth_map =
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("entry");
   EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "conditional"),
             0);
+}
+
+class EinsumHeightAnalysisTest : public HloTestBase {
+ public:
+  int GetInstructionHeight(const EinsumHeightMap& height_map,
+                           HloComputation* computation,
+                           absl::string_view name) {
+    HloInstruction* instruction = computation->GetInstructionWithName(name);
+    auto height_iter = height_map.find(instruction);
+    EXPECT_NE(height_iter, height_map.end());
+    return height_iter->second.element({});
+  }
+};
+
+TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kMnistHlo,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
+      EinsumHeightAnalysis::Run(*module->entry_computation(), {}));
+  const EinsumHeightMap& einsum_height_map =
+      einsum_height_analysis->GetEinsumHeightMap();
+  HloComputation* computation = module->GetComputationWithName("body.49");
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.63"), 1);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.67"), 2);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.71"), 3);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.89"), 4);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.96"), 5);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.92"), 5);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.99"), 6);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.85"), 4);
 }
 
 }  // namespace

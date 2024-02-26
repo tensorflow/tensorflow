@@ -140,7 +140,7 @@ class CSRMatMulOp : public OpKernel {
           TensorShape(a_dense_shape), " vs. ",
           dense_tensor_b.shape().DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  public:
@@ -263,7 +263,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(ctx->allocate_output(0, output_shape, output));
       *matmul_result = output_transposed;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns an Eigen::Ref expression of a sparse sub-matrix from the given
@@ -488,7 +488,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(
           DoMatrixTranspose(ctx->eigen_device<CPUDevice>(), input, output));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

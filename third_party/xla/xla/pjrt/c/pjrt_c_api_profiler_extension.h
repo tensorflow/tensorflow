@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ extern "C" {
 #define PJRT_API_PROFILER_EXTENSION_VERSION 0
 
 typedef struct PJRT_Profiler_Extension {
-  PJRT_Structure_Type type;
+  PJRT_Extension_Type type;
   const void* next;
   PLUGIN_Profiler_Api* profiler_api;
 } PJRT_Profiler_Extension;

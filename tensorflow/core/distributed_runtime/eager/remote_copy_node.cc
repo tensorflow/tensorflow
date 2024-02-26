@@ -60,7 +60,8 @@ Status CreateUncachedKernelAndDeviceOp(
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
-                             /*graph_collector=*/nullptr);
+                             /*graph_collector=*/nullptr,
+                             /*eager_func_params=*/std::nullopt);
 }
 
 // This gets a unique wire ID. We add a random identifier so that if the
@@ -215,7 +216,7 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
           "Expect to receive a Tensor but got a TensorShape.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
@@ -357,7 +358,7 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       return errors::InvalidArgument("Nested packed handles are not supported");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
@@ -478,7 +479,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
 Status RemoteCopyNode::Prepare() {
   TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

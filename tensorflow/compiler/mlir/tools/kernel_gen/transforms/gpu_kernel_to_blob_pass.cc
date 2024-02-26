@@ -81,7 +81,7 @@ class GpuKernelToBlobPass
     return signalPassFailure();
   }
 
-  tensorflow::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
+  absl::StatusOr<std::vector<uint8_t>> GetGpuBinaryBlob(
       gpu::GPUModuleOp gpu_module) {
     if (architectures_.empty()) {
       return tensorflow::errors::Internal(
@@ -112,12 +112,11 @@ class GpuKernelToBlobPass
         return tensorflow::errors::Internal(
             "Could not parse ROCm architecture prefix (expected gfx)");
       }
-      std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(),
           tensorflow::se::RocmComputeCapability{arch_str}, options,
-          libdevice_dir, options.DebugString());
+          options.DebugString());
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");
       }
@@ -217,7 +216,7 @@ class GpuKernelToBlobPass
   }
 
  private:
-  tensorflow::StatusOr<std::pair<bool, int>> ParseCudaArch(
+  absl::StatusOr<std::pair<bool, int>> ParseCudaArch(
       const std::string& arch_str) {
     absl::string_view consumable_arch(arch_str);
     bool is_compute_profile;

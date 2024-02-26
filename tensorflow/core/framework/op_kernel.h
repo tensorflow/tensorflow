@@ -741,7 +741,7 @@ class OpKernelContext {
   // Returns an immutable input tensor in "tensor" by index. May only be used
   // for non-Ref inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
-  StatusOr<const Tensor*> get_input(int index) const;
+  absl::StatusOr<const Tensor*> get_input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs

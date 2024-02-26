@@ -889,6 +889,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:cc_api_stable",
         "@local_tsl//tsl/lib/random:philox_random",
         "@local_tsl//tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
@@ -1493,10 +1494,9 @@ cc_library(
     ],
     deps = [
         ":test_util",
-        "//tensorflow/lite:string",
+        "//tensorflow/lite:cc_api_stable",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
-        "@flatbuffers",
     ],
 )
 
@@ -1509,6 +1509,7 @@ cc_test(
         ":cast_test_common",
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",

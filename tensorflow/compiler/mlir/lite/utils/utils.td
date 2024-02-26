@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,33 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
+include "mlir/IR/PatternBase.td"
+
+// Returns shape of a ranked tensor.
+// if called without a ranked tensor it will fail.
+def GetShape: NativeCodeCall<"GetShape($0)">;
+
+// Constraint that values in list attribute are all ones.
+def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
+
+// Constraint that checks if all values in offset between two
+// attributes are non-negative.
+def HasNonNegativeOffset : Constraint<CPred<"TFL::HasNonNegativeOffset($0, $1)">>;
+
+// Constraint that checks if all values in list attribute are non-negative.
+def HasNonNegativeValues : Constraint<CPred<"TFL::HasNonNegativeValues($0)">>;
+
+// Utility function to get the offset between two dense attribute values.
+def GetOffSet : NativeCodeCall<"TFL::GetOffSet($0, $1)">;
+
+// Attribute Constraint that checks if the attribute value is zero.
+def ZeroIntAttr
+  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+
+// Checks if the value has rank at most 'n'.
+class HasRankAtLeast<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
 
 // Checks value is not produced by a TFL_Quant or
 // from TFL_Quant Op with same quant type.

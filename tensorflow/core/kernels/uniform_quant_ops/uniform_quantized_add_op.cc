@@ -158,7 +158,7 @@ Status EvalQuantizedAdd(OpKernelContext* context, const Tensor& lhs,
                   lhs_quantization_axis, rhs_quantization_axis,
                   output_quantization_axis, output);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

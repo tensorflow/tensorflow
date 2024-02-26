@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<std::optional<Shape>> MaybeInferShape(
+absl::StatusOr<std::optional<Shape>> MaybeInferShape(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kDot:
@@ -51,7 +51,7 @@ bool ResultCaster::InstructionMatchesPattern(HloInstruction* instruction) {
   return inferred_shape.element_type() != instruction->shape().element_type();
 }
 
-StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
+absl::StatusOr<HloInstruction*> ResultCaster::ExpandInstruction(
     HloInstruction* instruction) {
   auto* computation = instruction->parent();
   Shape inferred_shape = MaybeInferShape(instruction).value().value();

@@ -53,10 +53,15 @@ struct ArenaAllocWithUsageInterval {
   }
 };
 
+struct PointerAlignedPointerPair {
+  char* pointer;
+  char* aligned_pointer;
+};
+
 class ResizableAlignedBuffer {
  public:
   ResizableAlignedBuffer(size_t alignment, int subgraph_index)
-      : buffer_(nullptr),
+      : buffer_{nullptr, nullptr},
         data_size_(0),
         alignment_(alignment),
         subgraph_index_(subgraph_index) {
@@ -75,13 +80,10 @@ class ResizableAlignedBuffer {
   void Release();
 
   // Pointer to the data array.
-  char* GetPtr() const { return aligned_ptr_; }
-  // Size of the data array (NOT of the allocation).
-  size_t GetDataSize() const { return data_size_; }
-  // Size of the allocation (NOT of the data array).
-  size_t GetAllocationSize() const {
-    return RequiredAllocationSize(data_size_);
-  }
+  char* GetPtr() const { return buffer_.aligned_pointer; }
+  // Size of the data array. Note: the allocated memory block might be larger
+  // due to excess alignment requirements.
+  size_t GetSize() const { return data_size_; }
   // Alignment of the data array.
   size_t GetAlignment() const { return alignment_; }
 
@@ -91,14 +93,9 @@ class ResizableAlignedBuffer {
   ResizableAlignedBuffer(ResizableAlignedBuffer&&) = delete;
   ResizableAlignedBuffer& operator=(ResizableAlignedBuffer&&) = delete;
 
-  size_t RequiredAllocationSize(size_t data_array_size) const {
-    return data_array_size + alignment_ - 1;
-  }
-
-  char* buffer_;
+  PointerAlignedPointerPair buffer_;
   size_t data_size_;
   size_t alignment_;
-  char* aligned_ptr_;
 
   int subgraph_index_;
 };
@@ -161,9 +158,7 @@ class SimpleMemoryArena {
   // again until Commit() is called & tensor allocations are resolved.
   TfLiteStatus ReleaseBuffer();
 
-  size_t GetBufferSize() const {
-    return underlying_buffer_.GetAllocationSize();
-  }
+  size_t GetBufferSize() const { return underlying_buffer_.GetSize(); }
 
   std::intptr_t BasePointer() const {
     return reinterpret_cast<std::intptr_t>(underlying_buffer_.GetPtr());

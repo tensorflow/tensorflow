@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ namespace llvm_ir {
 // The function has to emit code to compute this value and return the resulting
 // llvm::Value*.
 using ElementGenerator =
-    std::function<StatusOr<llvm::Value*>(const IrArray::Index& index)>;
+    std::function<absl::StatusOr<llvm::Value*>(const IrArray::Index& index)>;
 using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
 
 // Creates the body emitter from target arrays.

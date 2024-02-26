@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -75,12 +76,20 @@ struct ConvertBatchMatMulOp2FullyConnectedOp
   using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
                                 PatternRewriter& rewriter) const override {
-    // Input rhs must be a constant with rank 2.
     DenseElementsAttr constant;
-    if (!(matchPattern(bmm_op.getY(), m_Constant(&constant)) &&
-          constant.getType().getRank() == 2)) {
-      return failure();
+    if (auto rhs = bmm_op.getY(); !matchPattern(rhs, m_Constant(&constant))) {
+      // The constant may be preceded by QDQs in models with QDQ format, so we
+      // should set it to the real constant.
+      auto dq = dyn_cast_or_null<DequantizeOp>(rhs.getDefiningOp());
+      if (!dq) return failure();
+      auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
+      if (!q || !matchPattern(q.getInput(), m_Constant(&constant))) {
+        return failure();
+      }
     }
+
+    // Input rhs must be a constant with rank 2.
+    if (constant.getType().getRank() != 2) return failure();
 
     // Create a tfl.transpose op that performs ZX transpose on `input`.
     auto create_z_x_transpose_op = [&](Value input) -> Value {

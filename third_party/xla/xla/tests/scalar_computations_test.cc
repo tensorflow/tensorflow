@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -61,7 +62,13 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<NativeT>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<NativeT>(&builder, rhs);
-    op(lhs_op, rhs_op, {});
+    XlaOp minmax_op = op(lhs_op, rhs_op, {});
+    // Canonicalize NaNs so we can do a bitwise compare without caring about
+    // payloads.
+    if constexpr (std::is_floating_point_v<NativeT>) {
+      XlaOp isnan_op = Ne(minmax_op, minmax_op);
+      Select(isnan_op, ConstantR0<NativeT>(&builder, NAN), minmax_op);
+    }
     ComputeAndCompareR0<NativeT>(&builder, expected, {});
   }
 };

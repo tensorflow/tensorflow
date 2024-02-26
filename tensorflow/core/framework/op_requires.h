@@ -49,7 +49,7 @@ namespace tensorflow {
 
 #define OP_REQUIRES_OK(CTX, ...)                             \
   do {                                                       \
-    ::tensorflow::Status _s(__VA_ARGS__);                    \
+    const ::absl::Status& _s(__VA_ARGS__);                   \
     if (!TF_PREDICT_TRUE(_s.ok())) {                         \
       CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
       (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
@@ -80,7 +80,7 @@ namespace tensorflow {
 
 #define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)         \
   do {                                                      \
-    const ::tensorflow::Status& _s(STATUS);                 \
+    const ::absl::Status& _s(STATUS);                       \
     if (!TF_PREDICT_TRUE(_s.ok())) {                        \
       (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
       (CALLBACK)();                                         \

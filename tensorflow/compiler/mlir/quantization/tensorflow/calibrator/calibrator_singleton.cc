@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -105,6 +106,11 @@ std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
   }
 
   return instance.id_to_collector_[id_str]->GetStatistics();
+}
+
+int64_t CalibratorSingleton::IssueNewId() {
+  CalibratorSingleton& instance = GetInstance();
+  return instance.next_id_++;
 }
 
 void CalibratorSingleton::AssignIfNotExists(

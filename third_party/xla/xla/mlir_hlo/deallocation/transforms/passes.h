@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,41 +26,10 @@ limitations under the License.
 namespace mlir {
 namespace deallocation {
 
-// Pass to split bufferization.alloc_tensor ops to optimize buffer reuse.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createSplitAllocTensorsPass();
-
-// Pass to insert deallocations (in the form of `deallocation.retain`) ops. Most
-// deallocations are typically converted to `memref.dealloc` by
-// canonicalization.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createDeallocatePass();
-
-// Pass to annotate ops with debug information.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createDeallocationAnnotationPass();
-
-// Pass to annotate buffer arguments with aliasing information.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createXlaBufferArgRewritePass();
-
 // Pass to reuse buffers (hoisting, double buffering, dealloc/alloc
 // coalescing).
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createBufferReusePass();
-
-// Lowers retain to SCF.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createDeallocationToScfPass();
-
-// Convert `deallocation` ops to LLVM.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createConvertDeallocationOpsToLLVM();
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createDeallocationSimplificationPass();
-
-void populateDeallocationToLLVMConversionPatterns(LLVMTypeConverter& converter,
-                                                  RewritePatternSet& patterns);
 
 #define GEN_PASS_REGISTRATION
 #include "deallocation/transforms/passes.h.inc"

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -331,18 +331,40 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
-def LHLOGPU_CudnnNormOp : LHLOGPU_Op<"Norm", [AttrSizedOperandSegments]> {
+def LHLOGPU_CopyStartOp : LHLOGPU_Op<"copy_start"> {
+  let summary = "CopyStart operator";
+  let description = [{
+     Performs memory copies followed by a copy_done instruction.
+  }];
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$input,
-    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$expectation,
-    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$norm_factor,
+    I64Attr:$memory_space);
+  let results = (outs MHLO_Token:$token);
+}
+
+def LHLOGPU_CopyDoneOp : LHLOGPU_Op<"copy_done"> {
+  let summary = "CopyDone operator";
+  let arguments = (ins MHLO_Token:$token);
+}
+
+
+def LHLOGPU_CudnnNormOp : LHLOGPU_Op<"Norm", [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$x,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$y_or_dx,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$dy,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$expectation,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$norm_factor,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$dscale,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$dbias,
     Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
     NormAlgorithmConfigAttr:$algorithm_config,
     F64Attr:$epsilon,
-    I64ArrayAttr:$operand_layouts
+    I64ArrayAttr:$operand_layouts,
+    CudnnNormKindAttr:$kind
     );
 }
 

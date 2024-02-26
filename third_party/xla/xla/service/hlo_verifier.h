@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -244,9 +244,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
  protected:
   // Helpers that switch on layout_sensitive_.
-  bool ShapesSame(const Shape& a, const Shape& b,
-                  bool minor_to_major_only = false,
-                  bool ignore_memory_space = false, bool ignore_tiles = false);
+  bool ShapesSame(const Shape& a, const Shape& b, Shape::Equal equal = {});
 
   // Check the instruction's shape against the shape given by ShapeInference
   // and return an appropriate error if there is a mismatch.
@@ -269,19 +267,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckVariadicShape(const HloInstruction* instruction);
 
  private:
-  bool ShapesSameIgnoringFpPrecision(const Shape& a, const Shape& b,
-                                     bool minor_to_major_only = false) {
-    if (!opts_.layout_sensitive) {
-      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
-    }
-    Shape::Equal equal;
-    if (minor_to_major_only) {
-      equal.MinorToMajorOnlyInLayout();
-    }
-    equal.IgnoreFpPrecision();
-    return equal(a, b);
-  }
-
   std::string StringifyShape(const Shape& s) {
     return opts_.layout_sensitive ? ShapeUtil::HumanStringWithLayout(s)
                                   : ShapeUtil::HumanString(s);

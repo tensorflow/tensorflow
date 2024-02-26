@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
 }
 
 std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
-    mlir::sparse_tensor::DimLevelType lt) {
+    mlir::sparse_tensor::LevelType lt) {
   auto f = mlir::sparse_tensor::getLevelFormat(lt);
   if (!f) return std::nullopt;
 

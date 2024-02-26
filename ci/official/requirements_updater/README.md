@@ -108,7 +108,6 @@ unless indicated otherwise.
               "--allow-unsafe",
               "-P keras-nightly",
               "-P tb-nightly",
-              "-P tf-estimator-nightly",
           ],
           requirements_in = "requirements.in",
           requirements_txt = "requirements_lock_3_11.txt",

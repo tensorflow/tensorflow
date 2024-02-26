@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_executor_util.h"
 
+#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -27,12 +28,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/util/env_var.h"
 #include "tsl/util/proto/proto_utils.h"
 
@@ -64,7 +73,7 @@ int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
   return vals.size();
 }
 
-StatusOr<Layout> DataLayoutToXlaLayout(
+absl::StatusOr<Layout> DataLayoutToXlaLayout(
     DataLayout data_layout, int64_t batch_dimension, int64_t feature_dimension,
     absl::Span<int64_t const> spatial_dimensions) {
   std::vector<int64_t> layout;
@@ -90,14 +99,14 @@ StatusOr<Layout> DataLayoutToXlaLayout(
       layout.push_back(feature_dimension);
       break;
     default:
-      return InternalError("Invalid layout %s", DataLayoutString(data_layout));
+      return Internal("Invalid layout %s", DataLayoutString(data_layout));
   }
   return LayoutUtil::MakeLayoutFromMajorToMinor(layout);
 }
 
 }  // anonymous namespace
 
-StatusOr<std::tuple<Layout, Layout, Layout>>
+absl::StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
                                       DataLayout output) {
@@ -137,9 +146,9 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       break;
     default:
-      return InternalError("Invalid filter layout %s for conv with dnums %s,",
-                           FilterLayoutString(filter),
-                           ConvolutionDimensionNumbersToString(dnums));
+      return Internal("Invalid filter layout %s for conv with dnums %s,",
+                      FilterLayoutString(filter),
+                      ConvolutionDimensionNumbersToString(dnums));
   }
 
   return std::make_tuple(input_layout,
@@ -147,7 +156,7 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                          output_layout);
 }
 
-StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
+absl::StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
 XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                      const Shape& input, const Shape& filter,
                                      const Shape& output) {
@@ -188,7 +197,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     } else if (vect_size == 32) {
       input_layout = DataLayout::kBatchDepthYX32;
     } else {
-      return InternalError(
+      return Internal(
           "Invalid input shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
           ShapeUtil::HumanStringWithLayout(input),
@@ -197,7 +206,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(input.layout(), nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError(
+    return Internal(
         "Invalid input layout %s for conv with dnums %s; expected one of (%s, "
         "%s, %s)",
         LayoutUtil::HumanString(input.layout()),
@@ -215,7 +224,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     } else if (vect_size == 32) {
       filter_layout = FilterLayout::kOutputInputYX32;
     } else {
-      return InternalError(
+      return Internal(
           "Invalid filter shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
           ShapeUtil::HumanStringWithLayout(filter),
@@ -224,7 +233,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(filter.layout(), nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
-    return InternalError(
+    return Internal(
         "Invalid filter layout %s for conv with dnums %s, expected one of (%s, "
         "%s, %s)",
         LayoutUtil::HumanString(filter.layout()),
@@ -242,7 +251,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     } else if (vect_size == 32) {
       output_layout = DataLayout::kBatchDepthYX32;
     } else {
-      return InternalError(
+      return Internal(
           "Invalid output shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
           ShapeUtil::HumanStringWithLayout(output),
@@ -251,9 +260,9 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(output.layout(), nhwc_output)) {
     output_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError("Invalid output layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(output.layout()),
-                         ConvolutionDimensionNumbersToString(dnums));
+    return Internal("Invalid output layout %s for conv with dnums %s",
+                    LayoutUtil::HumanString(output.layout()),
+                    ConvolutionDimensionNumbersToString(dnums));
   }
 
   return std::make_tuple(input_layout, filter_layout, output_layout);
@@ -316,7 +325,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
   return it->second;
 }
 
-StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
+absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
@@ -328,27 +337,39 @@ StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = std::make_unique<se::Kernel>(stream_exec);
-  TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                      se::Kernel::Create(stream_exec, loader_spec));
+
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
-  kernel_base->set_metadata(m);
-  return std::move(kernel_base);
+  kernel->set_metadata(m);
+  return kernel;
 }
 
-Status ExecuteKernelOnStream(const se::Kernel& kernel,
-                             absl::Span<const se::DeviceMemoryBase> args,
-                             const LaunchDimensions& dims, se::Stream* stream) {
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
-  LaunchDimensions::Dim3D block_counts = dims.block_counts();
-  return stream->parent()->Launch(
-      stream, se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z), kernel,
-      *kernel_args);
+  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
+                                  dims.block_counts(), kernel, *kernel_args);
+}
+
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   const se::ClusterDim& cluster_dim,
+                                   se::Stream* stream) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
+      se::PackKernelArgs(args, kernel.metadata()));
+
+  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
+                                  dims.block_counts(), cluster_dim, kernel,
+                                  *kernel_args);
 }
 
 // Unimplemented for integers yet.
@@ -410,8 +431,8 @@ static void InitializeTypedBuffer(se::Stream* stream,
     int64_t elements_copied =
         std::min<int64_t>(host_buffer->size() - host_index, elements_left);
     se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
+    TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data() + host_index,
+                               elements_copied * sizeof(T)));
     current_addr += elements_copied * sizeof(T);
     elements_left -= elements_copied;
     host_index += elements_copied;
@@ -446,7 +467,7 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       buffer_type);
 }
 
-StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
+absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
@@ -462,10 +483,24 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     default:
       break;
   }
-  return InternalError("Unexpected convolution kind");
+  return Internal("Unexpected convolution kind");
 }
 
-StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
+absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
+    CudnnNormKind kind) {
+  switch (kind) {
+    case CudnnNormKind::kLayerForwardInfer:
+      return se::dnn::LAYER_FWD_INFER;
+    case CudnnNormKind::kLayerForwardTrain:
+      return se::dnn::LAYER_FWD_TRAIN;
+    case CudnnNormKind::kLayerBackward:
+      return se::dnn::LAYER_BWD;
+    default:
+      return Internal("Unexpected norm kind");
+  }
+}
+
+absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind) {
   switch (kind) {
     case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
@@ -491,10 +526,10 @@ StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     case CudnnfMHAKind::kBackwardSoftmax:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
   }
-  return InternalError("Unexpected fMHA kind");
+  return Internal("Unexpected fMHA kind");
 }
 
-StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
+absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     PrimitiveType type) {
   switch (type) {
     case F16:
@@ -516,7 +551,7 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     default:
       break;
   }
-  return InternalError("Unsupported convolution datatype");
+  return Internal("Unsupported datatype");
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {
@@ -532,49 +567,114 @@ bool RequireDeterminism(const HloModuleConfig& config) {
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
-StatusOr<AutotuneResult> PickBestResult(
+namespace {
+std::vector<AutotuneResult> KeepNonFailures(
+    absl::Span<AutotuneResult const> profile_results) {
+  // Filter out all failures except WRONG_RESULT, because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!). Other failures can be detected with high accuracy. E.g.
+  // REDZONE_MODIFIED which is also quite severe.
+  std::vector<AutotuneResult> filtered_results;
+  absl::c_copy_if(profile_results, std::back_inserter(filtered_results),
+                  [](const AutotuneResult& r) {
+                    return !r.has_failure() ||
+                           r.failure().kind() == AutotuneResult::WRONG_RESULT;
+                  });
+  return filtered_results;
+}
+
+absl::Status AllAlgorithmsFailedInternalError(
+    std::optional<std::string_view> instr_str,
+    absl::Span<AutotuneResult const> profile_results) {
+  std::ostringstream msg;
+  if (instr_str.has_value()) {
+    msg << "All algorithms tried for " << instr_str.value()
+        << " failed. Falling back to default algorithm.  Per-algorithm "
+           "errors:";
+  } else {
+    msg << "All algorithms failed. Falling back to the default algorithm. "
+        << "Per-algorithm errors:";
+  }
+  for (const auto& result : profile_results) {
+    msg << "\n  " << result.failure().msg();
+  }
+  return Internal("%s", msg.str());
+}
+
+absl::Status NoAlgorithmSuppliedInternalError(
+    std::optional<std::string_view> instr_str) {
+  std::ostringstream msg;
+  if (instr_str.has_value()) {
+    msg << "There are no algorithm candiates for computing: \n  "
+        << instr_str.value()
+        << "\nThis likely means that the instruction shape is not supported by "
+           "the target GPU library.";
+  } else {
+    msg << "There are no algorithm candiates for computing the instruction.\n"
+           "This likely means that the instruction shape is not supported by "
+           "the target GPU library.";
+  }
+  return Internal("%s", msg.str());
+}
+
+void SortAutotuningResultsByRunTime(std::vector<AutotuneResult>& results) {
+  absl::c_sort(results,
+               [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+                 return tsl::proto_utils::FromDurationProto(lhs.run_time()) <
+                        tsl::proto_utils::FromDurationProto(rhs.run_time());
+               });
+}
+
+absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
+    std::vector<AutotuneResult>& results_sorted_by_runtime) {
+  // This value was picked by repeatedly running a few kernels that run for a
+  // short time and observing the run-time variance. A more rigorous analysis
+  // of the measurement error might yield a better error threshold.
+  constexpr absl::Duration kMeasurementError = absl::Microseconds(2);
+
+  absl::Duration min_time = tsl::proto_utils::FromDurationProto(
+      results_sorted_by_runtime.front().run_time());
+  absl::Duration limit_time = min_time + kMeasurementError;
+
+  auto limit_time_it = absl::c_find_if(
+      results_sorted_by_runtime, [limit_time](const AutotuneResult& x) {
+        return tsl::proto_utils::FromDurationProto(x.run_time()) > limit_time;
+      });
+  return absl::MakeSpan(&*results_sorted_by_runtime.begin(), &*limit_time_it);
+}
+}  // namespace
+
+absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
     std::optional<std::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
-  std::vector<AutotuneResult> filtered_results;
+  if (profile_results.empty()) {
+    return NoAlgorithmSuppliedInternalError(instr_str);
+  }
 
-  // For now, we ignore WRONG_RESULT failures because false-positives are
-  // possible (e.g. perhaps the reference algorithm is the one that's
-  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
-  // quite severe and can be detected with high accuracy.
-  absl::c_copy_if(
-      profile_results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& r) {
-        return !(r.has_failure() &&
-                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
-      });
+  std::vector<AutotuneResult> filtered_results =
+      KeepNonFailures(profile_results);
 
   if (filtered_results.empty()) {
-    std::ostringstream msg;
-    if (instr_str.has_value()) {
-      msg << "All algorithms tried for " << instr_str.value()
-          << " failed. Falling back to default algorithm.  Per-algorithm "
-             "errors:";
-    } else {
-      msg << "All algorithms failed. Falling back to the default algorithm. "
-          << "Per-algorithm errors:";
-    }
-    for (const auto& result : profile_results) {
-      msg << "\n  " << result.failure().msg();
-    }
-    return InternalError("%s", msg.str());
+    return AllAlgorithmsFailedInternalError(instr_str, profile_results);
   }
 
-  auto selected_result = filtered_results.begin();
-  if (!RequireDeterminism(hlo_module_config)) {
-    selected_result = absl::c_min_element(
-        filtered_results,
-        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tsl::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tsl::proto_utils::FromDurationProto(rhs.run_time());
-        });
+  if (RequireDeterminism(hlo_module_config)) {
+    // If determinism is required (usually for debugging purposes) then always
+    // pick the first algorithm, instead of searching for the best, which can
+    // be noisy.
+    return *filtered_results.begin();
   }
-  return *selected_result;
+
+  // Kernel run-time measurements within kMeasurementError are not precise.
+  // Consider the lowest measurements within the error margin as equivalent and
+  // within them prefer algorithms that use the least amount of scratch memory.
+  SortAutotuningResultsByRunTime(filtered_results);
+  auto top_within_error = TopResultsWithinMeasurementError(filtered_results);
+  return *absl::c_min_element(top_within_error, [](const AutotuneResult& lhs,
+                                                   const AutotuneResult& rhs) {
+    return lhs.scratch_bytes() < rhs.scratch_bytes();
+  });
 }
 
 }  // namespace gpu

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,21 +19,32 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
 // Pattern matches simple row-major gemms to CUTLASS kernels.
-class CutlassGemmPattern : public CustomFusionPattern {
+class CutlassGemmPattern : public CustomKernelFusionPattern {
  public:
-  std::optional<Match> TryMatch(HloInstruction* instr) const override;
+  std::optional<Match> TryMatch(const se::DeviceDescription& device,
+                                HloInstruction* instr) const override;
+};
+
+// Pattern matches simple row-major gemms with dynamic-update-slice.
+class CutlassGemmWithDynamicUpdateSlicePattern
+    : public CustomKernelFusionPattern {
+ public:
+  std::optional<Match> TryMatch(const se::DeviceDescription& device,
+                                HloInstruction* instr) const override;
 };
 
 // Pattern matches mixed dtype gemms when one of the operands is upcasted to an
 // accumulator (output) dtype, i.e. BF16 <= BF16 x S8.
-class CutlassGemmWithUpcastPattern : public CustomFusionPattern {
+class CutlassGemmWithUpcastPattern : public CustomKernelFusionPattern {
  public:
-  std::optional<Match> TryMatch(HloInstruction* instr) const override;
+  std::optional<Match> TryMatch(const se::DeviceDescription& device,
+                                HloInstruction* instr) const override;
 };
 
 }  // namespace xla::gpu

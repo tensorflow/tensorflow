@@ -3,6 +3,7 @@ load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
 )
 
@@ -25,39 +26,34 @@ package(
 filegroup(
     name = "api_headers",
     srcs = ["api.h"],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "c_api_headers",
     srcs = ["c_api.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "api",
     hdrs = [":api_headers"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [":c_api"],
 )
 
 cc_library(
     name = "c_api",
     hdrs = ["c_api.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
-    visibility = ["//visibility:public"],
     deps = [":c_api"],
 )
 
 cc_library(
     name = "ffi",
     hdrs = ["ffi.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":api",
         ":c_api",
@@ -72,17 +68,16 @@ xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
-        ":api",
         ":ffi",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
         "//xla/ffi:ffi_api",
-        "//xla/ffi/api:c_api",
-        "//xla/service:executable",
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",

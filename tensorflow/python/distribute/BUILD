@@ -827,23 +827,6 @@ tpu_py_strict_test(
     ],
 )
 
-# Used only by estimator.
-py_strict_library(
-    name = "estimator_training",
-    srcs = [
-        "estimator_training.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":distribute_coordinator",
-        ":distribute_coordinator_context",
-        ":multi_worker_util",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/training:server_lib",
-        "@six_archive//:six",
-    ],
-)
-
 py_strict_library(
     name = "reduce_util",
     srcs = ["reduce_util.py"],
@@ -1756,14 +1739,9 @@ distribute_py_strict_test(
         ":distribute_utils",
         ":strategy_combinations",
         ":values",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
-        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
         "@pypi_wrapt//:pkg",
     ],
@@ -1778,6 +1756,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/292104274): Sometimes times out
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -2178,13 +2157,6 @@ cuda_py_strict_test(
 tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    # copybara:uncomment_begin
-    # args = [
-    # "--tpu_use_tfrt=false",  #TODO(b/227404010): Remove once the bug is fixed.
-    # ],
-    # copybara:uncomment_end
-    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
-    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -2258,7 +2230,6 @@ cuda_py_strict_test(
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:run_config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
@@ -2337,7 +2308,7 @@ cuda_py_strict_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 35,
     tags = [
         "multi_gpu",
         "no_pip",  # TODO(b/266520226)
@@ -2408,8 +2379,9 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "no_oss",  # TODO(b/283016506)
+        "no_oss",  # TODO(b/283033375)
         "notsan",  # TODO(b/160006974)
+        "nozapfhahn",  # TODO(b/317228015)
     ],
     xla_enable_strict_auto_jit = True,
     deps = [

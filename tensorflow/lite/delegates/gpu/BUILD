@@ -33,19 +33,6 @@ config_setting(
     },
 )
 
-# copybara:uncomment_begin(google-only)
-# config_setting(
-#     name = "tflite_gpu_angle",
-#     flag_values = {
-#         "//tools/cpp:cc_target_os": "linux-google",
-#         "//third_party/angle:use_angle": "True",
-#     },
-#     values = {
-#         "cpu": "k8",
-#     },
-# )
-# copybara:uncomment_end
-
 cc_library(
     name = "gl_delegate",
     srcs = ["gl_delegate.cc"],
@@ -277,6 +264,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/async:backend_async_kernel_interface",
+        "//tensorflow/lite/core/async/interop/c:types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",
@@ -291,6 +279,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

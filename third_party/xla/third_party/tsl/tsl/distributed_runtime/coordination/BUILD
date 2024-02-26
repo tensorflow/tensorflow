@@ -1,16 +1,18 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("//tsl:tsl.bzl", "if_oss", "internal_visibility", "tsl_gpu_library")
 load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
-load("//tsl:tsl.bzl", "if_oss", "set_external_visibility", "tsl_gpu_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([
+        "//tsl:internal",
+    ]),
     licenses = ["notice"],
 )
 
 cc_library(
     name = "coordination_service_error_util",
     hdrs = ["coordination_service_error_util.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:errors",
         "//tsl/platform:status",
@@ -22,7 +24,6 @@ cc_library(
 tsl_cc_test(
     name = "coordination_service_error_util_test",
     srcs = ["coordination_service_error_util_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_service_error_util",
         "//tsl/platform:errors",
@@ -36,7 +37,6 @@ tsl_cc_test(
 cc_library(
     name = "coordination_client",
     hdrs = ["coordination_client.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//tsl/distributed_runtime:call_options",
         "//tsl/platform:status",
@@ -47,7 +47,6 @@ cc_library(
 cc_library(
     name = "coordination_service",
     hdrs = ["coordination_service.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_client",
         "//tsl/platform:status",
@@ -64,7 +63,6 @@ cc_library(
 tsl_gpu_library(
     name = "coordination_service_impl",
     srcs = ["coordination_service.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_client",
         ":coordination_service",
@@ -96,7 +94,6 @@ tf_proto_library(
     testonly = 1,
     srcs = ["test_device.proto"],
     cc_api_version = 2,
-    visibility = ["//visibility:public"],
 )
 
 tsl_cc_test(
@@ -106,7 +103,6 @@ tsl_cc_test(
         "manual",
         "no_oss",
     ]),  # b/169705709, no protobuf matchers in OSS.
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_client",
         ":coordination_service",
@@ -137,7 +133,6 @@ tsl_gpu_library(
     name = "coordination_service_agent",
     srcs = ["coordination_service_agent.cc"],
     hdrs = ["coordination_service_agent.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_client",
         ":coordination_service_error_util",
@@ -145,7 +140,6 @@ tsl_gpu_library(
         "//tsl/framework:cancellation",
         "//tsl/lib/monitoring:gauge",
         "//tsl/platform:env",
-        "//tsl/platform:errors",
         "//tsl/platform:mutex",
         "//tsl/platform:random",
         "//tsl/platform:status",
@@ -154,6 +148,7 @@ tsl_gpu_library(
         "//tsl/protobuf:coordination_config_proto_cc",
         "//tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -164,7 +159,6 @@ tsl_gpu_library(
 tsl_cc_test(
     name = "coordination_service_agent_test",
     srcs = ["coordination_service_agent_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_client",
         ":coordination_service_agent",
@@ -175,11 +169,15 @@ tsl_cc_test(
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
         "//tsl/platform:status",
+        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/protobuf:coordination_config_proto_cc_impl",
         "//tsl/protobuf:coordination_service_proto_cc_impl",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
 )
@@ -190,7 +188,6 @@ cc_library(
     hdrs = [
         "coordination_service_rpc_handler.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_service",
         ":coordination_service_agent",
@@ -210,7 +207,6 @@ cc_library(
 tsl_cc_test(
     name = "coordination_service_recoverable_job_test",
     srcs = ["coordination_service_recoverable_job_test.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         ":coordination_client",
         ":coordination_service",
@@ -241,5 +237,4 @@ filegroup(
         "coordination_client.h",
         "coordination_service.h",
     ],
-    visibility = ["//visibility:public"],
 )

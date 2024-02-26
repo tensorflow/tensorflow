@@ -305,7 +305,6 @@ class LogicalDevice(
       placement.
     device_type: String declaring the type of device such as "CPU" or "GPU".
   """
-  pass
 
 
 @tf_export("config.LogicalDeviceConfiguration",
@@ -688,6 +687,10 @@ class Context:
 
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
+    # Also clear the device parsing cache since it caches the resolution of
+    # partial device names, which may become different due to the set_server_def
+    # call as we may have defined different devices.
+    _device_parsing_cache.clear()
 
   def update_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Update a server_def on the context.
@@ -1885,9 +1888,13 @@ class Context:
       device_name: The name of the device with the form as
         "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
         When this is used, actual device is needed for getting the compiler IR.
-      platform_name: The name of the platform, e.g. "TPU". When this is used, no
-        actual device is needed but the compiler IR is obtained as if using that
-        device. The scenarios supported are more limited.
+      platform_name: The name of the platform, e.g. "TPU". When this is used,
+        first we find a device whose name contains the platform, if it is found
+        we get the compiler IR by device. Otherwise the compiler IR is obtained
+        as if using that device. The former logic of falling back to device is
+        necessary, as there are cases of TF variables that need to access
+        devices, but the upper layer may generally choose platform for getting
+        compiler IR in a device-agnostic way.
       function_name: The name of the function to get the compiler IR.
       flat_args: The flat argument inputs.
       captured_inputs: The inputs that are captured.

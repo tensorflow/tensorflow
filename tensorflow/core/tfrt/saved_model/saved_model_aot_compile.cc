@@ -203,10 +203,10 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
   UpdateTpuTargetByBridgeCompatibility(*aot_options.graph_execution_options,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(aot_options);
-  aot_options.graph_execution_options->compile_options.saved_model_dir =
-      input_model_dir;
   mlir::DialectRegistry registry;
-  RegisterMlirDialect(registry);
+  RegisterMlirDialect(
+      registry,
+      aot_options.graph_execution_options->compile_options.backend_compiler);
   mlir::MLIRContext context(registry);
 
   tensorflow::SessionOptions session_options =

@@ -19,9 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#define EIGEN_USE_THREADS
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/python/ifrt/client.h"
@@ -33,11 +36,21 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
+Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+  constexpr int kMaxParallelism = 16;
+  static tsl::thread::ThreadPool* thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
+                                 kMaxParallelism);
+}
 
 TEST(SavedModelIfrt, Basic) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
@@ -49,15 +62,14 @@ TEST(SavedModelIfrt, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(
       [&](tensorflow::tfrt_stub::ModelRuntimeContext& model_context) {
-        tensorflow::ifrt_serving::IfrtModelContext ifrt_model_context(client);
-
         model_context.resource_context()
             .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                "IfrtModelContext", std::move(ifrt_model_context));
+                "IfrtModelContext", client, &thread_pool_device);
         return absl::OkStatus();
       });
   tensorflow::ifrt_serving::IfrtBackendCompiler ifrt_compiler;

@@ -47,6 +47,8 @@ static Graph* Xent(int batch_size, int num_classes, DataType type) {
   }                                                               \
   BENCHMARK(BM_Xent##_##BATCH##_##CLASS##_##DEVICE##_##C_TYPE);
 
+#ifdef GOOGLE_CUDA
+
 /// The representative tests for ptb_word on GPU
 BM_XentDev(16, 10000, gpu, float, DT_FLOAT);
 BM_XentDev(16, 30000, gpu, float, DT_FLOAT);
@@ -59,6 +61,8 @@ BM_XentDev(32, 100000, gpu, float, DT_FLOAT);
 BM_XentDev(64, 10000, gpu, float, DT_FLOAT);
 BM_XentDev(64, 30000, gpu, float, DT_FLOAT);
 BM_XentDev(64, 100000, gpu, float, DT_FLOAT);
+
+#endif  // GOOGLE_CUDA
 
 /// Only the smaller tests for CPU. Otherwise, it's too slow
 #define BM_XentDev_CPU(C_TYPE, TF_TYPE)        \

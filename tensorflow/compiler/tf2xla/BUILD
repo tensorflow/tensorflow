@@ -221,7 +221,10 @@ filegroup(
         "@local_xla//xla/service:custom_call_status_hdrs",
         "@local_xla//xla/service/cpu:runtime_hdrs",
     ],
-    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
 )
 
 filegroup(
@@ -235,7 +238,10 @@ filegroup(
         "@local_xla//xla/service:custom_call_status_srcs",
         "@local_xla//xla/service/cpu:runtime_srcs",
     ],
-    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
 )
 
 # This stand-alone target is used to ensure that we can build tf_library type
@@ -697,6 +703,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service/gpu:gpu_executable_run_options",
+        "@local_xla//xla/service/gpu:nccl_clique_key",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
     ],
@@ -937,8 +944,8 @@ tf_cc_test(
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:platform_util",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:platform_manager",
     ],
 )
 
@@ -1164,14 +1171,15 @@ cc_library(
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:cluster_tf",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:tf_dialect_to_executor",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_dialect_to_executor",
+        "//tensorflow/compiler/mlir/tf2xla/internal:mlir_bridge_pass_util",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",

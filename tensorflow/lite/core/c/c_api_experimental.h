@@ -20,6 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_EXPERIMENTAL_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_EXPERIMENTAL_H_
 
+#include <stdint.h>
+
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
@@ -35,6 +37,16 @@ extern "C" {
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
     TfLiteInterpreter* interpreter);
+
+// Returns the number of variable tensors associated with the model.
+TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetVariableTensorCount(
+    const TfLiteInterpreter* interpreter);
+
+// Returns the tensor associated with the variable tensor index.
+// REQUIRES: 0 <= input_index <
+// TfLiteInterpreterGetVariableTensorCount(interpreter)
+TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteInterpreterGetVariableTensor(
+    const TfLiteInterpreter* interpreter, int32_t variable_index);
 
 /// Adds an op registration for a builtin operator.
 ///

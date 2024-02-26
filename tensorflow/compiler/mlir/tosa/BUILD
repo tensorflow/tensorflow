@@ -3,8 +3,8 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
@@ -103,6 +103,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/framework/fixedpoint",
     ],
 )
 
@@ -188,7 +189,6 @@ cc_library(
         "transforms/legalize_tfl.cc",
         "transforms/legalize_tfl_stateful.cc",
         "transforms/lower_complex_types.cc",
-        "transforms/lower_global_tensors.cc",
         "transforms/retain_call_once_funcs.cc",
         "transforms/strip_metadata.cc",
         "transforms/strip_quant_types.cc",
@@ -214,7 +214,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",

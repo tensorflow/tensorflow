@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,6 +76,8 @@ class LiteralUtil {
   // literal's linear representation in memory.
   template <typename NativeT>
   static Literal CreateR0(NativeT value);
+  template <typename T>
+  static Literal CreateR0(PrimitiveType primitive_type, T value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
   static Literal CreateR1(const tsl::core::Bitmap& values);
@@ -295,6 +297,17 @@ template <typename NativeT>
       primitive_util::NativeToPrimitiveType<NativeT>(), {}));
   literal.Set({}, value);
   return literal;
+}
+
+template <typename T>
+/* static */ Literal LiteralUtil::CreateR0(PrimitiveType primitive_type,
+                                           T value) {
+  return primitive_util::ArrayTypeSwitch<Literal>(
+      [&value](auto type) {
+        using NativeT = primitive_util::NativeTypeOf<type>;
+        return CreateR0(static_cast<NativeT>(value));
+      },
+      primitive_type);
 }
 
 template <typename NativeT>

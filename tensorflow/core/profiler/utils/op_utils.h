@@ -76,7 +76,8 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
                bool is_eager, uint64 occurrences, uint64 time_ps,
                uint64 children_time_ps, int64_t flops, int64_t bytes_accessed,
                const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
-                   memory_accessed_breakdown = {});
+                   memory_accessed_breakdown = {},
+               int64_t model_flops = 0);
 };
 
 }  // namespace profiler

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -29,8 +30,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/primitive_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -120,6 +123,36 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      param_s32);
   };
 
+  auto match_generic_iec559 = [](int64_t parameter_number,
+                                 PrimitiveType fp_type,
+                                 PrimitiveType int_type) {
+    auto param = m::Parameter(parameter_number)
+                     .WithShape(m::Shape().WithElementType(fp_type));
+    auto signed_value = m::BitcastConvert(param).WithShape(
+        m::Shape().WithElementType(int_type));
+    int64_t bit_width = primitive_util::BitWidth(fp_type);
+    auto max_value = m::ConstantScalar(LsbMask<uint64_t>(bit_width - 1));
+    auto flipped_value = m::XorAnyOrder(max_value, signed_value);
+    auto is_negative = m::Lt(signed_value, m::ConstantScalar(0));
+    return m::Select(is_negative, flipped_value, signed_value);
+  };
+
+  auto match_generic_iec559_with_convert =
+      [](int64_t parameter_number, PrimitiveType param_type,
+         PrimitiveType fp_type, PrimitiveType int_type) {
+        auto param = m::Parameter(parameter_number)
+                         .WithShape(m::Shape().WithElementType(param_type));
+        auto convert =
+            m::Convert(param).WithShape(m::Shape().WithElementType(fp_type));
+        auto signed_value = m::BitcastConvert(convert).WithShape(
+            m::Shape().WithElementType(int_type));
+        int64_t bit_width = primitive_util::BitWidth(fp_type);
+        auto max_value = m::ConstantScalar(LsbMask<uint64_t>(bit_width - 1));
+        auto flipped_value = m::XorAnyOrder(max_value, signed_value);
+        auto is_negative = m::Lt(signed_value, m::ConstantScalar(0));
+        return m::Select(is_negative, flipped_value, signed_value);
+      };
+
   auto match_s32 = [](int64_t parameter_number) {
     auto param = m::Parameter(parameter_number)
                      .WithShape(m::Shape().WithElementType(S32));
@@ -155,6 +188,15 @@ static bool IsNanSafeGt(HloComputation* comp) {
   };
 
   return Match(comp->root_instruction(),
+               m::Gt(match_generic_iec559(0, F32, S32),
+                     match_generic_iec559(1, F32, S32))) ||
+         Match(comp->root_instruction(),
+               m::Gt(match_generic_iec559(0, BF16, S16),
+                     match_generic_iec559(1, BF16, S16))) ||
+         Match(comp->root_instruction(),
+               m::Gt(match_generic_iec559_with_convert(0, BF16, F32, S32),
+                     match_generic_iec559_with_convert(1, BF16, F32, S32))) ||
+         Match(comp->root_instruction(),
                m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
          Match(comp->root_instruction(),
                m::Gt(match_bitcast_bf16(0), match_bitcast_bf16(1))) ||
@@ -440,11 +482,19 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
+  bool HasSingleUserReadingOnlyTheValueOutput(HloInstruction* inst) {
+    return inst->user_count() == 1 && inst->users().front()->tuple_index() == 0;
+  }
+
   StatusOr<HloComputation*> CreateVariadicComparator(HloInstruction* inst) {
     HloTopKInstruction* topk = DynCast<HloTopKInstruction>(inst);
     XlaBuilder b(absl::StrCat("comparator_", topk->name()));
     std::vector<PrimitiveType> ptypes = {
-        topk->operand(0)->shape().element_type(), PrimitiveType::S32};
+        topk->operand(0)->shape().element_type()};
+
+    if (!HasSingleUserReadingOnlyTheValueOutput(inst)) {
+      ptypes.emplace_back(PrimitiveType::S32);
+    }
 
     XlaComputation comparison = topk->largest()
                                     ? CreateScalarGtComputation(ptypes, &b)
@@ -474,10 +524,10 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     };
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
-    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0 &&
-        call->to_apply()->num_parameters() == 2) {
+    if (HasSingleUserReadingOnlyTheValueOutput(call) &&
+        variadic_comparator->num_parameters() == 2) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
-          {input->shape()}, sort_dimension, {input}, call->to_apply(),
+          {input->shape()}, sort_dimension, {input}, variadic_comparator,
           /*is_stable=*/true));
       TF_RETURN_IF_ERROR(ReplaceInstruction(
           call->users().front(),

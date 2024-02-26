@@ -4,7 +4,7 @@
 
 XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
 algebra that optimizes TensorFlow computations. See the
-[documentation](./g3doc/index.md).
+[documentation](./../docs/index.md).
 
 This directory is currently migrating to [OpenXLA](https://github.com/openxla/)
 and will be the root of the [openxla/xla](https://github.com/openxla/xla)

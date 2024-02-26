@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
+
+// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#define EIGEN_USE_THREADS
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
@@ -38,12 +40,22 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+  constexpr int kMaxParallelism = 16;
+  static tsl::thread::ThreadPool* thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
+                                 kMaxParallelism);
+}
 
 TEST(IfrtBackendCompilerTest, Basic) {
   // Create test input module
@@ -67,7 +79,7 @@ TEST(IfrtBackendCompilerTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  IfrtModelContext model_context(client);
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
       tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
@@ -78,7 +90,7 @@ TEST(IfrtBackendCompilerTest, Basic) {
       &graph_execution_options, /*export_dir=*/"", &resource_context);
 
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", std::move(model_context));
+      "IfrtModelContext", client, &thread_pool_device);
 
   IfrtBackendCompiler compiler;
   TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));

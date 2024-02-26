@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -98,7 +99,7 @@ Status GetAndLockVariablesAndBuildXlaCompilerArguments(
                       XlaComputationLaunchContext::BuildXlaCompilerArguments(
                           constant_indices, inputs, *variables,
                           static_cast<Device*>(ctx.device())));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -163,7 +164,7 @@ Status XlaCompileOnDemandOp::Run(const ResourceVarsSnapshot& variable_args,
       ctx, result, execution_output.ConsumeResult(),
       /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
       input_output_alias, snapshot_ptrs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaCompileOnDemandOp::Compile(
@@ -199,18 +200,22 @@ Status XlaCompileOnDemandOp::Compile(
   ResourceMgr* rm = ctx->resource_manager();
   CHECK(rm);
 
+  TF_ASSIGN_OR_RETURN(DeviceType compilation_device_type,
+                      GetCompilationDeviceType(platform_info_.device_type()));
+
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
       rm->default_container(), "xla_device_compiler", xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
-                                      platform_info_, xla_device_compiler);
+                                      platform_info_, compilation_device_type,
+                                      xla_device_compiler);
       }));
 
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
       rm->default_container(), "device_compilation_profiler", profiler,
       [](DeviceCompilationProfiler** profiler) {
         *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   XlaCompiler::Options options = GenerateCompilerOptions(

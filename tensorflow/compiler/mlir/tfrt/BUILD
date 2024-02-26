@@ -19,7 +19,6 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/...",
-        "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/experimental/data/...",
         "//tensorflow/core/tfrt/graph_executor/...",
         "//tensorflow/core/tfrt/ifrt/...",
@@ -314,25 +313,21 @@ cc_library(
         ":tf_to_tfrt",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
-        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:errors",
         "@tf_runtime//:bef",
         "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
-        "@tf_runtime//:tensor",
     ],
 )
 
@@ -533,26 +528,6 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "lhlo-tfrt-opt",
-    srcs = ["lhlo-tfrt-opt.cc"],
-    tags = ["gpu"],
-    visibility = [":friends"],
-    deps = [
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo:lhlo",
-        "@local_xla//xla/mlir_hlo:lhlo_gpu",
-        "@tf_runtime//:init_tfrt_dialects",
-    ],
-)
-
-tf_cc_binary(
     name = "tfrt_translate",
     srcs = ["tools/tfrt_translate/static_registration.cc"],
     visibility = [":friends"],
@@ -708,6 +683,7 @@ cc_library(
 
 cc_library(
     name = "backend_compiler",
+    srcs = ["backend_compiler.cc"],
     hdrs = ["backend_compiler.h"],
     deps = [
         "//tensorflow/core/tfrt/runtime",

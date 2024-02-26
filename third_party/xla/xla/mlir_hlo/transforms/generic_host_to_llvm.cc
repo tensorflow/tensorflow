@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "deallocation/IR/deallocation_ops.h"  // IWYU pragma: keep
-#include "deallocation/transforms/passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"
@@ -107,8 +105,6 @@ class GenericHostToLLVMPass
     populateSCFToControlFlowConversionPatterns(patterns);
     populateComplexToLLVMConversionPatterns(typeConverter, patterns);
     populateMathToLibmConversionPatterns(patterns);
-    deallocation::populateDeallocationToLLVMConversionPatterns(typeConverter,
-                                                               patterns);
 
     // Vector patterns.
     vector::populateVectorMaskMaterializationPatterns(patterns, true);

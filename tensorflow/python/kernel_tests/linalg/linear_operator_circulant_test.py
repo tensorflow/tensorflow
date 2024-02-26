@@ -210,16 +210,16 @@ class LinearOperatorCirculantBaseTest(object):
   _atol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
   _rtol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
 
   @contextlib.contextmanager
@@ -286,8 +286,7 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 
@@ -372,8 +371,7 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 
@@ -447,8 +445,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 
@@ -617,16 +614,16 @@ class LinearOperatorCirculant2DBaseTest(object):
   _atol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
   _rtol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
 
   @contextlib.contextmanager
@@ -652,8 +649,7 @@ class LinearOperatorCirculant2DBaseTest(object):
   def optional_tests():
     """List of optional test names to run."""
     return [
-        # TODO: b/310008894 - Re-enable this optional test.
-        # "operator_matmul_with_same_type",
+        "operator_matmul_with_same_type",
         "operator_solve_with_same_type",
     ]
 

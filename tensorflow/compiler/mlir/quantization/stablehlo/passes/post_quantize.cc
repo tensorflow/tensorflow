@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
@@ -146,9 +145,8 @@ void PostQuantizePass::runOnOperation() {
 
   RewritePatternSet patterns_2(&getContext());
   patterns_2
-      .add<ConvertDequantizeCastToUniformDequantizePattern,
-           ConvertQuantizeCastToUniformQuantizePattern, QuantizeConstPattern>(
-          ctx);
+      .add<QuantizeConstPattern, ConvertQuantizeCastToUniformQuantizePattern,
+           ConvertDequantizeCastToUniformDequantizePattern>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
     signalPassFailure();
   }

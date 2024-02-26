@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,13 +23,13 @@ limitations under the License.
 namespace stream_executor {
 namespace rocm {
 
-tsl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
+absl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
   if (status != HIPBLAS_STATUS_SUCCESS) {
-    return tsl::errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         prefix, ": ",
         "HipblasLt error " + std::to_string(static_cast<int>(status))));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 hipDataType AsHipblasDataType(blas::DataType type) {

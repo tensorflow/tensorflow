@@ -77,7 +77,7 @@ Status GetIndexAttr(const Node& n, int num_args, int* index) {
     return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
                                    *index);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns the data type of the destination of an edge.
@@ -189,7 +189,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   TF_ASSIGN_OR_RETURN(uint64 fingerprint, FingerprintGraph(*graph));
   VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -223,7 +223,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
           /*reuse_existing_functions=*/true, &output, flib_def),
       "EncapsulateXlaComputationsPass failed");
   graph->swap(output);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
@@ -355,7 +355,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       graph->AddControlEdge(xla_launch, n);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
@@ -399,7 +399,7 @@ Status EncapsulateXlaComputationsPass::Run(
   VLOG(1) << "EncapsulateXlaComputations() finished: "
           << DumpGraphToFile("encapsulate_xla_computations_after",
                              **options.graph, options.flib_def);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -13,6 +13,7 @@ td_library(
         "ifrt_interfaces.td",
         "ifrt_ops.td",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "@llvm-project//mlir:AttrTdFiles",
@@ -23,6 +24,7 @@ td_library(
 
 gentbl_cc_library(
     name = "ifrt_dialect_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -75,6 +77,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "ifrt_ops_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -93,6 +96,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "ifrt_interfaces_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
@@ -124,7 +128,8 @@ cc_library(
         "ifrt_ops.h",
         "sharding_param.h",
     ],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         ":ifrt_dialect_inc_gen",
         ":ifrt_interfaces_inc_gen",
@@ -140,7 +145,8 @@ cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
-    visibility = ["//visibility:public"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla/python/ifrt",
         "@com_google_absl//absl/container:flat_hash_map",

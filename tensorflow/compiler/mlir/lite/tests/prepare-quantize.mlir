@@ -1,5 +1,6 @@
 // RUN: tf-opt %s -tfl-prepare-quantize="quantize-allowlist=quantize_float_placeholder_only,not_reset_input" | FileCheck %s
 // RUN: tf-opt %s -tfl-prepare-quantize="disable-set-input-nodes-quantization-params=true" | FileCheck --check-prefix=MixedPrecision %s
+// RUN: tf-opt %s -tfl-prepare-quantize="is-qdq-conversion=true" | FileCheck --check-prefix=QDQ %s
 
 // CHECK-LABEL: main
 // Uses `main` function to match the default target function of QuantSpecs and
@@ -392,6 +393,32 @@ func.func @NotRescaleLogistic(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.81
 
 // CHECK:  %[[log:.*]] = "tfl.logistic"(%arg0)
 // CHECK: return %[[log]]
+}
+
+// QDQ-LABEL: QDQNoQuantizeLogistic
+func.func @QDQNoQuantizeLogistic(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32> {
+^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
+  %1 = "tfl.logistic"(%0) : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+  func.return %1 : tensor<1x6x6x16xf32>
+
+// QDQ: %0 = "tfl.dequantize"(%arg0)
+// QDQ: %1 = "tfl.logistic"(%0) : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+// QDQ-NOT:"tfl.quantize"
+// QDQ: return %1 : tensor<1x6x6x16xf32>
+}
+
+// QDQ-LABEL: QDQNoQuantizeSoftmax
+func.func @QDQNoQuantizeSoftmax(tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32> {
+^bb0(%arg0: tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>):
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x6x6x16x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x6x6x16xf32>
+  %1 = "tfl.softmax"(%0) {beta = 1.000000e+00 : f32} : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+  func.return %1 : tensor<1x6x6x16xf32>
+
+// QDQ: %0 = "tfl.dequantize"(%arg0)
+// QDQ: %1 = "tfl.softmax"(%0) {beta = 1.000000e+00 : f32} : (tensor<1x6x6x16xf32>) -> tensor<1x6x6x16xf32>
+// QDQ-NOT: "tfl.quantize"
+// QDQ: return %1 : tensor<1x6x6x16xf32>
 }
 
 // CHECK-LABEL: QuantizeL2Norm

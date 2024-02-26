@@ -13,7 +13,7 @@ mkl_repository depends on the following environment variables:
 """
 
 load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
+    "//tsl/mkl:build_defs.bzl",
     _if_enable_mkl = "if_enable_mkl",
     _if_mkl = "if_mkl",
     _if_mkl_lnx_x64 = "if_mkl_lnx_x64",

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,25 +35,27 @@ class HloFusionAnalysisCache {
 
   // Returns the analysis for the given instruction, creating it if it doesn't
   // exist yet. Do not call concurrently with `Invalidate` for the same key.
-  const std::optional<HloFusionAnalysis>& Get(
-      const HloInstruction& instruction);
+  const HloFusionAnalysis& Get(const HloInstruction& instruction);
 
   // Returns the analysis for the given producer/consumer pair.
-  const std::optional<HloFusionAnalysis>& Get(const HloInstruction& producer,
-                                              const HloInstruction& consumer);
+  const HloFusionAnalysis& Get(const HloInstruction& producer,
+                               const HloInstruction& consumer);
 
   // Removes the cache entry for the given instruction, if it exists. Also
   // removes all producer-consumer fusions that involve this instruction.
   void Invalidate(const HloInstruction& instruction);
+
+  // Delete all cache entries.
+  void Clear();
 
  private:
   const stream_executor::DeviceDescription& device_info_;
 
   absl::Mutex mutex_;
 
-// All `int` keys and values here are unique instruction IDs.
-  absl::node_hash_map<int, std::optional<HloFusionAnalysis>> analyses_;
-  absl::node_hash_map<std::pair<int, int>, std::optional<HloFusionAnalysis>>
+  // All `int` keys and values here are unique instruction IDs.
+  absl::node_hash_map<int, HloFusionAnalysis> analyses_;
+  absl::node_hash_map<std::pair<int, int>, HloFusionAnalysis>
       producer_consumer_analyses_;
 
   // For each instruction `producer`, contains the `consumer`s for which we have

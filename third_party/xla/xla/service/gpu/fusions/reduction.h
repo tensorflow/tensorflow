@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,22 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -87,18 +101,88 @@ namespace gpu {
 // complicating the index calculation in the code generation of the reduce
 // instructions. In other words, a block_id_y is assigned to a group and so
 // different groups can be run in parallel.
-class ReductionFusion : public FusionInterface {
+class ReductionFusion : public KernelFusionEmitterBase {
  public:
-  explicit ReductionFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
+  explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
-  StatusOr<FusionEmissionResult> Emit(
+  LaunchDimensions launch_dimensions() const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
+      int64_t root_index, int64_t hero_operand_index,
+      mlir::MLIRContext* ctx) const override;
+
+ protected:
+  absl::StatusOr<FusionEmissionResult> EmitInitializers(
       IrEmitterContext& ir_emitter_context,
-      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
-      llvm::IRBuilder<>* builder) const override;
+      const HloFusionInstruction& fusion) const override;
+
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
  private:
-  HloFusionAnalysis& analysis_;
+  class ReductionEmitter;
+  class ReductionGroupEmitter;
+
+  struct IndexGroups {
+    std::vector<std::vector<const HloInstruction*>> grouped_roots;
+
+    // For each root of the fusion, returns the index of the group it was placed
+    // in.
+    std::vector<int> group_id_per_root;
+
+    // For each root of the fusion, returns whether it is a reduction root, or
+    // an additional output.
+    std::vector<bool> is_reduction_root;
+  };
+
+  class ReductionCodegenInfo {
+   public:
+    ReductionCodegenInfo(Tiling tiling, bool is_row_reduction,
+                         bool is_race_free, IndexGroups index_groups,
+                         const HloInstruction* first_reduce)
+        : tiling_(tiling),
+          is_row_reduction_(is_row_reduction),
+          is_race_free_(is_race_free),
+          index_groups_(std::move(index_groups)),
+          first_reduce_(first_reduce) {}
+
+    const Tiling& GetTiling() const { return tiling_; }
+    const IndexGroups& GetIndexGroups() const { return index_groups_; }
+    Shape GetReduceOperandShape() const {
+      return first_reduce_->operand(0)->shape();
+    }
+
+    bool IsRowReduction() const { return is_row_reduction_; }
+    bool IsRaceFree() const { return is_race_free_; }
+
+   private:
+    Tiling tiling_;
+    bool is_row_reduction_;
+    bool is_race_free_;
+    IndexGroups index_groups_;
+    const HloInstruction* first_reduce_;
+  };
+
+  // Groups the roots of the fusion. Different groups will be executed in
+  // parallel. We run reduce instructions in parallel if we can without too
+  // much recomputation overhead. The current heuristic is to place reduce
+  // instructions that share nothing or only (broadcasted) scalars/constants
+  // into different groups; otherwise, they are placed in the same group. Non-
+  // reduce instructions are always grouped with reduces with which they share
+  // any predecessors.
+  static IndexGroups GroupDisjointReductions(const HloFusionAnalysis& analysis);
+  static ReductionCodegenInfo ComputeReductionCodegenInfo(
+      const HloFusionAnalysis& analysis);
+
+  const HloFusionAnalysis& analysis_;
+  ReductionCodegenInfo reduction_codegen_info_;
 };
 
 }  // namespace gpu

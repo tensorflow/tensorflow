@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,20 +18,22 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/lazy.h"
 #include "xla/service/buffer_value.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -164,6 +166,8 @@ class HloValue : public BufferValue {
 
   // Return a single-line string representation of the value.
   std::string ToShortString() const;
+  // The returned string doesn't include `uses` if the ToString is called before
+  // `GetUses` is called.
   std::string ToString(int indent) const;
   std::string ToString() const override { return ToString(0); }
 
@@ -250,7 +254,7 @@ class HloValueSet {
   std::vector<const HloValue*> values_;
 };
 
-std::ostream& operator<<(std::ostream& out, const HloValueSet& hlo_value);
+std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set);
 
 // A class collecting the HloValues which might be contained in the output of
 // an HLO instruction. For array-shaped instructions, an InstructionValueSet

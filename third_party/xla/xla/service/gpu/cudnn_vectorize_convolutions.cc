@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,40 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -79,7 +100,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 // `sibling_computation`.
 //
 // Yes, we serialize/deserialize as a proto.  :)
-static StatusOr<HloComputation*> BuilderToHloComputation(
+static absl::StatusOr<HloComputation*> BuilderToHloComputation(
     XlaBuilder& b, XlaOp root, HloComputation* sibling_computation) {
   TF_ASSIGN_OR_RETURN(XlaComputation comp, b.Build(root));
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
@@ -260,7 +281,8 @@ static ConvolutionDimensionNumbers VectorizeDnums(
 // Reorders the convolution's filter and bias (if present) according to
 // cudnnReorderFilterAndBias.  Also marks that the filter + bias are reordered
 // in the conv's backend-config.
-Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
+absl::Status ReorderInt8NchwVect(HloCustomCallInstruction* conv,
+                                 XlaOp* operands) {
   bool has_bias = conv->operand_count() > 2;
   VLOG(1) << "Reordering filter" << (has_bias ? " and bias" : "")
           << " (replacement for cudnnReorderFilterAndBias)";
@@ -269,10 +291,12 @@ Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
   ConvolutionDimensionNumbers dnums = conv->convolution_dimension_numbers();
 
   // Update convolution backend config.
-  TF_ASSIGN_OR_RETURN(auto config,
-                      conv->backend_config<CudnnConvBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      conv->backend_config<GpuBackendConfig>());
+  CudnnConvBackendConfig& config =
+      *gpu_config.mutable_cudnn_conv_backend_config();
   config.set_reordered_int8_nchw_vect(true);
-  TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+  TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
 
   // Reorder the filter.
   TF_ASSIGN_OR_RETURN(Shape filter_shape, builder->GetShape(operands[1]));
@@ -299,7 +323,7 @@ Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
     transpose = Transpose(reshape, reorder.permutation);
     operands[2] = Reshape(reorder.result_shape, transpose);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Tries to vectorize an already-vectorized convolution.
@@ -310,7 +334,7 @@ Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
 //
 // (The dimensions can appear in any order; which is N/C/etc is determined by
 // the convolutions' dnums.)
-static StatusOr<bool> TryRevectorizeConv(
+static absl::StatusOr<bool> TryRevectorizeConv(
     const se::CudaComputeCapability& compute_capability,
     const se::dnn::VersionInfo& cudnn_version, HloCustomCallInstruction* conv,
     int vect_size) {
@@ -471,7 +495,7 @@ static StatusOr<bool> TryRevectorizeConv(
 //
 // This requires that C be a multiple of vect_size.  CudnnPadForConvolutions can
 // add padding to make this true.
-static StatusOr<bool> TryVectorizeConv(
+static absl::StatusOr<bool> TryVectorizeConv(
     const se::CudaComputeCapability& compute_capability,
     const se::dnn::VersionInfo& cudnn_version, HloCustomCallInstruction* conv,
     int64_t vect_size) {
@@ -591,7 +615,7 @@ static StatusOr<bool> TryVectorizeConv(
 
 }  // namespace
 
-StatusOr<bool> CudnnVectorizeConvolutions::Run(
+absl::StatusOr<bool> CudnnVectorizeConvolutions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

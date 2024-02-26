@@ -4,7 +4,6 @@ load(
     "if_libtpu",
     "if_macos",
     "if_oss",
-    "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -255,6 +254,7 @@ filegroup(
         "collective_param_resolver_local.h",
         "collective_rma_local.h",
         "collective_util.h",
+        "colocate_predecessor_trees_pass.h",
         "colocation_graph.h",
         "constant_folding.h",
         "copy_tensor.h",
@@ -384,13 +384,13 @@ cc_library(
     srcs = ["buf_rendezvous.cc"],
     hdrs = ["buf_rendezvous.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device",
         ":device_mgr",
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -461,12 +461,13 @@ cc_library(
     srcs = ["collective_param_resolver_local.cc"],
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
-    features = ["-layering_check"],
     deps = [
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1181,6 +1182,28 @@ cc_library(
 )
 
 cc_library(
+    name = "colocate_predecessor_trees_pass",
+    srcs = ["colocate_predecessor_trees_pass.cc"],
+    hdrs = ["colocate_predecessor_trees_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "local_device",
     srcs = ["local_device.cc"],
     hdrs = ["local_device.h"],
@@ -1316,6 +1339,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/config:flag_defs",
     ],
 )
 
@@ -1344,26 +1368,6 @@ cc_library(
 )
 
 cc_library(
-    name = "zen_layout_pass",
-    srcs = ["zen_layout_pass.cc"],
-    copts = tf_copts(),
-    deps = [
-        ":function",
-        ":layout_pass_util",
-        ":optimization_registry",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/graph:zen_graph_util",
-        "@com_google_absl//absl/base",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "mkl_cpu_allocator",
     srcs = ["mkl_cpu_allocator.cc"],
     hdrs = ["mkl_cpu_allocator.h"],
@@ -1372,6 +1376,7 @@ cc_library(
         ":bfc_allocator",
         ":pool_allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:onednn_env_vars",
     ],
 )
@@ -1387,6 +1392,7 @@ cc_library(
     deps = [
         ":function",
         ":optimization_registry",
+        ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
@@ -1916,7 +1922,6 @@ cc_library(
     deps = [
         ":device_factory",
         ":local_device",
-        ":loose_headers",
         ":node_file_writer",
         ":scoped_allocator",
         ":session_options",
@@ -1963,6 +1968,7 @@ tf_cuda_library(
         ":collective_param_resolver_local",
         ":collective_rma_local",
         ":collective_util",
+        ":colocate_predecessor_trees_pass",
         ":composite_device",
         ":copy_tensor",
         ":costmodel_manager",
@@ -2013,7 +2019,7 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ] + if_zendnn([":zen_layout_pass"]) + if_macos(
+    ] + if_macos(
         [],
         [":replicate_constants_pass"],  # TODO(b/301469885): Remove.
     ),
@@ -2271,24 +2277,6 @@ cc_library(
     ],
 )
 
-# For a more maintainable build this target should not exist and the headers
-# should  be split into the existing cc_library targets, but this change was
-# automatically  done so that we can remove long standing issues and complexity
-# in the build system. It's up to the OWNERS of this package to get rid of it or
-# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
-# Here it is used to avoid header parsing errors in packages where the feature
-# parse_headers was enabled since loose headers were not being parsed. See
-# go/loose-lsc-one-target-approach for more details.
-cc_library(
-    name = "loose_headers",
-    tags = ["avoid_dep"],
-    textual_hdrs = [
-        "gpu_device_context.h",
-        "mkl_cpu_allocator.h",
-    ],
-    visibility = [":__pkg__"],
-)
-
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -2376,6 +2364,7 @@ tf_cc_tests(
         "buf_rendezvous_test.cc",
         "collective_executor_mgr_test.cc",
         "collective_rma_local_test.cc",
+        "colocate_predecessor_trees_pass_test.cc",
         "device_mgr_test.cc",
         "device_resolver_local_test.cc",
         "device_set_test.cc",
@@ -3190,6 +3179,7 @@ tf_cc_test(
     name = "lower_while_op_test",
     size = "small",
     srcs = ["lower_while_op_test.cc"],
+    env = {"TF_FLAG_ENABLE_COLOCATION_KEY_PROPAGATION_IN_WHILE_OP_LOWERING": "1"},
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3207,8 +3197,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3512,23 +3502,11 @@ tf_cc_fuzz_test(
 )
 
 cc_library(
-    name = "serving_device_selector",
-    srcs = ["serving_device_selector.cc"],
-    hdrs = ["serving_device_selector.h"],
-    copts = tf_copts(),
+    name = "device_id_utils",
+    hdrs = ["device_id_utils.h"],
     deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "serving_device_selector_policies",
-    srcs = ["serving_device_selector_policies.cc"],
-    hdrs = ["serving_device_selector_policies.h"],
-    copts = tf_copts(),
-    features = ["-layering_check"],
-    deps = [
-        ":serving_device_selector",
+        "@local_tsl//tsl/framework:device_id_impl",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform",
     ],
 )

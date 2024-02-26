@@ -305,6 +305,14 @@ class TFL_OperandHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     TFL_OperandHasRankAtMostPred<n, m>>;
 
+// Not all dimentions in the tensor will contribute to the data move in a
+// TransposeOp. Effective rank is the number of dimentions != 1
+class TFL_TransposeOperandHasEffectiveRankAtMost<int n, int m> :
+  PredOpTrait<"operand " # n # " is at most " # m # "-D",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"GetSqueezedShape($_op.getOperand(" # n #
+      ")).cast<DenseElementsAttr>().size() <= " # m>]>>;
+
 class TFL_OperandHasRankAtLeast<int n, int m> :
   PredOpTrait<"operand " # n # " is at least " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
@@ -1053,7 +1061,7 @@ def TFL_DepthwiseConv2DOp :
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     Pure, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
-    AffineOpCoefficient<-1, 1>,
+    AffineOpCoefficient<0, 1>,
     TFL_SparseOp,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
     QuantizableResult,
@@ -1089,7 +1097,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let extraClassDeclaration = [{
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
-    int GetQuantizationDimIndex() { return -1; }
+    int GetQuantizationDimIndex() { return 0; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
@@ -1211,12 +1219,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$params,
+    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I16, I64, I32, UI8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
 }
 
@@ -3488,7 +3496,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 def TFL_TransposeOp : TFL_Op<"transpose", [
     Pure,
     QuantizableResult,
-    TFL_OperandHasRankAtMost<0, 6>,
+    TFL_TransposeOperandHasEffectiveRankAtMost<0, 6>,
     TFL_OperandHasRank<1, 1>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3511,6 +3519,8 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
   let hasVerifier = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$input, "Value":$perm),
@@ -5389,12 +5399,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let hasCanonicalizer = 1;

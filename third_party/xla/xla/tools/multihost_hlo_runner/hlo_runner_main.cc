@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
   }
 
   // The main logic:
-  xla::StatusOr<std::unique_ptr<xla::PjRtClient>> client;
+  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client;
   if (enable_mock_nccl) {
     CHECK_GT(num_nodes, 1);
     client = xla::FunctionalHloRunner::CreateMockGpuClient(num_nodes);

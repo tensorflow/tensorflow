@@ -172,6 +172,21 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "global_shuffle_op",
+    srcs = [
+        "global_shuffle_op.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:random_seed",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:dataset_ops_gen",
+        "//tensorflow/python/ops:experimental_dataset_ops_gen",
+    ],
+)
+
+py_strict_library(
     name = "grouping",
     srcs = ["grouping.py"],
     srcs_version = "PY3",
@@ -223,13 +238,8 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:options",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/training:basic_session_run_hooks",
-        "//tensorflow/python/training:saver",
-        "//tensorflow/python/training:session_run_hook",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -523,6 +533,7 @@ py_strict_library(
         ":error_ops",
         ":from_list",
         ":get_single_element",
+        ":global_shuffle_op",
         ":grouping",
         ":interleave_ops",
         ":io",

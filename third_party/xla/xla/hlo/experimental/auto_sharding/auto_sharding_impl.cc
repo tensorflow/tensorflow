@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
@@ -31,16 +33,20 @@ namespace xla {
 namespace spmd {
 
 AutoShardingSolverResult Solve(
-    const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
+    const LivenessNodeSet& liveness_node_set,
+    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const AutoShardingOption& option,
+    absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution) {
-  return CallSolver(hlo_live_range, liveness_node_set, strategy_map,
-                    strategy_groups, cost_graph, alias_set, /*s_hint*/ {},
-                    /*compute_iis*/ true, option.solver_timeout_in_seconds,
-                    option, sharding_propagation_solution);
+  return CallSolver(
+      hlo_module, hlo_live_range, liveness_node_set, liveness_edge_set,
+      strategy_map, strategy_groups, cost_graph, alias_set, /*s_hint*/ {},
+      /*compute_iis*/ true, option.solver_timeout_in_seconds, option,
+      /*max_cost*/ std::nullopt, request_prefix, sharding_propagation_solution,
+      /*deterministic mode*/ true);
 }
 
 void PopulateTemporalValues(const CostGraph& cost_graph,

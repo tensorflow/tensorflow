@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,9 +42,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  std::variant<GpuExecutable::OwnedThunkSequence,
-               GpuExecutable::OwnedGpuRuntimeProgram>
-      executable;
+  GpuExecutable::OwnedThunkSequence executable;
   std::vector<GpuExecutable::ConstantInfo> constants;
   absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo> output_info;
   Shape output_shape;
@@ -65,7 +63,7 @@ void RemoveUnusedAndUninitializedGlobals(
     llvm::Module* llvm_module,
     const std::vector<GpuExecutable::ConstantInfo>& constants);
 
-StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
+absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,

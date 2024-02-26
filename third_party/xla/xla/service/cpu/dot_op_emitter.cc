@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -326,7 +326,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             /*outputs=*/mlir::ValueRange{a},
             /*indexingMaps=*/
             mlir::AffineMap::inferFromExprList(
-                {b_exprs, c_exprs, parallel_exprs}),
+                {b_exprs, c_exprs, parallel_exprs}, context),
             /*iteratorTypes=*/iteratorTypes,
             [](mlir::OpBuilder& b, mlir::Location loc, mlir::ValueRange args) {
               mlir::ArithBuilder ab(b, loc);

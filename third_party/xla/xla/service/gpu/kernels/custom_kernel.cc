@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_format.h"
@@ -33,8 +35,22 @@ CustomKernel::CustomKernel(std::string name,
       kernel_spec_(std::move(kernel_spec)),
       block_dims_(block_dims),
       thread_dims_(thread_dims),
-
+      cluster_dims_(std::nullopt),
       shared_memory_bytes_(shared_memory_bytes) {}
+
+CustomKernel::CustomKernel(std::string name,
+                           se::MultiKernelLoaderSpec kernel_spec,
+                           se::BlockDim block_dims, se::ThreadDim thread_dims,
+                           se::ClusterDim cluster_dims,
+                           size_t shared_memory_bytes)
+    : name_(std::move(name)),
+      kernel_spec_(std::move(kernel_spec)),
+      block_dims_(block_dims),
+      thread_dims_(thread_dims),
+      cluster_dims_(cluster_dims),
+      shared_memory_bytes_(shared_memory_bytes) {}
+
+std::string_view CustomKernel::name() const { return name_; }
 
 const se::MultiKernelLoaderSpec& CustomKernel::kernel_spec() const {
   return kernel_spec_;
@@ -43,6 +59,10 @@ const se::MultiKernelLoaderSpec& CustomKernel::kernel_spec() const {
 se::BlockDim CustomKernel::block_dims() const { return block_dims_; }
 
 se::ThreadDim CustomKernel::thread_dims() const { return thread_dims_; }
+
+std::optional<se::ClusterDim> CustomKernel::cluster_dims() const {
+  return cluster_dims_;
+}
 
 size_t CustomKernel::shared_memory_bytes() const {
   return shared_memory_bytes_;

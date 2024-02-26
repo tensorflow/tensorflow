@@ -82,7 +82,7 @@ Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
   VLOG(3) << graph->ToGraphDefDebug().DebugString();
   *result = std::move(graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
@@ -95,7 +95,7 @@ Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
   AddNodeAttr(kXlaNumConstantArgsAttr, num_constant_args, &call_node);
   AddNodeAttr(kXlaNumResourceArgsAttr, num_resource_args, &call_node);
   TF_ASSIGN_OR_RETURN(*result, graph->AddNode(call_node));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,

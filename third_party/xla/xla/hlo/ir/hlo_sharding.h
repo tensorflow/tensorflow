@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -568,8 +568,8 @@ class HloSharding {
         manual_(false),
         unknown_(false),
         replicate_on_last_tile_dim_(false) {}
-  explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
-      : tuple_elements_(tuple_shardings),
+  explicit HloSharding(std::vector<HloSharding> tuple_shardings)
+      : tuple_elements_(std::move(tuple_shardings)),
         replicated_(false),
         maximal_(false),
         tuple_(true),

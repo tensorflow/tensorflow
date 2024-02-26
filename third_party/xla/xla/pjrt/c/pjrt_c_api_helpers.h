@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/status.h"
@@ -137,7 +138,7 @@ xla::PjRtFuture<xla::Status> ConvertCEventToCppFuture(PJRT_Event* c_event,
 // The data of returned variable-length PJRT_NamedValue list is backed by
 // `cpp_value_map`, so `cpp_value_map` must outlive the returned list. It will
 // raise errors for unsupported PjRtValueType.
-xla::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
+absl::StatusOr<std::vector<PJRT_NamedValue>> ConvertToPjRtNamedValueList(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& cpp_value_map,
     int api_minor_version);
 
@@ -164,7 +165,7 @@ xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);
 
-xla::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
+absl::StatusOr<PJRT_TopologyDescription*> GetTopologyDescription(
     PJRT_Client* client, const PJRT_Api* api);
 
 // Releases `chunk`.
@@ -193,9 +194,9 @@ struct PJRT_KeyValueCallbackData {
   PJRT_KeyValueCallbackData() = default;
   PJRT_KeyValueCallbackData(const PJRT_KeyValueCallbackData&) = delete;
 
-  xla::PjRtClient::KeyValueGetCallback kv_get;
-  xla::PjRtClient::KeyValuePutCallback kv_put;
-  // kv_get_c_func and kv_put_c_func are holding pointers to kv_get and kv_put.
+  std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
+
+  // kv_get_c_func and kv_put_c_func are holding pointers to kv_store.
   pjrt::PJRT_KeyValueGetCFunc kv_get_c_func;
   pjrt::PJRT_KeyValuePutCFunc kv_put_c_func;
   // c_kv_get and c_kv_put are holding pointers to kv_get_c_func and
@@ -210,8 +211,7 @@ struct PJRT_KeyValueCallbackData {
 // PJRT_KeyValueCallbackData must be kept alive as long as c_kv_get and c_kv_put
 // may be called.
 std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
-    xla::PjRtClient::KeyValueGetCallback kv_get,
-    xla::PjRtClient::KeyValuePutCallback kv_put);
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store);
 
 // std::function version of PJRT_SendCallback
 using PJRT_SendCallbackFunction =
@@ -245,12 +245,12 @@ struct BufferMemoryLayoutData {
   std::vector<int64_t> tile_dims;
   std::vector<size_t> tile_dim_sizes;
 };
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout);
-xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
+absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     absl::Span<int64_t const> byte_strides);
 
-xla::StatusOr<xla::Layout> ConvertToLayout(
+absl::StatusOr<xla::Layout> ConvertToLayout(
     const PJRT_Buffer_MemoryLayout_Tiled& c_tiled);
 
 PJRT_Buffer_Type GetElementType(const PJRT_Api* api, PJRT_Buffer* buffer);
@@ -259,15 +259,18 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
 PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
                                          PJRT_Buffer* buffer);
 
-xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
-                                             const int64_t* dims,
-                                             size_t num_dims,
-                                             PJRT_Buffer_MemoryLayout* layout);
+absl::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                              const int64_t* dims,
+                                              size_t num_dims,
+                                              PJRT_Buffer_MemoryLayout* layout);
 
 absl::string_view PlatformName(const PJRT_Api* api,
                                const PJRT_TopologyDescription* topo_desc);
 absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
     const PJRT_Api* api, const PJRT_TopologyDescription* topo_desc);
+
+absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
+    const PJRT_Api* api, PJRT_Executable* executable);
 
 }  // namespace pjrt
 

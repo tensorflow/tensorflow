@@ -26,6 +26,61 @@ func.func @select_and_scatter(
     func.return %1 : tensor<10x24x24x64xf32>
 }
 
+
+// CHECK: func @select_and_scatter_with_promotable_types
+func.func @select_and_scatter_with_promotable_types(
+    %arg0: tensor<10x24x24x64xf32>,
+    %arg1: tensor<10x12x12x64xf32>) -> () {
+    %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
+    %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
+    ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+      %2 = "mhlo.compare"(%arg3, %arg4) {
+        comparison_direction = #mhlo<comparison_direction GE>
+        } : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      "mhlo.return"(%2) : (tensor<i1>) -> ()
+    },  {
+    ^bb0(%arg3: tensor<f64>, %arg4: tensor<f64>):
+      %2 = mhlo.add %arg3, %arg4 : tensor<f64>
+      "mhlo.return"(%2) : (tensor<f64>) -> ()
+    }) {
+      window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+      window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+      padding = dense<0> : tensor<4x2xi64>
+    } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
+          tensor<10x24x24x64xf64>
+    func.return
+}
+
+
+// CHECK: func @select_and_scatter_with_promotable_quantized_types
+func.func @select_and_scatter_with_promotable_quantized_types(
+  %arg0: tensor<10x24x24x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+  %arg1: tensor<10x12x12x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+  %arg2 : tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+  tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+
+  %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
+  ^bb0(%arg3: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>, %arg4: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>):
+    %2 = "mhlo.compare"(%arg3, %arg4) {
+      compare_type = #mhlo<comparison_type TOTALORDER>,
+      comparison_direction = #mhlo<comparison_direction GE>
+      } : (tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<i1>
+    "mhlo.return"(%2) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg4: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+    %2 = mhlo.add %arg3, %arg4 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+    "mhlo.return"(%2) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+  }) {
+    window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
+    window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>
+  } : (tensor<10x24x24x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+      tensor<10x12x12x64x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+      tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+      tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>>
+  func.return %1 : tensor<10x24x24x64x!quant.uniform<i32:f32, 2.000000e+00:15>>
+}
+
+// CHECK: func @select_and_scatter_with_unranked_dims
 func.func @select_and_scatter_with_unranked_dims(
   %arg0: tensor<4x5x1x1xbf16>,
   %arg1: tensor<2x2x1x1xbf16>,
@@ -649,7 +704,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %arg1: tensor<10x12x12x64xf32>) -> () {
     %0 = mhlo.constant dense<0> : tensor<i32>
 
-    // expected-error @+1 {{The element-type of reduction-region's argument at index 1 is expected to be 'f32', but got 'tensor<i32>' as its type.}}
+    // expected-error @+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from 'f32', but got 'i32'}}
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
@@ -677,7 +732,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %arg1: tensor<10x12x12x64xf32>) -> () {
     %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
 
-    // expected-error @+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<i32>' vs 'tensor<f32>'}}
+    // expected-error @+1 {{The element-type of reduction-region's result type at index 0 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<i32>' vs 'tensor<f32>'}}
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {

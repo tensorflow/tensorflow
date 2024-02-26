@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -68,21 +69,22 @@ namespace {
 namespace m = match;
 
 // Give this instruction a more useful name than "custom-call.42".
-Status SetName(HloModule *module, HloInstruction *gemm) {
+absl::Status SetName(HloModule *module, HloInstruction *gemm) {
   if (IsCublasLtMatmul(*gemm)) {
     module->SetAndUniquifyInstrName(gemm, "cublas-lt-matmul");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  GemmBackendConfig config;
-  TF_ASSIGN_OR_RETURN(config, gemm->backend_config<GemmBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      gemm->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig &config = gpu_config.gemm_backend_config();
   const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
   bool is_batch_dot = !dot_dims.lhs_batch_dimensions().empty() ||
                       !dot_dims.rhs_batch_dimensions().empty();
 
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns whether a given PrimitiveType is supported by cuBLASLt Epilogue
@@ -243,19 +245,21 @@ bool IsSupportedF8Pattern(
   auto use_spmd_partitioning = [](const HloInstruction *instr) -> bool {
     return instr->GetModule()->config().use_spmd_partitioning();
   };
+
   for (int i = 3; i < subgraph.size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
     // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, select, slice,
-    // all-gather, all-to-all and collective-permute instructions are supported.
-    // Specifically, the all-gather, all-to-all and collective-permute
-    // operations are permitted only in SPMD cases since the optimization cannot
-    // be guaranteed to be applied to all replicas in the MPMD scenario.
+    // transpose, all-gather, all-to-all and collective-permute instructions are
+    // supported. Specifically, the all-gather, all-to-all and
+    // collective-permute operations are permitted only in SPMD cases since the
+    // optimization cannot be guaranteed to be applied to all replicas in the
+    // MPMD scenario.
     if (!Match(
             subgraph[i].first,
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::DynamicSlice(), m::Pad(),
-                m::Reshape(), m::Select(), m::Slice(),
+                m::Reshape(), m::Select(), m::Slice(), m::Transpose(),
                 m::AllGather().WithPredicate(use_spmd_partitioning),
                 m::AllToAll().WithPredicate(use_spmd_partitioning),
                 m::CollectivePermute().WithPredicate(use_spmd_partitioning)))) {
@@ -471,20 +475,21 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(se::GpuComputeCapability gpu_version)
+  explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
-  Status HandleDot(HloInstruction *instr) override {
+  absl::Status HandleDot(HloInstruction *instr) override {
     if (!IsMatrixMultiplication(*instr)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     CHECK(!instr->IsRank2Transpose());
     CHECK(!instr->mutable_operand(0)->IsRank2Transpose());
     CHECK(!instr->mutable_operand(1)->IsRank2Transpose());
-
     // Create a GemmBackendConfig based on the instruction.
-    GemmBackendConfig gemm_backend_config;
+    GpuBackendConfig gpu_backend_config;
+    GemmBackendConfig &gemm_backend_config =
+        *gpu_backend_config.mutable_gemm_backend_config();
     gemm_backend_config.set_alpha_real(1.0);
     gemm_backend_config.set_alpha_imag(0.0);
     gemm_backend_config.set_beta(0.0);
@@ -516,7 +521,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // commutative with dequantization. The second element of the pair gives the
     // index of the operand identifying the next op in the sequence.
     std::vector<std::pair<HloInstruction *, int>> a_ops, b_ops;
-    bool a_mult_scale, b_mult_scale;
+    bool a_mult_scale{}, b_mult_scale{};
     if (supported_by_cublaslt &&
         Match(instr,
               m::Dot(m::Op().WithPredicate([&](const HloInstruction *instr) {
@@ -530,10 +535,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                      })))) {
       TF_ASSIGN_OR_RETURN(
           bool created_call,
-          CreateF8CustomCall(instr, gemm_backend_config, a, b, a_scale, b_scale,
+          CreateF8CustomCall(instr, gpu_backend_config, a, b, a_scale, b_scale,
                              a_mult_scale, b_mult_scale, a_ops, b_ops));
       if (created_call) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
 
@@ -554,24 +559,24 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             output_shape,
             {instr->mutable_operand(0), instr->mutable_operand(1)},
             gemm_custom_call_target));
-    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_backend_config));
+    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleMultiply(HloInstruction *instr) override {
+  absl::Status HandleMultiply(HloInstruction *instr) override {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
                   GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
                   m::Broadcast(m::ConstantScalar(&alpha)).WithOneUser()))) {
-      TF_ASSIGN_OR_RETURN(auto config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
-
+      TF_ASSIGN_OR_RETURN(auto gpu_config,
+                          existing_gemm->backend_config<GpuBackendConfig>());
+      GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
       // Do not fuse alpha into S32 GEMM, as they only support fixed values for
       // alpha/beta.
       if (existing_gemm->shape().element_type() == S32) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
@@ -580,7 +585,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             *alpha->literal().GetAsComplex128({}) * prev_alpha;
         config.set_alpha_real(new_alpha.real());
         config.set_alpha_imag(new_alpha.imag());
-        TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
+        TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
         return ReplaceInstruction(instr, existing_gemm);
       }
     }
@@ -593,10 +598,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(instr, m::MultiplyAnyOrder(
                          m::AnyOf<HloInstruction>(
                              m::Slice(&slice_or_bitcast,
-                                      CublasLtMatmul(&existing_gemm)),
+                                      CublasLtMatmulMaybeF8(&existing_gemm)),
                              m::Bitcast(&slice_or_bitcast,
-                                        CublasLtMatmul(&existing_gemm)),
-                             CublasLtMatmul(&existing_gemm)),
+                                        CublasLtMatmulMaybeF8(&existing_gemm)),
+                             CublasLtMatmulMaybeF8(&existing_gemm)),
                          m::Op(&cdf).WithOneUser())) &&
         Match(cdf,
               m::MultiplyAnyOrder(
@@ -630,10 +635,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           .WithOneUser())))) {
       return FuseGeluActivation(instr, existing_gemm, slice_or_bitcast);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleAdd(HloInstruction *instr) override {
+  absl::Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm = nullptr;
     HloInstruction *optional_slice = nullptr;
     HloInstruction *optional_convert = nullptr;
@@ -657,7 +662,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                             optional_convert, optional_bitcast));
 
       if (was_fused) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     // Attempt to elide broadcast and fuse addition of a vector bias into
@@ -729,9 +734,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())
                           .WithOneUser()),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
-      TF_ASSIGN_OR_RETURN(GemmBackendConfig gemm_backend_config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
-
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                          existing_gemm->backend_config<GpuBackendConfig>());
+      const GemmBackendConfig &gemm_backend_config =
+          gpu_backend_config.gemm_backend_config();
       // check if type combination is supported here
       TF_ASSIGN_OR_RETURN(
           bool types_are_supported,
@@ -772,10 +778,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                optional_bitcast_matrix, optional_slice_matrix);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleMaximum(HloInstruction *instr) override {
+  absl::Status HandleMaximum(HloInstruction *instr) override {
     HloInstruction *existing_gemm, *zeros;
     HloInstruction *optional_slice_or_bitcast = nullptr;
     // Attempt to elide maximum and fuse ReLU activation into GEMM, including
@@ -795,10 +801,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(FuseReluActivation(instr, zeros, existing_gemm,
                                             optional_slice_or_bitcast));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status HandleConvert(HloInstruction *instr) override {
+  absl::Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
         *binary;
     // Attempt to elide the scaling and conversion of the result of an FP8
@@ -824,16 +830,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           instr, existing_gemm, d_scale, clamp_lower, clamp_upper,
           /*mult_scale=*/binary->opcode() == HloOpcode::kMultiply);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  StatusOr<bool> CreateF8CustomCall(
-      HloInstruction *instr, GemmBackendConfig &gemm_backend_config,
+  absl::StatusOr<bool> CreateF8CustomCall(
+      HloInstruction *instr, GpuBackendConfig &gpu_backend_config,
       HloInstruction *a, HloInstruction *b, HloInstruction *a_scale,
       HloInstruction *b_scale, bool a_mult_scale, bool b_mult_scale,
       std::vector<std::pair<HloInstruction *, int>> a_ops,
       std::vector<std::pair<HloInstruction *, int>> b_ops) {
 #if GOOGLE_CUDA
+    GemmBackendConfig &gemm_backend_config =
+        *gpu_backend_config.mutable_gemm_backend_config();
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
     // FP8 GEMM kernels are only available on Ada, Hopper, and later
@@ -1043,9 +1051,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 instr->shape().element_type(), new_output_shape.dimensions(),
                 instr->shape().layout().minor_to_major()),
             operands_list, kCublasLtMatmulF8CallTarget));
-
-    TF_RETURN_IF_ERROR(
-        new_custom_call->set_backend_config(gemm_backend_config));
+    TF_RETURN_IF_ERROR(new_custom_call->set_backend_config(gpu_backend_config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call));
 
     // Slice the result of the GEMM if the operands were padded.
@@ -1067,30 +1073,31 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 #endif
   }
 
-  Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
-                    HloInstruction *d_scale, HloInstruction *clamp_lower,
-                    HloInstruction *clamp_upper, bool mult_scale = false) {
+  absl::Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
+                          HloInstruction *d_scale, HloInstruction *clamp_lower,
+                          HloInstruction *clamp_upper,
+                          bool mult_scale = false) {
     // Verify the data types and the operands of clamp.
     if (instr->shape().element_type() == F8E4M3FN) {
       if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
               std::numeric_limits<tsl::float8_e4m3fn>::lowest())) ||
           !clamp_upper->literal().IsAllFloat(static_cast<float>(
               std::numeric_limits<tsl::float8_e4m3fn>::max()))) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     } else if (instr->shape().element_type() == F8E5M2) {
       if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
               std::numeric_limits<tsl::float8_e5m2>::lowest())) ||
           !clamp_upper->literal().IsAllFloat(static_cast<float>(
               std::numeric_limits<tsl::float8_e5m2>::max()))) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (!ShapeUtil::IsScalar(d_scale->shape())) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // The possible second user of the GEMM must be the calculation of the
@@ -1102,8 +1109,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (gemm_users.size() == 2) {
       // In the presence of a ReLU activation, the abs instruction is elided
       // since abs(ReLU(x)) = ReLU(x).
-      TF_ASSIGN_OR_RETURN(auto config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
+      TF_ASSIGN_OR_RETURN(auto gpu_config,
+                          existing_gemm->backend_config<GpuBackendConfig>());
+      const GemmBackendConfig &config = gpu_config.gemm_backend_config();
       for (int i = 0; i < gemm_users.size(); ++i) {
         HloInstruction *maybe_reduce = nullptr;
         if (gemm_users[i]->opcode() == HloOpcode::kAbs) {
@@ -1134,14 +1142,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         }
       }
       if (!reduce_damax) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     } else if (gemm_users.size() > 2) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
-                        existing_gemm->backend_config<GemmBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_backend_config,
+                        existing_gemm->backend_config<GpuBackendConfig>());
+    const GemmBackendConfig &gemm_backend_config =
+        gpu_backend_config.gemm_backend_config();
+
     if (gemm_backend_config.beta() != 0.0 &&
         existing_gemm->operand(2)->shape().element_type() != BF16 &&
         existing_gemm->operand(2)->shape().element_type() != F16) {
@@ -1150,7 +1161,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               << " is not fused into the FP8 Custom Call because it "
                  "conflicts with the existing fusion of the addition of a "
                  "matrix bias with element type other than BF16 or F16.";
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // If necessary, invert the scaling factor of D and convert to F32.
@@ -1178,12 +1189,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         existing_gemm->CloneWithNewShape(instr->shape());
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(new_gemm)));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds a scalar DAmax return value to an FP8 GEMM.
-  Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm,
-                    HloInstruction *reduce_damax) {
+  absl::Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm,
+                          HloInstruction *reduce_damax) {
     // Change the output shape of the Custom Call to tuple(D, DAmax).
     Shape damax_shape = ShapeUtil::MakeScalarShape(F32);
     Shape tuple_shape =
@@ -1204,7 +1215,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(ReplaceInstruction(reduce_damax, damax_converted));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, d));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Fuses a matrix bias into a cuBLAS call. 'instr' should be an Add
@@ -1213,10 +1224,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // where 'gemm' is expected to be a cuBLAS custom_call. Slice is introduced
   // when the inputs of the gemm are possibly padded. Bitcast is introduced to
   // handle high rank input.
-  Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
-                           const HloInstruction *gemm,
-                           HloInstruction *bitcast = nullptr,
-                           HloInstruction *slice = nullptr) {
+  absl::Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
+                                 const HloInstruction *gemm,
+                                 HloInstruction *bitcast = nullptr,
+                                 HloInstruction *slice = nullptr) {
     TF_RET_CHECK(Shape::Equal().IgnoreElementType()(bias->shape(),
                                                     bitcast ? bitcast->shape()
                                                     : slice ? slice->shape()
@@ -1225,7 +1236,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
     if (gemm->shape().element_type() == S32) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // To ensure correctness, only slices that chop off the ends of dimensions
@@ -1234,7 +1245,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       int slice_op_dim = slice->operand(0)->shape().rank();
       if (slice->slice_starts() != std::vector<int64_t>(slice_op_dim, 0) ||
           slice->slice_strides() != std::vector<int64_t>(slice_op_dim, 1)) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     // Cublas gemm overwrites the bias matrix, so fusion is only possible if the
@@ -1269,8 +1280,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     bool want_to_fuse_bias = IsCublasLtMatmulF8(*gemm) ||
                              IsCublasLtMatmul(*gemm) || can_overwrite_bias;
 
-    auto config = gemm->backend_config<GemmBackendConfig>().value();
-
+    auto gpu_config = gemm->backend_config<GpuBackendConfig>().value();
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
     // It is possible to fuse into a cublasLt matmul that already has a vector
     // bias, but no other epilogue will commute with the matrix bias add.
     bool supported_epilogue =
@@ -1279,7 +1290,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     if ((config.beta() != 0) || !want_to_fuse_bias ||
         (gemm->user_count() != 1) || !supported_epilogue) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     config.set_beta(1.0);
@@ -1302,8 +1313,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     // set output shape to bias shape if mix type
     fused_op->mutable_shape()->set_element_type(bias->shape().element_type());
-
-    TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
+    TF_RETURN_IF_ERROR(fused_op->set_backend_config(gpu_config));
 
     // Choose whether the bias must alias the output. Legacy cublas GEMMs must
     // operate in place and alias the bias with the output, whereas with
@@ -1348,12 +1358,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // convert is only used for F8 matmuls as cublasLt has specific constraints
   // on the vector bias type for such matmuls. The optional bitcast is
   // necessary to handle high rank input cases.
-  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
-                                   HloInstruction *broadcast,
-                                   HloInstruction *gemm,
-                                   HloInstruction *slice = nullptr,
-                                   HloInstruction *convert = nullptr,
-                                   HloInstruction *bitcast = nullptr) {
+  absl::StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+                                         HloInstruction *broadcast,
+                                         HloInstruction *gemm,
+                                         HloInstruction *slice = nullptr,
+                                         HloInstruction *convert = nullptr,
+                                         HloInstruction *bitcast = nullptr) {
     if (!bitcast) {
       TF_RET_CHECK(ShapeUtil::Compatible(
           broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
@@ -1365,8 +1375,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction *bias = broadcast->mutable_operand(0);
 
-    TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
-
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        gemm->backend_config<GpuBackendConfig>());
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
     // # output column dims == # non-contracting rhs operand dims.
     const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
     size_t num_col_dims = gemm->operand(1)->shape().rank() -
@@ -1454,7 +1465,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     config.set_epilogue(GemmBackendConfig::BIAS);
     std::unique_ptr<HloInstruction> result =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
-    TF_RETURN_IF_ERROR(result->set_backend_config(config));
+    TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
     if (slice) {
       result = slice->CloneWithNewOperands(
@@ -1470,32 +1481,35 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return true;
   }
 
-  Status FuseReluActivation(HloInstruction *instr, HloInstruction *broadcast,
-                            HloInstruction *gemm,
-                            HloInstruction *slice_or_bitcast = nullptr) {
+  absl::Status FuseReluActivation(HloInstruction *instr,
+                                  HloInstruction *broadcast,
+                                  HloInstruction *gemm,
+                                  HloInstruction *slice_or_bitcast = nullptr) {
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(),
         (slice_or_bitcast ? slice_or_bitcast->shape() : gemm->shape())));
 
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (gemm->user_count() != 1) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        gemm->backend_config<GpuBackendConfig>());
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
     if (config.epilogue() == GemmBackendConfig::DEFAULT) {
       config.set_epilogue(GemmBackendConfig::RELU);
     } else if (config.epilogue() == GemmBackendConfig::BIAS) {
       config.set_epilogue(GemmBackendConfig::BIAS_RELU);
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::unique_ptr<HloInstruction> result = gemm->Clone();
-    TF_RETURN_IF_ERROR(result->set_backend_config(config));
+    TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(result->GetModule(), result.get()));
 
     if (slice_or_bitcast) {
@@ -1507,16 +1521,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(instr, std::move(result));
   }
 
-  Status FuseGeluActivation(HloInstruction *multiply, HloInstruction *gemm,
-                            HloInstruction *slice_or_bitcast = nullptr) {
+  absl::Status FuseGeluActivation(HloInstruction *multiply,
+                                  HloInstruction *gemm,
+                                  HloInstruction *slice_or_bitcast = nullptr) {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // There are four users of the gemm output within the GELU calculation.
     bool has_aux = gemm->user_count() > 4;
 
-    TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        gemm->backend_config<GpuBackendConfig>());
+    GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
+
     if (config.epilogue() == GemmBackendConfig::DEFAULT) {
       config.set_epilogue(has_aux ? GemmBackendConfig::GELU_AUX
                                   : GemmBackendConfig::GELU);
@@ -1524,13 +1542,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       config.set_epilogue(has_aux ? GemmBackendConfig::BIAS_GELU_AUX
                                   : GemmBackendConfig::BIAS_GELU);
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
         has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
                 : gemm->shape());
-    TF_RETURN_IF_ERROR(output->set_backend_config(config));
+    TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
 
     if (slice_or_bitcast) {
@@ -1555,7 +1573,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
-  StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
+  absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
     if (!instr.GetModule()
@@ -1588,7 +1606,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::string_view(kGemmCallTarget);
   }
 
-  StatusOr<bool> TypesAreSupportedByLegacyCublas(
+  absl::StatusOr<bool> TypesAreSupportedByLegacyCublas(
       const HloInstruction &instr, const GemmBackendConfig &gemm_backend_config,
       const HloInstruction *bias = nullptr) const {
     // Figure out the Atype/Btype.
@@ -1675,7 +1693,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  StatusOr<bool> TypesAreSupportedByCublasLt(
+  absl::StatusOr<bool> TypesAreSupportedByCublasLt(
       const HloInstruction &instr, const GemmBackendConfig &backend_config,
       const HloInstruction *bias = nullptr) const {
     // Figure out the Atype/Btype.
@@ -1803,7 +1821,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  StatusOr<bool> MatrixIsColumnMajor(
+  absl::StatusOr<bool> MatrixIsColumnMajor(
       const HloInstruction &instr, const GemmBackendConfig &gemm_backend_config,
       const std::string matrix_name = "output") const {
     const HloInstruction *lhs = instr.operand(0);
@@ -1831,11 +1849,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return gemm_config.output_layout.order ==
              MatrixLayout::Order::kColumnMajor;
     } else {
-      return InternalError("Invalid matrix name.");
+      return Internal("Invalid matrix name.");
     }
   }
 
-  StatusOr<bool> GemmIsSupportedByCublasLt(
+  absl::StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
     const HloInstruction *lhs = instr.operand(0);
@@ -1869,12 +1887,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(bool output_is_column_major,
                         MatrixIsColumnMajor(instr, gemm_backend_config));
 
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      auto rocm_compute_capability_ =
-          std::get<se::RocmComputeCapability>(gpu_version_);
-
-      // as of ROCm 5.5, hipblaslt only supports MI200.
-      if (rocm_compute_capability_.gcn_arch_name().substr(0, 6) != "gfx90a") {
+    if (auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
+        isrocm) {
+      if (!isrocm->has_hipblaslt()) {
         return false;
       }
     }
@@ -1933,8 +1948,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   // Turns an F8 dot into an F16 dot, converting operands to F16 and
   // converting the output back to F8.
-  StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
-    DCHECK(IsF8Type(instr));
+  absl::StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
     DCHECK(IsF8Type(instr->operand(0)));
     DCHECK(IsF8Type(instr->operand(1)));
 
@@ -1948,15 +1962,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(instr->ReplaceOperandWith(i, convert));
     }
 
-    // Clone instruction and convert output to F8
-    Shape output_f16_shape = instr->shape();
-    output_f16_shape.set_element_type(F16);
-    HloInstruction *f16_dot =
-        instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
-    HloInstruction *convert_to_f8 = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->shape(), f16_dot));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
-    return f16_dot;
+    // If output is F8, change output to F16 and then convert it back to F8
+    if (IsF8Type(instr)) {
+      Shape output_f16_shape = instr->shape();
+      output_f16_shape.set_element_type(F16);
+      HloInstruction *f16_dot =
+          instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
+      HloInstruction *convert_to_f8 = instr->AddInstruction(
+          HloInstruction::CreateConvert(instr->shape(), f16_dot));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
+      return f16_dot;
+    } else {
+      return instr;
+    }
   }
 };
 
@@ -1965,13 +1983,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 // having to match output tuples.
 class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmWorkspaceRewriteVisitor(se::GpuComputeCapability gpu_version)
+  explicit GemmWorkspaceRewriteVisitor(
+      const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
-  Status HandleCustomCall(HloInstruction *instr) override {
+  absl::Status HandleCustomCall(HloInstruction *instr) override {
     if (instr->custom_call_target() != kGemmCallTarget ||
         !instr->shape().IsArray()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto *cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version_);
@@ -1997,18 +2016,6 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
     }
     workspace = std::min(workspace, operands_byte_size);
 
-    // If CUDA graphs are disabled (command buffer implementation detail),
-    // then we reset the workspace size to 0 and rely on cuBlas to allocate
-    // workspace from its own pool.
-    //
-    // TODO(ezhulenev): Remove this work around, allocating workspace
-    // explicitly should always be better than relying on cuBlas.
-    bool cuda_graphs_disabled = instr->GetModule()
-                                    ->config()
-                                    .debug_options()
-                                    .xla_gpu_enable_command_buffer_size() == 0;
-    if (cuda_graphs_disabled) workspace = 0;
-
     // Append workspace buffer to instruction outputs.
     std::vector<Shape> output_shapes = {instr->shape()};
     output_shapes.emplace_back(ShapeUtil::MakeShape(S8, {workspace}));
@@ -2033,8 +2040,8 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
 };
 
-StatusOr<bool> RunOnComputation(HloComputation *computation,
-                                se::GpuComputeCapability gpu_version) {
+absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
+                                      se::GpuComputeCapability gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
@@ -2047,7 +2054,7 @@ StatusOr<bool> RunOnComputation(HloComputation *computation,
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version)
     : gpu_version_(gpu_version) {}
 
-StatusOr<bool> GemmRewriter::Run(
+absl::StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;

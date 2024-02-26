@@ -18,32 +18,30 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "google/protobuf/text_format.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
-#include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
+#include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 
 namespace tensorflow {

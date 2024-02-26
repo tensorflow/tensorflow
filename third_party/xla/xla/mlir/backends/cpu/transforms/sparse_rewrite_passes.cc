@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -460,7 +460,9 @@ struct SparseSDDMMCallRewriter {
     iteratorTypes.push_back(utils::IteratorType::parallel);
     iteratorTypes.push_back(utils::IteratorType::reduction);
     using MapList = ArrayRef<ArrayRef<AffineExpr>>;
-    auto infer = [](MapList m) { return AffineMap::inferFromExprList(m); };
+    auto infer = [&](MapList m) {
+      return AffineMap::inferFromExprList(m, rewriter.getContext());
+    };
     AffineExpr i, j, k;
     bindDims(op.getContext(), i, j, k);
     auto indexingMaps = infer({{i, k}, {k, j}, {i, j}});
@@ -522,7 +524,9 @@ struct Sparse2To4SpMMCallRewriter {
     iteratorTypes.push_back(utils::IteratorType::parallel);
     iteratorTypes.push_back(utils::IteratorType::reduction);
     using MapList = ArrayRef<ArrayRef<AffineExpr>>;
-    auto infer = [](MapList m) { return AffineMap::inferFromExprList(m); };
+    auto infer = [&](MapList m) {
+      return AffineMap::inferFromExprList(m, rewriter.getContext());
+    };
     AffineExpr i, j, k;
     bindDims(op.getContext(), i, j, k);
     auto indexing_maps = infer({{i, k}, {k, j}, {i, j}});

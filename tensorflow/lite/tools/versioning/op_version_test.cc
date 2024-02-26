@@ -709,6 +709,16 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   };
   fully_connected_params.quantized_bias_type = kTfLiteInt32;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 11);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  fake_op_sig.ext_options.fully_connected.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 12);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -1047,6 +1057,13 @@ TEST(OpVersionTest, VersioningGatherNdOperatorTest) {
           std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt16}),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_GATHER_ND,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteBool, kTfLiteInt16}),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 TEST(OpVersionTest, VersioningDivTest) {
   OpSignature fake_op_sig = {

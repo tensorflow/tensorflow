@@ -63,7 +63,7 @@ build_and_test_on_rbe_cpu() {
       --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
       --config=avx_posix \
       --config=mkl_open_source_only \
-      --config="rbe_cpu_linux_py312" \
+      --config="rbe_cpu_linux_py3.12" \
       --config=tensorflow_testing_rbe_linux \
       --test_env=JAX_NUM_GENERATED_CASES=25 \
       --test_output=errors \
@@ -74,20 +74,19 @@ build_and_test_on_rbe_gpu() {
   # Runs non-multiaccelerator tests with one GPU apiece.
   # It appears --run_under needs an absolute path.
 
-  # TODO(ddunleavy): reenable `LaxTest.testBitcastConvertType`
   bazel \
     test \
     --verbose_failures=true \
     --override_repository=xla="${KOKORO_ARTIFACTS_DIR}"/github/xla \
     --config=avx_posix \
     --config=mkl_open_source_only \
-    --config="rbe_linux_cuda12.2_nvcc_py3.9" \
+    --config="rbe_linux_cuda12.3_nvcc_py3.9" \
     --config=tensorflow_testing_rbe_linux \
     --test_env=XLA_PYTHON_CLIENT_ALLOCATOR=platform \
     --test_output=errors \
     --test_env=JAX_SKIP_SLOW_TESTS=1 \
     --test_env=TF_CPP_MIN_LOG_LEVEL=0 \
-    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow|LaxTest.testBitcastConvertType" \
+    --test_env=JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow" \
     --test_tag_filters=-multiaccelerator \
     -- //tests:gpu_tests //tests:backend_independent_tests
 }

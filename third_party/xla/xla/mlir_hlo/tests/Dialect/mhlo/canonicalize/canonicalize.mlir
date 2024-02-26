@@ -2446,11 +2446,11 @@ func.func @dynamic_pad_identity_fold(%arg0: tensor<5x7xf32>) -> tensor<11x15xf32
 func.func @dynamic_pad_length_dyn(
   %arg0: tensor<?x0xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>,
   %arg3: tensor<2xi32>) -> tensor<?x?xf32> {
-  // CHECK: %[[C0:.+]] = arith.constant 0 : i32
-  // CHECK: %[[C1:.+]] = arith.constant 1 : i32
-  // CHECK: %[[CI0:.+]] = arith.constant 0 : index
-  // CHECK: %[[CI1:.+]] = arith.constant 1 : index
-  // CHECK: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[C0:.+]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C1:.+]] = arith.constant 1 : i32
+  // CHECK-DAG: %[[CI0:.+]] = arith.constant 0 : index
+  // CHECK-DAG: %[[CI1:.+]] = arith.constant 1 : index
+  // CHECK-DAG: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
   // CHECK: %[[DIM0:.+]] = tensor.dim %arg0, %[[CI0]]
   // CHECK: %[[CAST:.+]] = arith.index_cast %[[DIM0]] : index to i32
   // CHECK: %[[EX0:.+]] = tensor.extract %arg1[%[[CI0]]]

@@ -132,6 +132,7 @@ tflite_cc_library_with_c_headers_test(
     name = "c_api_without_op_resolver_without_alwayslink",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
@@ -175,6 +176,33 @@ cc_test(
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/custom_sinh.bin",
     ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_types",
+        ":common",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/delegates:delegate_test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "c_api_test_with_opaque_delegate",
+    size = "small",
+    srcs = ["c_api_test.cc"],
+    copts = tflite_copts(),
+    data = [
+        "//tensorflow/lite:testdata/2_subgraphs.bin",
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/custom_sinh.bin",
+    ],
+    local_defines = ["TFLITE_USE_OPAQUE_DELEGATE"],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -465,6 +493,7 @@ tflite_cc_library_with_c_headers_test(
     hdrs = [
         "c_api_opaque.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -490,6 +519,7 @@ tflite_cc_library_with_c_headers_test(
     hdrs = [
         "c_api_opaque.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
@@ -525,6 +555,7 @@ tflite_cc_library_with_c_headers_test(
     hdrs = [
         "c_api_opaque.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [

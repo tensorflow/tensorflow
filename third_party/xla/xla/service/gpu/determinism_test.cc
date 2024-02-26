@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,6 +89,16 @@ ENTRY e {
   ROOT d = f32[128,128] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
 
+#if TENSORFLOW_USE_ROCM
+  auto rocm = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .rocm_compute_capability();
+  if (!rocm.has_hipblaslt()) {
+    GTEST_SKIP() << "No hipblas-lt support on this architecture!";
+  }
+#endif  // TENSORFLOW_USE_ROCM
+
   debug_options_.set_xla_gpu_triton_fusion_level(0);
   MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")");
   AssertDeterminism(kHloText);
@@ -100,13 +110,17 @@ ENTRY e {
 }
 
 TEST_F(DeterminismTest, TritonDot) {
-  se::CudaComputeCapability compute_capability = backend()
-                                                     .default_stream_executor()
-                                                     ->GetDeviceDescription()
-                                                     .cuda_compute_capability();
-  if (!compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+#if GOOGLE_CUDA
+  auto comp = backend()
+                  .default_stream_executor()
+                  ->GetDeviceDescription()
+                  .cuda_compute_capability();
+  if (!comp.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     GTEST_SKIP() << "Triton not used on pre-Volta GPUs";
   }
+#elif TENSORFLOW_USE_ROCM
+  GTEST_SKIP() << "Triton Gemm rewriter is not yet supported on ROCM";
+#endif  // TENSORFLOW_USE_ROCM
 
   constexpr absl::string_view kHloText = R"(
 ENTRY e {

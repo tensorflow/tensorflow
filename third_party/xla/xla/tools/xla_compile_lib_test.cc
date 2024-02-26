@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -78,13 +78,18 @@ class XlaCompileLibTest : public HloTestBase {
 };
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(CompilesForCpu)) {
-  EXPECT_THAT(CompileExecutable(std::move(module_), "cpu", std::nullopt),
-              IsOkAndHolds(Not(IsEmpty())));
+  CompilationResult result;
+  EXPECT_THAT(
+      CompileExecutable(std::move(module_), "cpu", std::nullopt, result),
+      IsOkAndHolds(Not(IsEmpty())));
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithDevice)) {
-  EXPECT_THAT(CompileExecutable(std::move(module_), "gpu", std::nullopt),
-              IsOkAndHolds(Not(IsEmpty())));
+  CompilationResult result;
+  EXPECT_THAT(
+      CompileExecutable(std::move(module_), "gpu", std::nullopt, result),
+      IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithoutDevice)) {
@@ -94,12 +99,16 @@ TEST_F(XlaCompileLibTest, DISABLED_ON_CPU(CompilesForGpuWithoutDevice)) {
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
-  EXPECT_THAT(CompileExecutable(std::move(module_), "gpu", std::nullopt),
-              IsOkAndHolds(Not(IsEmpty())));
+  CompilationResult result;
+  EXPECT_THAT(
+      CompileExecutable(std::move(module_), "gpu", std::nullopt, result),
+      IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
 
 TEST_F(XlaCompileLibTest, DISABLED_ON_GPU(ErrorsOnUnexpectedPlatform)) {
-  EXPECT_THAT(CompileExecutable(nullptr, "tpu", std::nullopt),
+  CompilationResult result;
+  EXPECT_THAT(CompileExecutable(nullptr, "tpu", std::nullopt, result),
               StatusIs(tsl::error::UNIMPLEMENTED));
 }
 

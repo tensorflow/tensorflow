@@ -166,6 +166,31 @@ def _run_static_range_ptq(
   ).meta_info_def.function_aliases
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
+
+  if isinstance(representative_dataset, Mapping):
+    representative_dataset_map = representative_dataset
+  else:
+    representative_dataset_map = {
+        list(signature_def_map.keys())[0]: representative_dataset,
+    }
+
+  # Save the representative dataset to temporary TFRecord files.
+  path_map = {}
+  for signature_key in representative_dataset_map.keys():
+    path_map[signature_key] = tempfile.mkstemp(
+        suffix='.tfrecord', prefix=signature_key
+    )[1]  # Filepath.
+
+  dataset_file_map = repr_dataset.TfRecordRepresentativeDatasetSaver(
+      path_map
+  ).save(representative_dataset_map)
+
+  # `quantize_ptq_static_range` requires `RepresentativeDatasetFile`s to be
+  # serialized. Serialize the values to match the type.
+  dataset_file_map_serialized = {
+      signature_key: dataset_file.SerializeToString()
+      for signature_key, dataset_file in dataset_file_map.items()
+  }
   pywrap_quantize_model.quantize_ptq_static_range(
       src_saved_model_path,
       dst_saved_model_path,
@@ -174,7 +199,7 @@ def _run_static_range_ptq(
       signature_def_map_serialized=signature_def_map_serialized,
       function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
-      representative_dataset=representative_dataset,
+      representative_dataset_file_map_serialized=dataset_file_map_serialized,
   )
 
 
@@ -637,24 +662,17 @@ def _populate_quantization_options_default_values(
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
   # please also update default value in tflite converter:
   # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
-  if (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-  ) or (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8
-  ):
-    if quantization_options.min_num_elements_for_weights == 0:
-      quantization_options.min_num_elements_for_weights = (
-          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
-      )
-      logging.warning(
-          (
-              'QuantizationOptions.min_num_elements_for_weights is not set (0).'
-              ' Setting to the default value: %d.'
-          ),
-          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
-      )
+  if quantization_options.min_num_elements_for_weights == 0:
+    quantization_options.min_num_elements_for_weights = (
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
+    )
+    logging.warning(
+        (
+            'QuantizationOptions.min_num_elements_for_weights is not set (0).'
+            ' Setting to the default value: %d.'
+        ),
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
+    )
 
   # TODO: b/307900054 - Set the per-channel quantization by default.
   if quantization_options.enable_per_channel_quantization and not (
@@ -664,15 +682,16 @@ def _populate_quantization_options_default_values(
           == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
       )
       or (
-          quantization_options.op_set == quant_opts_pb2.OpSet.XLA
+          quantization_options.op_set
+          in (quant_opts_pb2.OpSet.XLA, quant_opts_pb2.OpSet.STABLEHLO)
           and quantization_options.quantization_method.preset_method
           == _PresetMethod.METHOD_STATIC_RANGE_INT8
       )
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform Quantized'
-        ' opset, weight only quantization, or XLA opset with static range'
-        ' quantization.'
+        ' opset, weight only quantization, or XLA/StableHLO opset with static'
+        ' range quantization.'
     )
 
   if (
@@ -852,7 +871,7 @@ def quantize(
     )
 
   if quantization_options.representative_datasets:
-    representative_dataset = repr_dataset.RepresentativeDatasetLoader(
+    representative_dataset = repr_dataset.TfRecordRepresentativeDatasetLoader(
         quantization_options.representative_datasets
     ).load()
 

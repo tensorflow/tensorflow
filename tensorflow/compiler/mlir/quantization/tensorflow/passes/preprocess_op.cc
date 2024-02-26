@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 //===----------------------------------------------------------------------===//
@@ -43,7 +43,8 @@ namespace quant {
 
 namespace {
 
-using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
+using QuantMethod =
+    ::tensorflow::quantization::QuantizationMethod::PresetMethod;
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
 
@@ -196,7 +197,7 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
     StringRef function_name = f_attr.getValue();
     // TODO(b/228928859): Improve the getter function to match attributes rather
     // than function name.
-    if (!function_name.startswith("composite_")) {
+    if (!function_name.starts_with("composite_")) {
       return failure();
     }
 

@@ -25,6 +25,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/core:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -36,7 +37,6 @@ cc_library(
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
     deps = [
         ":calibration_statistics_collector_average_min_max",
         ":calibration_statistics_collector_base",
@@ -245,7 +245,6 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )

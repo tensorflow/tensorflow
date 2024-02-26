@@ -73,6 +73,7 @@ tensorflow::Status RunTFXLABridge(
   }
 
   PassManager bridge(module.getContext());
+  bridge.enableVerifier();
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
@@ -141,81 +142,62 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
   return status;
 }
 
-void CreateClusteringPipeline(OpPassManager &pm, llvm::StringRef module_name) {
+void CreateReplicatedClusteringPipeline(OpPassManager &pm,
+                                        llvm::StringRef module_name) {
+  // Since the internal bridge clustering passes are shared among TF1/TF2
+  // TF2-only passes should go here. However, this should be very rare and
+  // new passes generally should go into the internal
+  // AddReplicatedBridgeClusteringPipelinePasses.
   pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
-                                                                  module_name);
+  tensorflow::tf2xla::internal::AddReplicatedBridgeClusteringPipelinePasses(
+      pm, module_name);
 }
 
 void CreateTPUClusteringPipelineV2(OpPassManager &pm) {
-  CreateClusteringPipeline(pm, /*module_name=*/"");
-}
-
-tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
-                             llvm::StringRef module_name) {
-  VLOG(2)
-      << "TPU Bridge called stack trace is "
-      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
-      << tensorflow::CurrentStackTrace();
-  std::string device_type = "tpu";
-  Status clustering_status = RunTFXLABridge(
-      module,
-      [module_name](OpPassManager &pm) {
-        CreateClusteringPipeline(pm, module_name);
-      },
-      module_name, /*dump_prefix=*/"tf_xla_bridge_v2_tpu");
-
-  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"clustering_v2",
-                                         fallback_enabled, device_type,
-                                         clustering_status));
-
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type, /*bridge_version=*/"v2",
-      /*fallback_enabled=*/fallback_enabled,
-      /*result=*/"success");
-
-  return absl::OkStatus();
-}
-
-tensorflow::Status RunNonTPUBridge(ModuleOp module,
-                                   bool is_in_fallback_enabled_mode,
-                                   llvm::StringRef module_name) {
-  VLOG(2)
-      << "CPU/GPU Bridge called stack trace is "
-      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
-      << tensorflow::CurrentStackTrace();
-
-  std::string device_type = "cpu/gpu";
-  Status clustering_status = RunTFXLABridge(
-      module,
-      [](OpPassManager &pm) {
-        tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
-            pm);
-      },
-      module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nontpu");
-
-  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"clustering_v2",
-                                         is_in_fallback_enabled_mode,
-                                         device_type, clustering_status));
-
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type, /*bridge_version=*/"v2", is_in_fallback_enabled_mode,
-      /*result=*/"success");
-
-  return absl::OkStatus();
+  CreateReplicatedClusteringPipeline(pm, /*module_name=*/"");
 }
 
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
-    ModuleOp module, DeviceType device_type, bool is_in_fallback_enabled_mode,
-    llvm::StringRef module_name) {
-  if (device_type == DeviceType::XLA_TPU_JIT) {
-    return TPUBridge(module, /*fallback_enabled=*/is_in_fallback_enabled_mode,
-                     /*module_name=*/module_name);
-  }
+    ModuleOp module, bool is_supported_by_replicated_brige,
+    bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
+  std::string device_type_filter =
+      is_supported_by_replicated_brige ? "tpu" : "cpu/gpu";
 
-  return RunNonTPUBridge(module, is_in_fallback_enabled_mode, module_name);
+  VLOG(2)
+      << (is_supported_by_replicated_brige ? "Replicated" : "NonReplicated")
+      << " Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
+  Status clustering_status =
+      is_supported_by_replicated_brige
+          ? RunTFXLABridge(
+                module,
+                [module_name](OpPassManager &pm) {
+                  CreateReplicatedClusteringPipeline(pm, module_name);
+                },
+                module_name, /*dump_prefix=*/"tf_xla_bridge_v2_replicated")
+          : RunTFXLABridge(
+                module,
+                [](OpPassManager &pm) {
+                  tensorflow::tf2xla::internal::
+                      AddNonReplicatedBridgeClusteringPipelinePasses(pm);
+                },
+                module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nonreplicated");
+
+  // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(
+      /*error_prefix=*/"clustering_v2", is_in_fallback_enabled_mode,
+      device_type_filter, clustering_status));
+
+  // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      device_type_filter, /*bridge_version=*/"v2",
+      /*fallback_enabled=*/is_in_fallback_enabled_mode,
+      /*result=*/"success");
+
+  return absl::OkStatus();
 }
 
 mlir::PassPipelineRegistration<> clustering_tpu_pipeline_v2(

@@ -16,195 +16,142 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_TYPE_CASTERS_H_
 
 #include <string>
+#include <type_traits>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
-#include "tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace pybind11::detail {
 namespace internal {
 
 // Serializes a protobuf object. Raises python ValueError if serialization
 // fails.
-std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
+inline std::string Serialize(const tsl::protobuf::Message& protobuf_object) {
   const std::string serialized = protobuf_object.SerializeAsString();
 
   // Empty string means it failed to serialize the protobuf with an error. See
   // the docstring for SerializeAsString for details.
   if (serialized.empty()) {
-    throw py::value_error("Failed to serialize protobuf object.");
+    // Show the name of the protobuf message type to provide more information
+    // and easier debugging.
+    const std::string descriptor_name =
+        protobuf_object.GetDescriptor() == nullptr
+            ? "unknown"
+            : protobuf_object.GetDescriptor()->full_name();
+    throw py::value_error(absl::StrFormat(
+        "Failed to serialize protobuf object: %s.", descriptor_name));
   }
 
   return serialized;
 }
 
-}  // namespace internal
-
-// Handles `ExportedModel` (c++) <-> `bytes` (python) conversion. The `bytes`
-// object in the python layer is a serialization of `ExportedModel`.
+// Handles `ProtoT` (c++) <-> `bytes` (python) conversion. The `bytes`
+// object in the python layer is a serialization of `ProtoT`.
 //
-// See https://pybind11.readthedocs.io/en/stable/advanced/cast/custom.html for
-// further details on how custom type conversions work for pybind11.
-template <>
-struct type_caster<tensorflow::quantization::ExportedModel> {
+// The caller of c++ interfaces should make sure to pass valid serialized
+// `ProtoT` objects as arguments. Failing to do so results in raising a
+// `ValueError`. Similarly, the python implementation of a c++ virtual member
+// function that return an `ProtoT` should return a valid serialized `ProtoT`.
+//
+// See https://pybind11.readthedocs.io/en/stable/advanced/cast/custom.html
+template <typename ProtoT, typename = std::enable_if_t<std::is_base_of_v<
+                               tsl::protobuf::Message, ProtoT>>>
+struct SerializedProtobufCaster {
  public:
-  PYBIND11_TYPE_CASTER(tensorflow::quantization::ExportedModel,
-                       const_name("ExportedModel"));
+  PYBIND11_TYPE_CASTER(ProtoT, const_name<ProtoT>());
 
-  // Loads an `ExportedModel` instance from a python `bytes` object (`src`).
+  // Loads an `ProtoT` instance from a python `bytes` object (`src`).
   bool load(handle src, const bool convert) {
     auto caster = make_caster<absl::string_view>();
     // Make sure the user passed a valid python string.
-    if (!caster.load(src, convert)) {
-      return false;
-    }
-
-    const absl::string_view exported_model_serialized =
-        cast_op<absl::string_view>(std::move(caster));
-
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(exported_model_serialized));
-  }
-
-  // Constructs a `bytes` object after serializing `src`.
-  static handle cast(tensorflow::quantization::ExportedModel&& src,
-                     return_value_policy policy, handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(internal::Serialize(src)).release();
-  }
-
-  // Constructs a `bytes` object after serializing `src`.
-  static handle cast(const tensorflow::quantization::ExportedModel& src,
-                     return_value_policy policy, handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(internal::Serialize(src)).release();
-  }
-};
-
-// Handles type conversion for `QuantizationOptions`.
-template <>
-struct type_caster<tensorflow::quantization::QuantizationOptions> {
- public:
-  PYBIND11_TYPE_CASTER(tensorflow::quantization::QuantizationOptions,
-                       const_name("QuantizationOptions"));
-
-  // Python -> C++. Converts a serialized protobuf string and deserializes into
-  // an instance of `QuantizationOptions`.
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
-    // The user should have passed a valid python string.
-    if (!caster.load(src, convert)) {
-      return false;
-    }
-
-    const absl::string_view quantization_opts_serialized =
-        cast_op<absl::string_view>(std::move(caster));
-
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(quantization_opts_serialized));
-  }
-
-  // C++ -> Python. Constructs a `bytes` object after serializing `src`.
-  static handle cast(const tensorflow::quantization::QuantizationOptions& src,
-                     return_value_policy policy, handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(internal::Serialize(src)).release();
-  }
-};
-
-// Handles type conversion for `CalibrationOptions`.
-template <>
-struct type_caster<tensorflow::quantization::CalibrationOptions> {
- public:
-  PYBIND11_TYPE_CASTER(tensorflow::quantization::CalibrationOptions,
-                       const_name("CalibrationOptions"));
-
-  // Python -> C++. Converts a serialized protobuf string and deserializes into
-  // an instance of `CalibrationOptions`.
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
-    // The user should have passed a valid python string.
-    if (!caster.load(src, convert)) {
-      return false;
-    }
-
-    const absl::string_view calibration_opts_serialized =
-        cast_op<absl::string_view>(std::move(caster));
-
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(calibration_opts_serialized));
-  }
-
-  // C++ -> Python. Constructs a `bytes` object after serializing `src`.
-  static handle cast(const tensorflow::quantization::CalibrationOptions& src,
-                     return_value_policy policy, handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(internal::Serialize(src)).release();
-  }
-};
-
-template <>
-struct type_caster<tensorflow::SignatureDef> {
- public:
-  PYBIND11_TYPE_CASTER(tensorflow::SignatureDef, const_name("SignatureDef"));
-
-  // Python->C++ conversion. Accepts a serialized `SignatureDef` string from the
-  // python side.
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
     if (!caster.load(src, convert)) return false;
 
-    const absl::string_view signature_def_serialized =
+    const absl::string_view serialized_proto =
         cast_op<absl::string_view>(std::move(caster));
 
     // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(signature_def_serialized));
+    return value.ParseFromString(std::string(serialized_proto));
   }
 
-  // C++->Python conversion. Returns a serialized `SignatureDef` string.
-  static handle cast(const tensorflow::SignatureDef& src,
-                     return_value_policy policy, handle parent) {
-    return py::bytes(internal::Serialize(src)).release();
+  // Constructs a `bytes` object by serializing `src`.
+  static handle cast(ProtoT&& src, return_value_policy policy, handle parent) {
+    // release() prevents the reference count from decreasing upon the
+    // destruction of py::bytes and returns a raw python object handle.
+    return py::bytes(Serialize(src)).release();
+  }
+
+  // Constructs a `bytes` object by serializing `src`.
+  static handle cast(const ProtoT& src, return_value_policy policy,
+                     handle parent) {
+    // release() prevents the reference count from decreasing upon the
+    // destruction of py::bytes and returns a raw python object handle.
+    return py::bytes(Serialize(src)).release();
   }
 };
+
+}  // namespace internal
+
+// The following explicit specializations of protobuf `type_caster`s for
+// specific protobuf message types are there to have higher priority over those
+// defined in `native_proto_caster.h` during the resolution process. This is
+// because the type casters in `native_proto_caster.h`, which allow seamlessly
+// exchanging protobuf messages across c++-python boundaries, potentially
+// without serialization, fail in the open-source environment.
+// Explicitly-specialized type casters for serialized protobufs are added on an
+// on-demand basis for quantization library.
+// TODO: b/308532051 - Make `native_proto_caster.h` work in the open-source
+// environment.
 
 template <>
-struct type_caster<tensorflow::GraphDef> {
- public:
-  PYBIND11_TYPE_CASTER(tensorflow::GraphDef, const_name("GraphDef"));
+struct type_caster<tensorflow::quantization::ExportedModel>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::ExportedModel> {};
 
-  // Python->C++ conversion. Accepts a serialized `GraphDef` string from the
-  // python side.
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
-    if (!caster.load(src, convert)) return false;
+template <>
+struct type_caster<tensorflow::quantization::QuantizationOptions>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::QuantizationOptions> {};
 
-    const absl::string_view signature_def_serialized =
-        cast_op<absl::string_view>(std::move(caster));
+template <>
+struct type_caster<tensorflow::quantization::CalibrationOptions>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::CalibrationOptions> {};
 
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(signature_def_serialized));
-  }
+template <>
+struct type_caster<tensorflow::SignatureDef>
+    : public internal::SerializedProtobufCaster<tensorflow::SignatureDef> {};
 
-  // C++->Python conversion. Returns a serialized `GraphDef` string.
-  static handle cast(const tensorflow::GraphDef& src,
-                     return_value_policy policy, handle parent) {
-    return py::bytes(internal::Serialize(src)).release();
-  }
-};
+template <>
+struct type_caster<tensorflow::GraphDef>
+    : public internal::SerializedProtobufCaster<tensorflow::GraphDef> {};
+
+template <>
+struct type_caster<tensorflow::calibrator::CalibrationStatistics>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::calibrator::CalibrationStatistics> {};
+
+template <>
+struct type_caster<stablehlo::quantization::QuantizationConfig>
+    : public internal::SerializedProtobufCaster<
+          stablehlo::quantization::QuantizationConfig> {};
+
+template <>
+struct type_caster<tensorflow::quantization::RepresentativeDatasetFile>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::RepresentativeDatasetFile> {};
 
 }  // namespace pybind11::detail
 

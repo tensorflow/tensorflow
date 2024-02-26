@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
@@ -260,63 +260,6 @@ pybind11::dtype IfrtHelpers::python_dtype(ifrt::Array* ifrt_array) {
     host_value->ready.Notify();
   });
   return OkStatus();
-}
-
-StatusOr<pybind11::dict> IfrtHelpers::CudaArrayInterface(
-    ifrt::Array* ifrt_array, std::optional<Shape>& scratch) {
-  auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
-  if (pjrt_buffer->client()->platform_id() != CudaId()) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
-  }
-  if (pjrt_buffer->IsTuple()) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is only defined for array buffers.");
-  }
-  if (pjrt_buffer->element_type() == BF16) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for bfloat16 buffers.");
-  }
-  if (pjrt_buffer->element_type() == F8E4M3FN) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for F8E4M3FN buffers.");
-  }
-  if (pjrt_buffer->element_type() == F8E4M3B11FNUZ) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for F8E4M3B11FNUZ buffers.");
-  }
-  if (pjrt_buffer->element_type() == F8E5M2) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for F8E5M2 buffers.");
-  }
-  if (pjrt_buffer->element_type() == F8E4M3FNUZ) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for F8E4M3FNUZ buffers.");
-  }
-  if (pjrt_buffer->element_type() == F8E5M2FNUZ) {
-    return InvalidArgument(
-        "__cuda_array_interface__ is not supported for F8E5M2FNUZ buffers.");
-  }
-  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(pjrt_buffer->layout()));
-
-  py::dict result;
-  TF_ASSIGN_OR_RETURN(const auto* dynamic_shape,
-                      IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
-  result["shape"] = SpanToTuple(dynamic_shape->dimensions());
-  TF_ASSIGN_OR_RETURN(py::str typestr, TypeDescriptorForPrimitiveType(
-                                           pjrt_buffer->element_type()));
-  result["typestr"] = std::move(typestr);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
-      pjrt_buffer->AcquireExternalReference());
-  const void* root_ptr =
-      external_reference_hold->OpaqueDeviceMemoryDataPointer();
-  py::tuple data(2);
-  data[0] = py::int_(absl::bit_cast<std::uintptr_t>(root_ptr));
-  data[1] = py::bool_(true);  // read-only
-  result["data"] = std::move(data);
-  result["version"] = py::int_(2);
-  return result;
 }
 
 StatusOr<ifrt::DType> ToIfRtDType(py::dtype dtype) {

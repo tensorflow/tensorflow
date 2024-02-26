@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
@@ -47,10 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -75,109 +73,6 @@ class EventInterface {
 };
 
 //===----------------------------------------------------------------------===//
-// KernelInterface
-//===----------------------------------------------------------------------===//
-
-// Pointer-to-implementation object type (i.e. the Kernel class delegates to
-// this interface) with virtual destruction. This class exists for the
-// platform-dependent code to hang any kernel data/resource info/functionality
-// off of.
-class KernelInterface {
- public:
-  // Default constructor for the abstract interface.
-  KernelInterface() = default;
-
-  // Default destructor for the abstract interface.
-  virtual ~KernelInterface() = default;
-
-  // Returns the number of formal parameters that this kernel accepts.
-  virtual unsigned Arity() const = 0;
-
-  // Sets the preferred cache configuration.
-  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
-
-  // Gets the preferred cache configuration.
-  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
-
- private:
-  KernelInterface(const KernelInterface&) = delete;
-  void operator=(const KernelInterface&) = delete;
-};
-
-//===----------------------------------------------------------------------===//
-// CommandBufferInterface
-//===----------------------------------------------------------------------===//
-
-// Platform-dependent interface class for implementing generic CommandBuffer.
-//
-// TODO(ezhulenev): Currently we assume that all operations between barriers
-// can execute concurrently, and it's up to the caller to insert barriers to
-// guarantee correctness. Consider adding finer grained synchronization
-// mechanism between different commands.
-//
-// TODO(ezhulenev): Currently command buffers do no support updates, and once
-// finalized can be executed as recorded. We need to support cheap command
-// buffer updates that in GPU backend will be mapped to CUDA/HIP graph node
-// updates.
-class CommandBufferInterface {
- public:
-  CommandBufferInterface() = default;
-  virtual ~CommandBufferInterface() = default;
-
-  // Traces `function` invocation by recording all operations on the `stream`
-  // into the command buffer. Command buffer must be empty.
-  virtual tsl::Status Trace(Stream* stream,
-                            absl::AnyInvocable<tsl::Status()> function) = 0;
-
-  // Adds a kernel launch command to the command buffer.
-  virtual tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                             const Kernel& kernel, const KernelArgs& args) = 0;
-
-  // Adds a nested command buffer to the command buffer.
-  virtual tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) = 0;
-
-  // Adds a device-to-device memory copy to the command buffer.
-  virtual tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
-                                           const DeviceMemoryBase& src,
-                                           uint64_t size) = 0;
-
-  // For all conditional command APIs defined below, nested command buffers
-  // constructed for conditional branches owned by *this and should never be
-  // finalized or updated inside builders.
-
-  // Adds a conditional operation that will run a command buffer constructed by
-  // `then_builder` if `predicate` value is `true`.
-  virtual tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> predicate,
-                         CommandBuffer::Builder then_builder) = 0;
-
-  // Adds a conditional operation that will run a command buffer constructed by
-  // `then_builder` if `predicate` value is `true`, or a command buffer
-  // constructed by `else_builder` if `predicate` is `false`.
-  virtual tsl::Status IfElse(StreamExecutor* executor,
-                             DeviceMemory<bool> predicate,
-                             CommandBuffer::Builder then_builder,
-                             CommandBuffer::Builder else_builder) = 0;
-
-  // Finalizes command buffer and makes it executable. Once command buffer is
-  // finalized no commands can be added to it.
-  virtual tsl::Status Finalize() = 0;
-
-  // Begins command buffer update. Command buffer update should be finalized
-  // before it can be executed.
-  virtual tsl::Status Update() = 0;
-
-  // Returns command buffer execution mode.
-  virtual CommandBuffer::Mode mode() const = 0;
-
-  // Returns command buffer state.
-  virtual CommandBuffer::State state() const = 0;
-
- private:
-  CommandBufferInterface(const CommandBufferInterface&) = delete;
-  void operator=(const CommandBufferInterface&) = delete;
-};
-
-//===----------------------------------------------------------------------===//
 // StreamInterface
 //===----------------------------------------------------------------------===//
 
@@ -194,13 +89,9 @@ class StreamInterface {
   virtual ~StreamInterface() = default;
 
   // Sets priority for a stream.
-  virtual void SetPriority(StreamPriority priority) {
-    LOG(ERROR) << "SetPriority unimplemented for this stream.";
-  }
+  virtual void SetPriority(StreamPriority priority) {}
 
-  virtual void SetPriority(int priority) {
-    LOG(ERROR) << "SetPriority unimplemented for this stream.";
-  }
+  virtual void SetPriority(int priority) {}
 
   // Gets priority for a stream.
   virtual std::variant<StreamPriority, int> priority() const {
@@ -238,8 +129,8 @@ class StreamExecutorInterface {
   virtual StreamExecutorInterface* GetUnderlyingExecutor() { return this; }
 
   // See the StreamExecutor interface for comments on the same-named methods.
-  virtual tsl::Status Init(int device_ordinal,
-                           DeviceOptions device_options) = 0;
+  virtual absl::Status Init(int device_ordinal,
+                            DeviceOptions device_options) = 0;
 
   // This value is cached by the wrapping StreamExecutor instance, so it's OK if
   // this function is slow.
@@ -249,27 +140,36 @@ class StreamExecutorInterface {
     return std::nullopt;
   }
 
-  virtual tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                                Kernel* kernel) {
+  virtual int device_ordinal() const { return -1; }
+
+  virtual absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                                 Kernel* kernel) {
     return absl::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
-  virtual tsl::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                                 ModuleHandle* module_handle) {
+  virtual absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                                  ModuleHandle* module_handle) {
     return absl::UnimplementedError("Not Implemented");
   }
-  virtual tsl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+  virtual absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
     return absl::UnimplementedError("Not Implemented");
   }
-  virtual tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                             const BlockDim& block_dims, const Kernel& k,
-                             const KernelArgs& args) {
+  virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                              const BlockDim& block_dims, const Kernel& k,
+                              const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 
-  virtual tsl::Status Submit(Stream* stream,
-                             const CommandBuffer& command_buffer) {
+  virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                              const BlockDim& block_dims,
+                              const ClusterDim& cluster_dims, const Kernel& k,
+                              const KernelArgs& args) {
+    return absl::UnimplementedError("Not Implemented");
+  }
+
+  virtual absl::Status Submit(Stream* stream,
+                              const CommandBuffer& command_buffer) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -279,8 +179,6 @@ class StreamExecutorInterface {
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
-  virtual void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
-                             uint64_t size) = 0;
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -291,47 +189,54 @@ class StreamExecutorInterface {
   // Deallocates unified memory space previously allocated with
   // UnifiedMemoryAllocate.
   virtual void UnifiedMemoryDeallocate(void* mem) {}
+  virtual absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) {
+    return absl::UnimplementedError("Not implemented");
+  }
+  virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
+    return absl::UnimplementedError("Not implemented");
+  }
   virtual void* HostMemoryAllocate(uint64_t size) = 0;
   virtual void HostMemoryDeallocate(void* mem) = 0;
   virtual bool HostMemoryRegister(void* mem, uint64_t size) = 0;
   virtual bool HostMemoryUnregister(void* mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
-  virtual tsl::Status SynchronousMemZero(DeviceMemoryBase* location,
+  virtual absl::Status SynchronousMemZero(DeviceMemoryBase* location,
+                                          uint64_t size) = 0;
+  virtual absl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                          uint64_t size) = 0;
-  virtual tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
-                                        uint64_t size) = 0;
-  virtual tsl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                        const void* host_src,
-                                        uint64_t size) = 0;
-  virtual tsl::Status SynchronousMemcpy(void* host_dst,
-                                        const DeviceMemoryBase& gpu_src,
-                                        uint64_t size) = 0;
-  virtual tsl::Status SynchronousMemcpyDeviceToDevice(
+  virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                         const void* host_src,
+                                         uint64_t size) = 0;
+  virtual absl::Status SynchronousMemcpy(void* host_dst,
+                                         const DeviceMemoryBase& gpu_src,
+                                         uint64_t size) = 0;
+  virtual absl::Status SynchronousMemcpyDeviceToDevice(
       DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src,
       uint64_t size) = 0;
-  virtual tsl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                              uint64_t size) = 0;
-  virtual tsl::Status Memset(Stream* stream, DeviceMemoryBase* location,
-                             uint8 pattern, uint64_t size) {
-    return tsl::errors::Internal("Not implemented");
+  virtual absl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
+                               uint64_t size) = 0;
+  virtual absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
+                              uint8 pattern, uint64_t size) {
+    return absl::InternalError("Not implemented");
   }
-  virtual tsl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                               uint32_t pattern, uint64_t size) = 0;
-  virtual bool Memcpy(Stream* stream, void* host_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) = 0;
-  virtual bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                      const void* host_src, uint64_t size) = 0;
+  virtual absl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
+                                uint32_t pattern, uint64_t size) = 0;
+  virtual absl::Status Memcpy(Stream* stream, void* host_dst,
+                              const DeviceMemoryBase& gpu_src,
+                              uint64_t size) = 0;
+  virtual absl::Status Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                              const void* host_src, uint64_t size) = 0;
   virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
                                     const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
   virtual bool HostCallback(Stream* stream,
-                            absl::AnyInvocable<tsl::Status() &&> callback) = 0;
-  virtual tsl::Status AllocateEvent(Event* event) = 0;
-  virtual tsl::Status DeallocateEvent(Event* event) = 0;
-  virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;
-  virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
-  virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
-                                                   Event* event) {
+                            absl::AnyInvocable<absl::Status() &&> callback) = 0;
+  virtual absl::Status AllocateEvent(Event* event) = 0;
+  virtual absl::Status DeallocateEvent(Event* event) = 0;
+  virtual absl::Status RecordEvent(Stream* stream, Event* event) = 0;
+  virtual absl::Status WaitForEvent(Stream* stream, Event* event) = 0;
+  virtual absl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                                    Event* event) {
     return absl::UnimplementedError(
         "WaitForEventOnExternalStream not supported on this executor.");
   }
@@ -339,12 +244,12 @@ class StreamExecutorInterface {
   virtual bool AllocateStream(Stream* stream) = 0;
   virtual void DeallocateStream(Stream* stream) = 0;
   virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
-  virtual tsl::Status BlockHostUntilDone(Stream* stream) = 0;
-  virtual tsl::Status GetStatus(Stream* stream) {
+  virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
+  virtual absl::Status GetStatus(Stream* stream) {
     return absl::UnimplementedError(
         "GetStatus is not supported on this executor.");
   }
-  virtual tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
+  virtual absl::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
 
   virtual int64_t GetDeviceLoad() { return -1; }
@@ -370,24 +275,8 @@ class StreamExecutorInterface {
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
-  virtual tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+  virtual absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
-
-  // Attempts to register the provided TraceListener with the device-specific
-  // Executor implementation. When this is called, the PIMPL interface has
-  // already taken ownership of the object and is managing the generic tracing
-  // events. The device-specific implementation must determine if the passed
-  // listener is of a type appropriate for it to trace during registration (and
-  // before dispatching events to it).
-  // Returns true if the listener was successfully registered, false otherwise.
-  // Does not take ownership of listener.
-  virtual bool RegisterTraceListener(TraceListener* listener) { return false; }
-
-  // Unregisters the specified listener from the device-specific Executor.
-  // Returns true if the listener was successfully registered, false otherwise.
-  virtual bool UnregisterTraceListener(TraceListener* listener) {
-    return false;
-  }
 
   // Creates a new BlasSupport object, ownership is transferred to the caller.
   //
@@ -409,11 +298,14 @@ class StreamExecutorInterface {
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.
   virtual std::unique_ptr<EventInterface> CreateEventImplementation() = 0;
-  virtual std::unique_ptr<KernelInterface> CreateKernelImplementation() = 0;
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
 
-  virtual tsl::StatusOr<std::unique_ptr<CommandBufferInterface>>
-  GetCommandBufferImplementation(CommandBuffer::Mode mode) {
+  virtual absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() {
+    return absl::UnimplementedError("Kernels are not implemented");
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
+      CommandBuffer::Mode mode) {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
@@ -438,7 +330,7 @@ class StreamExecutorInterface {
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is
   // unsupported. Caches in non-volatile storage are unaffected.
-  virtual tsl::Status FlushCompilationCache() { return ::tsl::OkStatus(); }
+  virtual absl::Status FlushCompilationCache() { return absl::OkStatus(); }
 
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.

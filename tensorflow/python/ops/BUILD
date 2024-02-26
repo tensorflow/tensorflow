@@ -578,10 +578,7 @@ tf_gen_op_strict_wrapper_private_py(
 
 tf_gen_op_strict_wrapper_private_py(
     name = "sdca_ops_gen",
-    visibility = [
-        "//tensorflow/python:__pkg__",
-        "//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 tf_gen_op_strict_wrapper_private_py(
@@ -773,6 +770,7 @@ cuda_py_strict_test(
     deps = [
         ":array_ops",
         ":gradient_checker_v2",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
@@ -782,7 +780,10 @@ cuda_py_strict_test(
 
 py_strict_library(
     name = "array_ops",
-    srcs = ["array_ops.py"],
+    srcs = [
+        "array_ops.py",
+        "tensor_getitem_override.py",
+    ],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
@@ -1643,6 +1644,7 @@ py_strict_library(
         ":math_grad",
         ":math_ops",
         ":nccl_ops",
+        ":nn_grad",
         ":optional_grad",
         ":parsing_grad",
         ":proto_ops",
@@ -2058,7 +2060,10 @@ py_strict_library(
 
 py_strict_library(
     name = "math_ops",
-    srcs = ["math_ops.py"],
+    srcs = [
+        "math_ops.py",
+        "tensor_math_operator_overrides.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
@@ -2074,20 +2079,20 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:override_binary_operator",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/ops/numpy_ops:np_dtypes",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:traceback_utils",
         "//third_party/py/numpy",
     ],
 )
@@ -2107,49 +2112,9 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+alias(
     name = "resource_variable_ops",
-    srcs = ["resource_variable_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_gen",
-        ":handle_data_util",
-        ":math_ops",
-        ":resource_variable_ops_gen",
-        ":state_ops",
-        ":state_ops_gen",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/core/function/trace_type",
-        "//tensorflow/python/checkpoint:tensor_callable",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:record",
-        "//tensorflow/python/eager:tape",
-        "//tensorflow/python/framework:auto_control_deps_utils",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:composite_tensor_gradient",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/trackable:base",
-        "//tensorflow/python/types:core",
-        "//tensorflow/python/util:_pywrap_utils",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = ":variables",
 )
 
 py_strict_library(
@@ -3140,46 +3105,79 @@ py_strict_library(
 
 py_strict_library(
     name = "variables",
-    srcs = ["variables.py"],
+    srcs = [
+        "resource_variable_ops.py",
+        "variables.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
+        ":array_ops_gen",
         ":array_ops_stack",
         ":control_flow_ops",
+        ":handle_data_util",
         ":math_ops",
         ":math_ops_gen",
+        ":resource_variable_ops_gen",
         ":state_ops",
+        ":state_ops_gen",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/checkpoint:tensor_callable",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:record",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/framework:auto_control_deps_utils",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:composite_tensor_gradient",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
-        "//tensorflow/python/util:_pywrap_utils",
+        "//tensorflow/python/types:core",
+        "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_should_use",
         "//tensorflow/python/util:traceback_utils",
+        "//third_party/py/numpy",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 
-py_strict_library(
+alias(
     name = "ref_variable",
-    srcs = ["ref_variable.py"],
+    actual = ":variable_v1",
+)
+
+py_strict_library(
+    name = "variable_v1",
+    srcs = [
+        "ref_variable.py",
+        "variable_v1.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":cond",
         ":resource_variable_ops",
         ":resource_variables_toggle",
         ":state_ops",
         ":state_ops_gen",
         ":variable_scope",
-        ":variable_v1",
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -3193,19 +3191,6 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
-    ],
-)
-
-py_strict_library(
-    name = "variable_v1",
-    srcs = ["variable_v1.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":cond",
-        ":state_ops",
-        ":variable_scope",
-        ":variables",
-        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_should_use",
     ],
@@ -3741,7 +3726,7 @@ cuda_py_strict_test(
     main = "nn_fused_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 24,
-    tags = ["no_rocm"],
+    tags = [],
     deps = [
         ":array_ops",
         ":gradient_checker",

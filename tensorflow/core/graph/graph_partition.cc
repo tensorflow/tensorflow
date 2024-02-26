@@ -555,7 +555,7 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
   loop->enter = enter;
   loop->merge = merge;
   loop->switch_node = switch_node;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Build memory and device type info for every node in the graph.
@@ -587,7 +587,7 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const Node* InputFrame(const Node* node,
@@ -766,7 +766,7 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct PriorityTopoSortNode {
@@ -869,7 +869,7 @@ Status TopologicalSortNodesWithTimePriority(
   // Done.
   nodes->swap(start_times);
   node_to_start_time_out->swap(node_to_start_time);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddControlEdges(const PartitionOptions& opts,
@@ -929,7 +929,7 @@ Status AddControlEdges(const PartitionOptions& opts,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // If 'ndef' is a Send or Recv, fills its attr send_device_incarnation
@@ -1278,7 +1278,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
                          *gdef);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -64,7 +65,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
   // TODO(toddw): Should we let the user choose the major/minor ordering?
-  xla::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
+  absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
       client->GetComputationShape(computation);
   if (!pshape_or.ok()) {
     return errors::Unknown("Couldn't get XLA program shape: ",
@@ -87,7 +88,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   instance.argument_layouts = std::move(arg_layout_ptrs);
   xla::Shape result_shape(pshape->result());
   instance.result_layout = &result_shape;
-  xla::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
@@ -110,7 +111,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   xla::CompileOnlyClient* client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;

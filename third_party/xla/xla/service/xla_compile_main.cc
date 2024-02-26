@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -88,8 +88,8 @@ xla::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   auto format = std::string(tsl::io::Extension(module_path));
   if (format == "hlo" || format == "txt") {
     return LoadModuleFromFile(
-        module_path, hlo_module_loader_details::Config(),
-        /*format=*/"hlo", [&](HloModuleConfig* c) {}, nullptr);
+        module_path, /*format=*/"hlo", hlo_module_loader_details::Config(),
+        [&](HloModuleConfig* c) {}, nullptr);
   }
   std::string module_string;
   TF_RETURN_IF_ERROR(
@@ -191,7 +191,8 @@ Status XlaCompileMain(
     cfg = (use_attached_device) ? std::nullopt
                                 : std::make_optional(*std::move(target_config));
   }
-  auto result = CompileExecutable(std::move(hlo_module), platform, cfg);
+  auto result = CompileExecutable(std::move(hlo_module), platform, cfg,
+                                  compilation_result);
   if (!result.ok()) {
     *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
     return result.status();

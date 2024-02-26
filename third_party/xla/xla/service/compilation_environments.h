@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ namespace xla {
 class CompilationEnvironments {
  public:
   using ProcessNewEnvFn =
-      std::function<StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
+      std::function<absl::StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
           std::unique_ptr<tsl::protobuf::Message>)>;
 
   CompilationEnvironments() = default;
@@ -56,8 +56,8 @@ class CompilationEnvironments {
   ~CompilationEnvironments() = default;
 
   // Deserializes the given CompilationEnvironments proto.
-  static StatusOr<std::unique_ptr<CompilationEnvironments>> CreateFromProto(
-      const CompilationEnvironmentsProto& proto);
+  static absl::StatusOr<std::unique_ptr<CompilationEnvironments>>
+  CreateFromProto(const CompilationEnvironmentsProto& proto);
 
   // Whenever an environment is added to CompilationEnvironments, even when
   // GetEnv() adds a lazily initialized one, it is passed to the function
@@ -97,6 +97,8 @@ class CompilationEnvironments {
   T& GetMutableEnv();
   template <typename T>
   const T& GetEnv();
+  template <typename T>
+  bool HasEnv();
 
   // Removes all added environments.
   void Clear() { environments_.clear(); }
@@ -146,6 +148,12 @@ T& CompilationEnvironments::GetMutableEnv() {
 template <typename T>
 const T& CompilationEnvironments::GetEnv() {
   return GetMutableEnv<T>();
+}
+
+template <typename T>
+bool CompilationEnvironments::HasEnv() {
+  auto descriptor = T::descriptor();
+  return environments_.find(descriptor) != environments_.end();
 }
 
 }  // namespace xla

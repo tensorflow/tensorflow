@@ -100,7 +100,7 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
     return status.status();
   }
   *shape = tpu_shape.AsCpp<xla::Shape>();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Check if TPU has been initialized. TPU initialization is not necessary
@@ -111,7 +111,7 @@ Status CheckIfTPUInitialized() {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Implementation of TPU->TPU device copies that copies over the dedicated TPU
@@ -140,13 +140,13 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
       Status s = CheckIfTPUInitialized();
       if (!s.ok()) {
         done(s);
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     if (input->shape().num_elements() == 0) {
       // Zero-element tensors have no backing buffers.
-      done(OkStatus());
-      return OkStatus();
+      done(absl::OkStatus());
+      return absl::OkStatus();
     }
 
     se::Stream* const src_compute_stream = src_xla_context->stream();
@@ -167,8 +167,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
             dst_compute_stream_impl)) {
       // Surprisingly, this path does get triggered in practice.
       *output = *input;
-      done(OkStatus());
-      return OkStatus();
+      done(absl::OkStatus());
+      return absl::OkStatus();
     }
 
     // To avoid stream exhaustion, we pick a substream from a pool if enabled.
@@ -177,7 +177,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
                              : nullptr;
     se::Stream* const dst_device_to_device_stream =
         should_use_substream
-            ? device_to_device_master_stream->GetOrCreateSubStream()
+            ? device_to_device_master_stream->GetOrCreateSubStream().value_or(
+                  nullptr)
             : dst_xla_context->GetDeviceToDeviceStream();
     TF_RET_CHECK(dst_device_to_device_stream != nullptr);
     auto return_substream = gtl::MakeCleanup(
@@ -228,13 +229,14 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
     // available for an immediate write.
     if (!dst_xla_context->transfer_manager()->CanShapedBufferBeAccessedNow(
             dst_compute_stream->parent(), xla_output->shaped_buffer())) {
-      dst_device_to_device_stream->ThenWaitFor(dst_compute_stream);
+      TF_RETURN_IF_ERROR(
+          dst_device_to_device_stream->WaitFor(dst_compute_stream));
       // If the representation is a tuple, we also must wait for the tuple index
       // buffers to be available on the destination host to device transfer
       // stream.
       if (xla_output->shaped_buffer().on_device_shape().IsTuple()) {
-        dst_xla_context->host_to_device_stream()->ThenWaitFor(
-            dst_compute_stream);
+        TF_RETURN_IF_ERROR(dst_xla_context->host_to_device_stream()->WaitFor(
+            dst_compute_stream));
       }
     }
 
@@ -265,14 +267,15 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
       // must all be satisfied, or add an Event::Merge() API that allows us to
       // build an event that is triggered when all of its dependencies are
       // triggered.
-      dst_device_to_device_stream->ThenWaitFor(
-          dst_xla_context->host_to_device_stream());
+      TF_RETURN_IF_ERROR(dst_device_to_device_stream->WaitFor(
+          dst_xla_context->host_to_device_stream()));
     }
 
     auto definition_event =
         std::make_shared<se::Event>(dst_xla_context->stream()->parent());
     TF_RET_CHECK(definition_event->Init()) << "Event failed to initialize!";
-    dst_device_to_device_stream->ThenRecordEvent(definition_event.get());
+    TF_RETURN_IF_ERROR(
+        dst_device_to_device_stream->RecordEvent(definition_event.get()));
     xla_output->ResetDefinitionEvent(std::move(definition_event),
                                      dst_device_to_device_stream);
 
@@ -288,7 +291,7 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
     // might not be enqueued to the stream yet, we put it on destination stream.
     TensorReference input_reference(*input);
     std::move(return_substream).release();
-    dst_device_to_device_stream->ThenDoHostCallback(
+    return dst_device_to_device_stream->DoHostCallback(
         [input_reference, done = std::move(done),
          device_to_device_master_stream, dst_device_to_device_stream] {
           if (device_to_device_master_stream) {
@@ -296,10 +299,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
                 dst_device_to_device_stream);
           }
           input_reference.Unref();
-          done(OkStatus());
+          done(absl::OkStatus());
         });
-
-    return OkStatus();
   };
   Status status = impl();
   if (!status.ok()) {
@@ -319,7 +320,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
     // If we don't have a platform registered, then we have no devices.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int device_count = platform->VisibleDeviceCount();
@@ -329,7 +330,7 @@ Status TpuNodeDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
     devices->push_back(device_name);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuNodeDeviceFactory::CreateDevices(
@@ -339,7 +340,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
     // If we don't have a platform registered, then we should not create any.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (platform != nullptr && platform->ShouldRegisterTpuDeviceToDeviceCopy()) {
@@ -406,7 +407,7 @@ Status TpuNodeDeviceFactory::CreateDevices(
     devices->push_back(std::move(device));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class TpuSystemDeviceFactory : public DeviceFactory {
@@ -422,12 +423,12 @@ Status TpuSystemDeviceFactory::ListPhysicalDevices(
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
     VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   devices->push_back("/physical_device:TPU_SYSTEM:0");
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TpuSystemDeviceFactory::CreateDevices(
@@ -437,7 +438,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
     VLOG(1) << "Host has no TPUs, not creating a TPU_SYSTEM device";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t memory_limit;
@@ -452,7 +453,7 @@ Status TpuSystemDeviceFactory::CreateDevices(
   VLOG(1) << "Created TPU_SYSTEM device. This host has " << device_count
           << " TPUs";
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

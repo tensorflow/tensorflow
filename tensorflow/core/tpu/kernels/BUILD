@@ -46,6 +46,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
         "//tensorflow/compiler/mlir/tf2xla/...",
+        "//tensorflow/core/tfrt/ifrt/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/dtensor/...",
         "//third_party/py/jax_tpu_embedding/...",
@@ -839,6 +840,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/stream_executor/platform",
         "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
     ],
     alwayslink = 1,
@@ -861,6 +863,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/stream_executor/platform",
         "@local_xla//xla/stream_executor/tpu:tpu_node_context",
     ],
     alwayslink = True,
@@ -1342,6 +1345,7 @@ cc_library(
     name = "sharding_util_ops",
     srcs = ["sharding_util_ops.cc"],
     deps = [
+        ":sharding_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:op_requires",
@@ -1349,6 +1353,7 @@ cc_library(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1358,6 +1363,46 @@ cc_library(
         "@local_tsl//tsl/platform:macros",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "sharding_utils",
+    srcs = ["sharding_utils.cc"],
+    hdrs = ["sharding_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:macros",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_utils_test",
+    srcs = ["sharding_utils_test.cc"],
+    deps = [
+        ":sharding_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 tf_kernel_library(

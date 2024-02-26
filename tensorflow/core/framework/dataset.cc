@@ -546,8 +546,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
       auto factory = [ctx, this](model::Node::Args args) {
         return CreateNode(ctx, std::move(args));
       };
-      model->AddNode(std::move(factory), prefix(), parent->model_node(),
-                     &node_);
+      model->AddNode(std::move(factory), name(), parent->model_node(), &node_);
       cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
     }
   }
@@ -709,6 +708,10 @@ void WarnProtoConflicts(const protobuf::Message& src, protobuf::Message* dst) {
                         set_dst.end(), std::back_inserter(in_both));
 
   for (auto field : in_both) {
+    // Used for Job Instrumentation, users should not be warned.
+    if (field->name() == "framework_type") {
+      continue;
+    }
     if (field->type() == protobuf::FieldDescriptor::TYPE_MESSAGE) {
       WarnProtoConflicts(reflection->GetMessage(src, field),
                          reflection->MutableMessage(dst, field));
@@ -773,10 +776,17 @@ void DatasetBase::Initialize(const Metadata& metadata) {
     LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
+  if (absl::StrContains(metadata_.name(), ":")) {
+    // Type string is already included in the name, no need to add it.
+    return;
+  }
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
     *metadata_.mutable_name() =
         strings::StrCat(type_string(), ":", id_counter.fetch_add(1));
+  } else {
+    *metadata_.mutable_name() =
+        strings::StrCat(type_string(), ":", metadata_.name());
   }
 }
 
