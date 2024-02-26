@@ -102,6 +102,7 @@ cc_library(
         "quantization_utils.cc",
     ],
     hdrs = [
+        "quantization_driver.h",
         "quantization_interface.h.inc",
         "quantization_traits.h",
         "quantization_utils.h",

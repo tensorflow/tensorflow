@@ -893,28 +893,6 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types, int adjusted_quant_dim,
     bool legacy_float_scale = false);
 
-// Propagates quantization parameters across ops in this function and satisfy
-// the quantization specification of the ops. This methods assumes the initial
-// quantization parameters are stored as adjacent quantize and dequantize ops
-// and the propagation results are materialized by inserting pairs of quantize
-// and dequantize ops to this function. Set `disable_per_channel` to true to not
-// use per channel quantization even the op supports it.
-// Setting `infer_tensor_range` to true, to infer quantization parameters from
-// the activation ops and weight constants. This is only used for post-training
-// quantization.
-void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
-                                        int bit_width, bool disable_per_channel,
-                                        OpQuantSpecGetter op_quant_spec_getter,
-                                        bool infer_tensor_ranges,
-                                        bool legacy_float_scale = false,
-                                        bool is_qdq_conversion = false);
-
-void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, int bit_width,
-    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
-    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale = false, bool is_qdq_conversion = false);
-
 // Gets quantization scale specs (e.g. fixed output range, same result and
 // operand scales) from the default quantization interfaces. The op should
 // outlive returned spec for its interface methods to be properly referenced.
