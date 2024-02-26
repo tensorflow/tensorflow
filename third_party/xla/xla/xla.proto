@@ -679,6 +679,9 @@ message DebugOptions {
   // Enable NCCL communicator splitting.
   bool xla_gpu_enable_nccl_comm_splitting = 272;
 
+  // Enable NCCL per stream communicators.
+  bool xla_gpu_enable_nccl_per_stream_comms = 276;
+
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
   bool xla_gpu_enable_libnvptxcompiler = 269;
 
@@ -697,7 +700,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_mlir_emitters = 275;
 
-  // Next id: 276
+  // Next id: 277
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
