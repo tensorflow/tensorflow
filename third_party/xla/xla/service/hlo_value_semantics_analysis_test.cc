@@ -567,7 +567,8 @@ TEST_F(EinsumDepthAnalysisTest, MnistTrainingLoop) {
                                                        /*num_partitions=*/1));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module->entry_computation(), {}));
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
   const EinsumDepthMap& einsum_depth_map =
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("body.49");
@@ -612,7 +613,8 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
-      EinsumDepthAnalysis::Run(*module->entry_computation(), {}));
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
   const EinsumDepthMap& einsum_depth_map =
       einsum_depth_analysis->GetEinsumDepthMap();
   HloComputation* computation = module->GetComputationWithName("entry");
@@ -639,7 +641,8 @@ TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
                                                        /*num_partitions=*/1));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
-      EinsumHeightAnalysis::Run(*module->entry_computation(), {}));
+      EinsumHeightAnalysis::Run(*module->entry_computation(),
+                                SendRecvGroupMap(*module)));
   const EinsumHeightMap& einsum_height_map =
       einsum_height_analysis->GetEinsumHeightMap();
   HloComputation* computation = module->GetComputationWithName("body.49");

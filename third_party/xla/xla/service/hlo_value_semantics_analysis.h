@@ -44,9 +44,18 @@ struct SendRecvGroup {
   HloInstruction* recv;
 };
 
-using SendRecvGroupMap = absl::flat_hash_map<std::string, SendRecvGroup>;
+class SendRecvGroupMap {
+ public:
+  explicit SendRecvGroupMap(const HloModule& hlo_module);
+  SendRecvGroupMap(SendRecvGroupMap&& other) = default;
+  SendRecvGroupMap(const SendRecvGroupMap& other) = default;
+  virtual ~SendRecvGroupMap() = default;
+  virtual absl::StatusOr<HloInstruction*> GetMatchingSendOrRecv(
+      HloInstruction* send_or_recv) const;
 
-SendRecvGroupMap GetSendRecvGroupMap(const HloModule& hlo_module);
+ private:
+  absl::flat_hash_map<std::string, SendRecvGroup> host_transfer_rendezvous_map_;
+};
 
 class HloPreOrderDFS {
  public:
@@ -103,7 +112,7 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
 
  private:
   explicit EinsumDepthAnalysis(const SendRecvGroupMap& send_recv_group_map)
-      : send_recv_group_map_(send_recv_group_map) {}
+      : send_recv_group_map_(&send_recv_group_map) {}
   Status RunInternal(const HloComputation& computation,
                      const std::optional<ShapeTree<int>>& root_depth);
   EinsumDepthMap::iterator GetOrCreateDepthTree(
@@ -121,11 +130,14 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
                                  absl::Span<HloInstruction* const> operands);
   Status HandleTupleLike(HloInstruction* tuple_like);
   EinsumDepthMap einsum_depth_map_;
-  const SendRecvGroupMap send_recv_group_map_;
+  const SendRecvGroupMap* const send_recv_group_map_;
 };
 
 using EinsumHeightMap =
     absl::node_hash_map<const HloInstruction*, ShapeTree<int>>;
+
+// Einsum height is the maximum number of einsums between this instruction and
+// any leaf.
 
 class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
  public:
@@ -153,7 +165,7 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
 
  private:
   explicit EinsumHeightAnalysis(const SendRecvGroupMap& send_recv_group_map)
-      : send_recv_group_map_(send_recv_group_map) {}
+      : send_recv_group_map_(&send_recv_group_map) {}
   Status RunInternal(const HloComputation& computation,
                      absl::Span<HloInstruction* const> operands);
   EinsumHeightMap::iterator GetOrCreateHeightTree(
@@ -169,7 +181,7 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
   Status HandleTupleLike(HloInstruction* tuple_like);
 
   EinsumHeightMap einsum_height_map_;
-  const SendRecvGroupMap send_recv_group_map_;
+  const SendRecvGroupMap* const send_recv_group_map_;
 };
 
 // The comment below explains where the labels could originate from. Once
@@ -240,8 +252,13 @@ class HloValueSemanticsAnalysis {
   const EinsumHeightMap& GetEinsumHeightMap() const {
     return einsum_height_map_;
   }
+  int GetDepth(const HloInstruction* instruction,
+               const ShapeIndex& index = {}) const;
+  int GetHeight(const HloInstruction* instruction,
+                const ShapeIndex& index = {}) const;
+
   const SendRecvGroupMap& GetSendRecvGroupMap() const {
-    return send_recv_group_map_;
+    return *send_recv_group_map_;
   }
 
   StatusOr<HloInstruction*> GetMatchingSendOrRecv(
@@ -253,7 +270,7 @@ class HloValueSemanticsAnalysis {
   virtual Status InitializeEinsumDepth();
   virtual Status InitializeEinsumHeight();
   // We match send and recv HLOs to propagate semantics from send to recv.
-  void InitializeSendRecvGroups();
+  virtual void InitializeSendRecvGroups();
   void AnnotateWeights();
 
   // Infer semantics for all instructions in the computation. Computation
@@ -289,7 +306,7 @@ class HloValueSemanticsAnalysis {
   HloValueSemantics::Id next_id_;
   EinsumDepthMap einsum_depth_map_;
   EinsumHeightMap einsum_height_map_;
-  SendRecvGroupMap send_recv_group_map_;
+  std::unique_ptr<SendRecvGroupMap> send_recv_group_map_;
 };
 
 class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
@@ -329,6 +346,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   Status HandleAsyncStart(HloInstruction* async_start) override;
   Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleDomain(HloInstruction* domain) override;
   Status HandleOptimizationBarrier(HloInstruction* opt_barrier) override;
   Status HandleRngBitGenerator(HloInstruction* rng_bit_generator) override;

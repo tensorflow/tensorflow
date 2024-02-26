@@ -53,8 +53,7 @@ limitations under the License.
 
 namespace xla {
 
-SendRecvGroupMap CreateSendRecvGroupMap(const HloModule& hlo_module) {
-  SendRecvGroupMap send_recv_group_map;
+SendRecvGroupMap::SendRecvGroupMap(const HloModule& hlo_module) {
   for (HloComputation* computation : hlo_module.computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kSend &&
@@ -63,9 +62,9 @@ SendRecvGroupMap CreateSendRecvGroupMap(const HloModule& hlo_module) {
       }
       std::string rendezvous = instruction->frontend_attributes().map().at(
           kXlaHostTransferRendezvousNameAttr);
-      auto send_recv_iter = send_recv_group_map.find(rendezvous);
-      if (send_recv_iter == send_recv_group_map.end()) {
-        auto insert_success = send_recv_group_map.insert(
+      auto send_recv_iter = host_transfer_rendezvous_map_.find(rendezvous);
+      if (send_recv_iter == host_transfer_rendezvous_map_.end()) {
+        auto insert_success = host_transfer_rendezvous_map_.insert(
             {rendezvous, SendRecvGroup{nullptr, nullptr}});
         send_recv_iter = insert_success.first;
       }
@@ -76,7 +75,24 @@ SendRecvGroupMap CreateSendRecvGroupMap(const HloModule& hlo_module) {
       }
     }
   }
-  return send_recv_group_map;
+}
+
+absl::StatusOr<HloInstruction*> SendRecvGroupMap::GetMatchingSendOrRecv(
+    HloInstruction* send_or_recv) const {
+  if (send_or_recv->opcode() != HloOpcode::kSend &&
+      send_or_recv->opcode() != HloOpcode::kRecv) {
+    return InvalidArgument("Expecting only send or recv");
+  }
+  std::string rendezvous = send_or_recv->frontend_attributes().map().at(
+      kXlaHostTransferRendezvousNameAttr);
+  auto send_recv_iter = host_transfer_rendezvous_map_.find(rendezvous);
+  if (send_recv_iter == host_transfer_rendezvous_map_.end()) {
+    return Internal("Missing send or recv from send recv group.");
+  }
+  if (send_or_recv->opcode() == HloOpcode::kSend) {
+    return send_recv_iter->second.recv;
+  }
+  return send_recv_iter->second.send;
 }
 
 bool HloPreOrderDFS::IsReady(const HloInstruction* instruction) const {
@@ -99,24 +115,6 @@ std::vector<HloInstruction*> GetAllInstructionsWithZeroUsers(
     }
   }
   return results;
-}
-
-absl::StatusOr<HloInstruction*> GetMatchingSendOrRecvFromMap(
-    HloInstruction* send_or_recv, const SendRecvGroupMap& send_recv_group_map) {
-  if (send_or_recv->opcode() != HloOpcode::kSend &&
-      send_or_recv->opcode() != HloOpcode::kRecv) {
-    return InvalidArgument("Expecting only send or recv");
-  }
-  std::string rendezvous = send_or_recv->frontend_attributes().map().at(
-      kXlaHostTransferRendezvousNameAttr);
-  auto send_recv_iter = send_recv_group_map.find(rendezvous);
-  if (send_recv_iter == send_recv_group_map.end()) {
-    return Internal("Missing send or recv from send recv group.");
-  }
-  if (send_or_recv->opcode() == HloOpcode::kSend) {
-    return send_recv_iter->second.recv;
-  }
-  return send_recv_iter->second.send;
 }
 
 }  // namespace
@@ -289,7 +287,8 @@ EinsumDepthMap::iterator EinsumDepthAnalysis::GetOrCreateDepthTree(
 EinsumDepthMap::iterator EinsumDepthAnalysis::GetDepthTreeOrDie(
     const HloInstruction* instruction) {
   auto depth_iter = einsum_depth_map_.find(instruction);
-  CHECK(depth_iter != einsum_depth_map_.end());
+  CHECK(depth_iter != einsum_depth_map_.end())
+      << "No depth tree found for instruction: " << instruction->ToString();
   return depth_iter;
 }
 
@@ -506,7 +505,9 @@ absl::Status EinsumDepthAnalysis::HandleRecv(HloInstruction* recv) {
   auto depth_iter = GetDepthTreeOrDie(recv);
   const ShapeTree<int>& depth_tree = depth_iter->second;
   TF_ASSIGN_OR_RETURN(HloInstruction * send,
-                      GetMatchingSendOrRecvFromMap(recv, send_recv_group_map_));
+                      send_recv_group_map_->GetMatchingSendOrRecv(recv));
+  CHECK(send) << "recv: " << recv->name()
+              << " not found in send_recv_group_map: " << recv->ToString();
   auto send_depth_iter = GetOrCreateDepthTree(send);
   ShapeTree<int>& send_depth = send_depth_iter->second;
   int max_depth = GetMaxDepth(depth_tree);
@@ -521,7 +522,8 @@ absl::Status EinsumDepthAnalysis::HandleRecv(HloInstruction* recv) {
     }
     *depth = MergeDepth(*depth, max_depth);
   });
-  return OkStatus();
+  HloInstruction* after_all = recv->mutable_operand(0);
+  return SetInstructionDepth(after_all, max_depth);
 }
 
 absl::Status EinsumDepthAnalysis::HandleSendDone(HloInstruction* send_done) {
@@ -695,10 +697,8 @@ absl::Status EinsumHeightAnalysis::HandleCalledComputation(
           SetInstructionHeight(parameter, operand_height_iter->second));
     }
   }
-  HloInstruction* root_instruction = computation.root_instruction();
-  TF_RETURN_IF_ERROR(root_instruction->Accept(this));
   for (HloInstruction* instruction : computation.instructions()) {
-    if (instruction->users().empty() && instruction != root_instruction) {
+    if (instruction->user_count() == 0) {
       TF_RETURN_IF_ERROR(instruction->Accept(this));
     }
   }
@@ -806,7 +806,7 @@ absl::Status EinsumHeightAnalysis::HandleSend(HloInstruction* send) {
 
 absl::Status EinsumHeightAnalysis::HandleRecv(HloInstruction* recv) {
   TF_ASSIGN_OR_RETURN(HloInstruction * send,
-                      GetMatchingSendOrRecvFromMap(recv, send_recv_group_map_));
+                      send_recv_group_map_->GetMatchingSendOrRecv(recv));
   HloInstruction* send_buffer = send->mutable_operand(0);
   auto send_buffer_height_iter = GetHeightTreeOrDie(send_buffer);
   const ShapeTree<int>& send_buffer_height_tree =
@@ -888,6 +888,20 @@ const HloValueSemantics* HloValueSemanticsAnalysis::GetSemantics(
   return GetInstructionSemantics(instruction).element(index);
 }
 
+int HloValueSemanticsAnalysis::GetDepth(const HloInstruction* instruction,
+                                        const ShapeIndex& index) const {
+  auto depth_iter = einsum_depth_map_.find(instruction);
+  CHECK(depth_iter != einsum_depth_map_.end());
+  return depth_iter->second.element(index);
+}
+
+int HloValueSemanticsAnalysis::GetHeight(const HloInstruction* instruction,
+                                         const ShapeIndex& index) const {
+  auto height_iter = einsum_height_map_.find(instruction);
+  CHECK(height_iter != einsum_height_map_.end());
+  return height_iter->second.element(index);
+}
+
 absl::StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>>
 HloValueSemanticsAnalysis::Run(const HloModule& module) {
   std::unique_ptr<HloValueSemanticsAnalysis> value_semantics_analysis =
@@ -905,7 +919,7 @@ absl::Status HloValueSemanticsAnalysis::InitializeEinsumDepth() {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
       EinsumDepthAnalysis::Run(*module_.entry_computation(),
-                               send_recv_group_map_));
+                               *send_recv_group_map_));
   einsum_depth_map_ = einsum_depth_analysis->GetEinsumDepthMap();
   return OkStatus();
 }
@@ -914,13 +928,13 @@ absl::Status HloValueSemanticsAnalysis::InitializeEinsumHeight() {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
       EinsumHeightAnalysis::Run(*module_.entry_computation(),
-                                send_recv_group_map_));
+                                *send_recv_group_map_));
   einsum_height_map_ = einsum_height_analysis->GetEinsumHeightMap();
   return OkStatus();
 }
 
 void HloValueSemanticsAnalysis::InitializeSendRecvGroups() {
-  send_recv_group_map_ = CreateSendRecvGroupMap(module_);
+  send_recv_group_map_ = std::make_unique<SendRecvGroupMap>(module_);
 }
 
 bool HloValueSemanticsAnalysis::HasSemanticsFor(
@@ -931,7 +945,7 @@ bool HloValueSemanticsAnalysis::HasSemanticsFor(
 absl::StatusOr<HloInstruction*>
 HloValueSemanticsAnalysis::GetMatchingSendOrRecv(
     HloInstruction* send_or_recv) const {
-  return GetMatchingSendOrRecvFromMap(send_or_recv, send_recv_group_map_);
+  return send_recv_group_map_->GetMatchingSendOrRecv(send_or_recv);
 }
 
 HloValueSemantics::Id HloValueSemanticsAnalysis::NextId() { return next_id_++; }
@@ -1069,7 +1083,13 @@ HloValueSemanticsPropagation::HloValueSemanticsPropagation(
 
 absl::Status HloValueSemanticsPropagation::Run(
     const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
+  TF_RETURN_IF_ERROR(computation.root_instruction()->Accept(this));
+  for (HloInstruction* instruction : computation.instructions()) {
+    if (instruction->user_count() == 0) {
+      TF_RETURN_IF_ERROR(instruction->Accept(this));
+    }
+  }
+  return OkStatus();
 }
 
 HloValueSemantics HloValueSemanticsPropagation::CopySemantics(
@@ -1187,10 +1207,7 @@ absl::StatusOr<HloValueSemantics>
 HloValueSemanticsPropagation::MaybeCreateGradientSemantics(
     HloInstruction* gradient_candidate,
     HloValueSemanticLabel fallback_label) const {
-  const EinsumDepthMap& einsum_depth_map = analysis_->GetEinsumDepthMap();
-  auto depth_iter = einsum_depth_map.find(gradient_candidate);
-  CHECK(depth_iter != einsum_depth_map.end());
-  int gradient_depth = depth_iter->second.element({});
+  int gradient_depth = analysis_->GetDepth(gradient_candidate, {});
   if (gradient_depth < 0) {
     // There is dependency between the two operands of the dot, but the dot
     // is not used by root. This is likely eval computation in a TF program.
@@ -1234,8 +1251,20 @@ HloValueSemanticsPropagation::ComputeSemanticsFromWeightAndOther(
     // is the loss. We distinguish this case from regular Activations by
     // checking whether X is computed from some einsum that takes W as an
     //  operand.
-    if (OriginDependsOn(other_semantics, weight_semantics.origin(),
-                        /*recursive=*/true)) {
+    int instruction_depth = analysis_->GetDepth(instruction, {});
+    auto dependent_einsums = FindEinsumsWhereOriginDependsOnOther(
+        other_semantics, weight_semantics.origin(), /*recursive=*/true);
+    bool all_dependent_einsums_immediately_proceeds_instruction =
+        absl::c_all_of(dependent_einsums,
+                       [instruction_depth,
+                        this](const EinsumAndOperandIndex& dependent_einsum) {
+                         int dependent_einsum_depth =
+                             analysis_->GetDepth(dependent_einsum.einsum, {});
+                         return dependent_einsum_depth > 0 &&
+                                dependent_einsum_depth == instruction_depth + 1;
+                       });
+    if (!dependent_einsums.empty() &&
+        all_dependent_einsums_immediately_proceeds_instruction) {
       return MaybeCreateGradientSemantics(
           instruction, HloValueSemanticLabel::kActivationGradient);
     }
@@ -1860,6 +1889,17 @@ absl::Status HloValueSemanticsPropagation::HandleInfeed(
         }
       });
   analysis_->SetHloValueSemantics(infeed, semantics_shape_tree);
+  return OkStatus();
+}
+
+absl::Status HloValueSemanticsPropagation::HandleOutfeed(
+    HloInstruction* outfeed) {
+  RETURN_IF_ALREADY_PROPAGATED(outfeed);
+  const HloValueSemantics* semantics = analysis_->NewHloValueSemantics(
+      HloValueSemanticLabel::kTupleOrToken, {outfeed, {}});
+  ShapeTree<const HloValueSemantics*> outfeed_semantics_tree(outfeed->shape(),
+                                                             semantics);
+  analysis_->SetHloValueSemantics(outfeed, outfeed_semantics_tree);
   return OkStatus();
 }
 
