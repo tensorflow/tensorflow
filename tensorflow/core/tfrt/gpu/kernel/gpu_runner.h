@@ -52,7 +52,8 @@ class GpuRunner {
 
   // This compiles the given program and runs the given input tensors in
   // `run_inputs`, and returns the output tensor AsyncValues.
-  StatusOr<llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
+  absl::StatusOr<
+      llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
   Run(const GpuRunInputs& run_inputs);
 
  private:
