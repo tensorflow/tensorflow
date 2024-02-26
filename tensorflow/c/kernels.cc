@@ -794,7 +794,7 @@ int TF_GetDeviceId(TF_OpKernelContext* ctx) {
 #else
   const auto* device = reinterpret_cast<const tensorflow::Device*>(
       device_base->UnderlyingDevice());
-  const tsl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
+  const absl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
       device->parsed_name(), tensorflow::DeviceType(device->device_type()));
   if (!id.ok()) return -1;
   return *id;
