@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 
 #ifdef PLATFORM_GOOGLE
@@ -969,6 +970,48 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
   }
 
   return rationales;
+}
+
+void ValidateRequest(const AutoShardingSolverRequest& request) {
+  const int num_nodes = request.num_nodes();
+  const int num_edges = request.edges_size();
+  CHECK_EQ(num_nodes, request.computation_costs_size());
+  CHECK_EQ(num_nodes, request.communication_costs_size());
+  CHECK_EQ(num_nodes, request.memory_costs_size());
+  CHECK_EQ(num_edges, request.resharding_costs_size());
+
+  for (NodeIdx u = 0; u < num_nodes; ++u) {
+    const int num_strategies = request.computation_costs(u).costs_size();
+    CHECK_GE(num_strategies, 1);
+    CHECK_EQ(num_strategies, request.communication_costs(u).costs_size());
+    CHECK_EQ(num_strategies, request.memory_costs(u).costs_size());
+    for (NodeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
+      CHECK_GE(request.computation_costs(u).costs(strategy), 0.0);
+      CHECK_GE(request.communication_costs(u).costs(strategy), 0.0);
+      CHECK_GE(request.memory_costs(u).costs(strategy), 0.0);
+    }
+  }
+
+  absl::btree_set<std::pair<int, int>> edges_seen;
+  for (EdgeIdx e = 0; e < num_edges; ++e) {
+    const int u = request.edges(e).first();
+    const int v = request.edges(e).second();
+    CHECK_GE(u, 0);
+    CHECK_LT(u, num_nodes);
+    CHECK_GE(v, 0);
+    CHECK_LT(v, num_nodes);
+    CHECK_LT(u, v);
+    CHECK_EQ(edges_seen.count({u, v}), 0);
+    edges_seen.insert({u, v});
+
+    const int num_strategies = request.resharding_costs(e).costs_size();
+    const int num_u_strategies = request.computation_costs(u).costs_size();
+    const int num_v_strategies = request.computation_costs(v).costs_size();
+    CHECK_EQ(num_strategies, num_u_strategies * num_v_strategies);
+    for (EdgeStrategyIdx strategy = 0; strategy < num_strategies; ++strategy) {
+      CHECK_GE(request.resharding_costs(e).costs(strategy), 0.0);
+    }
+  }
 }
 
 }  // namespace spmd
