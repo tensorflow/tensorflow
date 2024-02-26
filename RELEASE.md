@@ -12,6 +12,7 @@
 
 *   `tf.estimator`
     *   The tf.estimator API is removed.
+    *   To continue using tf.estimator, you will need to use TF 2.15 or an earlier version.
 
 *   Keras 3.0 will be the default Keras version. You may need to update your script to use Keras 3.0.
 
@@ -66,14 +67,6 @@
     * `DynamicEmbedding` layer allows for the continuous updating of the vocabulary and embeddings during the training process. This layer maintains a hash table to track the most up-to-date vocabulary based on the inputs received by the layer and the eviction policy. When this layer is used with an `UpdateEmbeddingCallback`, which is a time-based callback, the vocabulary lookup tensor is updated at the time interval set in the `UpdateEmbeddingCallback` based on the most up-to-date vocabulary hash table maintained by the layer. If this layer is not used in conjunction with `UpdateEmbeddingCallback` the behavior of the layer would be same as `keras.layers.Embedding`.
 *  `keras.optimizers.Adam`
     * Added the option to set adaptive epsilon to match implementations with Jax and PyTorch equivalents.
-
-### Breaking Changes
-
-### Known Caveats
-
-### Major Features and Improvements
-
-### Bug Fixes and Other Changes
 
 ## Thanks to our Contributors
 
