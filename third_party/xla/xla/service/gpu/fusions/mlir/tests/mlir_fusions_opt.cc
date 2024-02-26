@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
                   xla::gpu::XlaGpuDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::registerCanonicalizerPass();
+  mlir::registerCSEPass();
   xla::gpu::registerGpuFusionTransformsPasses();
 
   return mlir::failed(

@@ -20,6 +20,8 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/DialectBase.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -70,10 +72,10 @@ def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads", [
   let assemblyFormat = "operands attr-dict `:` type($operands)";
 }
 
-def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw", [
-    Pure,
-    TypesMatchWith<"result type matches type of dest",
-                   "input", "result", "$_self">]> {
+def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw",
+    [Pure,
+     TypesMatchWith<"result type matches type of dest",
+                    "input", "result", "$_self">]> {
   let summary = "Atomically updates an element of a tensor.";
 
   let description = [{
@@ -98,6 +100,34 @@ def XLAGPU_YieldOp : XLAGPU_Op<"yield",
   let arguments = (ins AnyType:$result);
 
   let assemblyFormat = "$result attr-dict `:` type($result)";
+}
+
+def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
+    [Pure, CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "Function call without side effects.";
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>);
+  let assemblyFormat = [{
+    $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
+  }];
+
+  let extraClassDeclaration = [{
+    operand_range getArgOperands() {
+      return getOperands();
+    }
+
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+    }
+
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+    }
+  }];
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

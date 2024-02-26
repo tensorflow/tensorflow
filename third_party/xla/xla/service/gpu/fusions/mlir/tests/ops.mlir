@@ -1,4 +1,5 @@
 // RUN: mlir_fusions_opt %s -canonicalize | FileCheck %s
+// RUN: mlir_fusions_opt %s -cse | FileCheck %s --check-prefixes=CHECK-CSE
 
 module {
   func.func @shared_and_sync() -> (tensor<2xf32>, tensor<2xf32>) {
@@ -33,3 +34,28 @@ module {
 
 // CHECK: @atomic_rmw
 // CHECK: xla_gpu.atomic_rmw
+
+// -----
+
+module {
+  func.func @add(%a: f32, %b: f32) -> f32 {
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %c = xla_gpu.pure_call @add(%a, %b) : (f32, f32) -> (f32)
+    %d = xla_gpu.pure_call @add(%a, %b) : (f32, f32) -> (f32)
+    %ret = arith.addf %c, %d : f32
+    return %ret : f32
+  }
+}
+
+// CHECK: @caller
+// CHECK: %[[C:.*]] = xla_gpu.pure_call @add
+// CHECK: %[[D:.*]] = xla_gpu.pure_call @add
+// CHECK: arith.addf %[[C]], %[[D]]
+
+// CHECK-CSE: @caller
+// CHECK-CSE: %[[C:.*]] = xla_gpu.pure_call @add
+// CHECK-CSE: arith.addf %[[C]], %[[C]]

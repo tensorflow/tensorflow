@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 
@@ -32,6 +34,28 @@ void XlaGpuDialect::initialize() {
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.cc.inc"
 #undef GET_OP_LIST
       >();
+}
+
+mlir::LogicalResult PureCallOp::verifySymbolUses(
+    mlir::SymbolTableCollection &symbolTable) {
+  auto callee = getCalleeAttr();
+  auto function =
+      symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(*this, callee);
+  if (!function) {
+    return emitError("'f' attribute refers to an undefined function: ")
+           << callee;
+  }
+
+  int func_arg_count = function.getFunctionType().getNumInputs();
+  int arg_count = getOperands().size();
+
+  if (arg_count != func_arg_count) {
+    return emitError() << "argument count mismatch: 'operands' has "
+                       << arg_count << " arguments, but '" << callee
+                       << "' expects " << func_arg_count;
+  }
+
+  return mlir::success();
 }
 
 }  // namespace gpu
