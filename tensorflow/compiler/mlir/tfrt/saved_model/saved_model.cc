@@ -49,7 +49,7 @@ llvm::StringRef ProcessIndexPath(mlir::ArrayAttr index_path) {
   return "";
 }
 
-StatusOr<std::pair<tensorflow::DataType, tensorflow::PartialTensorShape>>
+absl::StatusOr<std::pair<tensorflow::DataType, tensorflow::PartialTensorShape>>
 ProcessTensorSpec(mlir::TensorType type) {
   tensorflow::DataType dtype;
   TF_RETURN_IF_ERROR(
