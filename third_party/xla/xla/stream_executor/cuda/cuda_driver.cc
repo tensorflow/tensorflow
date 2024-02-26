@@ -1690,7 +1690,6 @@ struct BitPatternToValue {
                                                                      : lowest;
 }
 
-#if CUDA_VERSION >= 10020
 /* static */ absl::StatusOr<GpuDriver::VmemSpan>
 GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
@@ -1818,8 +1817,6 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                << ": " << ToString(res);
   }
 }
-
-#endif
 
 /* static */ absl::Status GpuDriver::DestroyEvent(GpuContext* context,
                                                   CUevent* event) {

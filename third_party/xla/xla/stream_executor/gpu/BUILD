@@ -430,7 +430,6 @@ gpu_only_cc_library(
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
     copts = tsl_copts(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",

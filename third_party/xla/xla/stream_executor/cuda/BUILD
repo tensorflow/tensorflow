@@ -125,7 +125,6 @@ cuda_only_cc_library(
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
     hdrs = ["cuda_driver.h"],
-    local_defines = ["GOOGLE_CUDA=1"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:device_options",
