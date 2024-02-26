@@ -76,7 +76,7 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
 
   // Copy the cpu_tensor to the GPU first before trying to copy it back.
   TF_ASSERT_OK(
-      stream.Memcpy(&gpu_dst, origin_cpu_tensor.data(), gpu_dst.size()));
+      stream->Memcpy(&gpu_dst, origin_cpu_tensor.data(), gpu_dst.size()));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   tsl::AsyncValueRef<se::Event> done_event =
