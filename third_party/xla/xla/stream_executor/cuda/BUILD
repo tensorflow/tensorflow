@@ -195,8 +195,9 @@ xla_cc_test(
     name = "stream_search_test",
     size = "small",
     srcs = ["stream_search_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "requires-gpu-nvidia",
+    ],
     deps = [
         ":cuda_platform",
         "//xla/stream_executor",
@@ -210,10 +211,9 @@ xla_cc_test(
 xla_cc_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171512140): re-enable.
         "no_rocm",
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_driver",
@@ -228,9 +228,8 @@ xla_cc_test(
 xla_cc_test(
     name = "memcpy_test",
     srcs = ["memcpy_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":cuda_platform",

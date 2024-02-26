@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -42,5 +41,3 @@ TEST(MemcpyTest, PinnedHostMemory) {
 }
 
 }  // namespace stream_executor
-
-#endif  // GOOGLE_CUDA

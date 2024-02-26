@@ -22,8 +22,6 @@ limitations under the License.
 namespace stream_executor {
 namespace {
 
-#if GOOGLE_CUDA
-
 class StreamSearchTest : public ::testing::Test {
  public:
   Platform* GetPlatform() { return *PlatformManager::PlatformWithName("CUDA"); }
@@ -70,8 +68,6 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   Stream* found2 = (*found_executor)->FindAllocatedStream(gpu_ptr_2);
   EXPECT_EQ(found2, &s2);
 }
-
-#endif  // GOOGLE_CUDA
 
 }  // namespace
 }  // namespace stream_executor
