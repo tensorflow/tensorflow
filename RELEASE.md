@@ -12,6 +12,7 @@
 
 *   `tf.estimator`
     *   The tf.estimator API is removed.
+    *   To continue using tf.estimator, you will need to use TF 2.15 or an earlier version.
 
 *   Keras 3.0 will be the default Keras version. You may need to update your script to use Keras 3.0.
 
