@@ -133,7 +133,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   // TODO: b/213406917 - Add support for the object graph based saved model
   // input
   std::vector<std::string> exported_names = signature_keys;
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
       SavedModelSignatureDefsToMlirImport(
           saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
           import_options, &bundle);
@@ -207,7 +207,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   // TODO: b/213406917 - Add support for the object graph based saved model
   // input
   std::vector<std::string> exported_names = signature_keys;
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
       SavedModelSignatureDefsToMlirImport(
           saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
           import_options, &bundle);
@@ -291,7 +291,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   // TODO: b/213406917 - Add support for the object graph based saved model
   // input
   std::vector<std::string> exported_names = signature_keys;
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
       SavedModelSignatureDefsToMlirImport(
           saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
           import_options, &bundle);
@@ -387,7 +387,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   // TODO: b/213406917 - Add support for the object graph based saved model
   // input
   std::vector<std::string> exported_names = signature_keys;
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
       SavedModelSignatureDefsToMlirImport(
           saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
           import_options, &bundle);
@@ -463,7 +463,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
   std::vector<std::string> exported_names{
       quantization_options.signature_keys().begin(),
       quantization_options.signature_keys().end()};
-  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
       SavedModelSignatureDefsToMlirImport(saved_model_path,
                                           {quantization_options.tags().begin(),
                                            quantization_options.tags().end()},
