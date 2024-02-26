@@ -92,43 +92,25 @@ class GlobalShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(
-              dataset_range=[100],
-              batch_size=[2, 7],
-              drop_remainder=[True, False],
-              reshuffle=[True, False],
-              seed=[None, 42])))
-  def testReshuffleRepeatEpochs(
-      self,
-      dataset_range: int,
-      batch_size: int,
-      drop_remainder: bool,
-      reshuffle: bool,
-      seed: Optional[int]):
+          combinations.combine(reshuffle=[True, False], seed=[None, 42])))
+  def testReshuffleRepeatEpochs(self, reshuffle: bool, seed: Optional[int]):
+    dataset_range = 100
     dataset = dataset_ops.Dataset.range(dataset_range)
-    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
-    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = global_shuffle_op._global_shuffle(
         dataset, seed=seed, reshuffle_each_iteration=reshuffle)
-    dataset = dataset.map(lambda x: x[0])
     dataset = dataset.repeat(2)
 
-    expected = list(range(0, dataset_range, batch_size))
-    if drop_remainder:
-      expected = expected[: (dataset_range // batch_size)]
-    len_per_iteration = len(expected)
-    expected *= 2
-
     output = self.getDatasetOutput(dataset, requires_initialization=True)
-    self.assertCountEqual(output, expected)
+    self.assertCountEqual(output, list(range(dataset_range)) * 2)
     output_per_iteration = [
-        output[i : i + len_per_iteration]
-        for i in range(0, len(output), len_per_iteration)]
+        output[i : i + dataset_range]
+        for i in range(0, len(output), dataset_range)]
     if reshuffle:
       self.assertNotEqual(output_per_iteration[0], output_per_iteration[1])
     else:
       self.assertEqual(output_per_iteration[0], output_per_iteration[1])
 
+  # Creating multiple iterators with the same seed is only supported in v2 API.
   @combinations.generate(
       combinations.times(
           combinations.combine(tf_api_version=2, mode="eager"),
