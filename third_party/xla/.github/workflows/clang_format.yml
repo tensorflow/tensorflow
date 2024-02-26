@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
-        with:
-          fetch-depth: 2
+      - name: "Fetch HEAD of main branch"
+        run: git fetch origin main --depth=1
       - name: "Run clang-format"
-        run: clang-format --dry-run --Werror $(git diff --name-only -r HEAD^1 HEAD -- '*.cc' '*.h')
+        run: clang-format --dry-run --Werror $(git diff --name-only origin/main HEAD -- '*.cc' '*.h')
