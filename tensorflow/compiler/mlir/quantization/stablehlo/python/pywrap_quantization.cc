@@ -20,16 +20,15 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil   // IWYU pragma: keep
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/python/pywrap_quantization_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 
 namespace py = pybind11;
 
 namespace {
 
-using ::mlir::quant::stablehlo::QuantizeStaticRangePtq;
-using ::stablehlo::quantization::PopulateDefaults;
+using ::stablehlo::quantization::pywrap::PywrapPopulateDefaults;
+using ::stablehlo::quantization::pywrap::PywrapQuantizeStaticRangePtq;
 
 }  // namespace
 
@@ -42,7 +41,7 @@ PYBIND11_MODULE(pywrap_quantization, m) {
   // If the function signature changes, likely its corresponding .pyi type
   // hinting should also change.
   // LINT.IfChange(static_range_ptq)
-  m.def("static_range_ptq", &QuantizeStaticRangePtq,
+  m.def("static_range_ptq", &PywrapQuantizeStaticRangePtq,
         R"pbdoc(
         Runs static-range post-training quantization (PTQ) on a SavedModel at
         `src_saved_model_path` and saves the resulting model to
@@ -68,7 +67,7 @@ PYBIND11_MODULE(pywrap_quantization, m) {
   // If the function signature changes, likely its corresponding .pyi type
   // hinting should also change.
   // LINT.IfChange(populate_default_configs)
-  m.def("populate_default_configs", &PopulateDefaults,
+  m.def("populate_default_configs", &PywrapPopulateDefaults,
         R"pbdoc(
         Populates `QuantizationConfig` with default values.
 

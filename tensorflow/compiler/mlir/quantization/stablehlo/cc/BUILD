@@ -33,21 +33,8 @@ cc_library(
     ],
 )
 
-# OSS: This is a header-only target. Do NOT directly depend on `config_impl` unless it is necessary
-# (e.g. undefined symbol error), to avoid ODR violation.
 cc_library(
     name = "config",
-    hdrs = ["config.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-    ],
-)
-
-# OSS: This is a impl target corresponding to `config`. Do NOT directly depend on `config_impl`
-# unless it is necessary (e.g. undefined symbol error), to avoid ODR violation.
-cc_library(
-    name = "config_impl",
     srcs = ["config.cc"],
     hdrs = ["config.h"],
     compatible_with = get_compatible_with_portable(),
@@ -303,44 +290,11 @@ cc_library(
     ],
 )
 
-# OSS: This is a header-only target. Do NOT directly depend on `static_range_ptq_impl` unless it is
-# necessary (e.g. undefined symbol error), to avoid ODR violation.
 cc_library(
     name = "static_range_ptq",
-    hdrs = ["static_range_ptq.h"],
-    compatible_with = get_compatible_with_portable(),
-    # Must be header-only or unique (i.e. the same target is not a dependency of
-    # tensorflow_framework, tensorflow_cc, or pywrap_tensorflow_internal) dependencies.
-    deps = [
-        ":component",
-        ":types",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "static_range_ptq_impl",
     srcs = ["static_range_ptq.cc"],
     hdrs = ["static_range_ptq.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow/compiler/mlir/lite:__pkg__",  # For tf_tfl_translate binary.
-        # For odml_to_stablehlo binary.
-        "//tensorflow/compiler/mlir/lite/stablehlo:__pkg__",
-        # For StableHLO Quantizer adapter functionalities within TFLite. Testonly.
-        "//tensorflow/compiler/mlir/lite/quantization/stablehlo:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
     deps = [
         ":component",
         ":context",
