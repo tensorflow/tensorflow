@@ -27,17 +27,15 @@ namespace stream_executor {
 TEST(MemcpyTest, PinnedHostMemory) {
   Platform* platform = PlatformManager::PlatformWithName("CUDA").value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-  Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
                           executor->HostMemoryAllocate(sizeof(int)));
   DeviceMemoryBase d_mem(d_ptr->opaque(), sizeof(int));
 
   int h_ptr;
-  TF_ASSERT_OK(stream.Memcpy(&h_ptr, d_mem, d_mem.size()));
-  EXPECT_TRUE(stream.BlockHostUntilDone().ok());
+  TF_ASSERT_OK(stream->Memcpy(&h_ptr, d_mem, d_mem.size()));
+  EXPECT_TRUE(stream->BlockHostUntilDone().ok());
 }
 
 }  // namespace stream_executor

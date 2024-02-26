@@ -92,9 +92,7 @@ TEST_P(TopkTest, TopKFloat) {
   using T = float;
 
   auto* executor = GetGpuExecutor();
-  se::Stream stream(executor);
-  CHECK_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
@@ -107,17 +105,17 @@ TEST_P(TopkTest, TopKFloat) {
                 output_indices.is_null()));
 
   auto source = RandomVec<T>(n * batch_size);
-  CHECK_OK(stream.Memcpy(input_buffer.ptr(), source.data(),
-                         n * batch_size * sizeof(T)));
+  CHECK_OK(stream->Memcpy(input_buffer.ptr(), source.data(),
+                          n * batch_size * sizeof(T)));
 
-  ASSERT_TRUE(RunTopk(&stream, Get(T()), *input_buffer, n, *output_values,
+  ASSERT_TRUE(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
                       *output_indices, k, batch_size)
                   .ok());
   std::vector<T> got(k);
-  ASSERT_TRUE(stream.BlockHostUntilDone().ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    CHECK_OK(stream.Memcpy(got.data(), output_values->GetSlice(k * i, k),
-                           k * sizeof(T)));
+    CHECK_OK(stream->Memcpy(got.data(), output_values->GetSlice(k * i, k),
+                            k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
@@ -130,9 +128,7 @@ TEST_P(TopkTest, TopKPackedNegative) {
   using T = float;
 
   auto* executor = GetGpuExecutor();
-  se::Stream stream(executor);
-  CHECK_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
@@ -145,17 +141,17 @@ TEST_P(TopkTest, TopKPackedNegative) {
                 output_indices.is_null()));
 
   auto source = RandomVecNegative<T>(n * batch_size);
-  CHECK_OK(stream.Memcpy(input_buffer.ptr(), source.data(),
-                         n * batch_size * sizeof(T)));
+  CHECK_OK(stream->Memcpy(input_buffer.ptr(), source.data(),
+                          n * batch_size * sizeof(T)));
 
-  ASSERT_TRUE(RunTopk(&stream, Get(T()), *input_buffer, n, *output_values,
+  ASSERT_TRUE(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
                       *output_indices, k, batch_size)
                   .ok());
   std::vector<T> got(k);
-  ASSERT_TRUE(stream.BlockHostUntilDone().ok());
+  ASSERT_TRUE(stream->BlockHostUntilDone().ok());
   for (int i = 0; i < batch_size; i++) {
-    CHECK_OK(stream.Memcpy(got.data(), output_values->GetSlice(k * i, k),
-                           k * sizeof(T)));
+    CHECK_OK(stream->Memcpy(got.data(), output_values->GetSlice(k * i, k),
+                            k * sizeof(T)));
     std::vector<T> slice(source.data() + n * i, source.data() + n * (i + 1));
     std::sort(slice.begin(), slice.end(), std::greater<T>());
     slice.resize(k);
@@ -189,9 +185,7 @@ void BM_SmallTopk(benchmark::State& state) {
       absl::Substitute("n=$0Ki k=$1 batch_size=$2", n / 1024, k, batch_size));
 
   auto* executor = GetGpuExecutor();
-  se::Stream stream(executor);
-  CHECK_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   auto input_buffer = executor->AllocateOwnedArray<T>(n * batch_size),
        output_values = executor->AllocateOwnedArray<T>(k * batch_size);
@@ -208,15 +202,15 @@ void BM_SmallTopk(benchmark::State& state) {
   // time to generate random data)
   for (size_t i = 0; i < batch_size; i++) {
     auto slice = input_buffer->GetSlice(i * n, n);
-    CHECK_OK(stream.Memcpy(&slice, source.data(), n * sizeof(T)));
+    CHECK_OK(stream->Memcpy(&slice, source.data(), n * sizeof(T)));
   }
 
   for (auto _ : state) {
-    auto timer = se::gpu::GpuTimer::Create(&stream);
+    auto timer = se::gpu::GpuTimer::Create(stream.get());
     CHECK_OK(timer.status());
-    CHECK_OK(RunTopk(&stream, Get(T()), *input_buffer, n, *output_values,
+    CHECK_OK(RunTopk(stream.get(), Get(T()), *input_buffer, n, *output_values,
                      *output_indices, k, batch_size));
-    CHECK_OK(stream.BlockHostUntilDone());
+    CHECK_OK(stream->BlockHostUntilDone());
     auto timer_duration = timer.value().GetElapsedDuration();
     CHECK_OK(timer_duration.status());
     state.SetIterationTime(absl::ToDoubleSeconds(timer_duration.value()));

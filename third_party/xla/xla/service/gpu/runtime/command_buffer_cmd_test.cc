@@ -181,8 +181,7 @@ TEST(CommandBufferCmdTest, NoWriteConflictsAcrossStreams) {
 TEST(CommandBufferCmdTest, MemcpyCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  CHECK_OK(stream.Initialize());
+  auto stream = executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
@@ -190,8 +189,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  TF_ASSERT_OK(stream.Memset32(&a, 42, byte_length));
-  TF_ASSERT_OK(stream.MemZero(&b, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -209,8 +208,9 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   CommandBufferCmd::StateManager state;
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   CommandBufferCmd::RecordParams record_params = {state};
 
@@ -218,11 +218,11 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
+  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), b, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42));
 }
@@ -230,8 +230,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 TEST(CommandBufferCmdTest, LaunchCmd) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  CHECK_OK(stream.Initialize());
+  auto stream = executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
@@ -239,8 +238,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
   se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
-  TF_ASSERT_OK(stream.Memset32(&a, 42, byte_length));
-  TF_ASSERT_OK(stream.MemZero(&b, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
@@ -276,8 +275,9 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), {}, nullptr, nullptr);
 
   CommandBufferCmd::RecordParams record_params = {state};
 
@@ -285,11 +285,11 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(&stream, *command_buffer));
+  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), b, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }
@@ -319,8 +319,7 @@ TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
 TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  CHECK_OK(stream.Initialize());
+  auto stream = executor->CreateStream().value();
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
@@ -344,11 +343,11 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer0,
                           traced_cmd_buffer.GetOrTraceCommandBuffer(
-                              &allocations, executor, &stream, trace));
+                              &allocations, executor, stream.get(), trace));
 
   TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer1,
                           traced_cmd_buffer.GetOrTraceCommandBuffer(
-                              &allocations, executor, &stream, trace));
+                              &allocations, executor, stream.get(), trace));
 
   // Check that command buffer was reused as buffer allocations didn't change.
   ASSERT_EQ(command_buffer0, command_buffer1);
@@ -360,7 +359,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer2,
                           traced_cmd_buffer.GetOrTraceCommandBuffer(
-                              &allocations, executor, &stream, trace));
+                              &allocations, executor, stream.get(), trace));
 
   ASSERT_NE(command_buffer0, command_buffer2);
   EXPECT_EQ(num_calls, 2);
@@ -370,7 +369,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer3,
                           traced_cmd_buffer.GetOrTraceCommandBuffer(
-                              &allocations, executor, &stream, trace));
+                              &allocations, executor, stream.get(), trace));
   ASSERT_EQ(command_buffer0, command_buffer3);
   EXPECT_EQ(num_calls, 2);
 
@@ -379,7 +378,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer4,
                           traced_cmd_buffer.GetOrTraceCommandBuffer(
-                              &allocations, executor, &stream, trace));
+                              &allocations, executor, stream.get(), trace));
   ASSERT_NE(command_buffer4, command_buffer3);
   ASSERT_NE(command_buffer4, command_buffer2);
   EXPECT_EQ(num_calls, 3);
@@ -389,7 +388,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer5,
                           traced_cmd_buffer.GetOrTraceCommandBuffer(
-                              &allocations, executor, &stream, trace));
+                              &allocations, executor, stream.get(), trace));
   ASSERT_EQ(command_buffer0, command_buffer5);
   EXPECT_EQ(num_calls, 3);
 }
@@ -401,9 +400,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  CHECK(stream.ok());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
@@ -431,7 +428,7 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   for (auto s : state) {
     TF_CHECK_OK(traced_cmd_buffer
                     .GetOrTraceCommandBuffer(&allocations[index++ % 4],
-                                             executor, &stream, trace_ref)
+                                             executor, stream.get(), trace_ref)
                     .status());
   }
 }

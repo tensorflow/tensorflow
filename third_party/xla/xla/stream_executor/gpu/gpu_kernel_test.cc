@@ -40,9 +40,7 @@ TEST(GpuKernelTest, Add) {
   Platform* platform = PlatformManager::PlatformWithName(name).value();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
 #if defined(GOOGLE_CUDA)
@@ -62,16 +60,16 @@ TEST(GpuKernelTest, Add) {
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
   DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-  TF_ASSERT_OK(stream.Memset32(&a, 1, byte_length));
-  TF_ASSERT_OK(stream.Memset32(&b, 2, byte_length));
-  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch kernel.
-  ASSERT_TRUE(stream.ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
+  ASSERT_TRUE(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c).ok());
 
   // Copy data back to host.
   std::vector<int32_t> dst(4, 42);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);

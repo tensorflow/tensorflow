@@ -38,9 +38,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
       se::PlatformManager::PlatformWithName("CUDA").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
   auto custom_kernel = GetCutlassGemmKernel(
@@ -62,20 +60,20 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   uint32_t pattern;
   std::memcpy(&pattern, &value, sizeof(pattern));
 
-  TF_ASSERT_OK(stream.Memset32(&a, pattern, byte_length));
-  TF_ASSERT_OK(stream.Memset32(&b, pattern, byte_length));
-  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&a, pattern, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, pattern, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch gemm kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
+  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
                                 custom_kernel->block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   std::vector<float> expected(length, 16.0);
   ASSERT_EQ(dst, expected);
@@ -90,9 +88,7 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
       se::PlatformManager::PlatformWithName("CUDA").value();
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
-  se::Stream stream(executor);
-  TF_ASSERT_OK(stream.Initialize());
-  ASSERT_TRUE(stream.ok());
+  auto stream = executor->CreateStream().value();
 
   // Load [4, 4] x [4, 4] gemm kernel written in CUDA C++ with CUTLASS.
   auto custom_kernel = LoadCutlassGemmKernel(
@@ -113,20 +109,20 @@ TEST(CutlassGemmKernelTest, LoadFromSharedLibrary) {
   uint32_t pattern;
   std::memcpy(&pattern, &value, sizeof(pattern));
 
-  TF_ASSERT_OK(stream.Memset32(&a, pattern, byte_length));
-  TF_ASSERT_OK(stream.Memset32(&b, pattern, byte_length));
-  TF_ASSERT_OK(stream.MemZero(&c, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&a, pattern, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, pattern, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch gemm kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(&stream, custom_kernel->thread_dims(),
+  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
                                 custom_kernel->block_dims(), *gemm, arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
-  TF_ASSERT_OK(stream.Memcpy(dst.data(), c, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   std::vector<float> expected(length, 16.0);
   ASSERT_EQ(dst, expected);

@@ -52,26 +52,26 @@ class BufferComparatorTest : public testing::Test {
   template <typename ElementType>
   bool CompareEqualBuffers(const std::vector<ElementType>& current,
                            const std::vector<ElementType>& expected) {
-    se::Stream stream(stream_exec_);
-    TF_CHECK_OK(stream.Initialize());
+    auto stream = stream_exec_->CreateStream().value();
 
     se::ScopedDeviceMemory<ElementType> current_buffer =
         stream_exec_->AllocateOwnedArray<ElementType>(current.size());
     se::ScopedDeviceMemory<ElementType> expected_buffer =
         stream_exec_->AllocateOwnedArray<ElementType>(expected.size());
 
-    TF_CHECK_OK(stream.Memcpy(current_buffer.ptr(), current.data(),
-                              current_buffer->size()));
-    TF_CHECK_OK(stream.Memcpy(expected_buffer.ptr(), expected.data(),
-                              expected_buffer->size()));
-    TF_CHECK_OK(stream.BlockHostUntilDone());
+    TF_CHECK_OK(stream->Memcpy(current_buffer.ptr(), current.data(),
+                               current_buffer->size()));
+    TF_CHECK_OK(stream->Memcpy(expected_buffer.ptr(), expected.data(),
+                               expected_buffer->size()));
+    TF_CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(),
             {static_cast<int64_t>(current_buffer->ElementCount())}),
         HloModuleConfig());
-    return comparator.CompareEqual(&stream, *current_buffer, *expected_buffer)
+    return comparator
+        .CompareEqual(stream.get(), *current_buffer, *expected_buffer)
         .value();
   }
 
@@ -345,21 +345,20 @@ TEST_F(BufferComparatorTest, BF16) {
   const int element_count = 3123;
   int64_t rng_state = 0;
 
-  se::Stream stream(stream_exec_);
-  TF_CHECK_OK(stream.Initialize());
+  auto stream = stream_exec_->CreateStream().value();
 
   se::ScopedDeviceMemory<Eigen::bfloat16> lhs =
       stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);
-  InitializeBuffer(&stream, BF16, &rng_state, *lhs.ptr());
+  InitializeBuffer(stream.get(), BF16, &rng_state, *lhs.ptr());
 
   se::ScopedDeviceMemory<Eigen::bfloat16> rhs =
       stream_exec_->AllocateOwnedArray<Eigen::bfloat16>(element_count);
-  InitializeBuffer(&stream, BF16, &rng_state, *rhs.ptr());
+  InitializeBuffer(stream.get(), BF16, &rng_state, *rhs.ptr());
 
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}),
                               HloModuleConfig());
   EXPECT_FALSE(
-      comparator.CompareEqual(&stream, *lhs.ptr(), *rhs.ptr()).value());
+      comparator.CompareEqual(stream.get(), *lhs.ptr(), *rhs.ptr()).value());
 }
 
 }  // namespace
