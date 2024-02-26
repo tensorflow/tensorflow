@@ -68,14 +68,6 @@
 *  `keras.optimizers.Adam`
     * Added the option to set adaptive epsilon to match implementations with Jax and PyTorch equivalents.
 
-### Breaking Changes
-
-### Known Caveats
-
-### Major Features and Improvements
-
-### Bug Fixes and Other Changes
-
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
