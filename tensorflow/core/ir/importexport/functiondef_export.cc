@@ -48,8 +48,8 @@ namespace tfg {
 // of an operation or a block operand if a function argument) and store the
 // result in the provided name string. The `control_ty` is the instance of the
 // `ControlType` to compare against and detect a control dependency case.
-static tensorflow::StatusOr<std::string> GetValueName(Value operand,
-                                                      Type control_ty) {
+static absl::StatusOr<std::string> GetValueName(Value operand,
+                                                Type control_ty) {
   bool is_control = (operand.getType() == control_ty);
   OpResult op_result = operand.dyn_cast<OpResult>();
   if (!op_result) {
@@ -143,7 +143,7 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
   return ::tensorflow::OkStatus();
 }
 
-tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
+absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     GraphFuncOp func_op) {
   if (!func_op.getGeneric())
     return InvalidArgument(
