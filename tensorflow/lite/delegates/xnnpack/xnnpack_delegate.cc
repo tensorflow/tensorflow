@@ -2717,6 +2717,13 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
+    if (input1_tensor.type != input2_tensor.type ||
+        input1_tensor.type != output_tensor.type) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "unsupported mixed types in ADD operator #%d",
+                               node_index);
+      return kTfLiteError;
+    }
     const float scale_min = 1.0f / 1024.0f;
     const float scale_max = 256.0f;
     TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
