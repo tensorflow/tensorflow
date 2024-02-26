@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -7332,6 +7333,148 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root->opcode(), HloOpcode::kAdd);
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
+}
+
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfBroadcastToPadHostOffload) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffload
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffload {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128] broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[1,2,2048,2,128] parameter(0)
+  custom_call = bf16[1,2,2048,2,128] custom-call(param_0), custom_call_target="%s"
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, custom_call, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  // constant(0)   param(0)
+  //      |           |
+  // broadcast   custom-call  constant(0)
+  //      |           |      /
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0)),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload. Also disable
+// optimization if there is a reshape between the custom-call and the
+// dynamic-update-slice.
+TEST_F(AlgebraicSimplifierTest,
+       DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithReshape {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128] broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[2,2048,2,128] parameter(0)
+  custom_call = bf16[2,2048,2,128] custom-call(param_0), custom_call_target="%s"
+  reshape = bf16[1,2,2048,2,128] reshape(custom_call)
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, reshape, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  //              param(0)
+  //                  |
+  // constant(0)  custom-call
+  //      |           |
+  // broadcast    reshape   constant(0)
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::Reshape(m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0))),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
+}
+
+// Test that dynamic-update-slice with a scalar broadcast does not become a pad
+// if the dynamic-update-slice is for host memory offload. Also disable
+// optimization if there is a bitcast between the custom-call and the
+// dynamic-update-slice.
+TEST_F(AlgebraicSimplifierTest,
+       DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast) {
+  const std::string hlo_string = absl::StrFormat(
+      R"(
+HloModule DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast
+
+ENTRY DynamicUpdateSliceOfBroadcastToPadHostOffloadWithBitcast {
+  constant_bf16_0 = bf16[] constant(0)
+  broadcast_0 = bf16[56,2,2048,2,128] broadcast(constant_bf16_0), dimensions={}
+  param_0 = bf16[2,2048,2,128] parameter(0)
+  custom_call = bf16[2,2048,2,128] custom-call(param_0), custom_call_target="%s"
+  bitcast = bf16[1,2,2048,2,128] bitcast(custom_call)
+  constant_s32_0 = s32[] constant(0)
+  ROOT dynamic_update_slice = bf16[56,2,2048,2,128] dynamic-update-slice(broadcast_0, bitcast, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0, constant_s32_0)
+}
+)",
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  // Look for the following pattern:
+  //              param(0)
+  //                  |
+  // constant(0)  custom-call
+  //      |           |
+  // broadcast    bitcast   constant(0)
+  //      |           |     /
+  //      |           |    /
+  //      |           |   /
+  //      |           |  /
+  // dynamic-update-slice
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::DynamicUpdateSlice(
+          m::Broadcast(m::ConstantScalar(0)),
+          m::Bitcast(m::CustomCall(
+              {host_memory_offload_annotations::kMoveToHostCustomCallTarget},
+              m::Parameter(0))),
+          m::ConstantScalar(0), m::ConstantScalar(0), m::ConstantScalar(0),
+          m::ConstantScalar(0), m::ConstantScalar(0))));
 }
 
 // Test of dynamic-update-slice with dims where update and result have the same

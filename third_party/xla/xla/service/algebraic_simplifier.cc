@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
@@ -6538,6 +6539,20 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         compatible = false;
       }
     }
+
+    const auto custom_call_pattern = m::CustomCall(
+        {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+    if (Match(dus_update,
+              m::AnyOf<HloInstruction>(m::Reshape(custom_call_pattern),
+                                       m::Bitcast(custom_call_pattern),
+                                       custom_call_pattern))) {
+      // If this dynamic-update-slice is used for host memory offloading, it
+      // should not be converted into a pad. Also allow for a reshape or a
+      // bitcast between the host-offloading custom-call and the
+      // dynamic-update-slice.
+      compatible = false;
+    }
+
     PaddingConfig padding_config;
     if (compatible) {
       for (int64_t dim = 0; dim < updated_shape.rank(); ++dim) {
