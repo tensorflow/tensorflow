@@ -2277,9 +2277,11 @@ name=None))
       map_func: A function mapping a dataset element to another dataset element.
       num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
-        If not specified, elements will be processed sequentially. If the value
-        `tf.data.AUTOTUNE` is used, then the number of parallel
-        calls is set dynamically based on available CPU.
+        If the value `tf.data.AUTOTUNE` is used, then the number of parallel
+        calls is set dynamically based on available CPU. If not specified, the
+        `tf.data.Options.experimental_optimization.map_parallelization` option
+        (`True` by default) controls whether the map will run as with
+        `tf.data.AUTOTUNE` or run sequentially.
       deterministic: (Optional.) When `num_parallel_calls` is specified, if this
         boolean is specified (`True` or `False`), it controls the order in which
         the transformation produces elements. If set to `False`, the
