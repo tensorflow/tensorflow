@@ -35,22 +35,6 @@ func.func @reduce_complex_type(%arg0: tensor<1x2xcomplex<f32>>, %arg1 : tensor<c
 
 // -----
 
-// CHECK-LABEL:    func @reduce_single_operand_unranked
-func.func @reduce_single_operand_unranked(%arg0: tensor<*xf32>, %arg1 : tensor<*xf32>)
-    -> (tensor<*xf32>) {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-
-  ^bb0(%arg2: tensor<*xf32>, %arg3: tensor<*xf32> ):
-    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    "mhlo.return"(%1) : (tensor<*xf32>) -> ()
-
-  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-
-  func.return %0: tensor<*xf32>
-}
-
-// -----
-
 // CHECK-LABEL:    func @reduce_mixed_dynamism
 func.func @reduce_mixed_dynamism(%arg0: tensor<4x4xf32>, %arg1 : tensor<f32>)
     -> (tensor<?xf32>) {
@@ -58,40 +42,6 @@ func.func @reduce_mixed_dynamism(%arg0: tensor<4x4xf32>, %arg1 : tensor<f32>)
     applies mhlo.multiply across dimensions = [1]
     : (tensor<4x4xf32>, tensor<f32>) -> tensor<?xf32>
   func.return %0: tensor<?xf32>
-}
-
-// -----
-
-// CHECK-LABEL:    func @reduce_unranked
-func.func @reduce_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>,
-    %arg2: tensor<*xf32>, %arg3: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
-  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
-
-  ^bb0(%arg4: tensor<*xf32>, %arg5: tensor<*xf32>, %arg6: tensor<*xf32>, %arg7: tensor<*xf32>):
-    %1 = "mhlo.add"(%arg4, %arg6) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = "mhlo.add"(%arg5, %arg7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    "mhlo.return"(%1, %2) : (tensor<*xf32>, tensor<*xf32>) -> ()
-
-  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
-
-  func.return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
-}
-
-// -----
-
-// CHECK-LABEL:    func @reduce_mix_rank_and_unranked
-func.func @reduce_mix_rank_and_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<*xf32>,
-    %arg2: tensor<4xf32>, %arg3: tensor<*xf32>) -> (tensor<4xf32>, tensor<*xf32>) {
-  %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
-
-  ^bb0(%arg4: tensor<4xf32>, %arg5: tensor<*xf32>, %arg6: tensor<4xf32>, %arg7: tensor<*xf32>):
-    %1 = "mhlo.add"(%arg4, %arg6) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-    %2 = "mhlo.add"(%arg5, %arg7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    "mhlo.return"(%1, %2) : (tensor<4xf32>, tensor<*xf32>) -> ()
-
-  }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<*xf32>, tensor<4xf32>, tensor<*xf32>) -> (tensor<4xf32>, tensor<*xf32>)
-
-  func.return %0#0, %0#1 : tensor<4xf32>, tensor<*xf32>
 }
 
 // -----

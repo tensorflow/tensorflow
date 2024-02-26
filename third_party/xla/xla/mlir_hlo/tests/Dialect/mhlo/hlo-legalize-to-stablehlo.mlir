@@ -1842,13 +1842,6 @@ func.func @type_dynamism_ranked(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-// CHECK-LABEL: "type_dynamism_unranked"
-func.func @type_dynamism_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  %0 = "mhlo.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
 // CHECK-LABEL: "type_quantization"
 func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.add"(%arg0, %arg1) : (tensor<!quant.uniform<i8:f32, 3.400000e+01:16>>, tensor<f32>) -> tensor<f32>

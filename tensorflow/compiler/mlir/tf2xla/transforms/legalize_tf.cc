@@ -1485,12 +1485,14 @@ class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
 
   LogicalResult matchAndRewrite(TF::FloorDivOp op,
                                 PatternRewriter &rewriter) const override {
-    auto l = op.getX();
-    auto r = op.getY();
+    auto l = op.getX().dyn_cast<TypedValue<RankedTensorType>>();
+    auto r = op.getY().dyn_cast<TypedValue<RankedTensorType>>();
+    if (!l || !r) return failure();
+
     auto element_type = getElementTypeOrSelf(l.getType());
     if (!element_type.isBF16()) return failure();
 
-    auto out_type = op.getZ().getType().cast<TensorType>();
+    auto out_type = op.getZ().getType();
 
     l = rewriter.create<ConvertOp>(op.getLoc(), l, rewriter.getF32Type());
     r = rewriter.create<ConvertOp>(op.getLoc(), r, rewriter.getF32Type());
@@ -5964,7 +5966,8 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
 
   LogicalResult matchAndRewrite(TF::InplaceUpdateOp op,
                                 PatternRewriter &rewriter) const override {
-    auto input = op.getX();
+    auto input = op.getX().dyn_cast<TypedValue<RankedTensorType>>();
+    if (!input) return failure();
     auto indices = op.getI();
     auto updates = op.getV();
 
@@ -6236,7 +6239,8 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
 
   LogicalResult matchAndRewrite(OpT op,
                                 PatternRewriter &rewriter) const override {
-    auto input = op.getX();
+    auto input = op.getX().template dyn_cast<TypedValue<RankedTensorType>>();
+    if (!input) return failure();
     auto input_type = input.getType().template dyn_cast<ShapedType>();
     if (!input_type || !input_type.hasStaticShape()) {
       return failure();

@@ -3085,21 +3085,6 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 
 // -----
 
-// CHECK-LABEL: @reduce_add_unranked
-// CHECK-PRIMITIVE-LABEL: @reduce_add_unranked
-func.func @reduce_add_unranked(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
-  %0 = "mhlo.reduce"(%arg0, %arg1) ({
-  ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
-    %1 = mhlo.add %arg3, %arg4 : tensor<i32>
-    "mhlo.return"(%1) : (tensor<i32>) -> ()
-  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
-}
-// CHECK: mhlo.reduce
-// CHECK-PRIMITIVE: mhlo.reduce
-
-// -----
-
 func.func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
@@ -5008,49 +4993,6 @@ func.func @gather_non_static(%operand : tensor<?x?xi32>, %start_indices : tensor
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IDX1]]] : tensor<?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK:           return %[[RES]]
-
-// -----
-
-func.func @gather_unranked(%operand : tensor<*xi32>, %start_indices : tensor<?x?xi32>) -> tensor<?x?x?xi32> {
-  %res = "mhlo.gather"(%operand, %start_indices) {
-    dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [],
-      index_vector_dim = 1,
-      offset_dims = [0, 1],
-      start_index_map = [0]
-    >,
-    indices_are_sorted = false,
-    slice_sizes = dense<[3, 4]> : tensor<2xi64>
-  } : (tensor<*xi32>, tensor<?x?xi32>) -> tensor<?x?x?xi32>
-  func.return %res : tensor<?x?x?xi32>
-}
-
-// CHECK-LABEL:   func @gather_unranked(
-// CHECK-SAME:        %[[OPERAND:[a-zA-Z0-9_]+]]
-// CHECK-SAME:        %[[START_INDICES:[a-zA-Z0-9_]+]]
-// CHECK-SAME:    )
-// CHECK-DAG:       %[[C0:.+]] = arith.constant 0
-// CHECK-DAG:       %[[C3:.+]] = arith.constant 3
-// CHECK-DAG:       %[[RES_DIM2:.+]] = tensor.dim %[[START_INDICES]], %[[C0]]
-// CHECK-DAG:       %[[INIT:.+]] = tensor.empty(%[[RES_DIM2]])
-// CHECK:           %[[RES:.+]] = linalg.generic
-// CHECK-SAME:           outs(%[[INIT]] : tensor
-// CHECK:           ^bb0
-// CHECK-DAG:         %[[IDX0:.+]] = linalg.index 0
-// CHECK-DAG:         %[[IDX1:.+]] = linalg.index 1
-// CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
-// CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
-// CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
-// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C3]]
-// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[S0]], %[[C0]] : index
-// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
-// CHECK-DAG:         %[[OPERAND_CASTED:.+]] = tensor.cast %[[OPERAND]] : tensor<*xi32> to tensor<?x?xi32>
-// CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND_CASTED]][%[[IN0]], %[[IDX1]]] : tensor<?x?xi32>
-// CHECK:             linalg.yield %[[Y]] : i32
-// CHECK:           %[[CAST:.+]] = tensor.cast %[[RES]]
-// CHECK:           return %[[CAST]]
 
 // -----
 

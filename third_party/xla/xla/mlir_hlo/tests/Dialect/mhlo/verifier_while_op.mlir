@@ -44,48 +44,24 @@ func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // -----
 
 // CHECK-LABEL: while_dynamic
-func.func @while_dynamic(%arg0: tensor<3xf32>) -> tensor<*xf32> {
+func.func @while_dynamic(%arg0: tensor<3xf32>) -> tensor<?xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
-  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<*xf32>):
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<?xf32>):
     %2 = arith.constant dense<0> : tensor<i32>
     %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
     %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
     %5 = "mhlo.reshape"(%4) : (tensor<1xi1>) -> tensor<i1>
     "mhlo.return"(%5) : (tensor<i1>) -> ()
   },  {
-  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<*xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
+  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<?xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
     %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
-    "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<*xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
-  }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<*xf32>)
-  func.return %1#3: tensor<*xf32>
-}
-
-
-// -----
-
-// CHECK-LABEL: while_unranked
-func.func @while_unranked(%arg0: tensor<3xf32>) -> tensor<*xf32> {
-  %cst_0 = arith.constant dense<0> : tensor<1xi32>
-  %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
-  %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
-  %1:4 = "mhlo.while"(%cst_0, %cst_1, %cst_2, %arg0) ({
-  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<*xf32>):
-    %2 = arith.constant dense<0> : tensor<i32>
-    %3 = "mhlo.slice"(%arg2) {limit_indices = dense<[1]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
-    %4 = "mhlo.compare"(%arg1, %3) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
-    %5 = "mhlo.select"(%4, %4, %4) : (tensor<1xi1>, tensor<1xi1>, tensor<1xi1>) -> tensor<*xi1>
-    "mhlo.return"(%5) : (tensor<*xi1>) -> ()
-  },  {
-  ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<*xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
-    %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
-    %4 = mhlo.add %3, %arg4 : tensor<3xf32>
-    "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<*xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
-  }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<*xf32>)
-  func.return %1#3: tensor<*xf32>
+    "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<?xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
+  }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<?xf32>)
+  func.return %1#3: tensor<?xf32>
 }
 
 // Negative tests below
@@ -122,7 +98,7 @@ func.func @while_with_invalid_tuples(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
   %0 = "mhlo.tuple"(%arg0, %cst_2) : (tensor<3xf32>, tensor<1xf32>) -> tuple<tensor<3xf32>, tensor<1xf32>>
   %1 = "mhlo.tuple"(%cst_1, %0) : (tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>) -> tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>
-  // expected-error @+1 {{op operand #1 must be variadic of tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values or token, but got 'tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>'}}
+  // expected-error @+1 {{op operand #1 must be variadic of ranked tensor of f8E4M3B11FNUZ type or f8E4M3FN type or f8E4M3FNUZ type or f8E5M2 type or f8E5M2FNUZ type or 16-bit float or 32-bit float or 64-bit float or bfloat16 type or pred (AKA boolean or 1-bit integer) or 4/8/16/32/64-bit signless integer or 4/8/16/32/64-bit unsigned integer or complex type with 32-bit float or 64-bit float elements or 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values or token, but got 'tuple<tensor<2xi32>, tuple<tensor<3xf32>, tensor<1xf32>>>'}}
   %2:2 = "mhlo.while"(%cst_0, %1) ({
   ^bb0(%arg1: tensor<1xi32>, %arg2: tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>):
     %t0 = "mhlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<2xi32>, tuple<tensor<1xf32>, tensor<3xf32>>>) -> tensor<2xi32>

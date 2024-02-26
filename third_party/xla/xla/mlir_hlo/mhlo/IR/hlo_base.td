@@ -71,6 +71,8 @@ defvar MHLO_PredTensor = HLO_PredTensor;
 
 defvar MHLO_Tensor = HLO_Tensor;
 
+defvar MHLO_AnyTensor = HLO_AnyTensor;
+
 defvar MHLO_ComplexTensor = HLO_ComplexTensor;
 
 defvar MHLO_Tuple = HLO_Tuple;
@@ -83,6 +85,8 @@ defvar MHLO_DimensionValue = HLO_DimensionValue;
 
 // Dynamic representation of a shape vector as a tensor.
 defvar MHLO_DimensionTensor = HLO_DimensionTensor;
+
+defvar MHLO_CustomCallValue = HLO_CustomCallValue;
 
 //===----------------------------------------------------------------------===//
 // MHLO combined type definitions.
