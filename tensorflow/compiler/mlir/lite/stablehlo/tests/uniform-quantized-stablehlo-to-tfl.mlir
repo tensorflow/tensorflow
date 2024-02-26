@@ -1116,3 +1116,37 @@ func.func @float_reduce_window_with_max(
 // CHECK-LABEL: float_reduce_window_with_max
 // CHECK: stablehlo.reduce_window
 // CHECK-NOT: tfl.max_pool_2d
+
+// -----
+
+// Test that a quantized stablehlo.dynamic_reshape is converted to tfl.reshape.
+
+func.func @dynamic_reshape(
+    %arg0: tensor<?x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>,
+    %arg1: tensor<2xi32>
+  ) -> tensor<?x?x!quant.uniform<i8:f32, 3.000000e-01:-5>> {
+  %0 = "stablehlo.dynamic_reshape"(%arg0, %arg1) : (
+    tensor<?x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<2xi32>
+  ) -> tensor<?x?x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+  return %0 : tensor<?x?x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+}
+
+// CHECK-LABEL: func @dynamic_reshape
+// CHECK-SAME: %[[ARG0:.+]]: tensor<?x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+// CHECK-SAME: %[[ARG1:.+]]: tensor<2xi32>
+// CHECK: %[[RESHAPE:.+]] = "tfl.reshape"(%[[ARG0]], %[[ARG1]]) : (tensor<?x3x!quant.uniform<i8:f32, 3.000000e-01:-5>>, tensor<2xi32>) -> tensor<?x?x!quant.uniform<i8:f32, 3.000000e-01:-5>>
+// CHECK: return %[[RESHAPE]]
+// CHECK-NOT: stablehlo.dynamic_reshape
+
+// -----
+
+// Test that a float stablehlo.dynamic_reshape is not converted to tfl.reshape.
+
+func.func @float_dynamic_reshape(%arg0: tensor<?x3xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
+  %0 = "stablehlo.dynamic_reshape"(%arg0, %arg1) : (tensor<?x3xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @float_dynamic_reshape
+// CHECK: stablehlo.dynamic_reshape
+// CHECK-NOT: tfl.reshape

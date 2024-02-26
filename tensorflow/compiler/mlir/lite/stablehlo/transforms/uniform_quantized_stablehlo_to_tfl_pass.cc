@@ -1346,6 +1346,23 @@ class RewriteQuantizedReshapeOp
   }
 };
 
+class RewriteQuantizedDynamicReshapeOp
+    : public OpRewritePattern<stablehlo::DynamicReshapeOp> {
+ public:
+  using OpRewritePattern<stablehlo::DynamicReshapeOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::DynamicReshapeOp op) const override {
+    return success(IsQuantizedTensorType(op.getOperand().getType()) &&
+                   IsQuantizedTensorType(op.getResult().getType()));
+  }
+
+  void rewrite(stablehlo::DynamicReshapeOp op,
+               PatternRewriter& rewriter) const override {
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(op, op.getOperand(),
+                                                op.getOutputShape());
+  }
+};
+
 // Rewrites quantized stablehlo.select to tfl.select_v2.
 // TODO: b/322428814 - Add StableHLO quantizer integration tests for ODML.
 class RewriteQuantizedSelectOp : public OpRewritePattern<stablehlo::SelectOp> {
@@ -1726,7 +1743,8 @@ void UniformQuantizedStableHloToTflPass::runOnOperation() {
                RewriteQuantizedReshapeOp, RewriteQuantizedSelectOp,
                RewriteQuantizedConcatenateOp, RewriteQuantizedPadOp,
                RewriteQuantizedSliceOp, RewriteQuantizedBroadcastInDimOp,
-               RewriteQuantizedReduceWindowOpWithMax>(&ctx);
+               RewriteQuantizedReduceWindowOpWithMax,
+               RewriteQuantizedDynamicReshapeOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
