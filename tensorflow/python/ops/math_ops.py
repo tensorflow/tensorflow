@@ -284,6 +284,7 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   Args:
     input: A `Tensor`.
     axis: An integer, the axis to reduce across. Default to 0.
+          Note: bool data type will be converted into integer internally.
     output_type: An optional output dtype (`tf.int32` or `tf.int64`). Defaults
       to `tf.int64`.
     name: An optional name for the operation.
