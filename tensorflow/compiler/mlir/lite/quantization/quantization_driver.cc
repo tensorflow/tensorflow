@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -24,7 +27,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -32,18 +34,17 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "quantization-driver"
 
@@ -107,12 +108,14 @@ using RequantizeStates = SmallVector<RequantizeState>;
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(func::FuncOp fn, bool is_signed, int bit_width,
-                              bool disable_per_channel,
+  explicit QuantizationDriver(func::FuncOp fn, const bool is_signed,
+                              const int bit_width,
+                              const bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
                               OpQuantScaleSpecGetter op_quant_scale_spec_getter,
-                              bool infer_tensor_range, bool legacy_float_scale,
-                              bool is_qdq_conversion)
+                              const bool infer_tensor_range,
+                              const bool legacy_float_scale,
+                              const bool is_qdq_conversion)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
@@ -304,7 +307,7 @@ class QuantizationDriver {
   // Sets the state of the index-th operand of the op. If this operand is
   // cached, uses the cached result without creating new entry in the state
   // vector. Otherwise, allocate a new entry in the state vector.
-  void InitializeOperandState(Operation *op, int index, Value in) {
+  void InitializeOperandState(Operation *op, const int index, Value in) {
     auto cached = value_to_state_.insert({in, 0});
     if (!cached.second) {
       operand_states_[{op, index}] = cached.first->second;
@@ -316,7 +319,7 @@ class QuantizationDriver {
   // Sets the state of the index-th result of the op. If this result is cached,
   // uses the cached result without creating new entry in the state vector.
   // Otherwise, allocate a new entry in the state vector.
-  void InitializeResultState(Operation *op, int index, Value res) {
+  void InitializeResultState(Operation *op, const int index, Value res) {
     auto cached = value_to_state_.insert({res, 0});
     if (!cached.second) {
       result_states_[{op, index}] = cached.first->second;
@@ -385,9 +388,9 @@ class QuantizationDriver {
 
   func::FuncOp fn_;
   OpBuilder builder_;
-  bool is_signed_;
-  int bit_width_;
-  bool disable_per_channel_;
+  const bool is_signed_;
+  const int bit_width_;
+  const bool disable_per_channel_;
 
   // We should distinguish weights and bias constants. Biases are specified by
   // the quantization spec or are the operands of ops with same scale spec. The
@@ -428,15 +431,15 @@ class QuantizationDriver {
 
   // Infer output ranges for activation ops and constants. This is usually
   // required for post-training quantization.
-  bool infer_tensor_range_;
+  const bool infer_tensor_range_;
 
   // Calculate scales in float instead of double, so that the scales and
   // quantized values are exactly the same with the TOCO quantizer.
-  bool legacy_float_scale_;
+  const bool legacy_float_scale_;
 
   // If true, the model is a floating point graph with QDQ ops to be eliminated
   // and fused into quantized kernels.
-  bool is_qdq_conversion_;
+  const bool is_qdq_conversion_;
 };
 }  // namespace
 
@@ -456,12 +459,12 @@ bool QuantizationDriver::IsQuantized(Operation *op) {
   return true;
 }
 
-int QuantizationDriver::InitializeState(Operation *op, int index, Value val,
-                                        bool as_result) {
+int QuantizationDriver::InitializeState(Operation *op, const int index,
+                                        Value val, const bool as_result) {
   QuantParams params =
       quant::QuantizedType::getQuantizedElementType(val.getType());
-  bool immutable = !EmptyParams(params);
-  int next_state_index = states_.size();
+  const bool immutable = !EmptyParams(params);
+  const int next_state_index = states_.size();
   states_.push_back({params, immutable});
   if (as_result)
     result_states_[{op, index}] = next_state_index;
@@ -480,8 +483,8 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   // TODO(fengliuai): make storage_type_width and narrow_range configurable.
   Type final_type;
   auto it = optimized_weights_.find(op);
-  bool is_weight = it != optimized_weights_.end();
-  bool is_weight_with_per_channel_support =
+  const bool is_weight = it != optimized_weights_.end();
+  const bool is_weight_with_per_channel_support =
       is_weight && it->second != -1 && is_signed_;
 
   if (is_weight_with_per_channel_support && !disable_per_channel_) {
@@ -550,8 +553,8 @@ QuantParams QuantizationDriver::GetBiasParams(
     }
   }
 
-  for (auto non_bias : non_biases) {
-    auto &non_bias_type = GetOperandQuantState(op, non_bias);
+  for (int non_bias : non_biases) {
+    QuantState &non_bias_type = GetOperandQuantState(op, non_bias);
     op_types.push_back(non_bias_type.params);
   }
   return func(op_types, adjusted_quant_dim, legacy_float_scale_);
@@ -584,7 +587,7 @@ bool QuantizationDriver::SetOperandParams(Operation *op, int index,
   return true;
 }
 
-void QuantizationDriver::QuantizeOpResult(Operation *op, int index,
+void QuantizationDriver::QuantizeOpResult(Operation *op, const int index,
                                           QuantParams params) {
   builder_.setInsertionPointAfter(op);
   Value original_result = op->getResult(index);
@@ -619,7 +622,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 }
 
-void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
+void QuantizationDriver::RequantizeOpResult(Operation *op, const int index,
                                             RequantizeStates *states) {
   if (states->empty()) return;
 
@@ -751,8 +754,8 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
     }
   }
 
-  int immutable_operands_num = immutable_states.size();
-  int mutable_operands_num = mutable_states.size();
+  const int immutable_operands_num = immutable_states.size();
+  const int mutable_operands_num = mutable_states.size();
   // Use the operand's state if it is immutable and it is the only one
   // operand.
   if (op->getNumOperands() == 1 && immutable_operands_num == 1) {
@@ -768,8 +771,9 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
     }
   }
 
-  int immutable_results_num = immutable_states.size() - immutable_operands_num;
-  int mutable_results_num = mutable_states.size() - mutable_operands_num;
+  const int immutable_results_num =
+      immutable_states.size() - immutable_operands_num;
+  const int mutable_results_num = mutable_states.size() - mutable_operands_num;
   // Use the result's state if it is immutable and it is the only one result.
   if (op->getNumResults() == 1 && immutable_results_num == 1) {
     return immutable_states.back()->params;
@@ -806,17 +810,14 @@ void QuantizationDriver::PreprocessConstantOps() {
     // Skip if the value is NaN or INF.
     // Otherwise the illegal scale/zp will be calculated.
     auto float_attr = cst.getValueAttr().dyn_cast<DenseFPElementsAttr>();
-    if (float_attr) {
-      auto cst_float_falue = float_attr.getValues<APFloat>()[0];
-      if (!cst_float_falue.isFinite()) return;
-    }
+    if (float_attr && !float_attr.getValues<APFloat>()[0].isFinite()) return;
 
     Value value = cst.getResult();
     builder_.setInsertionPoint(cst);
 
     // The following loop will change the value uses, thus we cache all the uses
     // needs to be changed.
-    llvm::SmallVector<std::pair<Operation *, int>, 4> uses;
+    llvm::SmallVector<std::pair<Operation *, int>> uses;
     for (auto &use : value.getUses()) {
       uses.push_back({use.getOwner(), use.getOperandNumber()});
     }
@@ -1015,7 +1016,7 @@ bool QuantizationDriver::PropagateParams() {
 }
 
 arith::ConstantOp QuantizationDriver::DuplicateConstantOpIfNeeded(
-    arith::ConstantOp op, Operation *target_op, int operand_index) {
+    arith::ConstantOp op, Operation *target_op, const int operand_index) {
   if (op.getResult().hasOneUse()) {
     return op;
   }
@@ -1053,7 +1054,7 @@ bool QuantizationDriver::ShouldCheckBiasScale(
 
   auto input_state = GetOperandQuantState(op, input_index);
   auto filter_state = GetOperandQuantState(op, filter_index);
-  // If quantization paramater for the filter is fixed, should return it as-is.
+  // If quantization parameter for the filter is fixed, should return it as-is.
   // Only checks ops with 8-bit input and weights, and 32-bit biases.
   if (!(input_state.params.getStorageTypeIntegralWidth() == 8 &&
         filter_state.params.getStorageTypeIntegralWidth() == 8 &&
@@ -1064,7 +1065,7 @@ bool QuantizationDriver::ShouldCheckBiasScale(
 }
 
 bool QuantizationDriver::SetBiasParamsWithAdjustments(
-    Operation *op, int bias_index, const std::vector<int> &input_indices,
+    Operation *op, const int bias_index, const std::vector<int> &input_indices,
     QuantParams params) {
   bool changed = false;
   int input_index;
@@ -1204,12 +1205,11 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
-                                        int bit_width, bool disable_per_channel,
-                                        OpQuantSpecGetter op_quant_spec_getter,
-                                        bool infer_tensor_ranges,
-                                        bool legacy_float_scale,
-                                        bool is_qdq_conversion) {
+void ApplyQuantizationParamsPropagation(
+    mlir::func::FuncOp func, const bool is_signed, const int bit_width,
+    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
+    const bool infer_tensor_ranges, const bool legacy_float_scale,
+    const bool is_qdq_conversion) {
   ApplyQuantizationParamsPropagation(
       func, is_signed, bit_width, disable_per_channel, op_quant_spec_getter,
       GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale,
@@ -1217,10 +1217,11 @@ void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
 }
 
 void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, int bit_width,
-    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
-    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
-    bool legacy_float_scale, bool is_qdq_conversion) {
+    mlir::func::FuncOp func, const bool is_signed, const int bit_width,
+    const bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter,
+    const bool infer_tensor_ranges, const bool legacy_float_scale,
+    const bool is_qdq_conversion) {
   QuantizationDriver(func, is_signed, bit_width, disable_per_channel,
                      op_quant_spec_getter, op_quant_scale_spec_getter,
                      infer_tensor_ranges, legacy_float_scale, is_qdq_conversion)
