@@ -222,7 +222,7 @@ bool GetTfLiteResourceTensorFromResourceHandle(
   return false;
 }
 
-tensorflow::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
+absl::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
     const TfLiteTensor* tflite_tensor) {
   if (IsResourceOrVariant(tflite_tensor)) {
     // Returns error if the input tflite tensor has variant or resource type.
