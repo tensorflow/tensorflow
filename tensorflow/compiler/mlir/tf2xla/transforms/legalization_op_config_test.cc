@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -44,7 +43,6 @@ namespace mhlo {
 
 using func::FuncOp;
 using mlir::ModuleOp;
-using tsl::Status;
 
 static constexpr char kMlirModuleStr[] = R"(
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
@@ -56,7 +54,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 class LegalizationOpConfigTest : public ::testing::Test {
  public:
-  Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
+  tsl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
     TF_ASSIGN_OR_RETURN(
         module_, test::GetMlirModuleFromString(module_string, &context_));
 
@@ -100,6 +98,12 @@ TEST_F(LegalizationOpConfigTest, ExpectsTrueForTF2XLATypeID) {
   EXPECT_TRUE(HasTf2XlaFallback(TypeID::get<TF::AllOp>()));
   EXPECT_TRUE(IsOpAllowedTf2xlaPreferred(TypeID::get<TF::AllOp>()));
   EXPECT_FALSE(IsTypeLegalizedWithMlir(TypeID::get<TF::AllOp>()));
+}
+
+TEST_F(LegalizationOpConfigTest, ChecksDynamicPadderOps) {
+  EXPECT_TRUE(
+      IsDynamicPadderOp(TypeID::get<TF::XlaSetDynamicDimensionSizeOp>()));
+  EXPECT_FALSE(IsDynamicPadderOp(TypeID::get<TF::ConstOp>()));
 }
 
 // This test is kind of odd. We go through all the Tensorflow types and check

@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
 namespace tensorflow {
@@ -48,20 +49,6 @@ auto* dynamism_function_counter = tensorflow::monitoring::Counter<1>::New(
 constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
 constexpr char kDynamicFunctionName[] = "kDynamicFunction";
 
-// Returns ops that should use MLIR legalization.
-// All other ops not in this list should use XlaOpKernel.
-const llvm::DenseSet<mlir::TypeID>& DynamicTensorflowOps() {
-  // The static variable is a pointer in order to avoid destruction upon thread
-  // termination.
-  static const llvm::DenseSet<mlir::TypeID>* ops =
-      new llvm::DenseSet<mlir::TypeID>{
-          TypeID::get<mlir::TF::UniqueOp>(),
-          TypeID::get<mlir::TF::WhereOp>(),
-          TypeID::get<mlir::TF::XlaSetDynamicDimensionSizeOp>(),
-      };
-  return *ops;
-}
-
 class InputMetricsLoweringPass
     : public impl::InputLoweringMetricsPassBase<InputMetricsLoweringPass> {
  public:
@@ -76,7 +63,7 @@ void InputMetricsLoweringPass::runOnOperation() {
     auto abstractOp = op->getRegisteredInfo();
     if (!abstractOp) return WalkResult::advance();
 
-    if (DynamicTensorflowOps().contains(abstractOp->getTypeID())) {
+    if (mlir::mhlo::IsDynamicPadderOp(abstractOp->getTypeID())) {
       has_dynamic_op = true;
       dynamism_op_counter->GetCell(op->getName().getStringRef().str())
           ->IncrementBy(1);

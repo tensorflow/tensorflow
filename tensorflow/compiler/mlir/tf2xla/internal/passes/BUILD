@@ -483,6 +483,7 @@ cc_library(
     deps = [
         ":lowering_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
