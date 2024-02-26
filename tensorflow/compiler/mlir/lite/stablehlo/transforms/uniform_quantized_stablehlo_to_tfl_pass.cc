@@ -818,19 +818,19 @@ class RewriteQuantizedConvolutionOp
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
         op.getDimensionNumbers();
 
-    const int64_t output_dimension =
-        dimension_numbers.getKernelOutputFeatureDimension();
-    if (output_dimension != 3) {
-      LLVM_DEBUG(llvm::dbgs() << "Expected kernel output feature == 3. Got: "
-                              << output_dimension << ".\n");
+    const int64_t kernel_input_feature_dim =
+        dimension_numbers.getKernelInputFeatureDimension();
+    if (kernel_input_feature_dim != 2) {
+      LLVM_DEBUG(llvm::dbgs() << "Expected kernel input feature == 2. Got: "
+                              << kernel_input_feature_dim << ".\n");
       return failure();
     }
 
-    const int64_t input_dimension =
-        dimension_numbers.getKernelInputFeatureDimension();
-    if (input_dimension != 2) {
-      LLVM_DEBUG(llvm::dbgs() << "Expected kernel input feature == 2. Got: "
-                              << input_dimension << ".\n");
+    const int64_t kernel_output_feature_dim =
+        dimension_numbers.getKernelOutputFeatureDimension();
+    if (kernel_output_feature_dim != 3) {
+      LLVM_DEBUG(llvm::dbgs() << "Expected kernel output feature == 3. Got: "
+                              << kernel_output_feature_dim << ".\n");
       return failure();
     }
 
@@ -882,7 +882,7 @@ class RewriteQuantizedConvolutionOp
         op.getResult().getType().cast<TensorType>().getElementType());
     stablehlo::ConvDimensionNumbersAttr dimension_numbers =
         op.getDimensionNumbers();
-
+    const bool is_depthwise = IsDepthwiseConvolution(op, dimension_numbers);
     Value filter_value = op.getOperand(1);
     Operation* filter_op = filter_value.getDefiningOp();
     auto filter_uniform_quantized_type =
@@ -901,8 +901,8 @@ class RewriteQuantizedConvolutionOp
     auto new_filter_quantized_type = CreateI8F32UniformQuantizedPerAxisType(
         filter_op->getLoc(), *op.getContext(),
         filter_uniform_quantized_type.getScales(),
-        filter_uniform_quantized_type.getZeroPoints(),
-        /*quantization_dimension=*/0, /*narrow_range=*/true);
+        filter_uniform_quantized_type.getZeroPoints(), is_depthwise ? 3 : 0,
+        /*narrow_range=*/true);
 
     auto filter_constant_value_attr = cast<DenseIntElementsAttr>(
         cast<stablehlo::ConstantOp>(filter_value.getDefiningOp()).getValue());
@@ -910,8 +910,9 @@ class RewriteQuantizedConvolutionOp
     // Using TransposeOp doesn't work because the quantized dimension
     // changes which violates the constraint for the TransposeOp that the
     // input's and output's element type should be the same.
-    const DenseIntElementsAttr new_filter_value_attr = TransposeFilterValue(
-        filter_op->getLoc(), rewriter, filter_constant_value_attr);
+    const DenseIntElementsAttr new_filter_value_attr =
+        TransposeFilterValue(filter_op->getLoc(), rewriter,
+                             filter_constant_value_attr, is_depthwise);
 
     auto new_filter_result_type = RankedTensorType::getChecked(
         filter_op->getLoc(),
@@ -934,7 +935,8 @@ class RewriteQuantizedConvolutionOp
       }
     }
 
-    const int64_t num_output_features = new_filter_result_type.getShape()[0];
+    const int64_t num_output_features =
+        new_filter_result_type.getShape()[is_depthwise ? 3 : 0];
     const SmallVector<int64_t, 1> bias_shape = {num_output_features};
 
     TFL::QConstOp bias = GetBiasOp(op, rewriter, new_filter_result_type,
@@ -942,7 +944,6 @@ class RewriteQuantizedConvolutionOp
                                    has_i32_output, fuse_bias_constant);
 
     // Determine the attributes for the TFL::Conv2DOp.
-
     Value input_value = op.getOperand(0);
     if (const DenseIntElementsAttr padding_attr = op.getPaddingAttr();
         !HasProperPadding(op, dimension_numbers, padding_attr)) {
@@ -978,20 +979,45 @@ class RewriteQuantizedConvolutionOp
     } else {
       output_type = op.getResult().getType();
     }
-    rewriter.replaceOpWithNewOp<TFL::Conv2DOp>(
-        // op result should be recasted to desired quantized type.
-        op, output_type,
-        /*input=*/input_value,
-        /*filter=*/new_filter_constant_op, /*bias=*/bias.getResult(),
-        /*dilation_h_factor=*/rewriter.getI32IntegerAttr(dilation_h_factor),
-        /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
-        /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
-        /*padding=*/
-        rewriter.getStringAttr(UseSamePadding(op, dimension_numbers)
-                                   ? kPaddingSame
-                                   : kPaddingValid),
-        /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
-        /*stride_w=*/rewriter.getI32IntegerAttr(stride_w));
+
+    // TODO: b/326332748 - Support more formats than `NHWC`.
+    if (is_depthwise) {
+      // The total number of depthwise convolution output channels will be
+      // equal to input channel * `depth_multiplier`.
+      const int64_t multiplier = dimension_numbers.getOutputFeatureDimension() /
+                                 dimension_numbers.getInputFeatureDimension();
+
+      rewriter.replaceOpWithNewOp<TFL::DepthwiseConv2DOp>(
+          // op result should be recasted to desired quantized type.
+          op, output_type,
+          /*input=*/input_value,
+          /*filter=*/new_filter_constant_op, /*bias=*/bias.getResult(),
+          /*dilation_h_factor=*/rewriter.getI32IntegerAttr(dilation_h_factor),
+          /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+          /*padding=*/
+          rewriter.getStringAttr(UseSamePadding(op, dimension_numbers)
+                                     ? kPaddingSame
+                                     : kPaddingValid),
+          /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
+          /*stride_w=*/rewriter.getI32IntegerAttr(stride_w),
+          /*depthwise_multiplier=*/rewriter.getI32IntegerAttr(multiplier));
+    } else {
+      rewriter.replaceOpWithNewOp<TFL::Conv2DOp>(
+          // op result should be recasted to desired quantized type.
+          op, output_type,
+          /*input=*/input_value,
+          /*filter=*/new_filter_constant_op, /*bias=*/bias.getResult(),
+          /*dilation_h_factor=*/rewriter.getI32IntegerAttr(dilation_h_factor),
+          /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+          /*padding=*/
+          rewriter.getStringAttr(UseSamePadding(op, dimension_numbers)
+                                     ? kPaddingSame
+                                     : kPaddingValid),
+          /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
+          /*stride_w=*/rewriter.getI32IntegerAttr(stride_w));
+    }
   }
 
  private:
@@ -1125,14 +1151,18 @@ class RewriteQuantizedConvolutionOp
   }
 
   // Transposes the filter tensor to match the filter tensor format for
-  // `tfl.conv_2d`. This function performs the following index permutation
-  // only: (3, 0, 1, 2). The filter value is assumed to be of `[0, 1, i, o]`
-  // format. The `tfl.conv_2d` accepts the filter of `[o, 0, 1, i]`.
-  // TODO: b/291598373 - Lift the assumption about the filter tensor's format
-  // and generalize the transpose.
+  // TFLite convolution. The following transformations are supported:
+  //
+  // Depthwise case (`feature_group_count` > 1)
+  //   * Permutates given filter to `[i, 0, 1, o]` format.
+  // General convolution (`feature_group_count` = 1)
+  //   * Permutates given filter to `[o, 0, 1, i]` format.
+  // TODO: b/291598373 - Lift the assumption about the filter tensor having
+  // `[0, 1, i, o]` format.
   DenseIntElementsAttr TransposeFilterValue(
       Location loc, PatternRewriter& rewriter,
-      const DenseIntElementsAttr& filter_value_attr) const {
+      const DenseIntElementsAttr& filter_value_attr,
+      const bool is_depthwise) const {
     ArrayRef<int64_t> filter_shape =
         filter_value_attr.getShapedType().getShape();
     SmallVector<int8_t> filter_constant_values;
@@ -1144,7 +1174,12 @@ class RewriteQuantizedConvolutionOp
         filter_constant_values.size(), 0);
 
     SmallVector<int64_t> new_filter_shape;
-    SmallVector<int64_t, 4> transpose_dims = {3, 0, 1, 2};
+    SmallVector<int64_t, 4> transpose_dims;
+    if (is_depthwise) {
+      transpose_dims = {2, 0, 1, 3};
+    } else {
+      transpose_dims = {3, 0, 1, 2};
+    }
     for (int i = 0; i < filter_shape.size(); ++i) {
       new_filter_shape.push_back(filter_shape[transpose_dims[i]]);
     }
@@ -1160,9 +1195,12 @@ class RewriteQuantizedConvolutionOp
       for (int j = 0; j < filter_shape[1]; ++j) {
         for (int k = 0; k < filter_shape[2]; ++k) {
           for (int l = 0; l < filter_shape[3]; ++l) {
-            // [i][j][k][l] -> [l][i][j][k]
+            // [o, 0, 1, i] for `tfl.conv_2d` case`,
+            // [i, 0, 1, o] for `tfl.depthwise_conv_2d` case.
             int old_idx = get_array_idx(filter_shape, i, j, k, l);
-            int new_idx = get_array_idx(new_filter_shape, l, i, j, k);
+            int new_idx = is_depthwise
+                              ? get_array_idx(new_filter_shape, k, i, j, l)
+                              : get_array_idx(new_filter_shape, l, i, j, k);
 
             new_filter_constant_values[new_idx] =
                 filter_constant_values[old_idx];
@@ -1285,6 +1323,14 @@ class RewriteQuantizedConvolutionOp
                                             /*value=*/bias_value);
     }
     return bias;
+  }
+
+  bool IsDepthwiseConvolution(
+      stablehlo::ConvolutionOp op,
+      const stablehlo::ConvDimensionNumbersAttr dimension_numbers) const {
+    // `feature_group_count` controls how the input channel dimension is split.
+    //  A value bigger than one signals depthwise convolution behavior.
+    return op.getFeatureGroupCount() > 1;
   }
 };
 
