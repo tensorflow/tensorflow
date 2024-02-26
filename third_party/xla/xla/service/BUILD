@@ -381,6 +381,7 @@ cc_library(
     deps = [
         ":collective_ops_utils",
         ":hlo_pass",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/graphcycles",
@@ -393,10 +394,12 @@ xla_cc_test(
     name = "collective_permute_decomposer_test",
     srcs = ["collective_permute_decomposer_test.cc"],
     deps = [
+        ":collective_ops_utils",
         ":collective_permute_decomposer",
         ":hlo_parser",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test_main",

@@ -43,7 +43,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -272,6 +271,39 @@ static absl::Status InternalInit() {
       absl::StrCat("failed call to cuInit: ", ToString(res)));
 }
 
+// Synchronize with spinlocks.
+const char kScheduleSpinString[] = "spin";
+// Synchronize with spinlocks that also call CPU yield instructions.
+const char kScheduleYieldString[] = "yield";
+// Synchronize with a "synchronization primitive" (e.g. mutex).
+const char kScheduleBlockingSyncString[] = "blocking_sync";
+
+int GetFlagsFromEnv() {
+  const char* gpu_schedule_string =
+      std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
+
+  if (gpu_schedule_string == nullptr) {
+    return 0;
+  }
+
+  unsigned device_flags = 0;
+  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
+    device_flags = CU_CTX_SCHED_SPIN;
+  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
+    device_flags = CU_CTX_SCHED_YIELD;
+  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
+    device_flags = CU_CTX_SCHED_BLOCKING_SYNC;
+  } else {
+    LOG(QFATAL) << "Unknown option for environment variable "
+                   "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
+                << gpu_schedule_string << " should be one of {"
+                << kScheduleBlockingSyncString << ", " << kScheduleSpinString
+                << ", " << kScheduleYieldString << "}";
+  }
+
+  return device_flags;
+}
+
 }  // namespace
 
 /* static */ absl::Status GpuDriver::Init() {
@@ -302,39 +334,12 @@ static absl::Status InternalInit() {
   return absl::OkStatus();
 }
 
-bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
-                                 int* flags) {
-  static_assert(DeviceOptions::kMask == 0xf,
-                "needs update for new device options");
-
-  if (device_options.flags() & DeviceOptions::kDoNotReclaimStackAllocation) {
-    *flags |= CU_CTX_LMEM_RESIZE_TO_MAX;
-  }
-
-  // If no flags are set the default is CU_CTX_SCHED_AUTO, which
-  // in Google environments is very likely to mean SPIN.
-  if (device_options.flags() & DeviceOptions::kScheduleSpin) {
-    *flags |= CU_CTX_SCHED_SPIN;
-  }
-  if (device_options.flags() & DeviceOptions::kScheduleYield) {
-    *flags |= CU_CTX_SCHED_YIELD;
-  }
-  if (device_options.flags() & DeviceOptions::kScheduleBlockingSync) {
-    *flags |= CU_CTX_SCHED_BLOCKING_SYNC;
-  }
-
-  return true;
-}
-
-/* static */ absl::Status GpuDriver::CreateContext(
-    int device_ordinal, CUdevice device, const DeviceOptions& device_options,
-    GpuContext** context) {
+/* static */ absl::Status GpuDriver::CreateContext(int device_ordinal,
+                                                   CUdevice device,
+                                                   GpuContext** context) {
   *context = nullptr;
 
-  int flags = 0;
-  if (!DeviceOptionsToContextFlags(device_options, &flags)) {
-    LOG(WARNING) << "could not convert all device options into context flags";
-  }
+  int flags = GetFlagsFromEnv();
 
   CUresult res;
   CUcontext former_context;

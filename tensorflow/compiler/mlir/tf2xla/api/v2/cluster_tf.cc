@@ -155,7 +155,7 @@ void CreateReplicatedClusteringPipeline(OpPassManager &pm,
       pm, module_name);
 }
 
-void CreateTPUClusteringPipelineV2(OpPassManager &pm) {
+void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
   CreateReplicatedClusteringPipeline(pm, /*module_name=*/"");
 }
 
@@ -200,11 +200,11 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
   return absl::OkStatus();
 }
 
-mlir::PassPipelineRegistration<> clustering_tpu_pipeline_v2(
-    "tf-cluster-tpu-bridge-v2",
+mlir::PassPipelineRegistration<> replicated_clustering_bridge_v2(
+    "tf-replicated-clustering-bridge-v2",
     "Run all the passes involved in transforming a TensorFlow 2 graph before "
-    "execution so that it is suitable for targeting TPUs.",
-    CreateTPUClusteringPipelineV2);
+    "execution so that it is suitable for targeting devices.",
+    CreateReplicatedClusteringPipelineV2);
 
 }  // namespace v2
 }  // namespace tf2xla

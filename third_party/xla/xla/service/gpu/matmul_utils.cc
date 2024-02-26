@@ -390,6 +390,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   switch (output_shape.element_type()) {
     case F8E4M3FN:
     case F8E5M2:
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
     case F16:
     case BF16:
     case F32:

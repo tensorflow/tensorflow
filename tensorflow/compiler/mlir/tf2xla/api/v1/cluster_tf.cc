@@ -64,7 +64,7 @@ namespace {
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
 
-void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+void CreateReplicatedBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(mlir::tf2xla::internal::CreateInferenceMetricsPass());
 
   // Convert to unified compilation and replication attributes.
@@ -211,7 +211,7 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
           << tensorflow::CurrentStackTrace();
 
   Status functional_import_status = RunTFXLABridge(
-      module, [](OpPassManager &pm) { CreateTPUBridgePipelineV1(pm); },
+      module, [](OpPassManager &pm) { CreateReplicatedBridgePipelineV1(pm); },
       /*module_name=*/"", /*dump_prefix=*/"tf_xla_functional_import_bridge_v1");
   TF_RETURN_IF_ERROR(RecordStatusIfError(
       /*error_prefix=*/"Bridge Function Import V1", is_in_fallback_enabled_mode,
@@ -229,11 +229,11 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
 }
 
 // Registers a pipeline builder function for TF TPU V1 bridge.
-mlir::PassPipelineRegistration<> tpu_pipeline_v1(
-    "tf-cluster-tpu-bridge-v1",
+mlir::PassPipelineRegistration<> replicated_clustering_bridge_v1(
+    "tf-replicated-clustering-bridge-v1",
     "Run all the passes involved in transforming a TensorFlow V1 graph before "
-    "execution so that it is suitable for targeting TPUs.",
-    CreateTPUBridgePipelineV1);
+    "execution so that it is suitable for targeting devices.",
+    CreateReplicatedBridgePipelineV1);
 
 }  // namespace v1
 }  // namespace tf2xla

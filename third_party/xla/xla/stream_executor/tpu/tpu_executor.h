@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -65,8 +64,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   ~TpuExecutor() override;
 
-  absl::Status Init(int device_ordinal,
-                    ::stream_executor::DeviceOptions device_options) override;
+  absl::Status Init(int device_ordinal) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 

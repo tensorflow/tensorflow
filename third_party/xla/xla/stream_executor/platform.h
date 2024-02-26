@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_options.h"
 
 namespace stream_executor {
 
@@ -43,8 +42,7 @@ std::string StreamPriorityToString(StreamPriority priority);
 // StreamExecutorConfig encapsulates the set of options for constructing a
 // StreamExecutor for a given platform.
 struct StreamExecutorConfig {
-  // Sets members to defaults: -1 for ordinal (must be changed), and default
-  // PluginConfig and DeviceOptions.
+  // Sets members to defaults: -1 for ordinal (must be changed).
   StreamExecutorConfig();
 
   // Simple ordinal-setting constructor.
@@ -56,9 +54,6 @@ struct StreamExecutorConfig {
 
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
-
-  // The DeviceOptions for the returned StreamExecutor.
-  DeviceOptions device_options;
 };
 
 // Abstract base class for a platform registered with the PlatformManager.

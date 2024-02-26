@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "xla/backends/interpreter/executor.h"
-#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -50,7 +49,6 @@ absl::StatusOr<StreamExecutor*> XlaInterpreterPlatform::ExecutorForDevice(
     int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
-  config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
 
@@ -65,7 +63,7 @@ XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<XlaInterpreterExecutor>(), config.ordinal);
-  auto init_status = executor->Init(config.device_options);
+  auto init_status = executor->Init();
   if (!init_status.ok()) {
     return absl::Status{
         absl::StatusCode::kInternal,

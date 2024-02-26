@@ -67,7 +67,6 @@ typedef struct SE_PlatformId {
   void* id;  // aka stream_executor::Platform::Id
 } SE_PlatformId;
 typedef struct SE_StreamExecutorConfig SE_StreamExecutorConfig;
-typedef struct SE_DeviceOptions SE_DeviceOptions;
 typedef TF_Status* (*SE_StatusCallback)(void*);
 
 typedef struct SE_DeviceMemoryBase {

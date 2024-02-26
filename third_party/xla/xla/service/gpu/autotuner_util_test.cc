@@ -15,12 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuner_util.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
@@ -31,9 +41,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
+using ::testing::status::StatusIs;
 
 class AutotunerUtilTest : public HloTestBase {
  protected:
@@ -61,6 +73,13 @@ ENTRY e {
     TF_EXPECT_OK(tsl::ReadFileToString(env, std::string(file_path), &str));
     EXPECT_THAT(str, Not(IsEmpty()));
     return str;
+  }
+
+  std::unique_ptr<stream_executor::StreamExecutor> NewStreamExecutor() {
+    stream_executor::Platform* platform =
+        stream_executor::PlatformManager::PlatformWithName("Host").value();
+    stream_executor::StreamExecutorConfig config(/*ordinal=*/0);
+    return platform->GetUncachedExecutor(config).value();
   }
 };
 
@@ -121,6 +140,63 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_Protobuf) {
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
+}
+
+// Test that when complete AOT autotuning is required, and there is cache miss,
+// a `NotFound` error will be raised.
+TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
+  std::string kFilePath = GetUniqueTempFilePath(".txt");
+  auto hlo_module = GetOptimizedModule(kHloText);
+  TF_EXPECT_OK(hlo_module.status());
+  std::vector<HloComputation*> computations =
+      (*hlo_module)
+          ->MakeNonfusionComputations(absl::flat_hash_set<absl::string_view>());
+  EXPECT_THAT(computations, Not(IsEmpty()));
+  const HloInstruction* instruction = *computations[0]->instructions().begin();
+  std::unique_ptr<stream_executor::StreamExecutor> executor =
+      NewStreamExecutor();
+  auto options = DebugOptions();
+  options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  AutotuneConfig config(DeviceConfig(executor.get()), options);
+  EXPECT_THAT(
+      AutotunerUtil::Autotune(instruction, config,
+                              [&] { return AutotuneResult(); }),
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr("Complete XLA AOT autotuning results are required, but "
+                    "no AOT result was found for key: <key model")));
+}
+
+// Test that when JIT autotuning is disabled, but no cache miss due to AOT
+// autotuning, `Autotune` still returns Ok status.
+TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
+  auto hlo_module = GetOptimizedModule(kHloText);
+  std::vector<HloComputation*> computations =
+      (*hlo_module)
+          ->MakeNonfusionComputations(absl::flat_hash_set<absl::string_view>());
+  EXPECT_THAT(computations, Not(IsEmpty()));
+  const HloInstruction* instruction = *computations[0]->instructions().begin();
+  std::unique_ptr<stream_executor::StreamExecutor> executor =
+      NewStreamExecutor();
+
+  {
+    // By default, JIT autotuning is OK.
+    AutotuneConfig config(DeviceConfig(executor.get()), DebugOptions());
+    TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
+                   return AutotuneResult();
+                 }).status());
+  }
+
+  // Now require complete AOT autotuning results.
+  auto options = DebugOptions();
+  options.set_xla_gpu_require_complete_aot_autotune_results(true);
+
+  AutotuneConfig config(DeviceConfig(executor.get()), options);
+  // Even though JIT autotuning is disabled, there is no cache miss when running
+  // autotuning for the same entry, so no error should be raised either.
+  TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
+                 return AutotuneResult();
+               }).status());
 }
 
 }  // namespace
