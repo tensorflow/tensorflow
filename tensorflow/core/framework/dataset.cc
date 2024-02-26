@@ -841,9 +841,9 @@ Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
       "Random access is not implemented for this dataset.");
 }
 
-StatusOr<DatasetBase*> DatasetBase::Finalize(
+absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
     OpKernelContext* ctx,
-    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+    std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
         make_finalized_dataset) const {
   mutex_lock l(mu_);
   if (!finalized_dataset_) {

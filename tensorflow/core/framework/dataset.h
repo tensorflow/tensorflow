@@ -1345,9 +1345,9 @@ class DatasetBase : public core::RefCounted {
 
   // Return a finalized version of the dataset.  The returned DatasetBase is
   // unowned and lives for as long as this dataset.
-  virtual StatusOr<DatasetBase*> Finalize(
+  virtual absl::StatusOr<DatasetBase*> Finalize(
       OpKernelContext* ctx,
-      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+      std::function<absl::StatusOr<core::RefCountPtr<DatasetBase>>()>
           make_finalized_dataset) const;
 
   // Wrapper around a GraphDefBuilder which provides support for serializing
