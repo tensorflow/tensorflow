@@ -6070,23 +6070,3 @@ func.func @clamp_complex(%min: tensor<8xcomplex<f32>>,
   %result = mhlo.clamp %min, %operand, %max : tensor<8xcomplex<f32>>
   func.return %result : tensor<8xcomplex<f32>>
 }
-
-// -----
-// CHECK: #[[$ST_3D:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed, d1 : compressed, d2 : compressed) }>
-// CHECK: #[[$ST_4D:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2, d3) -> (d0 : compressed, d1 : compressed, d2 : compressed, d3 : compressed) }>
-// CHECK-LABEL: func @reshape_sparse_encoding
-// CHECK-PRIMITIVE-LABEL: func @reshape_sparse_encoding
-
-#ST_3D = #sparse_tensor.encoding<{
-  map = (d0, d1, d2) -> (d0 : compressed, d1 : compressed, d2 : compressed)
-}>
-
-#ST_4D = #sparse_tensor.encoding<{
-  map = (d0, d1, d2, d3) -> (d0 : compressed, d1 : compressed, d2 : compressed, d3 : compressed)
-}>
-
-func.func @reshape_sparse_encoding(%arg0: tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D> {
-  %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D>
-  func.return %0 : tensor<1x784x1x1xf32, #ST_4D>
-}
-// CHECK: tensor.reshape %{{.*}} : (tensor<1x49x16xf32, #[[$ST_3D]]>, tensor<4xi64>) -> tensor<1x784x1x1xf32, #[[$ST_4D]]>

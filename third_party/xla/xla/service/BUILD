@@ -3114,16 +3114,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "sparse_util",
-    srcs = ["sparse_util.cc"],
-    hdrs = ["sparse_util.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-    ],
-)
-
 xla_cc_test(
     name = "space_to_batch_converter_test",
     size = "small",
@@ -3361,7 +3351,6 @@ cc_library(
     hdrs = ["dot_decomposer.h"],
     deps = [
         ":hlo_pass",
-        ":sparse_util",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",

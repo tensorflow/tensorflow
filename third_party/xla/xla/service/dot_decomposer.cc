@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
-#include "xla/service/sparse_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
@@ -217,11 +216,6 @@ absl::StatusOr<bool> DotDecomposer::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kDot) {
-        continue;
-      }
-      // Skips sparse instruction as DotDecomposer does not know how to handle
-      // sparse input yet.
-      if (SparseUtil::HasSparseInOut(instruction)) {
         continue;
       }
       const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();

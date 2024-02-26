@@ -84,56 +84,6 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
   return options;
 }
 
-void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
-                             int32_t xla_cpu_sparse_cuda_threads) {
-  // Sparse GPU acceleration for sparsified code.
-  // Setting 0 threads means no acceleration (default).
-  // Setting 1 thread means cuSPARSE libgen.
-  // Otherwise direct CUDA codegen.
-  const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
-  const bool gpu_libgen = xla_cpu_sparse_cuda_threads == 1;
-  mlir::SparsificationOptions sparsification_options;
-  sparsification_options.enableRuntimeLibrary = false;
-  if (gpu_codegen && !gpu_libgen) {
-    sparsification_options.parallelizationStrategy =
-        mlir::SparseParallelizationStrategy::kDenseOuterLoop;
-  }
-  // Sparsification set up.
-  pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
-  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
-  pm.addPass(mlir::createSparsificationAndBufferizationPass(
-      GetBufferizationOptions(new_deallocator), sparsification_options,
-      /*createSparseDeallocs=*/false,
-      /*enableRuntimeLibrary=*/false,
-      /*enableBufferInitialization=*/false,
-      /*vectorLength=*/0,
-      /*enableVLAVectorization=*/false,
-      /*enableSIMDIndex32=*/false,
-      /*enableGPULibgen=*/gpu_libgen));
-  pm.addPass(mlir::createStorageSpecifierToLLVMPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::bufferization::createFinalizingBufferizePass());
-#ifdef EXPERIMENTAL_MLIR_GPU
-  // Sparse GPU acceleration lowers to GPU dialect.
-  if (gpu_codegen) {
-    pm.addPass(
-        mlir::createSparseGPUCodegenPass(xla_cpu_sparse_cuda_threads, false));
-    pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createStripDebugInfoPass());
-    pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createConvertSCFToCFPass());
-    pm.addNestedPass<mlir::gpu::GPUModuleOp>(
-        mlir::createConvertGpuOpsToNVVMOps());
-  }
-#else   // EXPERIMENTAL_MLIR_GPU
-  CHECK(!gpu_codegen)
-      << "Experimental MLIR GPU code generation was not enabled at build time";
-#endif  // EXPERIMENTAL_MLIR_GPU
-}
-
-void AddSparsificationPassPipeline(mlir::OpPassManager& pm) {
-  AddSparsificationPasses(pm, false, /*xla_cpu_sparse_cuda_threads=*/0);
-}
-
 }  // namespace
 
 // -------------------------------------------------------------------------- //
@@ -157,22 +107,6 @@ static Status CreateHloXlaPipeline(
       mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-
-  // Some early sparse rewriting rules.
-  if (options.sparse_bufferization) {
-    pm.addNestedPass<FuncOp>(createSparseCustomCallRewritingPass());
-    // We wrap some CHLO unary operations with custom calls to preserve the
-    // sparsity information for those operations during the roundtrip. We now
-    // invoke the needed passes to lower such CHLO operations to HLO after we
-    // rewrite the custom calls back to such CHLO unary operations.
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createLegalizeSparseOperationsPass(
-            /*legalizeToCustomCalls=*/false));
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHloPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createSparseRewritingPass());
-  }
 
   // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -229,13 +163,7 @@ static Status CreateHloXlaPipeline(
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
   pm.addPass(mlir::createCanonicalizerPass());
-
-  if (options.sparse_bufferization) {
-    // Convert Sparse tensors.
-    AddSparsificationPasses(pm, false, options.xla_cpu_sparse_cuda_threads);
-  } else {
-    pm.addPass(mlir::hlo::createOneShotBufferizePass());
-  }
+  pm.addPass(mlir::hlo::createOneShotBufferizePass());
   pm.addNestedPass<mlir::func::FuncOp>(createRewriteReallocToAllocPass());
   pm.addNestedPass<FuncOp>(mlir::createVectorizeCopyPass());
   pm.addNestedPass<FuncOp>(mlir::createNaiveCopyRemovalPass());
@@ -324,11 +252,6 @@ static mlir::PassPipelineRegistration<> hlo_xla_runtime_pipeline(
                    << status.message();
       }
     });
-
-static mlir::PassPipelineRegistration<> sparsification_pipeline(
-    "hlo-xla-runtime-sparsification",
-    "Sparsification passes from HLO-XLA Runtime pipeline",
-    AddSparsificationPassPipeline);
 
 }  // namespace cpu
 }  // namespace xla
