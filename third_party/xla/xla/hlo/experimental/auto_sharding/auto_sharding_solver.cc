@@ -62,6 +62,12 @@ using ::operations_research::MPVariable;
 // solver cannot guarantee exact numerical precision.
 constexpr double kMaxCostEpsilon = 1.0001;
 
+// In the Mixed ILP, we model all memory-related terms (i.e., coefficients,
+// bounds, etc.) using smaller absolute values, due to limitations on precision.
+// To compensate, the overbudget objective coefficient must be amplified by the
+// same amount.
+constexpr double kMemoryMultiplier = 1e-6;
+
 bool AutoShardingSolverResult::operator==(
     const AutoShardingSolverResult& other) const {
   return status == other.status &&
@@ -448,22 +454,17 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget() > 0) {
-    const double min_memory_budget_required_estimate =
-        MinimumMemoryBudgetRequired(request);
-    const double min_memory_overbudget = std::max(
-        0.0, min_memory_budget_required_estimate - request.memory_budget());
     for (LivenessIdx time_idx = 0; time_idx < request.live_size(); ++time_idx) {
-      double upper_bound = request.memory_budget();
-      if (overbudget_var) upper_bound += min_memory_overbudget;
-      MPConstraint* constraint =
-          solver->MakeRowConstraint(-MPSolver::infinity(), upper_bound,
-                                    absl::StrCat("mem[", time_idx, "]"));
+      MPConstraint* constraint = solver->MakeRowConstraint(
+          -MPSolver::infinity(), kMemoryMultiplier * request.memory_budget(),
+          absl::StrCat("mem[", time_idx, "]"));
       if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
       for (NodeIdx node_idx : request.live(time_idx).nodes()) {
         for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
           const double accumulated_coefficient =
               constraint->GetCoefficient(s[node_idx][j]);
-          const double memory_cost = request.memory_costs(node_idx).costs(j);
+          const double memory_cost =
+              kMemoryMultiplier * request.memory_costs(node_idx).costs(j);
           constraint->SetCoefficient(s[node_idx][j],
                                      accumulated_coefficient + memory_cost);
         }
@@ -474,7 +475,7 @@ AutoShardingSolverResult CallORToolsSolver(
           const double accumulated_coefficient =
               constraint->GetCoefficient(e[edge_idx][j]);
           const double memory_cost =
-              request.memory_edge_costs(edge_idx).costs(j);
+              kMemoryMultiplier * request.memory_edge_costs(edge_idx).costs(j);
           constraint->SetCoefficient(e[edge_idx][j],
                                      accumulated_coefficient + memory_cost);
         }
@@ -482,12 +483,11 @@ AutoShardingSolverResult CallORToolsSolver(
     }
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(
-          overbudget_var, request.overbudget_coeff().coeff());
-      solver->MutableObjective()->SetOffset(request.overbudget_coeff().coeff() *
-                                            min_memory_overbudget);
+          overbudget_var,
+          request.overbudget_coeff().coeff() / kMemoryMultiplier);
     }
     LOG(INFO) << "Minimum memory budget estimate: "
-              << min_memory_budget_required_estimate;
+              << MinimumMemoryBudgetRequired(request);
     LOG(INFO) << "Using memory budget: " << request.memory_budget();
   }
 
@@ -789,9 +789,8 @@ AutoShardingSolverResult SolveAndExtractSolution(
     }
   }
   if (overbudget_var) {
-    unsalted_objective +=
-        request.overbudget_coeff().coeff() * overbudget_var->solution_value();
-    unsalted_objective += solver.Objective().offset();
+    unsalted_objective += request.overbudget_coeff().coeff() *
+                          overbudget_var->solution_value() / kMemoryMultiplier;
   }
   if (makespan_var) {
     unsalted_objective +=
