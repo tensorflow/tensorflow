@@ -102,8 +102,6 @@ absl::Status MlirLoopFusion::EmitMlir(
   const auto& root_graph = root_computation.GetRootSubgraph();
 
   auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
-  subgraph_to_mlir_fn.extract(&root_graph).mapped().erase();
-
   auto call_target_lookup = [&](const HloInstruction* instr) {
     return subgraph_to_mlir_fn[&computations
                                     .FindPartitionedComputation(instr->parent())
@@ -112,10 +110,6 @@ absl::Status MlirLoopFusion::EmitMlir(
 
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
-      if (&subgraph == &root_graph) {
-        // We inline the root subgraph.
-        continue;
-      }
       TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
           comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_target_lookup));
     }
@@ -130,8 +124,6 @@ absl::Status MlirLoopFusion::EmitMlir(
   TF_RET_CHECK(indexing) << "Indexing is never nullopt";
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
-  llvm::SmallVector<mlir::Value> input_tensors(
-      entry_function.getArguments().take_front(num_inputs));
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
 
@@ -141,13 +133,17 @@ absl::Status MlirLoopFusion::EmitMlir(
           builder, output_tensor_args, *indexing,
           [&](mlir::ValueRange output_tensors, mlir::ValueRange output_indices)
               -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
-            llvm::SmallVector<mlir::Value> args(input_tensors);
-            absl::c_copy(output_indices, std::back_inserter(args));
-            TF_ASSIGN_OR_RETURN(
-                auto result_scalars,
-                mlir_converter::SubgraphToMlir(
-                    root_computation, root_graph, call_target_lookup,
-                    input_tensors, output_indices, builder));
+            auto root_fn = subgraph_to_mlir_fn[&root_graph];
+
+            // Generate the operands for the root function: input tensors +
+            // output indices.
+            llvm::SmallVector<mlir::Value> operands(
+                entry_function.getArguments().take_front(num_inputs));
+            absl::c_copy(output_indices, std::back_inserter(operands));
+
+            auto result_scalars =
+                builder.create<mlir::func::CallOp>(root_fn, operands)
+                    .getResults();
 
             llvm::SmallVector<mlir::Value> result_tensors;
             result_tensors.reserve(output_tensor_args.size());

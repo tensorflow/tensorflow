@@ -143,6 +143,11 @@ ENTRY entry_computation {
   ASSERT_TRUE(RunFileCheck(out, R"(
     // CHECK: func.func @fused_computation
     // CHECK-NEXT: gpu.thread_id
+    // CHECK-NEXT: call @fused_computation_atan2
+    // CHECK-NEXT: tensor.insert
+    // CHECK-NEXT: return
+
+    // CHECK: func.func @fused_computation_atan2
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: addf
@@ -150,7 +155,7 @@ ENTRY entry_computation {
     // CHECK-NEXT: mulf
     // CHECK-NEXT: divf
     // CHECK-NEXT: atan2
-    // CHECK-NEXT: tensor.insert
+    // CHECK-NEXT: return
     )")
                   .value());
 }
@@ -187,7 +192,7 @@ ENTRY entry_computation {
   mlir_module->print(os);
 
   ASSERT_TRUE(RunFileCheck(out, R"(
-    // CHECK-COUNT-1: func.func
+    // CHECK-COUNT-2: func.func
     // CHECK-NOT:     func.func
   )")
                   .value());
@@ -242,11 +247,14 @@ ENTRY main {
     // CHECK:   %[[TID_X:.*]] = gpu.thread_id x
     // CHECK:   %[[BID_X:.*]] = gpu.block_id x
     // CHECK:   %[[IDX:.*]] = affine.apply #[[MAP]]()[%[[TID_X]], %[[BID_X]]]
+    // CHECK:   %[[SCALARS:.*]]:2 = func.call @fused_computation_d_1
+    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS]]#0 into %{{.*}}[%[[IDX]]]
+    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS]]#1 into %{{.*}}[%[[IDX]]]
+    // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
+
+    // CHECK: func @fused_computation_d_1
     // CHECK:   %[[RET:.*]]:2 = func.call @Add_t
     // CHECK:   yield %[[RET]]#0, %[[RET]]#1
-    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %{{.*}}#0 into %{{.*}}[%[[IDX]]]
-    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %{{.*}}#1 into %{{.*}}[%[[IDX]]]
-    // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
 )")
                   .value());
 }
