@@ -12,23 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/reduction.h"
+#include "xla/service/gpu/fusions/reduction_base.h"
 
 #include <memory>
-#include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/service/gpu/fusions/fusions.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -40,15 +40,17 @@ class ReductionTest : public HloTestBase {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
 
-absl::StatusOr<std::unique_ptr<ReductionFusion>> GetReductionFusion(
-    const HloFusionAnalysis& analysis) {
-  TF_ASSIGN_OR_RETURN(
-      auto emitter, GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis}));
-  auto fusion = dynamic_cast<ReductionFusion*>(emitter.get());
-  TF_RET_CHECK(fusion != nullptr);
+class FakeReductionFusion : public ReductionFusionBase<KernelFusionInterface> {
+  using ReductionFusionBase::ReductionFusionBase;
+  absl::StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext&, const HloFusionInstruction&) const override {
+    return absl::UnimplementedError("Unimplemented");
+  }
+};
 
-  emitter.release();
-  return std::unique_ptr<ReductionFusion>{fusion};
+std::unique_ptr<FakeReductionFusion> GetReductionFusion(
+    const HloFusionAnalysis& analysis) {
+  return std::make_unique<FakeReductionFusion>(analysis);
 }
 
 TEST_F(ReductionTest, ThreadIndexingRowReduction) {
@@ -75,12 +77,11 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  FakeReductionFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           (d3 * 8 + d0 floordiv 32) floordiv 64,
@@ -102,7 +103,7 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         d3 * 8 + d0 floordiv 32 in [0, 6399]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5) -> (
           (d3 * 8 + d0 floordiv 32) floordiv 64,
@@ -145,12 +146,11 @@ TEST_F(ReductionTest, ThreadIndexingMultiRowReduction) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  FakeReductionFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 + (d0 floordiv 4) floordiv 64,
@@ -172,7 +172,7 @@ TEST_F(ReductionTest, ThreadIndexingMultiRowReduction) {
         d3 * 64 + d0 floordiv 4 in [0, 6399]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5) -> (
           d3 + (d0 floordiv 4) floordiv 64,
@@ -216,12 +216,11 @@ TEST_F(ReductionTest, ThreadIndexingColumnReduction) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  FakeReductionFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3,
@@ -236,7 +235,7 @@ TEST_F(ReductionTest, ThreadIndexingColumnReduction) {
         d0 mod 32 in [0, 31]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5) -> (
           d3,
@@ -273,12 +272,11 @@ TEST_F(ReductionTest, ThreadIndexingOutputLayout) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  FakeReductionFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5) -> (
           (d3 * 8 + d0 floordiv 32) floordiv 64,
@@ -323,8 +321,7 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  FakeReductionFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
 
   constexpr char kExpectedIndexing[] = R"(
@@ -348,10 +345,10 @@ TEST_F(ReductionTest, ThreadIndexingSideOutput) {
       d3 * 8 + d0 floordiv 32 in [0, 6399]
   )";
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToInputIndexing(1, 0, &mlir_context)->ToString(),
       MatchIndexingString(kExpectedIndexing));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
       MatchIndexingString(kExpectedIndexing));
 }
 
@@ -377,12 +374,11 @@ TEST_F(ReductionTest, bla) {
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis = AnalyzeFusion(*root, device_info_);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetReductionFusion(analysis));
+  FakeReductionFusion fusion(analysis);
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
       MatchIndexingString(R"(
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
           d3,
