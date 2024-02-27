@@ -102,16 +102,12 @@ absl::Status MlirLoopFusion::EmitMlir(
   const auto& root_graph = root_computation.GetRootSubgraph();
 
   auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
-  auto call_target_lookup = [&](const HloInstruction* instr) {
-    return subgraph_to_mlir_fn[&computations
-                                    .FindPartitionedComputation(instr->parent())
-                                    .FindSubgraph(instr)];
-  };
-
+  auto call_targets =
+      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
   for (const auto& comp : computations.partitioned_computations()) {
     for (const auto& subgraph : comp.subgraphs()) {
       TF_RETURN_IF_ERROR(mlir_converter::SubgraphToMlirFunction(
-          comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_target_lookup));
+          comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
     }
   }
 
@@ -156,7 +152,6 @@ absl::Status MlirLoopFusion::EmitMlir(
             }
             return result_tensors;
           }));
-
   builder.create<mlir::func::ReturnOp>(result_tensors);
 
   return absl::OkStatus();

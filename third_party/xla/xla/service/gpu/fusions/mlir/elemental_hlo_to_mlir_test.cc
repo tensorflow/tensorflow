@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -29,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/hlo_parser.h"
@@ -52,12 +52,16 @@ class ElementalHloToMlirTest : public HloTestBase {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
                          mlir::affine::AffineDialect, mlir::arith::ArithDialect,
                          mlir::math::MathDialect, mlir::scf::SCFDialect,
-                         mlir::mhlo::MhloDialect>();
+                         mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect>();
   }
 
   // Converts the root subgraph of the entry function of the given hlo module to
   // MLIR.
-  absl::Status Run(const std::string& hlo, const std::string& filecheck_str) {
+  absl::Status Run(
+      const std::string& hlo, const std::string& filecheck_str,
+      std::function<bool(const HloInstruction*)> is_subgraph_root = nullptr,
+      std::function<bool(const HloInstruction*, int)>
+          operand_is_function_argument = nullptr) {
     auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
 
     mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
@@ -65,25 +69,21 @@ class ElementalHloToMlirTest : public HloTestBase {
     auto module = llvm_ir::CreateMlirModuleOp(builder.getLoc());
     builder.setInsertionPointToStart(module->getBody());
     auto* entry_computation = hlo_module->entry_computation();
-    mlir::func::FuncOp entry_func;
-    for (auto* computation : hlo_module->computations()) {
-      PartitionedComputation pc(computation);
-      TF_RET_CHECK(pc.subgraphs().size() == 1);
-      auto func = CreateSubgraphMlirFunction(pc.GetRootSubgraph(), builder);
-      func.setSymName(computation->name());
-      if (computation == entry_computation) {
-        entry_func = func;
-      } else {
-        func.setSymVisibility("private");
-      }
+    PartitionedComputations partitioned_computations(
+        entry_computation, is_subgraph_root, operand_is_function_argument);
+    auto fns = partitioned_computations.DeclareFunctions(module.get());
+    auto entry_func = fns[&partitioned_computations
+                               .FindPartitionedComputation(entry_computation)
+                               .GetRootSubgraph()];
+    // Set all functions private. We're only generating one function here.
+    for (auto [subgraph, func] : fns) {
+      func.setSymVisibility("private");
     }
-    PartitionedComputation entry_pc(entry_computation);
+    auto& entry_pc =
+        partitioned_computations.FindPartitionedComputation(entry_computation);
     TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
         entry_pc, entry_pc.GetRootSubgraph(), entry_func,
-        [&](const HloInstruction* instr) {
-          return module->lookupSymbol<mlir::func::FuncOp>(
-              instr->parent()->name());
-        }));
+        partitioned_computations.CreateCallTargetProvider(fns)));
 
     // Canonicalize and CSE for better readability of check tests.
     mlir::PassManager pm(&context_);
@@ -119,10 +119,10 @@ TEST_F(ElementalHloToMlirTest, Reduce) {
                                           to_apply=add
     })",
                    R"(
-    // CHECK:      func.func @main(
-    // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xf32>,
-    // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>,
-    // CHECK-SAME:   %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}} -> f32 {
+    // CHECK:      @main_r(
+    // CHECK-SAME:   %[[ARG0:.*]]: tensor<10x20x30x40xf32>
+    // CHECK-SAME:   %[[ARG1:.*]]: tensor<f32>
+    // CHECK-SAME:   %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}} -> f32
     // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
     // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
     // CHECK-DAG:  %[[C20:.*]] = arith.constant 20
@@ -134,7 +134,8 @@ TEST_F(ElementalHloToMlirTest, Reduce) {
     // CHECK-SAME:     iter_args(%[[ACC_INNER:.*]] = %[[ACC]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
     // CHECK-SAME:        [%[[X]], %[[I]], %[[Y]], %[[J]]]
-    // CHECK:          %[[UPD:.*]] = func.call @add(%[[ACC_INNER]], %[[VAL]])
+    // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC_INNER]],
+    // CHECK-SAME:                                      %[[VAL]])
     // CHECK:          scf.yield %[[UPD]]
     // CHECK:        }
     // CHECK:        scf.yield %[[RET_INNER]]
@@ -152,7 +153,7 @@ TEST_F(ElementalHloToMlirTest, Concatenate) {
       ROOT r = f32[10,38,30] concatenate(p0, p1, p2), dimensions={1}
     })",
                    R"(
-    // CHECK:      func.func @main(
+    // CHECK:      @main_r(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<10x20x30xf32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<10x15x30xf32>,
     // CHECK-SAME:     %[[ARG2:.*]]: tensor<10x3x30xf32>,
@@ -194,7 +195,7 @@ TEST_F(ElementalHloToMlirTest, Gather) {
                                  index_vector_dim=1, slice_sizes={7,8}
     })",
                    R"(
-    // CHECK:      func.func @main(
+    // CHECK:      @main_r(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<33x34xf32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<1806x1xi32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
@@ -219,7 +220,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
       ROOT pad = f32[12, 16] pad(p0, p1), padding=1_4_1x4_8_0
     })",
                    R"(
-    // CHECK:      func.func @main(
+    // CHECK:      @main_pad(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x4xf32>,
     // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
@@ -261,7 +262,7 @@ TEST_F(ElementalHloToMlirTest, Transpose) {
       ROOT transpose = f32[6,5,4] transpose(p0), dimensions={2,1,0}
     })",
                    R"(
-    // CHECK:      func.func @main(
+    // CHECK:      @main_transpose(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x5x6xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
     // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
@@ -278,7 +279,7 @@ TEST_F(ElementalHloToMlirTest, Broadcast) {
       ROOT broadcast = f32[6,4,5] broadcast(p0), dimensions={1,2}
     })",
                    R"(
-    // CHECK:      func.func @main(
+    // CHECK:      @main_broadcast(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4x5xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}},
     // CHECK-SAME:     %[[Z:.*]]: index {{{.*}}}
@@ -296,7 +297,7 @@ TEST_F(ElementalHloToMlirTest, Add) {
       ROOT add = f32[4] add(p0, p1)
     })",
                    R"(
-    // CHECK:      func.func @main(
+    // CHECK:      @main_add(
     // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xf32>, %[[ARG1:.*]]: tensor<4xf32>,
     // CHECK-SAME:     %[[X:.*]]: index {{.*}}
     // CHECK:        %[[A:.*]] = tensor.extract %[[ARG0]][%[[X]]]
@@ -304,6 +305,38 @@ TEST_F(ElementalHloToMlirTest, Add) {
     // CHECK:        %[[RET:.*]] = arith.addf %[[A]], %[[B]]
     // CHECK:        return %[[RET]]
   )"));
+}
+
+TEST_F(ElementalHloToMlirTest, InjectedParameter) {
+  TF_EXPECT_OK(Run(
+      R"(
+      ENTRY main {
+        %p0 = f32[2,16,17] parameter(0)
+        %log = f32[2,16,17] log(%p0)
+        %transpose = f32[2,17,16] transpose(%log), dimensions={0,2,1}
+        %p1 = f32[] parameter(1)
+        %bc = f32[2,17,16] broadcast(%p1), dimensions={}
+        ROOT %add = f32[2,17,16] add(%transpose, %bc)
+      })",
+      R"(
+      // CHECK:      @main_add(
+      // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
+      // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
+      // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :
+      // CHECK-SAME:     %[[Y:.*]]: index {xla.range = [0 : index, 16 :
+      // CHECK-SAME:     %[[Z:.*]]: index {xla.range = [0 : index, 15 :
+      // CHECK-SAME:     %[[TRANSPOSE:.*]]: f32) -> f32
+      // CHECK:        %[[B:.*]] = tensor.extract %[[ARG1]][]
+      // CHECK:        %[[RET:.*]] = arith.addf %[[TRANSPOSE]], %[[B]]
+      // CHECK:        return %[[RET]])",
+      [](const HloInstruction* instr) {
+        // Make the transpose a new root.
+        return instr->opcode() == HloOpcode::kTranspose;
+      },
+      [](const HloInstruction* instr, int operand_id) {
+        // Inject the transpose argument.
+        return instr->operand(operand_id)->opcode() == HloOpcode::kTranspose;
+      }));
 }
 
 }  // namespace

@@ -40,10 +40,6 @@ using OperandProvider =
     std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
         const HloInstruction* instr, int index, mlir::ValueRange indices)>;
 
-// Given a root of a subgraph, returns the corresponding function.
-using CallTargetProvider =
-    std::function<mlir::func::FuncOp(const HloInstruction* instr)>;
-
 // Emits MLIR to generate the given element of the HLO instruction. Required
 // operands are accessed through the `operand_provider` function.
 // CHECK fails if IsHloConversionSupported returns false.
@@ -72,13 +68,6 @@ absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,
     const PartitionedComputation::Subgraph& subgraph, mlir::func::FuncOp& func,
     const CallTargetProvider& call_target_provider);
-
-// Converts a function (subgraph) to MLIR that is emitted inline.
-absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
-    const PartitionedComputation& computation,
-    const PartitionedComputation::Subgraph& subgraph,
-    const CallTargetProvider& call_target_provider, mlir::ValueRange parameters,
-    mlir::ValueRange indices, mlir::ImplicitLocOpBuilder& builder);
 
 // Creates an affine.apply op for the given expression and values.
 mlir::Value ApplyAffineExpr(mlir::AffineExpr expr, mlir::ValueRange dims,
