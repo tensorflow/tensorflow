@@ -1,4 +1,3 @@
-#include "tsl/platform/errors.h"
 /* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +22,11 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_BLAS_H_
 
 #include <complex>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/errors.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {

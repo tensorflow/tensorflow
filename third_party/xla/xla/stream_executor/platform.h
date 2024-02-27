@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_options.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 

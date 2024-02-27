@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/stream.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,12 +28,10 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
