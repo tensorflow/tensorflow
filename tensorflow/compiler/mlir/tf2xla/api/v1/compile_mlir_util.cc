@@ -94,7 +94,8 @@ constexpr absl::string_view kGroupKeyAttrName =
 
 // Extracts shape from XlaArgument as TensorShape. If shape is a xla::Shape,
 // that is converted to a TensorShape.
-StatusOr<TensorShape> GetTensorShapeFromXlaArgument(const XlaArgument& arg) {
+absl::StatusOr<TensorShape> GetTensorShapeFromXlaArgument(
+    const XlaArgument& arg) {
   if (absl::holds_alternative<xla::Shape>(arg.shape)) {
     TensorShape arg_shape;
     TF_RETURN_IF_ERROR(
@@ -201,7 +202,7 @@ Status GetOutputInfo(
     std::vector<XlaResourceUpdate>* resource_updates) {
   auto shape_representation_fn_no_fast_memory =
       [shape_determination_fns](
-          const xla::Shape& xla_shape) -> StatusOr<xla::Shape> {
+          const xla::Shape& xla_shape) -> absl::StatusOr<xla::Shape> {
     TensorShape shape;
     TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
     TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
@@ -635,8 +636,8 @@ Status ConvertMLIRWithOptionalXlaComputation(
       lower_to_xla_hlo, module_name));
 
   mlir::MlirToHloConversionOptions options;
-  options.layout_preference_fn =
-      [&](const xla::Shape& xla_shape) -> StatusOr<mlir::XlaLayoutPreference> {
+  options.layout_preference_fn = [&](const xla::Shape& xla_shape)
+      -> absl::StatusOr<mlir::XlaLayoutPreference> {
     TensorShape shape;
     TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
     TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
@@ -646,7 +647,8 @@ Status ConvertMLIRWithOptionalXlaComputation(
   };
   options.shape_representation_fn =
       [&](const xla::Shape& xla_shape, bool fast_mem,
-          mlir::XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+          mlir::XlaLayoutPreference layout_preference)
+      -> absl::StatusOr<xla::Shape> {
     TensorShape shape;
     TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
     TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
@@ -761,7 +763,7 @@ Status PopulateResultIOInfo(
       &compilation_result->resource_updates);
 }
 
-StatusOr<std::string> CompileMlirToXlaHlo(
+absl::StatusOr<std::string> CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
@@ -805,7 +807,7 @@ StatusOr<std::string> CompileMlirToXlaHlo(
   return mlir_compilation;
 }
 
-StatusOr<std::string> CompileSerializedMlirToXlaHlo(
+absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
@@ -836,7 +838,7 @@ StatusOr<std::string> CompileSerializedMlirToXlaHlo(
 // it gets inlined in the "main' function and the corresponding argument is
 // removed from the signature. For resource args, their subtypes are populated.
 // Returns the original indices for the other arguments on success.
-static StatusOr<std::vector<int>> RewriteWithArgs(
+static absl::StatusOr<std::vector<int>> RewriteWithArgs(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args) {
   mlir::func::FuncOp main_fn =
       module_op.lookupSymbol<mlir::func::FuncOp>("main");
@@ -983,7 +985,7 @@ Status CompileGraphToXlaHlo(
   return compile_mlir_result.status();
 }
 
-xla::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphToModule(
     const Graph& graph, llvm::ArrayRef<std::string> control_rets,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     mlir::MLIRContext* context) {
