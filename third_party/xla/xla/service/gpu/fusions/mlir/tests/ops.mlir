@@ -38,7 +38,7 @@ module {
 // -----
 
 module {
-  func.func @add(%a: f32, %b: f32) -> f32 {
+  func.func private @add(%a: f32, %b: f32) -> f32 {
     %ret = arith.addf %a, %b : f32
     return %ret : f32
   }

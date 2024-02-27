@@ -75,10 +75,6 @@ class ElementalHloToMlirTest : public HloTestBase {
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
                                .GetRootSubgraph()];
-    // Set all functions private. We're only generating one function here.
-    for (auto [subgraph, func] : fns) {
-      func.setSymVisibility("private");
-    }
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     TF_RETURN_IF_ERROR(SubgraphToMlirFunction(

@@ -128,8 +128,8 @@ TEST_F(MlirConcatenateFusionTest, ConcatenateElementwise) {
 
 // CHECK:       return %[[INSERTED_2]]
 
-// CHECK: func.func @fused_computation_log
-// CHECK: func.func @fused_computation_exp
+// CHECK: func.func private @fused_computation_log
+// CHECK: func.func private @fused_computation_exp
 )")
                   .value());
 }

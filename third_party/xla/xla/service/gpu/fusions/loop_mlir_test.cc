@@ -309,7 +309,7 @@ ENTRY entry_computation {
     // CHECK-NEXT: tensor.insert
     // CHECK-NEXT: return
 
-    // CHECK: func.func @fused_computation_atan2
+    // CHECK: func.func private @fused_computation_atan2
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: tensor.extract
     // CHECK-NEXT: addf
@@ -414,7 +414,7 @@ ENTRY main {
     // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS]]#1 into %{{.*}}[%[[IDX]]]
     // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
 
-    // CHECK: func @fused_computation_d_1
+    // CHECK: func private @fused_computation_d_1
     // CHECK:   %[[RET:.*]]:2 = func.call @Add_t
     // CHECK:   yield %[[RET]]#0, %[[RET]]#1
 )")

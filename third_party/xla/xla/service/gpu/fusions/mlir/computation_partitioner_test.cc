@@ -164,8 +164,6 @@ TEST_F(ComputationPartitionerTest, PartiallyMergable) {
 }
 
 std::string PrintAndErase(mlir::func::FuncOp func) {
-  // Set visibility to private so the function verifies.
-  func.setSymVisibility("private");
   std::string out;
   llvm::raw_string_ostream os(out);
   os << func;

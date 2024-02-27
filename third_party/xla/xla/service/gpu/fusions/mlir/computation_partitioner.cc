@@ -350,9 +350,12 @@ mlir::func::FuncOp CreateSubgraphMlirFunction(
     }
   }
   auto ty = b.getFunctionType(parameter_types, result_types);
-  return b.create<mlir::func::FuncOp>(
+  auto func_op = b.create<mlir::func::FuncOp>(
       subgraph.name, ty,
       /*attrs=*/llvm::ArrayRef<mlir::NamedAttribute>{}, arg_attrs);
+  // Needed so that the function can potentially be inlined in-place.
+  func_op.setPrivate();
+  return func_op;
 }
 
 }  // namespace mlir_converter

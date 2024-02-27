@@ -2,7 +2,7 @@
 // RUN: mlir_fusions_opt %s -cse -xla-gpu-lower-func | FileCheck %s -check-prefixes=CHECK-CSE
 
 module {
-  func.func @callee() -> f32 {
+  func.func private @callee() -> f32 {
     %ret = arith.constant 0.0 : f32
     return %ret : f32
   }
@@ -33,7 +33,7 @@ module {
 // -----
 
 module {
-  func.func @arg_callee(%arg0: f32, %arg1: f32) -> f32 {
+  func.func private @arg_callee(%arg0: f32, %arg1: f32) -> f32 {
     %ret = arith.addf %arg0, %arg1 : f32
     return %ret : f32
   }

@@ -1,12 +1,12 @@
 // RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-lower-tensors | FileCheck %s
 
 module {
-  func.func @add(%arg0: f32, %arg1: f32) -> f32 {
+  func.func private @add(%arg0: f32, %arg1: f32) -> f32 {
     %sum = arith.addf %arg0, %arg1 : f32
     func.return %sum : f32
   }
 
-  func.func @tensorarg(%arg0: tensor<43xf32> {xla.invariant, xla.slice_index = 0}, %arg1: index) -> f32 {
+  func.func private @tensorarg(%arg0: tensor<43xf32> {xla.invariant, xla.slice_index = 0}, %arg1: index) -> f32 {
     %v1 = arith.constant 2.0 : f32
     %v2 = tensor.extract %arg0[%arg1] : tensor<43xf32>
     %sum = func.call @add(%v1, %v2) : (f32, f32) -> f32
@@ -28,11 +28,11 @@ module {
   }
 }
 
-// CHECK:        func.func @add(%{{.*}}: f32, %{{.*}}: f32) -> f32 {
+// CHECK:        func.func private @add(%{{.*}}: f32, %{{.*}}: f32) -> f32 {
 // CHECK-NEXT:     arith.addf
 // CHECK-NEXT:     return
 
-// CHECK:        func.func @tensorarg(%[[ARG0:.*]]: !llvm.ptr
+// CHECK:        func.func private @tensorarg(%[[ARG0:.*]]: !llvm.ptr
 // CHECK-SAME:        {xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2.000000e+00
 // CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i32
