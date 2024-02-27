@@ -22,7 +22,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cublas",
+    name = "cublas",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cublas_stub.cc",
         "cublas.tramp.S",
@@ -74,7 +74,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cuda",
+    name = "cuda",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cuda_stub.cc",
         "cuda.tramp.S",
@@ -98,7 +98,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cudart",
+    name = "cudart",  # buildifier: disable=duplicated-name
     srcs = select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
         "@local_tsl//tsl:is_cuda_enabled_and_oss": [
@@ -135,7 +135,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cudnn",
+    name = "cudnn",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cudnn_stub.cc",
         "cudnn.tramp.S",
@@ -173,7 +173,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cufft",
+    name = "cufft",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cufft_stub.cc",
         "cufft.tramp.S",
@@ -198,7 +198,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cupti",
+    name = "cupti",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cupti_stub.cc",
         "cupti.tramp.S",
@@ -225,7 +225,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cusolver",
+    name = "cusolver",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cusolver_stub.cc",
         "cusolver.tramp.S",
@@ -250,7 +250,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "cusparse",
+    name = "cusparse",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "cusparse_stub.cc",
         "cusparse.tramp.S",
