@@ -127,8 +127,11 @@ absl::Status MlirLoopFusion::EmitMlir(
       auto result_tensors,
       EmitLoopNest(
           builder, output_tensor_args, *indexing,
-          [&](mlir::ValueRange output_tensors, mlir::ValueRange output_indices)
+          [&](mlir::ValueRange output_tensors, mlir::ValueRange dim_values,
+              mlir::ValueRange symbol_values)
               -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
+            auto output_indices = mlir_converter::ApplyAffineMap(
+                indexing->GetAffineMap(), dim_values, symbol_values, builder);
             auto root_fn = subgraph_to_mlir_fn[&root_graph];
 
             // Generate the operands for the root function: input tensors +

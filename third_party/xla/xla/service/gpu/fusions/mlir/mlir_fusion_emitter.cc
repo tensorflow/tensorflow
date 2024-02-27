@@ -334,10 +334,10 @@ MlirFusionEmitterBase::CreateMLIRModule(
 absl::StatusOr<llvm::SmallVector<mlir::Value>>
 MlirFusionEmitterBase::EmitLoopNest(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange output_tensors,
-    const IndexingMap& thread_to_output_map,
+    const IndexingMap& indexing_map,
     const std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
-        mlir::ValueRange outputs_tensors, mlir::ValueRange output_indices)>&
-        create_body) const {
+        mlir::ValueRange outputs_tensors, mlir::ValueRange dim_values,
+        mlir::ValueRange symbol_values)>& create_body) const {
   llvm::SmallVector<mlir::Value> map_dims{
       EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
       EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
@@ -352,8 +352,8 @@ MlirFusionEmitterBase::EmitLoopNest(
       make_loops;
   make_loops = [&](int i, mlir::ValueRange current_outputs)
       -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
-    if (i < thread_to_output_map.GetAffineMap().getNumSymbols()) {
-      auto range = thread_to_output_map.GetSymbolRange(i);
+    if (i < indexing_map.GetAffineMap().getNumSymbols()) {
+      auto range = indexing_map.GetSymbolRange(i);
       auto for_op = b.create<mlir::scf::ForOp>(cst(range.lower_bound),
                                                cst(range.upper_bound + 1),
                                                cst(1), current_outputs);
@@ -365,15 +365,13 @@ MlirFusionEmitterBase::EmitLoopNest(
       b.setInsertionPointAfter(for_op);
       return for_op.getResults();
     }
-    auto is_in_bounds = mlir_converter::CheckConstraints(
-        thread_to_output_map, map_dims, map_symbols, b);
+    auto is_in_bounds = mlir_converter::CheckConstraints(indexing_map, map_dims,
+                                                         map_symbols, b);
     auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange{current_outputs},
                                            is_in_bounds, true, true);
     b.setInsertionPointToStart(if_op.getBody(0));
-    auto output_indices = mlir_converter::ApplyAffineMap(
-        thread_to_output_map.GetAffineMap(), map_dims, map_symbols, b);
     TF_ASSIGN_OR_RETURN(auto results,
-                        create_body(current_outputs, output_indices));
+                        create_body(current_outputs, map_dims, map_symbols));
     b.create<mlir::scf::YieldOp>(results);
     b.setInsertionPointToStart(if_op.getBody(1));
     b.create<mlir::scf::YieldOp>(current_outputs);
