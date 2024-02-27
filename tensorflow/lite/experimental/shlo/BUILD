@@ -61,6 +61,7 @@ cc_test(
     srcs = ["quantized_tensor_element_type_test.cc"],
     deps = [
         ":data_type",
+        ":f16",
         ":quantized_tensor_element_type",
         "@com_google_googletest//:gtest_main",
     ],
@@ -95,7 +96,7 @@ cc_library(
 cc_library(
     name = "dispatch",
     hdrs = ["dispatch.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/lite/experimental/shlo:__subpackages__"],
     deps = [":data_type"],
 )
 
