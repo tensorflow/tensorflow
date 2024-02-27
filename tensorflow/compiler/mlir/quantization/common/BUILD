@@ -189,10 +189,14 @@ tf_cc_test(
     name = "uniform_quantized_types_test",
     srcs = ["uniform_quantized_types_test.cc"],
     deps = [
+        ":test_base",
         ":uniform_quantized_types",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

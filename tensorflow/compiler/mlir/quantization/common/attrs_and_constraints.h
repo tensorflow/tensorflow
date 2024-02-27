@@ -48,9 +48,6 @@ bool HasStaticShape(Value value);
 // Returns true if the value has static shape at given dims.
 bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims);
 
-// Returns true if the op has any quantized tensors as input or output.
-bool HasQuantizedTensors(Operation *op);
-
 // Creates a new type that has the shape from the `old_type` and the element
 // type from the `element_type`.
 Type CloneTypeWithNewElementType(Type old_type, Type element_type);
