@@ -20,59 +20,24 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
-#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/error_spec.h"
+#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
+#include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class MlirLoopFusionTest : public HloTestBase {
+class MlirLoopFusionTest : public MlirEmitterTestBase {
  public:
-  MlirLoopFusionTest() {
-    mlir_context_.loadDialect<
-        mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-        mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-        mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-        mlir::gpu::GPUDialect, xla::gpu::XlaGpuDialect>();
-    mlir::DialectRegistry registry;
-    mlir::func::registerInlinerExtension(registry);
-    mlir_context_.appendDialectRegistry(registry);
-    printer_ =
-        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                         {"chunk_id", "unroll_id"});
+  std::unique_ptr<MlirFusionEmitterBase> GetEmitter(
+      const HloFusionAnalysis& analysis) override {
+    return std::make_unique<MlirLoopFusion>(analysis);
   }
-
-  stream_executor::DeviceDescription device_info_ =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  AffineMapPrinter printer_;
-  mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
@@ -95,7 +60,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingUnrolled) {
   auto thread_id_to_output_indexing =
       fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
 
-  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
    (((bl_x * 16 + th_x floordiv 8) floordiv 3 + chunk_id * 5376) floordiv 625) mod 100,
@@ -136,7 +101,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
   MlirLoopFusion fusion(analysis);
   auto thread_id_to_output_indexing =
       fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
-  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
               domain:
@@ -151,7 +116,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_IndexingNotUnrolled) {
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
-  EXPECT_THAT(thread_id_to_input_indexing->ToString(printer_),
+  EXPECT_THAT(thread_id_to_input_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x)
               domain:
@@ -186,7 +151,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
   MlirLoopFusion fusion(analysis);
   auto thread_id_to_output_indexing =
       fusion.ComputeThreadIdToOutputIndexing(/*root_index=*/0, &mlir_context_);
-  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
+  EXPECT_THAT(thread_id_to_output_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
                 ((bl_x * 16 + th_x floordiv 8) floordiv 75) mod 10,
@@ -205,7 +170,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
             )"));
   auto thread_id_to_input_indexing = fusion.ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
-  EXPECT_THAT(thread_id_to_input_indexing->ToString(printer_),
+  EXPECT_THAT(thread_id_to_input_indexing->ToString(thread_id_printer_),
               MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
                 ((bl_x * 64 + th_x floordiv 2) floordiv 15) mod 20)
@@ -225,7 +190,7 @@ TEST_F(MlirLoopFusionTest, ThreadId_Broadcast) {
 TEST_F(MlirLoopFusionTest, NoCodeDuplication) {
   // This test HLO is copied from
   // xla/service/fusion_node_indexing_evaluation_test.cc.
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
 HloModule test_module
 %fused_computation (param: f32[6]) -> f32[2] {
   %param = f32[6]{0} parameter(0)
@@ -248,30 +213,21 @@ ENTRY entry_computation {
   add = f32[] add(p0, p0)
   broadcast = f32[6]{0} broadcast(add), dimensions={}
   ROOT %fusion = f32[2]{0} fusion(broadcast), kind=kLoop, calls=%fused_computation
-})")
-                    .value();
+})";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(mlir_context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
 // CHECK-COUNT-4: arith.add
 // CHECK-NOT: arith.add
 )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirLoopFusionTest, TwoUsersConsistentIndexing) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
 HloModule test_module
 %fused_computation (param: f32[6]) -> f32[2] {
   %p0 = f32[2]{0} parameter(0)
@@ -287,22 +243,11 @@ ENTRY entry_computation {
   p0 = f32[2] parameter(0)
   p1 = f32[2] parameter(1)
   ROOT %fusion = f32[2] fusion(p0, p1), kind=kLoop, calls=%fused_computation
-})")
-                    .value();
+})";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(mlir_context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
     // CHECK: func.func @fused_computation
     // CHECK-NEXT: gpu.thread_id
     // CHECK-NEXT: pure_call @fused_computation_atan2
@@ -320,10 +265,12 @@ ENTRY entry_computation {
     // CHECK-NEXT: return
     )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirLoopFusionTest, IotaCopyBitcastBroadcastReshapeReverseTranspose) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
 HloModule test_module
 %fused_computation {
   %iota = f32[10,20,30] iota(), iota_dimension=2
@@ -337,31 +284,21 @@ HloModule test_module
 
 ENTRY entry_computation {
   ROOT %fusion = s32[60,20,7,150] fusion(), kind=kLoop, calls=%fused_computation
-})")
-                    .value();
+})";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(mlir_context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
     // CHECK-COUNT-2: func.func
     // CHECK-NOT:     func.func
   )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 TEST_F(MlirLoopFusionTest, VariadicReduce) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  auto kHloString = R"(
   HloModule Test, is_scheduled=true
 
 Add {
@@ -387,23 +324,11 @@ ENTRY main {
   c = f32[] constant(0)
   ROOT fusion = (f32[200]{0}, f32[200]{0}) fusion(f32[5,200,300]{2,1,0} a, f32[5,200,300]{2,1,0} b, f32[] c), kind=kLoop, calls=fused_computation
 }
-    )")
-                    .value();
+    )";
 
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
 
-  MlirLoopFusion fusion(analysis);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto mlir_module,
-      fusion.CreateMLIRModule(mlir_context_, *Cast<HloFusionInstruction>(root),
-                              "fused_computation", nullptr));
-
-  std::string out;
-  llvm::raw_string_ostream os(out);
-  mlir_module->print(os);
-
-  ASSERT_TRUE(RunFileCheck(out, R"(
+  ASSERT_TRUE(RunFileCheck(ir, R"(
     // CHECK: #[[MAP:.*]] = affine_map<()[s0, s1] -> ((s0 + s1 * 128) mod 200)>
     // CHECK: func @fused_computation(
     // CHECK:   %[[TID_X:.*]] = gpu.thread_id x
@@ -419,6 +344,8 @@ ENTRY main {
     // CHECK:   yield %[[RET]]#0, %[[RET]]#1
 )")
                   .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
 }  // namespace
