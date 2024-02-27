@@ -294,11 +294,6 @@ class QuantizationDriver {
   // Otherwise, allocate a new entry in the state vector.
   void InitializeResultState(Operation* op, int index, Value res);
 
-  // Helps debug output for requantize states.
-  void DumpRequantizeStates(const RequantizeStates& requantize_states);
-
-  void DumpStates(Operation* current_op);
-
   func::FuncOp fn_;
   OpBuilder builder_;
   const bool is_signed_;

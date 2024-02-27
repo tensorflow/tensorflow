@@ -27,8 +27,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -46,8 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-
-#define DEBUG_TYPE "quantization-driver"
 
 namespace mlir {
 namespace quant {
@@ -102,64 +98,6 @@ void QuantizationDriver::InitializeResultState(Operation* op, const int index,
     return;
   }
   cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
-}
-
-void QuantizationDriver::DumpRequantizeStates(
-    const RequantizeStates& requantize_states) {
-  for (auto& requantize_state : requantize_states) {
-    if (requantize_state.pos != RequantizeState::NO_REQUANTIZE) {
-      llvm::dbgs() << "+";
-      requantize_state.params.print(llvm::dbgs());
-    }
-  }
-}
-
-void QuantizationDriver::DumpStates(Operation* current_op) {
-  if (current_op) {
-    llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
-  }
-  fn_.walk([&](Operation* op) {
-    std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
-    if (op->hasTrait<OpTrait::IsTerminator>() ||
-        (!IsOpQuantizable(op) && !scale_spec->has_same_scale_requirement) ||
-        llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp,
-                  func::ConstantOp, arith::ConstantOp>(op)) {
-      return;
-    }
-    if (current_op == op) llvm::dbgs() << "===>>>";
-    llvm::dbgs() << op->getName() << " : (";
-    if (llvm::isa<func::FuncOp>(op)) {
-      for (auto& arg : fn_.getArguments()) {
-        if (auto params = GetArgQuantState(arg).params) {
-          params.print(llvm::dbgs());
-          DumpRequantizeStates(GetArgRequantizeStates(arg));
-        }
-        llvm::dbgs() << ",";
-      }
-    }
-    for (int i = 0; i < op->getNumOperands(); ++i) {
-      if (auto params = GetOperandQuantState(op, i).params) {
-        params.print(llvm::dbgs());
-        DumpRequantizeStates(GetOperandRequantizeStates(op, i));
-      } else {
-        op->getOperand(i).getType().cast<ShapedType>().getElementType().print(
-            llvm::dbgs());
-      }
-      llvm::dbgs() << ",";
-    }
-    llvm::dbgs() << ") -> (";
-    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
-      if (auto params = GetResultQuantState(op, i).params) {
-        params.print(llvm::dbgs());
-        DumpRequantizeStates(GetResultRequantizeStates(op, i));
-      } else {
-        op->getResult(i).getType().cast<ShapedType>().getElementType().print(
-            llvm::dbgs());
-      }
-      llvm::dbgs() << ",";
-    }
-    llvm::dbgs() << ")\n";
-  });
 }
 
 std::unique_ptr<OpQuantSpec> QuantizationDriver::GetQuantSpec(Operation* op) {
@@ -789,8 +727,6 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
     Operation* op = work_list_.back();
     work_list_.pop_back();
 
-    LLVM_DEBUG(DumpStates(op));
-
     // This op has been quantized, so we should not consider it again.
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
@@ -867,9 +803,6 @@ bool QuantizationDriver::PropagateParamsAndReturnIfChanged() {
           SetBiasParamsWithAdjustments(op, it.first, it.second.first, params);
     }
   }
-
-  LLVM_DEBUG(llvm::dbgs() << "\n\n\n");
-  LLVM_DEBUG(DumpStates(nullptr));
 
   return changed;
 }
