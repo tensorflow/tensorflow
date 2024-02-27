@@ -124,7 +124,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                         const std::string& value) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
-  StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
+  absl::StatusOr<std::string> TryGetKeyValue(const std::string& key) override;
   std::vector<KeyValueEntry> GetKeyValueDir(
       absl::string_view directory_key) override;
   Status DeleteKeyValue(const std::string& key) override;
@@ -942,7 +942,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
   cb_iter->second.emplace_back(std::move(done));
 }
 
-StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
+absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
     const std::string& key) {
   VLOG(3) << "TryGetKeyValue(): " << key;
   const std::string& norm_key = NormalizeKey(key);
