@@ -115,7 +115,7 @@ class TfrtSessionInterOpThreadPools {
     thread_pools_.at(index) = thread_pool;
   }
 
-  StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
+  absl::StatusOr<ThreadPoolInterfaceWrapper*> GetThreadPool(int index) {
     if (index < 0 || index >= thread_pools_.size())
       return errors::InvalidArgument("Invalid thread pool index ", index);
     return thread_pools_[index];
@@ -580,7 +580,7 @@ class TfrtSessionFactory::ThreadPoolManager {
  public:
   // Updates the thread pools based on the given `SessionOptions`. Returns a
   // `TfrtSessionInterOpThreadPools` that can be used to create a `TfrtSession`.
-  StatusOr<TfrtSessionInterOpThreadPools> UpdateAndGetInterOpThreadPools(
+  absl::StatusOr<TfrtSessionInterOpThreadPools> UpdateAndGetInterOpThreadPools(
       const SessionOptions& options) {
     if (options.config.inter_op_parallelism_threads() > 0) {
       LOG(WARNING) << "TFRT session does not support positive "
@@ -679,7 +679,7 @@ class TfrtSessionFactory::ThreadPoolManager {
   // Returns a `ThreadPoolInterfaceWrapper` that wraps the thread pool with the
   // name in `pool_options`. Creates and stores a new thread pool if an existing
   // one can't be found.
-  StatusOr<ThreadPoolInterfaceWrapper*> GetOrCreateThreadPool(
+  absl::StatusOr<ThreadPoolInterfaceWrapper*> GetOrCreateThreadPool(
       Env* env, const ThreadPoolOptionProto& pool_options, int pool_index) {
     const int32_t num_threads = pool_options.num_threads();
     CHECK_GT(num_threads, 0);
