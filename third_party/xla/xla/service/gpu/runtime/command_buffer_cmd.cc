@@ -1139,6 +1139,54 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
 }
 
 //===----------------------------------------------------------------------===//
+// CuDnnCmd
+//===----------------------------------------------------------------------===//
+
+CuDnnCmd::CuDnnCmd(ExecutionStreamId execution_stream_id,
+                   absl::Span<const BufferAllocation::Slice> args,
+                   const se::dnn::DnnGraph& graph)
+    : TracedCommandBufferCmd(execution_stream_id),
+      args_(args.cbegin(), args.cend()),
+      graph_(graph) {}
+
+absl::Status CuDnnCmd::Initialize(const Thunk::InitializeParams& params,
+                                  StateManager&) {
+  if (!params.stream->parent()->AsDnn()) {
+    return absl::InternalError("Failed to initialize DNN support for CuDnnCmd");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
+                              const RecordParams& record_params,
+                              se::CommandBuffer* command_buffer) {
+  std::vector<se::DeviceMemoryBase> operands;
+  operands.reserve(args_.size());
+  for (const BufferAllocation::Slice& arg : args_) {
+    se::DeviceMemoryBase buf =
+        execute_params.buffer_allocations->GetDeviceAddress(arg);
+    VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
+    operands.push_back(buf);
+  }
+
+  return AddTracedCommandBuffer(
+      execute_params, record_params, command_buffer, [&](se::Stream* stream) {
+        return graph_.Execute(*stream,
+                              absl::Span<se::DeviceMemoryBase>(operands));
+      });
+}
+
+CommandBufferCmd::BufferUsageVector CuDnnCmd::buffers() {
+  CommandBufferCmd::BufferUsageVector buffer_usage;
+  buffer_usage.reserve(args_.size());
+  for (int i = 0; i < args_.size() - 1; ++i) {
+    buffer_usage.push_back({args_[i], MemoryAccess::kRead});
+  }
+  buffer_usage.push_back({args_.back(), MemoryAccess::kWrite});
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
 // CustomCallCmd
 //===----------------------------------------------------------------------===//
 

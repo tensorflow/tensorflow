@@ -176,6 +176,11 @@ static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
                                          thunk.results(), thunk.opaque());
 }
 
+static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {
+  return std::make_unique<CuDnnCmd>(thunk.execution_stream_id(),
+                                    thunk.arguments(), thunk.graph());
+}
+
 //===----------------------------------------------------------------------===//
 static absl::StatusOr<Command> CopyMetadata(absl::StatusOr<Command> cmd,
                                             const Thunk& thunk) {
@@ -238,6 +243,8 @@ static absl::Status AppendCommands(
       return append(Convert<ReplicaIdThunk>(thunk));
     case Thunk::Kind::kWhile:
       return append(Convert<WhileThunk>(thunk, synchronization_mode));
+    case Thunk::Kind::kCuDnn:
+      return append(Convert<CuDnnThunk>(thunk));
 
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.

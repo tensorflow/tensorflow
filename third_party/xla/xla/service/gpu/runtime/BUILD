@@ -126,6 +126,7 @@ cc_library(
         ":command_buffer_cmd",
         ":conditional_thunk",
         ":copy_thunk",
+        ":cudnn_thunk",
         ":custom_call_thunk",
         ":gemm_thunk",
         ":kernel_thunk",
@@ -742,19 +743,18 @@ cc_library(
 
 cc_library(
     name = "cudnn_thunk",
-    srcs = if_cuda_is_configured(["cudnn_thunk.cc"]),
-    hdrs = if_cuda_is_configured(["cudnn_thunk.h"]),
-    deps = if_cuda_is_configured([
+    srcs = ["cudnn_thunk.cc"],
+    hdrs = ["cudnn_thunk.h"],
+    deps = [
         "//xla:status",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:kernel_arguments",
         "//xla/service/gpu:thunk",
-        "//xla/service:buffer_assignment",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:logging",
-    ]) + [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
