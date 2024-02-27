@@ -59,7 +59,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(
       ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
   CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler
