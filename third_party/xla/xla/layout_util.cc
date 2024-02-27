@@ -69,6 +69,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
+    absl::Span<const SplitConfig> split_configs,
     std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
@@ -101,6 +102,9 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   layout.set_pointer_primitive_type(pointer_primitive_type);
   layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
+  for (const SplitConfig& split_config : split_configs) {
+    layout.add_split_configs(split_config);
+  }
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }

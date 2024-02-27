@@ -388,6 +388,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
       c_layout->element_size_in_bits, c_layout->memory_space,
+      /*split_configs=*/{},
       /*physical_shape=*/nullptr,
       c_layout->dynamic_shape_metadata_prefix_bytes);
 }

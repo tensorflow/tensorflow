@@ -4185,6 +4185,37 @@ TEST_F(HloParserTest, ParseShapeStringWithDynamicShapeMetadataPrefix) {
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithSplitConfigLayout) {
+  // Tile, memory space, and split config.
+  std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)SC(1:200)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {Tile({2, 128})}, 1, 0, 3,
+      {SplitConfig(1, {200})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Memory space and split config.
+  shape_string = "pred[123,456]{1,0:S(3)SC(0:10)(1:4,5)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {}, 1, 0, 3,
+      {SplitConfig(0, {10}), SplitConfig(1, {4, 5})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Split config only.
+  shape_string = "pred[123,456]{1,0:SC(1:50,200)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      PRED, {123, 456}, {1, 0}, {}, 1, 0, 0, {SplitConfig(1, {50, 200})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseOpaqueType) {
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape("opaque[]"));
   Shape expected = ShapeUtil::MakeOpaqueShape();

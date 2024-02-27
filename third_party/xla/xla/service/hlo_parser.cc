@@ -534,6 +534,7 @@ class HloParserImpl : public HloParser {
       absl::InlinedVector<bool, InlineRank()>* dim_unique,
       absl::InlinedVector<bool, InlineRank()>* dim_ordered);
   bool ParseTiles(std::vector<Tile>* tiles);
+  bool ParseSplitConfigs(std::vector<SplitConfig>& split_configs);
   bool ParsePhysicalShape(Shape* physical_shape);
   bool ParseOpcode(HloOpcode* opcode,
                    std::optional<HloOpcode>* async_wrapped_opcode);
@@ -5582,7 +5583,7 @@ bool HloParserImpl::ParseDimLevelTypes(
 
 // tiles
 //   ::= /*empty*/
-//   ::= 'T' '(' dim_list ')'
+//   ::= 'T' ('(' dim_list ')')+
 // dim_list
 //   ::= /*empty*/
 //   ::= (int64_t | '*') (',' (int64_t | '*'))*
@@ -5674,6 +5675,38 @@ bool HloParserImpl::ParseLayoutIntAttribute(
   return true;
 }
 
+// split_configs
+//   ::= /*empty*/
+//   ::= 'SC' ('(' int64_t ':' int64_list ')')+
+bool HloParserImpl::ParseSplitConfigs(std::vector<SplitConfig>& split_configs) {
+  auto parse_and_add_split_index = [&]() {
+    int64_t i;
+    if (ParseInt64(&i)) {
+      split_configs.back().add_split_indices(i);
+      return true;
+    }
+    return false;
+  };
+
+  do {
+    if (!ParseToken(TokKind::kLparen,
+                    StrCat("expects split configs to start with ",
+                           TokKindToString(TokKind::kLparen)))) {
+      return false;
+    }
+    int64_t dimension;
+    if (!ParseInt64(&dimension)) {
+      return false;
+    }
+    split_configs.push_back(SplitConfig(dimension, {}));
+    if (!ParseList(TokKind::kColon, TokKind::kRparen, TokKind::kComma,
+                   parse_and_add_split_index)) {
+      return false;
+    }
+  } while (lexer_.GetKind() == TokKind::kLparen);
+  return true;
+}
+
 // layout
 //   ::= '{' int64_list
 //       (':' dim_level_types
@@ -5681,6 +5714,7 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 //            tail_padding_alignment_in_elements
 //            element_size_in_bits
 //            memory_space
+//            split_configs
 //            physical_shape
 //            dynamic_shape_metadata_prefix_bytes)?
 //       '}'
@@ -5700,6 +5734,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
   int64_t element_size_in_bits = 0;
   int64_t memory_space = 0;
+  std::vector<SplitConfig> split_configs;
   std::optional<Shape> physical_shape;
   int64_t dynamic_shape_metadata_prefix_bytes = 0;
   int64_t tail_padding_alignment_in_elements = 1;
@@ -5781,6 +5816,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
         ParseLayoutIntAttribute(&memory_space, "memory space");
       }
 
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "SC") {
+        lexer_.Lex();
+        ParseSplitConfigs(split_configs);
+      }
+
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "P") {
         lexer_.Lex();
         physical_shape.emplace();
@@ -5807,7 +5847,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   *layout = LayoutUtil::MakeLayout(
       minor_to_major, dim_level_types, dim_unique, dim_ordered, vec_tiles,
       tail_padding_alignment_in_elements, index_primitive_type,
-      pointer_primitive_type, element_size_in_bits, memory_space,
+      pointer_primitive_type, element_size_in_bits, memory_space, split_configs,
       std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);
   return true;
 }

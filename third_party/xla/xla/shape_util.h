@@ -424,7 +424,8 @@ class ShapeUtil {
       absl::Span<const int64_t> minor_to_major,
       absl::Span<const Tile> tiles = {},
       int64_t tail_padding_alignment_in_elements = 1,
-      int64_t element_size_in_bits = 0, int64_t memory_space = 0);
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+      absl::Span<const SplitConfig> split_configs = {});
 
   // Constructs a new sparse array shape with the given minor_to_major order and
   // dim_level_types in its Layout. Returns a value shape such that

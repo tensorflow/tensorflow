@@ -181,6 +181,16 @@ message TileProto {
   repeated int64 dimensions = 1;
 }
 
+// Describes how data should be split between different memories.
+message SplitConfigProto {
+  // The dimension that is split.
+  int64 dimension = 1;
+  // The indices where each split point occurs. For example, if the dimension
+  // size is 1024, a split_indices value of {512} indicates a two-way split of
+  // data through the middle.
+  repeated int64 split_indices = 2;
+}
+
 // A layout describes how the array is placed in (1D) memory space.  This
 // includes the minor-to-major ordering of dimensions within a shape.
 //
@@ -252,6 +262,10 @@ message LayoutProto {
   // field may be non-zero for a static shape whose associated buffer is for a
   // dynamic shape, e.g. a result of SliceToDynamic.
   int64 dynamic_shape_metadata_prefix_bytes = 15;
+
+  // The split configurations which describe if/how the data is split between
+  // different memories.
+  repeated SplitConfigProto split_configs = 17;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
