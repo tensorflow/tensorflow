@@ -49,6 +49,14 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> HloToMlir(
     const CallTargetProvider& call_target_provider,
     mlir::ImplicitLocOpBuilder& builder);
 
+// Emits MLIR to produce the value(s) of a parameter. The parameter must be
+// located outside the subgraph.
+absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int operand_index, mlir::ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& builder);
+
 // Checks whether the given HLO instruction can be converted to MLIR.
 bool IsHloOpSupported(const HloInstruction* instr,
                       se::CudaComputeCapability compute_capability);

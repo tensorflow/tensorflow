@@ -837,6 +837,40 @@ bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
       });
 }
 
+absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
+    const PartitionedComputation& computation, const HloInstruction* instr,
+    int operand_index, mlir::ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& builder) {
+  auto& caller_subgraph = computation.FindSubgraph(instr);
+  auto this_fn = call_target_provider(caller_subgraph.roots[0]);
+
+  auto* operand = instr->operand(operand_index);
+  if (operand->opcode() == HloOpcode::kParameter) {
+    mlir::Value value = this_fn.getArgument(operand->parameter_number());
+    if (value.getType().isa<mlir::TensorType>()) {
+      value = builder.create<mlir::tensor::ExtractOp>(value, indices);
+    } else {
+      TF_RET_CHECK(indices.size() == 0);
+    }
+    return {{value}};
+  }
+
+  const auto& injected_params = caller_subgraph.injected_param_indices;
+  if (auto it = injected_params.find(std::make_pair(instr, operand_index));
+      it != injected_params.end()) {
+    auto injected_param_values =
+        this_fn.getArguments().take_back(injected_params.size());
+    return {{injected_param_values[it->second]}};
+  }
+
+  auto callee = call_target_provider(operand);
+  llvm::SmallVector<mlir::Value> operands(
+      this_fn.getArguments().take_front(instr->parent()->num_parameters()));
+  absl::c_copy(indices, std::back_inserter(operands));
+  return builder.create<PureCallOp>(callee, operands).getResults();
+}
+
 namespace {
 
 absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
@@ -853,55 +887,17 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
   std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
       const HloInstruction* instr, mlir::ValueRange indices)>
       emit_instr;
-  absl::flat_hash_map<mlir::Operation*, llvm::SmallVector<PureCallOp>> calls;
 
   auto provide_operand = [&](const HloInstruction* instr, int index,
                              mlir::ValueRange indices)
       -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
     auto* operand = instr->operand(index);
-    if (operand->opcode() == HloOpcode::kParameter) {
-      mlir::Value value = parameters[operand->parameter_number()];
-      if (value.getType().isa<mlir::TensorType>()) {
-        value = builder.create<mlir::tensor::ExtractOp>(value, indices);
-      } else {
-        CHECK_EQ(indices.size(), 0);
-      }
-      return {{value}};
-    }
-
-    const auto& target_subgraph = computation.FindSubgraph(operand);
-    if (&target_subgraph == &subgraph) {
+    if (operand->opcode() != HloOpcode::kParameter &&
+        &computation.FindSubgraph(operand) == &subgraph) {
       return emit_instr(operand, indices);
     }
-
-    auto& injected_param_indices = subgraph.injected_param_indices;
-    if (auto it = injected_param_indices.find(std::make_pair(instr, index));
-        it != injected_param_indices.end()) {
-      return {{injected_param_values[it->second]}};
-    }
-
-    TF_RET_CHECK(target_subgraph.injected_param_indices.empty())
-        << "Cannot call a subgraph that requires injected values";
-
-    auto callee = call_target_provider(operand);
-    llvm::SmallVector<mlir::Value> operands(parameters);
-    absl::c_copy(indices, std::back_inserter(operands));
-
-    // Check if we already have a call to this function in scope and reuse it
-    // if so. func.call is not pure, even if the call target is pure, so CSE
-    // won't clean this up.
-    auto& existing_calls = calls[callee];
-    for (auto call : existing_calls) {
-      if (call.getOperands() == operands &&
-          call->getParentRegion()->findAncestorBlockInRegion(
-              *builder.getInsertionBlock())) {
-        return call.getResults();
-      }
-    }
-    return existing_calls
-        .emplace_back(
-            builder.create<PureCallOp>(call_target_provider(operand), operands))
-        .getResults();
+    return ProvideParameter(computation, instr, index, indices,
+                            call_target_provider, builder);
   };
 
   emit_instr = [&](const HloInstruction* instr, mlir::ValueRange indices)
