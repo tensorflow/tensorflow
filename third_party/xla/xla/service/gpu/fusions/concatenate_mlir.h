@@ -12,48 +12,46 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_CONCATENATE_H_
-#define XLA_SERVICE_GPU_FUSIONS_CONCATENATE_H_
 
+#ifndef XLA_SERVICE_GPU_FUSIONS_CONCATENATE_MLIR_H_
+#define XLA_SERVICE_GPU_FUSIONS_CONCATENATE_MLIR_H_
+
+#include <cstdint>
 #include <optional>
-#include <vector>
 
 #include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
 
-const Shape& GetLargestConcatOperandShape(const HloFusionAnalysis& analysis);
-
-// Emits a kernel for the given hlo instruction where each thread produces
-// one element of each concat operand.
-class ConcatenateFusion : public KernelFusionEmitterBase {
+class MlirConcatenateFusion : public MlirFusionEmitterBase {
  public:
-  explicit ConcatenateFusion(const HloFusionAnalysis& analysis);
+  explicit MlirConcatenateFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
+
+  static bool IsSupported(const HloFusionAnalysis& analysis);
+
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t output_id, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override {
-    // TODO(b/319081342): Implement this.
-    return std::nullopt;
-  }
+      mlir::MLIRContext* ctx) const override;
 
  protected:
-  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                          const HloFusionInstruction& fusion,
-                          const LaunchDimensions& launch_dims,
-                          std::vector<llvm_ir::IrArray> inputs,
-                          std::vector<llvm_ir::IrArray> outputs,
-                          llvm::IRBuilder<>* builder) const override;
+  absl::Status EmitMlir(mlir::ModuleOp module,
+                        mlir::func::FuncOp entry_function,
+                        const HloFusionInstruction& fusion) const override;
 
  private:
   const HloFusionAnalysis& analysis_;
@@ -62,4 +60,4 @@ class ConcatenateFusion : public KernelFusionEmitterBase {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_CONCATENATE_H_
+#endif  // XLA_SERVICE_GPU_FUSIONS_CONCATENATE_MLIR_H_

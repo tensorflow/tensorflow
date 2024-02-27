@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/concatenate.h"
+#include "xla/service/gpu/fusions/concatenate_mlir.h"
 #include "xla/service/gpu/fusions/copy.h"
 #include "xla/service/gpu/fusions/cudnn.h"
 #include "xla/service/gpu/fusions/custom.h"
@@ -126,6 +127,13 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
+  bool enable_mlir_emitters = analysis.fusion_roots()
+                                  .front()
+                                  ->GetModule()
+                                  ->config()
+                                  .debug_options()
+                                  .xla_gpu_enable_mlir_emitters();
+
   switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       const auto& config = backend_config.custom_fusion_config();
@@ -146,12 +154,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
         return *std::move(copy_fusion);
       }
 
-      if (analysis.fusion_roots()
-              .front()
-              ->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_enable_mlir_emitters() &&
+      if (enable_mlir_emitters &&
           mlir_converter::IsHloConversionSupported(
               analysis.fusion(),
               fusion_info.analysis().device_info().gpu_compute_capability())) {
@@ -165,8 +168,13 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<ScatterFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return std::make_unique<TransposeFusion>(analysis);
-    case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
+    case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
+      if (enable_mlir_emitters &&
+          MlirConcatenateFusion::IsSupported(analysis)) {
+        return std::make_unique<MlirConcatenateFusion>(analysis);
+      }
       return std::make_unique<ConcatenateFusion>(analysis);
+    }
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kCuDnn:

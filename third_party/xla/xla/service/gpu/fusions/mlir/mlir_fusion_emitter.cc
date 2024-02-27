@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
@@ -49,6 +49,9 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -248,11 +251,13 @@ MlirFusionEmitterBase::CreateMLIRModule(
     const BufferAssignment* buffer_assignment) const {
   context.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
                       mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                      mlir::math::MathDialect, mlir::scf::SCFDialect,
-                      mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
-                      mlir::NVVM::NVVMDialect>();
+                      mlir::cf::ControlFlowDialect, mlir::math::MathDialect,
+                      mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
+                      mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect>();
   mlir::DialectRegistry registry;
-  mlir::func::registerInlinerExtension(registry);
+  mlir::registerBuiltinDialectTranslation(registry);
+  mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerNVVMDialectTranslation(registry);
   context.appendDialectRegistry(registry);
 
   mlir::OpBuilder builder(&context);
