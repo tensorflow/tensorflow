@@ -639,8 +639,9 @@ absl::Status GpuExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
       AsGpuStreamValue(stream));
 }
 
-bool GpuExecutor::Memcpy(Stream* stream, void* host_dst,
-                         const DeviceMemoryBase& gpu_src, uint64_t size) {
+absl::Status GpuExecutor::Memcpy(Stream* stream, void* host_dst,
+                                 const DeviceMemoryBase& gpu_src,
+                                 uint64_t size) {
   bool ok = GpuDriver::AsynchronousMemcpyD2H(context_, host_dst,
                                              AsROCmDevicePtr(gpu_src), size,
                                              AsGpuStreamValue(stream));
@@ -652,8 +653,8 @@ bool GpuExecutor::Memcpy(Stream* stream, void* host_dst,
   return absl::OkStatus();
 }
 
-bool GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
-                         const void* host_src, uint64_t size) {
+absl::Status GpuExecutor::Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                                 const void* host_src, uint64_t size) {
   bool ok = GpuDriver::AsynchronousMemcpyH2D(context_, AsROCmDevicePtr(gpu_dst),
                                              host_src, size,
                                              AsGpuStreamValue(stream));
