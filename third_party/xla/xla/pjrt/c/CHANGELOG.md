@@ -1,5 +1,11 @@
 # PJRT C API changelog
 
+## 0.45
+* Breaking changes
+  * Added struct_size field to beginning of PJRT_Extension_Base. This is so
+    forwards and backwards compatibility logic can be implemented with extension
+    structs.
+
 ## 0.44
 * Changed all ``void*`` extension fields to have type ``PJRT_Extension_Base*``
 

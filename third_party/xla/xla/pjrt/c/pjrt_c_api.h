@@ -42,9 +42,11 @@ typedef enum {
 // PJRT_Extension_Base. The framework can go through this chain to find an
 // extension and identify it with the type.
 typedef struct PJRT_Extension_Base {
+  size_t struct_size;
   PJRT_Extension_Type type;
   PJRT_Extension_Base* next;
 } PJRT_Extension_Base;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 
 // --------------------------------- Version -----------------------------------
 
@@ -68,7 +70,7 @@ typedef struct PJRT_Extension_Base {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 44
+#define PJRT_API_MINOR 45
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
