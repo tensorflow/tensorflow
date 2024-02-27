@@ -115,7 +115,7 @@ class PyLoadedExecutable
   PyLoadedExecutable(
       std::shared_ptr<PyClient> client,
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
-      std::shared_ptr<Traceback> traceback,
+      std::optional<nb_traceback> traceback,
       std::optional<std::string> fingerprint);
   ~PyLoadedExecutable();
 
@@ -179,7 +179,7 @@ class PyLoadedExecutable
 
   std::optional<std::vector<OpSharding>> GetOutputShardings() const;
 
-  Traceback* traceback() { return traceback_.get(); }
+  const std::optional<nb_traceback>& traceback() { return traceback_; }
 
   ifrt::LoadedExecutable* ifrt_executable() const {
     return ifrt_loaded_executable_.get();
@@ -217,7 +217,7 @@ class PyLoadedExecutable
 
   std::shared_ptr<PyClient> client_;
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable_;
-  std::shared_ptr<Traceback> traceback_;
+  std::optional<nb_traceback> traceback_;
 
   // Identical executables (i.e. representing the same program) will have the
   // same fingerprint. nullopt on platforms or executables where fingerprints

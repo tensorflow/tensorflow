@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -827,7 +826,17 @@ static void Init(py::module_& m) {
            })
       .def("cost_analysis",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
-      .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
+      .def_property_readonly(
+          "traceback",
+          // TODO(phawkins): just use &PyLoadedExecutable::traceback when
+          // nanobind port is complete.
+          [](PyLoadedExecutable* e) -> py::object {
+            if (e->traceback()) {
+              return py::reinterpret_borrow<py::object>(e->traceback()->ptr());
+            } else {
+              return py::none();
+            }
+          })
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
                                if (exec->fingerprint().has_value()) {
@@ -877,7 +886,7 @@ static void Init(py::module_& m) {
   jax::BuildPmapSubmodule(m);
   jax::BuildPjitSubmodule(m);
   jax::BuildTransferGuardSubmodule(m);
-  BuildTracebackSubmodule(m);
+  BuildTracebackSubmodule(m_nb);
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
 

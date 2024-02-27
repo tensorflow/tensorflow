@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_buffer.h"
+#include "xla/python/traceback.h"
 #include "xla/python/types.h"
 
 namespace xla {
@@ -37,7 +38,7 @@ struct PyArray_Storage {
   PyArray_Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
                   std::vector<int64_t> shape, pybind11::object sharding,
                   bool committed, std::shared_ptr<PyClient> py_client,
-                  std::shared_ptr<Traceback> traceback,
+                  std::optional<nb_traceback> traceback,
                   tsl::RCReference<ifrt::Array> ifrt_array);
 
   // TODO(yashkatariya): remove this once the transition completes.
@@ -60,7 +61,7 @@ struct PyArray_Storage {
   bool committed = false;
 
   std::shared_ptr<PyClient> py_client;
-  std::shared_ptr<Traceback> traceback;
+  std::optional<nb_traceback> traceback;
   tsl::RCReference<ifrt::Array> ifrt_array;
 
   // optional field, used only in python
@@ -100,16 +101,18 @@ class PyArray : public pybind11::object {
   PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
           std::vector<int64_t> shape, pybind11::object sharding,
           std::shared_ptr<PyClient> py_client,
-          std::shared_ptr<Traceback> traceback,
+          std::optional<nb_traceback> traceback,
           tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
           bool skip_checks);
 
   static PyArray MakeFromSingleDeviceArray(
-      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      std::shared_ptr<PyClient> py_client,
+      std::optional<nb_traceback> traceback,
       tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed);
 
   static PyArray MakeFromIfrtArrayAndSharding(
-      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      std::shared_ptr<PyClient> py_client,
+      std::optional<nb_traceback> traceback,
       tsl::RCReference<ifrt::Array> ifrt_array, pybind11::object sharding,
       bool weak_type, bool committed, bool skip_checks);
 
@@ -138,7 +141,7 @@ class PyArray : public pybind11::object {
     return GetStorage().py_client;
   }
 
-  const std::shared_ptr<Traceback>& traceback() const {
+  const std::optional<nb_traceback>& traceback() const {
     return GetStorage().traceback;
   }
 

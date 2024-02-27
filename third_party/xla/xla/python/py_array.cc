@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
 #include "xla/python/sharding.h"
+#include "xla/python/traceback.h"
 #include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
@@ -283,7 +284,7 @@ PyArray_Storage::PyArray_Storage(pybind11::object aval, bool weak_type,
                                  std::vector<int64_t> shape,
                                  pybind11::object sharding, bool committed,
                                  std::shared_ptr<PyClient> py_client,
-                                 std::shared_ptr<Traceback> traceback,
+                                 std::optional<nb_traceback> traceback,
                                  tsl::RCReference<ifrt::Array> ifrt_array)
     : fastpath_enabled(true),
       aval(std::move(aval)),
@@ -331,7 +332,7 @@ void PyArray::PyInit(py::object self, DisableFastpath) {
 }
 
 PyArray PyArray::MakeFromSingleDeviceArray(
-    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    std::shared_ptr<PyClient> py_client, std::optional<nb_traceback> traceback,
     tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed) {
   if (!llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array->sharding())) {
     throw XlaRuntimeError(
@@ -359,7 +360,7 @@ PyArray PyArray::MakeFromSingleDeviceArray(
 }
 
 PyArray PyArray::MakeFromIfrtArrayAndSharding(
-    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    std::shared_ptr<PyClient> py_client, std::optional<nb_traceback> traceback,
     tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
     bool weak_type, bool committed, bool skip_checks) {
   auto shape_span = ifrt_array->shape().dims();
@@ -407,7 +408,7 @@ PyArray PyArrayResultHandler::Call(PyArray py_array) const {
 PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
-                 std::shared_ptr<Traceback> traceback,
+                 std::optional<nb_traceback> traceback,
                  tsl::RCReference<ifrt::Array> ifrt_array, bool committed,
                  bool skip_checks) {
   auto* self =
@@ -1329,7 +1330,16 @@ Status PyArray::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("is_deleted") =
       py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
-  type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
+  // TODO(phawkins): just use &PyArray::traceback when
+  // nanobind port is complete.
+  type.attr("traceback") =
+      jax::property_readonly([](PyArray self) -> py::object {
+        if (self.traceback()) {
+          return py::reinterpret_borrow<py::object>(self.traceback()->ptr());
+        } else {
+          return py::none();
+        }
+      });
   type.attr("clone") = py::cpp_function(&PyArray::Clone, py::is_method(type));
   type.attr("__module__") = m.attr("__name__");
 
