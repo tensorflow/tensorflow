@@ -340,6 +340,8 @@ cc_library(
         "@com_google_absl//absl/types:variant",
         "//xla:comparison_util",
         "//xla:shape_util",
+        "//xla:status",
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
@@ -454,6 +456,7 @@ cc_library(
         ":py_client",
         ":python_ref_manager",
         ":traceback",
+        ":types",
         ":util",
         "//xla:types",
         "//xla:util",
@@ -1137,6 +1140,7 @@ cc_library(
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
         "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ] + select({
         # gloo transport only builds on linux
         "@local_tsl//tsl:macos": [],

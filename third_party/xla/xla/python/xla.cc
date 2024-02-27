@@ -52,7 +52,9 @@ limitations under the License.
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11/stl_bind.h"  // from @pybind11
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/layout_util.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"

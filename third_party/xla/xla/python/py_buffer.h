@@ -36,20 +36,6 @@ limitations under the License.
 namespace xla {
 
 // TODO(parkers): Move everything in this file to a better home.
-struct PyHostValue {
-  static Status CopyToHostAsync(std::shared_ptr<PyHostValue>& host_value,
-                                std::optional<Shape>& dynamic_shape_holder,
-                                ifrt::Array* ifrt_array);
-
-  static StatusOr<pybind11::object> AsNumPyArray(
-      std::shared_ptr<PyHostValue>& host_value,
-      std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array,
-      pybind11::handle this_obj);
-
-  absl::Notification ready;
-  Status status;
-  std::shared_ptr<xla::Literal> value;
-};
 
 struct IfrtHelpers {
   static StatusOr<const Shape*> xla_dynamic_shape(

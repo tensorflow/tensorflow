@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/python/python_ref_manager.h"
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 
 namespace xla {
 
@@ -66,6 +69,13 @@ void PythonRefManager::AddGarbage(absl::Span<nb::object> garbage) {
   for (nb::object& o : garbage) {
     python_garbage_.push_back(std::move(o));
   }
+}
+
+void PythonRefManager::AddGarbage(py::object garbage) {
+  absl::MutexLock lock(&mu_);
+  // We want to collect arbitrary python garbage (e.g., buffers) aggressively.
+  garbage_count_.fetch_add(100, std::memory_order_relaxed);
+  python_garbage_.push_back(nb::steal(garbage.release().ptr()));
 }
 
 void PythonRefManager::AddGarbage(absl::Span<py::object> garbage) {

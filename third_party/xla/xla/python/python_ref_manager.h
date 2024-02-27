@@ -73,6 +73,7 @@ class PythonRefManager {
   // Adds garbage objects to the manager.
   void AddGarbage(nanobind::object garbage);
   void AddGarbage(absl::Span<nanobind::object> garbage);
+  void AddGarbage(pybind11::object garbage);
   void AddGarbage(absl::Span<pybind11::object> garbage);
   void AddGarbage(absl::Span<std::pair<PyCodeObject*, int> const> garbage);
 

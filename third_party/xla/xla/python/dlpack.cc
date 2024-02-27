@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
+#include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/types.h"
 #include "xla/util.h"
