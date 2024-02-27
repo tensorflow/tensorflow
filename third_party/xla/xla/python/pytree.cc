@@ -137,14 +137,20 @@ std::shared_ptr<PyTreeRegistry> DefaultPyTreeRegistry() {
     keys.push_back(nb::borrow<nb::object>(key));
   }
 
-  std::stable_sort(
-      keys.begin(), keys.end(), [](const nb::object& a, const nb::object& b) {
-        int cmp = PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
-        if (cmp == -1) {
-          throw nb::python_error();
-        }
-        return cmp;
-      });
+  try {
+    std::stable_sort(
+        keys.begin(), keys.end(), [](const nb::object& a, const nb::object& b) {
+          int cmp = PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
+          if (cmp == -1) {
+            throw nb::python_error();
+          }
+          return cmp;
+        });
+  } catch (nb::python_error& e) {
+    nb::raise_from(e, PyExc_ValueError,
+                   "Comparator raised exception while sorting pytree "
+                   "dictionary keys.");
+  }
   return keys;
 }
 
