@@ -205,7 +205,7 @@ tensorflow::Status RunMlrtFunction(
   return tensorflow::OkStatus();
 }
 
-StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
+absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
@@ -485,7 +485,7 @@ GraphExecutor::GraphExecutor(
   SetSessionCreatedMetric();
 }
 
-StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
+absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     tensorflow::GraphDef graph_def,
@@ -663,7 +663,7 @@ tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
   return graph_execution_state_->Extend(graph);
 }
 
-StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+absl::StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
 GraphExecutor::ImportAndCompileClientGraph(
     const GraphExecutor::ClientGraph& client_graph,
     absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs) {
@@ -781,7 +781,7 @@ GraphExecutor::ImportAndCompileClientGraph(
       !checkpoint_path.empty(), std::move(flib_def), latency_sampler);
 }
 
-StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+absl::StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
 GraphExecutor::LoadClientGraph(
     const GraphExecutor::ClientGraph& client_graph,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
@@ -805,7 +805,7 @@ GraphExecutor::LoadClientGraph(
   return loaded_client_graph;
 }
 
-tensorflow::StatusOr<
+absl::StatusOr<
     std::pair<FunctionLibraryDefinition, mlir::OwningOpRef<mlir::ModuleOp>>>
 GraphExecutor::ImportClientGraphToMlirModule(
     const GraphExecutor::ClientGraph& client_graph,
@@ -908,7 +908,7 @@ tensorflow::Status GraphExecutor::InitBytecode(
   return OkStatus();
 }
 
-StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
+absl::StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
 GraphExecutor::GetOrCreateLoadedClientGraph(
     const RunOptions& run_options,
     absl::Span<const std::string> input_tensor_names,
