@@ -25,14 +25,14 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:graph_def",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
-        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -47,6 +47,7 @@ cc_library(
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:component",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_export",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_import",

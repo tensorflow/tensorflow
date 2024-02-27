@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/representative_dataset.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
@@ -64,6 +65,7 @@ namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::CreateRepresentativeDatasetFileMap;
+using ::stablehlo::quantization::DisableDebugging;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::RepresentativeDatasetConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
@@ -81,39 +83,6 @@ using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
 
 using ImportedMlirModuleOp =
     std::pair<ModuleOp, std::unique_ptr<SavedModelBundle>>;
-
-// Loads a SavedModel at `saved_model_path` and converts it to `mlir::ModuleOp`.
-//
-// `tags` identify the `tensorflow::MetaGraphDef` to load from the SavedModel.
-// Similarly, `signature_keys` identify the functions (`SignatureDef`s) to load
-// within the `MetaGraphDef`. `ctx` is the `MLIRContext`, which should outlive
-// the returned `ModuleOp`, thus marked with the lifetime bound attribute.
-absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
-    const absl::string_view saved_model_path,
-    const std::unordered_set<std::string>& tags,
-    const std::vector<std::string>& signature_keys,
-    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
-  MLIRImportOptions import_options;
-  import_options.upgrade_legacy = true;
-  import_options.lift_variables = false;
-  import_options.include_variables_in_initializers = true;
-
-  auto bundle = std::make_unique<SavedModelBundle>();
-
-  // Copy to eliminate the `const` qualifier so that `absl::MakeSpan` can be
-  // called on it.
-  std::vector<std::string> exported_names = signature_keys;
-  absl::StatusOr<OwningOpRef<ModuleOp>> module_op =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
-                                          absl::MakeSpan(exported_names), &ctx,
-                                          import_options, &bundle);
-  if (!module_op.status().ok()) {
-    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
-                                            module_op.status().ToString()));
-  }
-
-  return std::make_pair(module_op->release(), std::move(bundle));
-}
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
@@ -171,6 +140,13 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
     ModuleOp module_op, const absl::string_view dst_saved_model_path) {
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
+  // Clone ModuleOp and function aliases so changes in this pipeline won't
+  // be reflected in the original values.
+  mlir::OwningOpRef<mlir::ModuleOp> cloned_module_ref(module_op.clone());
+
+  // Disable DumpTensor ops when running calibration.
+  DisableDebugging(*cloned_module_ref);
+
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
   const ExportOptions export_opts = {
@@ -179,11 +155,11 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
       /*debug_name=*/absl::StrCat(kName, kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, *ctx_, module_op));
+                      RunExportPasses(export_opts, *ctx_, *cloned_module_ref));
 
   TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
                       ConvertMlirModuleToExportedModel(
-                          module_op, checkpoint_dir, function_aliases_,
+                          *cloned_module_ref, checkpoint_dir, function_aliases_,
                           {asset_file_defs.begin(), asset_file_defs.end()}));
 
   py_function_lib_->SaveExportedModel(dst_saved_model_path, exported_model,
@@ -191,35 +167,6 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
                                       signature_def_map_);
 
   return exported_model;
-}
-
-absl::StatusOr<ModuleOp> CalibrationComponent::ImportCalibratedSavedModel(
-    const absl::string_view calibrated_saved_model_path) {
-  // Convert the SavedModelBundle to an MLIR module.
-  TF_ASSIGN_OR_RETURN(ImportedMlirModuleOp imported_module,
-                      SavedModelToMlirModuleOp(calibrated_saved_model_path,
-                                               tags_, signature_keys_, *ctx_));
-  ModuleOp module_op = imported_module.first;
-
-  UpdateFunctionAliases(function_aliases_, module_op);
-
-  // Collect the names of the functions that have aliases so that they may not
-  // be inlined.
-  absl::flat_hash_set<std::string> aliased_function_names;
-  absl::c_for_each(function_aliases_, [&](const auto& aliases) {
-    return aliased_function_names.insert(aliases.first);
-  });
-
-  // Freezing is required again since variables might have been produced
-  // during the pre-calibration step. `is_inliner_run = false` to prevent the
-  // functions lifted for quantization from being inlined.
-  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
-      /*mlir_dump_file_prefix=*/kName, /*is_inliner_run=*/false,
-      /*noinline_functions=*/aliased_function_names, module_op, ctx_,
-      imported_module.second == nullptr ? nullptr
-                                        : imported_module.second->GetSession(),
-      /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/true));
-  return module_op;
 }
 
 absl::StatusOr<ModuleOp> CalibrationComponent::Run(
@@ -251,23 +198,14 @@ absl::StatusOr<ModuleOp> CalibrationComponent::Run(
       /*force_graph_mode_calibration=*/true, representative_dataset_file_map);
 
   if (absl::Status status = AddCalibrationStatistics(
-          *exported_model.mutable_graph_def(), config.calibration_options(),
-          *py_function_lib_);
+          module_op, config.calibration_options(), *py_function_lib_);
       !status.ok()) {
     LOG(WARNING) << "Some CustomAggregator ops do not have min or max "
                     "values. Parts of the graph are not quantized. "
                  << status;
   }
 
-  // Exports the calibrated model with statistics attached to the graph.
-  TF_ASSIGN_OR_RETURN(const std::string calibrated_saved_model_path,
-                      CreateTmpDir());
-  py_function_lib_->SaveExportedModel(calibrated_saved_model_path,
-                                      exported_model, src_saved_model_path_,
-                                      tags_, signature_def_map_);
-
-  // Imports the calibrated saved model back to `ModuleOp`.
-  return ImportCalibratedSavedModel(calibrated_saved_model_path);
+  return module_op;
 }
 
 }  // namespace mlir::quant::stablehlo
