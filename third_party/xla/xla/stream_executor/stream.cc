@@ -344,6 +344,14 @@ absl::Status Stream::DoHostCallbackWithStatus(
   return absl::InternalError("failed to host callback");
 }
 
+void Stream::CheckError(bool operation_retcode) {
+  if (operation_retcode) {
+    return;
+  }
+  absl::MutexLock lock(&mu_);
+  status_ = absl::InternalError("Unknown error");
+}
+
 absl::Status Stream::BlockHostUntilDone() {
   if (!ok()) {
     absl::MutexLock lock(&mu_);
@@ -354,7 +362,10 @@ absl::Status Stream::BlockHostUntilDone() {
     return status;
   }
 
-  return parent_->BlockHostUntilDone(this);
+  absl::Status error = parent_->BlockHostUntilDone(this);
+  CheckError(error.ok());
+
+  return error;
 }
 
 std::string Stream::DebugStreamPointers() const {

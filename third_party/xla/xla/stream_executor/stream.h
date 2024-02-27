@@ -319,8 +319,14 @@ class Stream {
     return !status_.ok();
   }
 
+  // Sets the error state if operation_retcode is false.
+  // This is a useful shorthand for many stream routines.
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_);
+
   // Checks the status and logs the error message, if any.
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
+
+  void SetError() { CheckError(false /* = operation_retcode */); }
 
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
