@@ -1,6 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -121,17 +121,4 @@ cc_library(
         "@local_xla//xla/backends/profiler/cpu:metadata_collector",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "metadata_utils",
-    hdrs = ["metadata_utils.h"],
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "@local_xla//xla/backends/profiler/cpu:metadata_utils",
-        "@local_xla//xla/service:hlo_proto_cc",
-    ],
 )
