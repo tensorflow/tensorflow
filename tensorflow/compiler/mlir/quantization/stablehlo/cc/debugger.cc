@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -52,7 +53,7 @@ void EnableDebugging(
   });
 
   if (debugger_options.debugger_type() ==
-      DebuggerOptions::DEBUGGER_TYPE_WHOLE_MODEL) {
+      DebuggerConfig::DEBUGGER_TYPE_WHOLE_MODEL) {
     // TODO: b/295139417 - Remove CustomAggregator op in unquantized dump model.
     // TODO: b/296916287 - Create a separate function for saving unquantized
     // dump model.

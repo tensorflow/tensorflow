@@ -74,8 +74,21 @@ using ::mlir::quant::stablehlo::kExportStepSuffix;
 using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::quant::stablehlo::UpdateFunctionAliases;
+using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
+
+// TODO: b/326355110 - Removes `ConvertDebuggerOptionToDebuggerConfig` when
+// merging `DebuggingOption` to `DebuggingConfig`.
+DebuggerConfig ConvertDebuggerOptionToDebuggerConfig(
+    const DebuggerOptions &debugger_options) {
+  DebuggerConfig debugger_config;
+  debugger_config.set_debugger_type(debugger_options.debugger_type());
+  debugger_config.set_unquantized_dump_model_path(
+      debugger_options.unquantized_dump_model_path());
+  debugger_config.set_log_dir_path(debugger_options.log_dir_path());
+  return debugger_config;
+}
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
 // exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
@@ -239,10 +252,14 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
 
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
+    QuantizationConfig quantization_config;
+    *quantization_config.mutable_debugger_config() =
+        ConvertDebuggerOptionToDebuggerConfig(
+            quantization_options.debugger_options());
     PreCalibrationComponent pre_calibration_component(
         context.get(), quantization_options.calibration_options());
     TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
-                                         *module_ref, QuantizationConfig()));
+                                         *module_ref, quantization_config));
   } else {
     TF_RETURN_IF_ERROR(RunPasses(
         /*name=*/

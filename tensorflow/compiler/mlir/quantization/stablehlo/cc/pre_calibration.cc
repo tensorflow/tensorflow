@@ -43,7 +43,8 @@ absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config, this](PassManager& pm) {
-        AddPreCalibrationPasses(pm, calibration_options_, config.specs());
+        AddPreCalibrationPasses(pm, calibration_options_, config.specs(),
+                                config.debugger_config());
       },
       *ctx_, module_op));
   return module_op;
