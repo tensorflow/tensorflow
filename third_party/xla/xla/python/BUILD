@@ -488,6 +488,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "//third_party/nanobind",
         "@local_config_python//:python_headers",  # build_cleaner: keep
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
@@ -610,7 +611,9 @@ cc_library(
         ":transfer_guard_lib",
         ":util",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/synchronization",
+        "//third_party/nanobind",
         "//xla/pjrt:lru_cache",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
@@ -645,6 +648,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "//third_party/nanobind",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:pjrt_client",
@@ -736,6 +740,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = [":friends"],
     deps = [
+        ":nb_class_ptr",
         ":pytree_proto_cc",
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
@@ -744,10 +749,10 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "//third_party/nanobind",
         "//xla/pjrt:exceptions",
         "@local_tsl//tsl/platform:logging",
-        "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
 )
 
@@ -1098,6 +1103,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "//third_party/nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:literal",
         "//xla:shape_util",
@@ -1105,6 +1111,7 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
+        "//xla/pjrt:exceptions",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",
@@ -1201,4 +1208,12 @@ cc_library(
     deps = [
         "//xla/pjrt:status_casters",
     ],
+)
+
+cc_library(
+    name = "nb_class_ptr",
+    hdrs = ["nb_class_ptr.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    deps = ["//third_party/nanobind"],
 )

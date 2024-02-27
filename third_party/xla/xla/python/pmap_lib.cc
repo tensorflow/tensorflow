@@ -25,6 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -60,6 +62,7 @@ limitations under the License.
 
 namespace jax {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 namespace {
@@ -353,8 +356,9 @@ class PmapFunction {
     JitState& tls = jax::ThreadLocalJitState();
     const bool jax_enable_x64 = GetEnableX64();
     arguments.signature.jax_enable_x64 = jax_enable_x64;
-    for (py::handle arg : arguments.flat_dynamic_args) {
-      auto signature_or_error = xla::PyArgSignatureOfValue(arg, jax_enable_x64);
+    for (nb::handle arg : arguments.flat_dynamic_args) {
+      auto signature_or_error =
+          xla::PyArgSignatureOfValue(py::handle(arg.ptr()), jax_enable_x64);
       if (!signature_or_error.ok()) {
         VLOG(2) << "PyArgSignatureOfValue failed: "
                 << signature_or_error.status();
@@ -475,7 +479,8 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
 
   // Outputs specs.
-  auto out_tree = py::cast<xla::PyTreeDef>(pmap_data.attr("out_pytree_def"));
+  auto out_tree = nb::cast<xla::PyTreeDef>(
+      nb::handle(pmap_data.attr("out_pytree_def").ptr()));
   cache_entry.out_pytree_def = std::move(out_tree);
   py::list out_avals = pmap_data.attr("out_avals");
 
@@ -616,8 +621,9 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   for (int i = 0; i < num_args; ++i) {
     TF_ASSIGN_OR_RETURN(
         ShardArgResult sharded_arg,
-        ShardArg(arguments.flat_dynamic_args[i], input_devices, input_specs[i],
-                 cache_entry.py_devices, python_shard_arg_fallback_));
+        ShardArg(arguments.flat_dynamic_args[i].ptr(), input_devices,
+                 input_specs[i], cache_entry.py_devices,
+                 python_shard_arg_fallback_));
 
     num_args_arrays[i] = std::move(sharded_arg.ifrt_array);
     if (sharded_arg.owning_sda) {
@@ -648,7 +654,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   // Convert the PjRtBuffer objects to PyBuffer, and invert the order from
   // [num_devices, num_args] to [num_args, num_devices].
   const int num_outputs = output_arrays.size();
-  std::vector<py::object> flat_sharded_device_arrays;
+  std::vector<nb::object> flat_sharded_device_arrays;
   flat_sharded_device_arrays.reserve(num_outputs);
 
   const auto& output_specs = cache_entry.out_result_specs;
@@ -662,11 +668,13 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
         traceback, std::move(output_arrays[i]), cache_entry.out_committed[i],
         /*skip_checks=*/true);
 
-    flat_sharded_device_arrays.push_back(std::move(py_array));
+    flat_sharded_device_arrays.push_back(nb::steal(py_array.release().ptr()));
   }
 
-  py::object out =
-      cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays);
+  py::object out = py::reinterpret_steal<py::object>(
+      cache_entry.out_pytree_def.Unflatten(flat_sharded_device_arrays)
+          .release()
+          .ptr());
 
   // If there is a post-hook function, call it with the inputs and the outputs.
   std::optional<py::object> post_hook = GetPostHook();
@@ -736,6 +744,12 @@ PyObject* JaxPmapFunction_tp_vectorcall(PyObject* callable,
     e.restore();
     return nullptr;
   } catch (py::cast_error& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (nb::python_error& e) {
+    e.restore();
+    return nullptr;
+  } catch (nb::cast_error& e) {
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
   } catch (std::invalid_argument& e) {
@@ -1025,7 +1039,8 @@ void BuildPmapSubmodule(py::module& m) {
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["python_shard_arg_fallback"] = fn->python_shard_arg_fallback();
-        pickle["pytree_registry"] = fn->pytree_registry();
+        pickle["pytree_registry"] = py::reinterpret_borrow<py::object>(
+            nb::cast(fn->pytree_registry()).ptr());
         return pickle;
       },
       py::is_method(cfun_type));
@@ -1045,9 +1060,9 @@ void BuildPmapSubmodule(py::module& m) {
             py::cast<std::vector<int>>(pickle["static_argnums"]);
         py::function python_shard_arg_fallback =
             py::cast<py::function>(pickle["python_shard_arg_fallback"]);
-        auto pytree_registry =
-            pickle["pytree_registry"]
-                .cast<std::shared_ptr<xla::PyTreeRegistry>>();
+        std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
+            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+                nb::handle(pickle["pytree_registry"].ptr()));
         new (&(reinterpret_cast<JaxPmapFunctionObject*>(self.ptr())->fun))
             PmapFunction(std::move(fun), std::move(cache_miss),
                          std::move(static_argnums),
@@ -1081,10 +1096,13 @@ void BuildPmapSubmodule(py::module& m) {
       "pmap",
       [](py::function fun, py::function cache_miss,
          std::vector<int> static_argnums, py::function shard_arg_fallback,
-         std::shared_ptr<xla::PyTreeRegistry> pytree_registry) -> py::object {
+         py::object pytree_registry) -> py::object {
+        std::shared_ptr<xla::PyTreeRegistry> registry =
+            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+                nb::handle(pytree_registry.ptr()));
         return MakePmapFunction(
             std::move(fun), std::move(cache_miss), std::move(static_argnums),
-            std::move(shard_arg_fallback), std::move(pytree_registry));
+            std::move(shard_arg_fallback), std::move(registry));
       },
       py::arg("fun"), py::arg("cache_miss"), py::arg("static_argnums"),
       py::arg("shard_arg_fallback"), py::arg("pytree_registry"));

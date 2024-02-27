@@ -26,6 +26,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "absl/container/inlined_vector.h"
 #include "absl/synchronization/notification.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/lru_cache.h"
@@ -46,6 +49,7 @@ limitations under the License.
 namespace jax {
 namespace {
 
+namespace nb = nanobind;
 namespace py = pybind11;
 
 struct PjitCacheEntry {
@@ -357,17 +361,18 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     int dce_index = dce_i;
     ++dce_i;
 
-    const py::object& arg = arguments.flat_dynamic_args[i];
+    const nb::object& arg = arguments.flat_dynamic_args[i];
 
     auto transfer_guard_formatter = [] { return std::string(""); };
 
-    if (arg.get_type() != xla::PyArray::type()) {
+    if (arg.type().ptr() != xla::PyArray::type().ptr()) {
       if (data_device != nullptr) {
         TF_RETURN_IF_ERROR(
             jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
         TF_ASSIGN_OR_RETURN(
             xla::DevicePutResult on_device,
-            DevicePut(arg, executable.ifrt_loaded_executable()->client(),
+            DevicePut(py::handle(arg.ptr()),
+                      executable.ifrt_loaded_executable()->client(),
                       data_device, options, xla::ifrt::MemoryKind()));
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
@@ -377,13 +382,13 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         }
         continue;
       } else {
-        CallShardArgFallback(arg, in_shardings[dce_index], shard_arg_fallback,
-                             num_args_arrays, arguments);
+        CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+                             shard_arg_fallback, num_args_arrays, arguments);
         continue;
       }
     }
 
-    xla::PyArray py_array = arg;
+    xla::PyArray py_array(py::reinterpret_borrow<py::object>(arg.ptr()));
     const auto& sharding = py_array.sharding();
     int sharding_num_devices = jax::Sharding::SafeNumDevices(sharding);
 
@@ -394,14 +399,14 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
            (!py_array.committed() && sharding_num_devices == 1));
 
     if (sharding.get_type() == jax::PmapSharding::type()) {
-      CallShardArgFallback(arg, in_shardings[dce_index], shard_arg_fallback,
-                           num_args_arrays, arguments);
+      CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+                           shard_arg_fallback, num_args_arrays, arguments);
       continue;
     }
 
     if (py_array.num_shards() != addressable_devices.size()) {
-      CallShardArgFallback(arg, in_shardings[dce_index], shard_arg_fallback,
-                           num_args_arrays, arguments);
+      CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
+                           shard_arg_fallback, num_args_arrays, arguments);
       continue;
     }
 
@@ -427,7 +432,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       num_args_arrays.push_back(tsl::FormRef(ifrt_array));
     }
 
-    arguments.keep_alive_objects.push_back(arg);
+    arguments.keep_alive_objects.push_back(
+        py::reinterpret_borrow<py::object>(arg.ptr()));
   }
 
   return num_args_arrays;
@@ -495,11 +501,11 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   // will fallback to python. For jit, numpy arrays and scalars are also
   // allowed, which we will check later.
   for (const auto& arg : arguments.flat_dynamic_args) {
-    if (arg.get_type() != xla::PyArray::type()) {
+    if (arg.type().ptr() != xla::PyArray::type().ptr()) {
       continue;
     }
 
-    xla::PyArray py_array = arg;
+    xla::PyArray py_array(py::reinterpret_borrow<py::object>(arg.ptr()));
     if (!py_array.fastpath_enabled()) {
       return fallback_to_cache_miss();
     }
@@ -608,7 +614,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
 
   // Convert the ifrt::Array objects to PyArray.
   int num_outputs = output_arrays.size();
-  absl::InlinedVector<py::object, 4> outputs;
+  absl::InlinedVector<nb::object, 4> outputs;
   outputs.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     // Creating the PyArray result. In addition to the IFRT arrays, the metadata
@@ -621,10 +627,11 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
         traceback, std::move(output_arrays[i]),
         /*committed=*/cache_entry->out_committed.at(i), /*skip_checks=*/true);
 
-    outputs.push_back(std::move(py_array));
+    outputs.push_back(nb::steal(py_array.release().ptr()));
   }
 
-  py::object out = cache_entry->out_pytree_def.Unflatten(outputs);
+  py::object out = py::reinterpret_steal<py::object>(
+      cache_entry->out_pytree_def.Unflatten(outputs).release().ptr());
 
   // If there is a post-hook function, call it with the inputs and the outputs.
   std::optional<py::object> post_hook = GetPostHook();
@@ -664,15 +671,15 @@ xla::Status PjitFunction::UpdateArgsSignature(
   auto& dynamic_arg_shardings = arguments.signature.dynamic_arg_shardings;
   dynamic_arg_shardings.reserve(arguments.flat_dynamic_args.size());
 
-  for (py::handle arg : arguments.flat_dynamic_args) {
+  for (nb::handle arg : arguments.flat_dynamic_args) {
     TF_ASSIGN_OR_RETURN(auto signature,
-                        xla::PyArgSignatureOfValue(arg, jax_enable_x64));
+                        xla::PyArgSignatureOfValue(arg.ptr(), jax_enable_x64));
     arguments.signature.dynamic_arg_signatures.push_back(std::move(signature));
 
     // It should be already checked previously in the entry point of
     // PjitFunction::Call().
-    if (arg.get_type() == xla::PyArray::type()) {
-      auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (arg.type().ptr() == xla::PyArray::type().ptr()) {
+      auto py_array = py::reinterpret_borrow<xla::PyArray>(arg.ptr());
 
       arguments.signature.dynamic_arg_shardings.push_back(py_array.sharding());
       arguments.signature.committed_args.push_back(py_array.committed());
@@ -738,8 +745,8 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
         py::cast<bool>(aval.attr("weak_type")));
   }
 
-  cache_entry.out_pytree_def =
-      py::cast<xla::PyTreeDef>(fastpath_data.attr("out_pytree_def"));
+  cache_entry.out_pytree_def = nb::cast<xla::PyTreeDef>(
+      nb::handle(fastpath_data.attr("out_pytree_def").ptr()));
 
   py::list kept_var_bitvec = fastpath_data.attr("kept_var_bitvec");
   cache_entry.kept_var_bitvec.reserve(kept_var_bitvec.size());
@@ -807,6 +814,12 @@ PyObject* PjitFunction_tp_vectorcall(PyObject* callable, PyObject* const* args,
     e.restore();
     return nullptr;
   } catch (py::cast_error& e) {
+    PyErr_SetString(PyExc_ValueError, e.what());
+    return nullptr;
+  } catch (nb::python_error& e) {
+    e.restore();
+    return nullptr;
+  } catch (nb::cast_error& e) {
     PyErr_SetString(PyExc_ValueError, e.what());
     return nullptr;
   } catch (std::invalid_argument& e) {
@@ -1049,7 +1062,8 @@ void BuildPjitSubmodule(py::module& m) {
         pickle["static_argnums"] = fn->static_argnums();
         pickle["static_argnames"] = fn->static_argnames();
         pickle["donate_argnums"] = fn->donate_argnums();
-        pickle["pytree_registry"] = fn->pytree_registry();
+        pickle["pytree_registry"] = py::reinterpret_borrow<py::object>(
+            nb::cast(fn->pytree_registry()).ptr());
         pickle["shard_arg_fallback"] = fn->shard_arg_fallback();
         pickle["cache"] = fn->cache();
         return pickle;
@@ -1079,8 +1093,8 @@ void BuildPjitSubmodule(py::module& m) {
         std::vector<int> donate_argnums =
             py::cast<std::vector<int>>(pickle["donate_argnums"]);
         std::shared_ptr<xla::PyTreeRegistry> pytree_registry =
-            py::cast<std::shared_ptr<xla::PyTreeRegistry>>(
-                pickle["pytree_registry"]);
+            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+                nb::handle(pickle["pytree_registry"].ptr()));
         py::function shard_arg_fallback =
             py::cast<py::function>(pickle["shard_arg_fallback"]);
         std::shared_ptr<PjitFunctionCache> cache =
@@ -1116,13 +1130,15 @@ void BuildPjitSubmodule(py::module& m) {
       [](std::string function_name, std::optional<py::function> fun,
          py::function cache_miss, std::vector<int> static_argnums,
          std::vector<py::str> static_argnames, std::vector<int> donate_argnums,
-         std::shared_ptr<xla::PyTreeRegistry> pytree_registry,
-         py::function shard_arg_fallback,
+         py::object pytree_registry, py::function shard_arg_fallback,
          std::shared_ptr<PjitFunctionCache> cache) {
+        std::shared_ptr<xla::PyTreeRegistry> registry =
+            nb::cast<std::shared_ptr<xla::PyTreeRegistry>>(
+                nb::handle(pytree_registry.ptr()));
         return MakePjitFunction(
             std::move(function_name), std::move(fun), std::move(cache_miss),
             std::move(static_argnums), std::move(static_argnames),
-            std::move(donate_argnums), std::move(pytree_registry),
+            std::move(donate_argnums), std::move(registry),
             std::move(shard_arg_fallback), std::move(cache));
       },
       py::arg("function_name"), py::arg("fun"), py::arg("cache_miss"),
