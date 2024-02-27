@@ -643,6 +643,25 @@ static std::string_view StreamCaptureModeToString(
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::vector<GpuGraphNodeHandle>>
+GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
+  VLOG(2) << "Get HIP graph node " << node << " dependencies";
+
+  std::vector<hipGraphNode_t> dependencies;
+
+  size_t num_dependencies = 0;
+  RETURN_IF_ROCM_ERROR(
+      hipGraphNodeGetDependencies(node, nullptr, &num_dependencies),
+      "Failed to get HIP graph node depedencies size");
+
+  dependencies.resize(num_dependencies, nullptr);
+  RETURN_IF_ROCM_ERROR(
+      hipGraphNodeGetDependencies(node, dependencies.data(), &num_dependencies),
+      "Failed to get HIP graph node depedencies");
+
+  return dependencies;
+}
+
 /* static */ absl::Status GpuDriver::DestroyGraphExec(hipGraphExec_t exec) {
   VLOG(2) << "Destroying HIP executable graph" << exec;
   RETURN_IF_ROCM_ERROR(wrap::hipGraphExecDestroy(exec),

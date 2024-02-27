@@ -315,7 +315,7 @@ absl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     kernel->set_metadata(kernel_metadata);
   }
   kernel->set_name(*kernel_name);
-  kernel->set_kernel_args_packing(spec.kernel_args_packing());
+  kernel->set_args_packing(spec.kernel_args_packing());
   return absl::OkStatus();
 }
 
@@ -354,8 +354,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
     }
   }
 
-  if (rocm_kernel->GetPreferredCacheConfig() !=
-      KernelCacheConfig::kNoPreference) {
+  if (rocm_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
     TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
         hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
@@ -377,7 +376,7 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   if (packed_args) return launch(*packed_args);
 
   if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.kernel_args_packing();
+    auto& pack = kernel.args_packing();
     if (!pack) {
       return absl::InternalError(
           "Kernel is missing a custom arguments packing function for device "
