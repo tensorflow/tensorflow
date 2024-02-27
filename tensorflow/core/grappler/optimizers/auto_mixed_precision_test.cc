@@ -1285,6 +1285,7 @@ INSTANTIATE_TEST_SUITE_P(AutoMixedPrecisionTest, AutoMixedPrecisionParamTest,
 #endif
                           }));
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 class AutoMixedPrecisionCpuTest : public GrapplerTest {
  protected:
   void SetUp() override {
@@ -1479,7 +1480,6 @@ class AutoMixedPrecisionSimulateGpuTest : public GrapplerTest {
   }
 };
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST_F(AutoMixedPrecisionSimulateGpuTest, Simple_NoGpu) {
   TestSimple(tensorflow::Scope::NewRootScope(), /* is_optimized= */ false);
 }
