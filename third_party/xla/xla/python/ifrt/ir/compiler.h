@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -47,9 +48,13 @@ struct IfrtIRCompileOptions
   explicit IfrtIRCompileOptions(
       std::vector<int> device_assignments,
       absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding =
-          {})
+          {},
+      std::shared_ptr<absl::flat_hash_map<
+          std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
+          compile_options_overrides = {})
       : device_assignments(std::move(device_assignments)),
-        loaded_exec_binding(std::move(loaded_exec_binding)) {}
+        loaded_exec_binding(std::move(loaded_exec_binding)),
+        compile_options_overrides(std::move(compile_options_overrides)) {}
 
   // Map from logical device ids in MLIR module to runtime device ids obtained
   // from IFRT client.
@@ -59,6 +64,13 @@ struct IfrtIRCompileOptions
   // to pre-compiled LoadedExecutable instance. The LoadedExecutables must
   // outlive the LoadedExecutable to be compiled.
   absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding;
+
+  // Mapping from values of `ifrt.compile_option_key` attribute of a `CallOp` to
+  // compile options. If a `CallOp` does not have have the attribute set or does
+  // not have an entry in this map then default compile options are used.
+  std::shared_ptr<absl::flat_hash_map<
+      std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
+      compile_options_overrides;
 
   static char ID;  // NOLINT
 };
