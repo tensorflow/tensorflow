@@ -2103,9 +2103,8 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
   }
 
   auto tile_dimensions = shape.layout().tiles(0).dimensions();
-  auto shape_dimensions = shape.dimensions();
   auto minor_to_major = shape.layout().minor_to_major();
-  int64_t shape_dim_size = shape_dimensions.size();
+  int64_t shape_dim_size = shape.dimensions().size();
   int64_t tile_dim_size = tile_dimensions.size();
 
   // Use the top-level tile for shape size calculation. We assume the
@@ -2113,13 +2112,14 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
   int64_t num_of_elements = 1;
   int64_t dim = 0;
   for (dim = 0; dim < tile_dim_size; dim++) {
-    int64_t dim_size =
-        dim < shape_dim_size ? shape_dimensions[minor_to_major[dim]] : 1;
+    int64_t dim_size = dim < shape_dim_size ? LayoutUtil::MaxSplitSize(
+                                                  shape, minor_to_major[dim])
+                                            : 1;
     num_of_elements *=
         RoundUpTo(dim_size, tile_dimensions[tile_dim_size - dim - 1]);
   }
   for (; dim < shape_dim_size; dim++) {
-    int64_t dim_size = shape_dimensions[minor_to_major[dim]];
+    int64_t dim_size = LayoutUtil::MaxSplitSize(shape, minor_to_major[dim]);
     num_of_elements *= dim_size;
   }
 

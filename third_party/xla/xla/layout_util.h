@@ -287,6 +287,19 @@ class LayoutUtil {
   static bool ByteStridesIsMajorToMinor(absl::Span<const int64_t> byte_strides,
                                         absl::Span<const int64_t> dims,
                                         PrimitiveType element_type);
+
+  // The max size of the split in the given dimension. If the layout doesn't
+  // have a split config in the given dimension, the value returned from this
+  // function is equal to the Shape::dimensions(). If there is a split config in
+  // the given dimension, we then find the size of the largest split in that
+  // dimension.
+  static int64_t MaxSplitSize(const Shape& shape, int64_t dim);
+
+  // This function is analogous to ShapeUtil::ElementsIn, except we use the max
+  // split sizes for each dimension to calculate the max number of elements
+  // stored in a particular split. This can be useful for calculating how much
+  // memory to allocate in each of the memories.
+  static int64_t MaxElementsInPerSplit(const Shape& shape);
 };
 
 }  // namespace xla

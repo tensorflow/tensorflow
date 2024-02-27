@@ -772,4 +772,40 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
   return true;
 }
 
+/*static*/ int64_t LayoutUtil::MaxSplitSize(const Shape& shape, int64_t dim) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  if (!shape.has_layout()) {
+    return shape.dimensions(dim);
+  }
+  const SplitConfig* split_config = nullptr;
+  for (const SplitConfig& config : shape.layout().split_configs()) {
+    if (Major(shape.layout(), config.dimension()) == dim) {
+      split_config = &config;
+      break;
+    }
+  }
+  if (split_config != nullptr) {
+    int64_t max_split_size = 0;
+    int64_t last_split_index = 0;
+    for (int split_index : split_config->split_indices()) {
+      int64_t split_size = split_index - last_split_index;
+      max_split_size = std::max(split_size, max_split_size);
+      last_split_index = split_index;
+    }
+    max_split_size =
+        std::max(max_split_size, shape.dimensions(dim) - last_split_index);
+    return max_split_size;
+  }
+  return shape.dimensions(dim);
+}
+
+/*static*/ int64_t LayoutUtil::MaxElementsInPerSplit(const Shape& shape) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  int64_t max_elements_in = 1;
+  for (int dim = 0; dim < shape.rank(); ++dim) {
+    max_elements_in *= MaxSplitSize(shape, dim);
+  }
+  return max_elements_in;
+}
+
 }  // namespace xla
