@@ -95,36 +95,6 @@ cc_library(
 )
 
 cc_library(
-    name = "annotation_stack",
-    hdrs = ["annotation_stack.h"],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
-    ] + if_static([
-        ":annotation_stack_impl",
-    ]),
-)
-
-cc_library(
-    name = "annotation_stack_impl",
-    srcs = [
-        "annotation_stack.h",
-    ],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:__pkg__"],
-    deps = [
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "python_tracer",
     deps = [
         "@local_xla//xla/backends/profiler/cpu:python_tracer",
