@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.44
+* Changed all ``void*`` extension fields to have type ``PJRT_Extension_Base*``
+
 ## 0.43
 * Added some new fields to PJRT_Executable_GetCompiledMemoryStats
 

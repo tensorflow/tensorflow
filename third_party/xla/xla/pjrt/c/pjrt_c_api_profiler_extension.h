@@ -27,7 +27,7 @@ extern "C" {
 
 typedef struct PJRT_Profiler_Extension {
   PJRT_Extension_Type type;
-  const void* next;
+  PJRT_Extension_Base* next;
   PLUGIN_Profiler_Api* profiler_api;
 } PJRT_Profiler_Extension;
 

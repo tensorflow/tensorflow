@@ -429,7 +429,7 @@ PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
-                       void* extension_start = nullptr);
+                       PJRT_Extension_Base* extension_start = nullptr);
 
 }  // namespace pjrt
 

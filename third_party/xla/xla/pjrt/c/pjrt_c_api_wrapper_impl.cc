@@ -2247,7 +2247,7 @@ namespace pjrt {
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
-                       void* extension_start) {
+                       PJRT_Extension_Base* extension_start) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
       /*extension_start=*/extension_start,
