@@ -105,20 +105,6 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
 absl::StatusOr<pybind11::object> LiteralToPython(
     std::shared_ptr<Literal> literal);
 
-// Converts a Python object into an XLA shape and a vector of leaf buffers.
-// The leaf buffers correspond to a depth-first, left-to-right traversal of
-// the Python value.
-// Requires the GIL.
-struct PythonBufferTree {
-  // Holds a reference to the arrays pointed to by `leaves`, since we may
-  // need to make a copy if the array is not in a C-style layout.
-  absl::InlinedVector<pybind11::object, 1> arrays;
-  absl::InlinedVector<BorrowingLiteral, 1> leaves;
-  Shape shape;
-};
-absl::StatusOr<PythonBufferTree> GetPythonBufferTree(
-    const pybind11::object& argument);
-
 // Converts a sequence of C++ ints to a Python tuple of ints.
 // Pybind11 by default converts a std::vector<T> to a Python list;
 // we frequently want a tuple instead e.g. for shapes.

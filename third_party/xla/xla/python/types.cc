@@ -441,37 +441,6 @@ absl::StatusOr<py::object> LiteralToPython(
                    literal_object);
 }
 
-absl::StatusOr<PythonBufferTree> GetPythonBufferTree(
-    const py::object& argument) {
-  PythonBufferTree tree;
-  if (py::isinstance<py::tuple>(argument)) {
-    py::tuple tuple = py::reinterpret_borrow<py::tuple>(argument);
-    std::vector<Shape> host_shapes(tuple.size());
-    for (int i = 0; i < host_shapes.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(PythonBufferTree subtree,
-                          GetPythonBufferTree(tuple[i]));
-      tree.leaves.reserve(tree.leaves.size() + subtree.leaves.size());
-      std::move(subtree.leaves.begin(), subtree.leaves.end(),
-                std::back_inserter(tree.leaves));
-      tree.arrays.reserve(tree.arrays.size() + subtree.arrays.size());
-      std::move(subtree.arrays.begin(), subtree.arrays.end(),
-                std::back_inserter(tree.arrays));
-      host_shapes[i] = std::move(subtree.shape);
-    }
-    tree.shape = ShapeUtil::MakeTupleShape(host_shapes);
-  } else {
-    pybind11::detail::type_caster<BorrowingLiteral> caster;
-    if (!caster.load(argument, /*convert=*/true)) {
-      return InvalidArgument("Invalid array value.");
-    }
-    DCHECK_EQ(caster.arrays.size(), 1);
-    tree.arrays.push_back(std::move(caster.arrays.front()));
-    tree.leaves.push_back(std::move(*caster));
-    tree.shape = tree.leaves.front().shape();
-  }
-  return tree;
-}
-
 template <typename IntType>
 static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
   py::tuple out(xs.size());
