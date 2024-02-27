@@ -16,6 +16,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_IR_XLA_GPU_OPS_H_
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/Dialect.h"  // from @llvm-project  // IWYU pragma: keep

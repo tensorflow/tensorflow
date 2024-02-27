@@ -211,6 +211,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
+  pm.addPass(CreateLowerFuncPass());
   pm.addPass(CreateLowerTensorsPass());
   pm.addPass(CreateMergePointersToSameSlicePass());
 

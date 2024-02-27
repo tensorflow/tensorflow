@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
@@ -55,11 +56,11 @@ namespace {
 class MlirLoopFusionTest : public HloTestBase {
  public:
   MlirLoopFusionTest() {
-    mlir_context_
-        .loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-                     mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-                     mlir::math::MathDialect, mlir::scf::SCFDialect,
-                     mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect>();
+    mlir_context_.loadDialect<
+        mlir::tensor::TensorDialect, mlir::func::FuncDialect,
+        mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+        mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
+        mlir::gpu::GPUDialect, xla::gpu::XlaGpuDialect>();
     mlir::DialectRegistry registry;
     mlir::func::registerInlinerExtension(registry);
     mlir_context_.appendDialectRegistry(registry);
@@ -304,7 +305,7 @@ ENTRY entry_computation {
   ASSERT_TRUE(RunFileCheck(out, R"(
     // CHECK: func.func @fused_computation
     // CHECK-NEXT: gpu.thread_id
-    // CHECK-NEXT: call @fused_computation_atan2
+    // CHECK-NEXT: pure_call @fused_computation_atan2
     // CHECK-NEXT: tensor.insert
     // CHECK-NEXT: return
 
@@ -408,7 +409,7 @@ ENTRY main {
     // CHECK:   %[[TID_X:.*]] = gpu.thread_id x
     // CHECK:   %[[BID_X:.*]] = gpu.block_id x
     // CHECK:   %[[IDX:.*]] = affine.apply #[[MAP]]()[%[[TID_X]], %[[BID_X]]]
-    // CHECK:   %[[SCALARS:.*]]:2 = func.call @fused_computation_d_1
+    // CHECK:   %[[SCALARS:.*]]:2 = xla_gpu.pure_call @fused_computation_d_1
     // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS]]#0 into %{{.*}}[%[[IDX]]]
     // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS]]#1 into %{{.*}}[%[[IDX]]]
     // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]

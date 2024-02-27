@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/status_macros.h"
@@ -851,8 +853,7 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
   std::function<absl::StatusOr<llvm::SmallVector<mlir::Value>>(
       const HloInstruction* instr, mlir::ValueRange indices)>
       emit_instr;
-  absl::flat_hash_map<mlir::Operation*, llvm::SmallVector<mlir::func::CallOp>>
-      calls;
+  absl::flat_hash_map<mlir::Operation*, llvm::SmallVector<PureCallOp>> calls;
 
   auto provide_operand = [&](const HloInstruction* instr, int index,
                              mlir::ValueRange indices)
@@ -898,8 +899,8 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
       }
     }
     return existing_calls
-        .emplace_back(builder.create<mlir::func::CallOp>(
-            call_target_provider(operand), operands))
+        .emplace_back(
+            builder.create<PureCallOp>(call_target_provider(operand), operands))
         .getResults();
   };
 

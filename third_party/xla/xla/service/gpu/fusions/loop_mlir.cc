@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -141,8 +142,7 @@ absl::Status MlirLoopFusion::EmitMlir(
             absl::c_copy(output_indices, std::back_inserter(operands));
 
             auto result_scalars =
-                builder.create<mlir::func::CallOp>(root_fn, operands)
-                    .getResults();
+                builder.create<PureCallOp>(root_fn, operands).getResults();
 
             llvm::SmallVector<mlir::Value> result_tensors;
             result_tensors.reserve(output_tensor_args.size());

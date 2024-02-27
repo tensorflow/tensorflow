@@ -107,6 +107,12 @@ def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
   let summary = "Function call without side effects.";
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
+  let builders = [
+    OpBuilder<(ins "mlir::func::FuncOp":$callee, CArg<"mlir::ValueRange", "{}">:$operands), [{
+      $_state.addOperands(operands);
+      $_state.addAttribute("callee", mlir::SymbolRefAttr::get(callee));
+      $_state.addTypes(callee.getFunctionType().getResults());
+    }]>];
   let assemblyFormat = [{
     $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
   }];
