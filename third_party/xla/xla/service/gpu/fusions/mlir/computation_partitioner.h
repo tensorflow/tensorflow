@@ -123,10 +123,26 @@ class PartitionedComputations {
       std::function<bool(const HloInstruction*, int)>
           operand_is_function_argument = nullptr);
 
+  // Partitions the fusion and isolates the given instructions in their own
+  // subgraphs. The values of these instructions will be function arguments
+  // in their user subgraphs.
+  //
+  // Example: param -> exp -> transpose -> neg
+  // If the transpose is isolated and injected, we will get three subgraphs: one
+  // for the exp, one for the transpose and one for the neg. The neg subgraph
+  // will have an extra argument for the value of the transpose.
+  explicit PartitionedComputations(
+      const HloComputation* fusion,
+      const absl::flat_hash_set<const HloInstruction*>&
+          isolated_and_injected_instructions);
+
   const PartitionedComputation& FindPartitionedComputation(
       const HloComputation* computation) const {
     return *computation_to_partitioning_.at(computation);
   }
+
+  const PartitionedComputation::Subgraph& FindSubgraph(
+      const HloInstruction* instr) const;
 
   absl::Span<const PartitionedComputation> partitioned_computations() const {
     return partitioned_computations_;

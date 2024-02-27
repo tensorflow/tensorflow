@@ -247,24 +247,18 @@ TEST_F(ComputationPartitionerTest, SubgraphSignaturesWithInjectedValues) {
   // We force a split at the transpose (like the transpose emitter would do) and
   // enforce that the transpose is injected as a parameter into the epilogue.
   auto* fused_computation = module->GetComputationWithName("fused_computation");
-  PartitionedComputation fusion(
+  PartitionedComputations fusion(
       fused_computation,
-      [](const HloInstruction* instr) {
-        // Make the transpose a new root.
-        return instr->opcode() == HloOpcode::kTranspose;
-      },
-      [](const HloInstruction* instr, int operand) {
-        // Inject the transpose argument.
-        return instr->operand(operand)->opcode() == HloOpcode::kTranspose;
-      });
-  auto& injected_params = fusion.GetRootSubgraph().injected_param_indices;
+      /*isolated_and_injected_instructions=*/
+      {fused_computation->GetInstructionWithName("transpose")});
+  auto& root_graph = fusion.FindSubgraph(fused_computation->root_instruction());
+  auto& injected_params = root_graph.injected_param_indices;
   EXPECT_EQ(injected_params.size(), 1);
   std::pair<const HloInstruction*, int> injected_operand_key(
       fused_computation->root_instruction(), 0);
   ASSERT_TRUE(injected_params.contains(injected_operand_key));
   EXPECT_EQ(injected_params.at(injected_operand_key), 0);
-  EXPECT_EQ(PrintAndErase(
-                CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder)),
+  EXPECT_EQ(PrintAndErase(CreateSubgraphMlirFunction(root_graph, builder)),
             "func.func private @fused_computation_add(tensor<2x16x17xf32>, "
             "tensor<f32>, index {xla.range = [0 : index, 1 : index]}, index "
             "{xla.range = [0 : index, 16 : index]}, index {xla.range = [0 : "
