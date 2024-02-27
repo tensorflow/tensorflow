@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -339,7 +340,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
-      return data_service_client_.Initialize();
+      return data_service_client_.Initialize(ctx->allocator(/*attrs=*/{}));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -767,6 +768,22 @@ REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV3).Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV4).Device(DEVICE_CPU),
                         DataServiceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_CPU),
+                        DummyResourceOp<IterationCounter>);
+
+REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV4)
+                            .Device(DEVICE_GPU)
+                            .HostMemory("dataset_id")
+                            .HostMemory("processing_mode")
+                            .HostMemory("address")
+                            .HostMemory("protocol")
+                            .HostMemory("job_name")
+                            .HostMemory("consumer_index")
+                            .HostMemory("num_consumers")
+                            .HostMemory("max_outstanding_requests")
+                            .HostMemory("iteration_counter")
+                            .HostMemory("handle"),
+                        DataServiceDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_GPU),
                         DummyResourceOp<IterationCounter>);
 
 }  // namespace data

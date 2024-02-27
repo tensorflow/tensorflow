@@ -167,8 +167,8 @@ DatasetClient<T>::DatasetClient(const TestCluster& cluster)
 
   for (size_t i = 0; i < cluster.NumWorkers(); ++i) {
     worker_clients_[cluster_.WorkerAddress(i)] =
-        std::make_unique<DataServiceWorkerClient>(cluster_.WorkerAddress(i),
-                                                  "grpc", "grpc");
+        std::make_unique<DataServiceWorkerClient>(
+            cluster_.WorkerAddress(i), "grpc", "grpc", /*allocator=*/nullptr);
   }
 }
 
