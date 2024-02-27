@@ -212,6 +212,8 @@ MlirFusionEmitterBase::CreateLLVMModule(
   mlir::PassManager pm(&mlir_context);
   // TODO(jreiffers): Proper inlining and CSE of function calls.
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
   pm.addPass(CreateLowerFuncPass());

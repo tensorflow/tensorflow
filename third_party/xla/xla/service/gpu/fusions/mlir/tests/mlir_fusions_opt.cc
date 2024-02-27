@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
   mlir::func::registerAllExtensions(registry);
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
+  mlir::registerInliner();
   xla::gpu::registerGpuFusionTransformsPasses();
 
   return mlir::failed(

@@ -23,10 +23,46 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 
 namespace xla {
 namespace gpu {
+namespace {
+struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // Returns true if the given operation 'callable', that implements the
+  // 'CallableOpInterface', can be inlined into the position given call
+  // operation 'call', that is registered to the current dialect and implements
+  // the `CallOpInterface`. 'wouldBeCloned' is set to true if the region of the
+  // given 'callable' is set to be cloned during the inlining process, or false
+  // if the region is set to be moved in-place (i.e. no duplicates would be
+  // created).
+  bool isLegalToInline(mlir::Operation *call, mlir::Operation *callable,
+                       bool wouldBeCloned) const final {
+    if (!wouldBeCloned) {
+      // If no duplicate would be created, 'call' is likely the only caller of
+      // 'callable'.
+      return true;
+    }
+    // TODO(akuegel): Implement logic to decide when inlining makes sense.
+    return false;
+  }
+  // Returns true if the given operation 'op', that is registered to this
+  // dialect, can be inlined into the given region, false otherwise.
+  // 'wouldBeCloned' is set to true if the given 'op' is set to be cloned
+  // during the inlining process, or false if the operation is set to be moved
+  // in-place(i.e. no duplicates would be created). 'valueMapping' contains any
+  // remapped values from within the 'src' region. This can be used to examine
+  // what values may potentially replace the operands to 'op'.
+  bool isLegalToInline(mlir::Operation *op, mlir::Region *dest,
+                       bool wouldBeCloned,
+                       mlir::IRMapping &valueMapping) const final {
+    // We allow any op from the xla_gpu dialect to be inlined.
+    return true;
+  }
+};
+}  // namespace
 
 void XlaGpuDialect::initialize() {
   addOperations<
@@ -34,6 +70,7 @@ void XlaGpuDialect::initialize() {
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.cc.inc"
 #undef GET_OP_LIST
       >();
+  addInterfaces<XlaGpuInlinerInterface>();
 }
 
 mlir::LogicalResult PureCallOp::verifySymbolUses(
