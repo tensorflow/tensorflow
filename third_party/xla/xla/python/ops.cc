@@ -39,6 +39,205 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/xla_data.pb.h"
 
+namespace pybind11 {
+namespace detail {
+
+// XLA protocol buffers
+// We don't actually care that these are the protocol buffers, we merely want
+// objects that duck type as protocol buffers. The client code currently avoids
+// depending on Python protocol buffers to avoid conflicting definitions from
+// different modules that both include XLA.
+
+template <>
+struct type_caster<xla::ConvolutionDimensionNumbers> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::ConvolutionDimensionNumbers,
+                       _("xla::ConvolutionDimensionNumbers"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    value.set_input_batch_dimension(
+        getattr(handle, "input_batch_dimension").cast<int64_t>());
+    value.set_input_feature_dimension(
+        getattr(handle, "input_feature_dimension").cast<int64_t>());
+    value.set_output_batch_dimension(
+        getattr(handle, "output_batch_dimension").cast<int64_t>());
+    value.set_output_feature_dimension(
+        getattr(handle, "output_feature_dimension").cast<int64_t>());
+    value.set_kernel_input_feature_dimension(
+        getattr(handle, "kernel_input_feature_dimension").cast<int64_t>());
+    value.set_kernel_output_feature_dimension(
+        getattr(handle, "kernel_output_feature_dimension").cast<int64_t>());
+    std::vector<int64_t> dims;
+    dims = getattr(handle, "input_spatial_dimensions")
+               .cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_input_spatial_dimensions()));
+    dims = getattr(handle, "kernel_spatial_dimensions")
+               .cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_kernel_spatial_dimensions()));
+    dims = getattr(handle, "output_spatial_dimensions")
+               .cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_output_spatial_dimensions()));
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::DotDimensionNumbers> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::DotDimensionNumbers, _("xla::DotDimensionNumbers"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    std::vector<int64_t> dims;
+    dims = getattr(handle, "lhs_contracting_dimensions")
+               .cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_lhs_contracting_dimensions()));
+    dims = getattr(handle, "rhs_contracting_dimensions")
+               .cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_rhs_contracting_dimensions()));
+    dims = getattr(handle, "lhs_batch_dimensions").cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_lhs_batch_dimensions()));
+    dims = getattr(handle, "rhs_batch_dimensions").cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_rhs_batch_dimensions()));
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::GatherDimensionNumbers> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::GatherDimensionNumbers,
+                       _("xla::GatherDimensionNumbers"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    std::vector<int64_t> dims;
+    dims = getattr(handle, "offset_dims").cast<std::vector<int64_t>>();
+    std::copy(
+        dims.begin(), dims.end(),
+        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_offset_dims()));
+    dims = getattr(handle, "collapsed_slice_dims").cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_collapsed_slice_dims()));
+    dims = getattr(handle, "start_index_map").cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_start_index_map()));
+    value.set_index_vector_dim(
+        getattr(handle, "index_vector_dim").cast<int64_t>());
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::ScatterDimensionNumbers> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::ScatterDimensionNumbers,
+                       _("xla::ScatterDimensionNumbers"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    std::vector<int64_t> dims;
+    dims = getattr(handle, "update_window_dims").cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_update_window_dims()));
+    dims = getattr(handle, "inserted_window_dims").cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_inserted_window_dims()));
+    dims = getattr(handle, "scatter_dims_to_operand_dims")
+               .cast<std::vector<int64_t>>();
+    std::copy(dims.begin(), dims.end(),
+              tsl::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_scatter_dims_to_operand_dims()));
+    value.set_index_vector_dim(
+        getattr(handle, "index_vector_dim").cast<int64_t>());
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::ReplicaGroup> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::ReplicaGroup, _("xla::ReplicaGroup"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    std::vector<int64_t> dims;
+    dims = getattr(handle, "replica_ids").cast<std::vector<int64_t>>();
+    std::copy(
+        dims.begin(), dims.end(),
+        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_replica_ids()));
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::PaddingConfig> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::PaddingConfig, _("xla::PaddingConfig"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    sequence dimensions =
+        reinterpret_borrow<sequence>(getattr(handle, "dimensions"));
+
+    for (const auto& dimension : dimensions) {
+      xla::PaddingConfig::PaddingConfigDimension* config_dim =
+          value.add_dimensions();
+      config_dim->set_edge_padding_low(
+          getattr(dimension, "edge_padding_low").cast<int64_t>());
+      config_dim->set_edge_padding_high(
+          getattr(dimension, "edge_padding_high").cast<int64_t>());
+      config_dim->set_interior_padding(
+          getattr(dimension, "interior_padding").cast<int64_t>());
+    }
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::PrecisionConfig> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::PrecisionConfig, _("xla::PrecisionConfig"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle, bool) {
+    if (handle.is_none()) {
+      return true;
+    }
+
+    sequence operand_precisions =
+        reinterpret_borrow<sequence>(getattr(handle, "operand_precision"));
+
+    for (const auto& operand_precision : operand_precisions) {
+      value.add_operand_precision(
+          operand_precision.cast<xla::PrecisionConfig::Precision>());
+    }
+    return true;
+  }
+};
+
+}  // namespace detail
+}  // namespace pybind11
+
 namespace xla {
 
 namespace py = pybind11;
