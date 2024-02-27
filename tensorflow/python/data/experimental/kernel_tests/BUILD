@@ -200,6 +200,7 @@ tf_py_strict_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

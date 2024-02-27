@@ -22,6 +22,7 @@ from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -161,12 +162,15 @@ class GlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
-              reshuffle_each_iteration=[True, False], prefetch=[True, False])))
+              reshuffle_each_iteration=[True, False],
+              prefetch=[True, False],
+              symbolic_checkpoint=[True, False])))
   def testRange(
       self,
       verify_fn: Callable[..., None],
       reshuffle_each_iteration: bool,
-      prefetch: bool):
+      prefetch: bool,
+      symbolic_checkpoint: bool):
 
     def _build_dataset() -> dataset_ops.Dataset:
       dataset = dataset_ops.Dataset.range(10)
@@ -174,6 +178,10 @@ class GlobalShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
         dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      if symbolic_checkpoint:
+        options = options_lib.Options()
+        options.experimental_symbolic_checkpoint = symbolic_checkpoint
+        dataset = dataset.with_options(options)
       return dataset
 
     verify_fn(
