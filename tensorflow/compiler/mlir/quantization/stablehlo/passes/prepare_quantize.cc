@@ -12,9 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Copied and modified from
-// //third_party/tensorflow/compiler/mlir/lite/transforms/prepare_quantize.cc
-// This transformation pass applies quantization propagation on TF dialect.
 #include <memory>
 #include <utility>
 
