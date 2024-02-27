@@ -32,7 +32,5 @@ jobs:
         uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
       - name: "Fetch HEAD of main branch"
         run: git fetch origin main --depth=1
-      - name: "Show changed files"
-        run: git diff --name-only origin/main HEAD
       - name: "Run clang-format"
-        run: clang-format --dry-run --Werror $(git diff --name-only origin/main HEAD -- '*.cc' '*.h')
+        run: clang-format --dry-run --Werror --verbose $(git diff --name-only origin/main HEAD -- '*.cc' '*.h')
