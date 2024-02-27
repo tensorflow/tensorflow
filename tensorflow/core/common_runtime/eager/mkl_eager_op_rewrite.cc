@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -52,6 +52,9 @@ class MklEagerOpRewrite : public EagerOpRewrite {
 
   // Rewrite rule for Conv2D, Conv2DBackpropInput and Conv2DBackpropFilter.
   static bool RewriteConv2D(EagerOperation* op);
+
+  // Rewrite rule for MklSparseMatrixMatMul.
+  static bool RewriteSparseMatrixMatMul(EagerOperation* op);
 
   // Rewrite rule for FusedBatchNormV3 and FusedBatchNormGradV3
   static bool RewriteFusedBatchNormV3(EagerOperation* op);
@@ -112,6 +115,10 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
   InsertMKLEagerOps(
       {"FusedBatchNormV3", RewriteFusedBatchNormV3, CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
+#ifdef ENABLE_ONEDNN_V3
+  InsertMKLEagerOps(
+      {"SparseMatrixMatMul", RewriteSparseMatrixMatMul, CreateGenericMklOp});
+#endif  // ENABLE_ONEDNN_V3
   // TODO(Intel-tf): Support MaxPool, MaxPool3D rewrite, handle workspace.
   // Note: MaxPoolGrad, MaxPool3DGrad rewrite cannot be supported in eager
   // mode due to workspace restriction
@@ -230,6 +237,42 @@ bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
   TF_CHECK_OK(GetNodeAttr(ndef, "padding", &padding));
   // Right now MKL Conv2D does not support explicit padding.
   return (padding != "EXPLICIT");
+}
+
+bool MklEagerOpRewrite::RewriteSparseMatrixMatMul(EagerOperation* op) {
+  const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
+  DataType T;
+  const TensorProto* proto = nullptr;
+  Tensor tensor;
+  bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
+
+  // Check the datatype.
+  TF_CHECK_OK(GetNodeAttr(ndef, "T", &T));
+  if (T != DT_FLOAT) {
+    VLOG(1) << "_MklSparseMatrixMatMul only supports DT_FLOAT";
+    return false;
+  }
+
+  // Check for adjointing.
+  TF_CHECK_OK(GetNodeAttr(ndef, "adjoint_a", &adjoint_a));
+  TF_CHECK_OK(GetNodeAttr(ndef, "adjoint_b", &adjoint_b));
+  if (adjoint_a || adjoint_b) {
+    VLOG(1)
+        << "_MklNativeSparseMatrixMatMul doesn't support adjointing matrices";
+    return false;
+  }
+
+  // Check for transposing.
+  TF_CHECK_OK(GetNodeAttr(ndef, "transpose_a", &transpose_a));
+  TF_CHECK_OK(GetNodeAttr(ndef, "transpose_b", &transpose_b));
+  TF_CHECK_OK(GetNodeAttr(ndef, "transpose_output", &transpose_out));
+  if (transpose_a || transpose_b || transpose_out) {
+    VLOG(1)
+        << "_MklNativeSparseMatrixMatMul doesn't support transposing matrices";
+    return false;
+  }
+
+  return true;
 }
 
 bool MklEagerOpRewrite::RewriteFusedBatchNormV3(EagerOperation* op) {
