@@ -229,6 +229,7 @@ cc_library(
     name = "passes",
     srcs = [
         "expand_float_conversions.cc",
+        "lower_func.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
         "merge_pointers_to_same_slice.cc",

@@ -34,6 +34,22 @@ def PropagateSliceIndicesPass :
   let constructor = "CreatePropagateSliceIndicesPass()";
 }
 
+def LowerFuncPass : Pass<"xla-gpu-lower-func", "mlir::ModuleOp"> {
+  let summary = "Lowers function calls to func.calls.";
+
+  let description = [{
+      We use xla_gpu.pure_call ops for calls to enable CSE and other
+      transformations (e.g. LICM). This pass rewrites our custom ops to standard
+      ops.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect", "xla::gpu::XlaGpuDialect"
+  ];
+
+  let constructor = "CreateLowerFuncPass()";
+}
+
 def LowerTensorsPass :
    Pass<"xla-gpu-lower-tensors", "mlir::ModuleOp"> {
   let summary = "Lowers tensors to llvm pointers and loads/stores.";
