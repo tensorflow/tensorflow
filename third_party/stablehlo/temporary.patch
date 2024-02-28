@@ -8345,4 +8345,61 @@ diff --ruN a/stablehlo/stablehlo/transforms/ShapeLegalizeToStablehlo.cpp b/stabl
 +
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+@@ -828,12 +828,12 @@
+     // additional argument for the generic builder.
+     StablehloToVhloOp<StablehloOpTy> vhloOp;
+     if constexpr (std::is_same<StablehloOpTy, stablehlo::CaseOp>::value) {
+-      vhloOp = rewriter.replaceOpWithNewOp<vhlo::CaseOpV1>(
+-          stablehloOp, vhloTypes, vhloOperands, vhloAttrs,
++      vhloOp = rewriter.create<vhlo::CaseOpV1>(
++          stablehloOp.getLoc(), vhloTypes, vhloOperands, vhloAttrs,
+           stablehloOp.getBranches().size());
+     } else {
+-      vhloOp = rewriter.replaceOpWithNewOp<StablehloToVhloOp<StablehloOpTy>>(
+-          stablehloOp, vhloTypes, vhloOperands, vhloAttrs);
++      vhloOp = rewriter.create<StablehloToVhloOp<StablehloOpTy>>(
++          stablehloOp.getLoc(), vhloTypes, vhloOperands, vhloAttrs);
+     }
+ 
+     for (auto [stablehloRegion, vhloRegion] :
+@@ -845,6 +845,7 @@
+                                              /*entryConversion=*/nullptr)))
+         return failure();
+     }
++    rewriter.replaceOp(stablehloOp, vhloOp);
+     return success();
+   }
+ };
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -837,12 +837,12 @@
+     // additional argument for the generic builder.
+     VhloToStablehloOp<VhloOpTy> stablehloOp;
+     if constexpr (std::is_same<VhloOpTy, vhlo::CaseOpV1>::value) {
+-      stablehloOp = rewriter.replaceOpWithNewOp<stablehlo::CaseOp>(
+-          vhloOp, stablehloTypes, stablehloOperands, stablehloAttrs,
++      stablehloOp = rewriter.create<stablehlo::CaseOp>(
++          vhloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs,
+           vhloOp.getBranches().size());
+     } else {
+-      stablehloOp = rewriter.replaceOpWithNewOp<VhloToStablehloOp<VhloOpTy>>(
+-          vhloOp, stablehloTypes, stablehloOperands, stablehloAttrs);
++      stablehloOp = rewriter.create<VhloToStablehloOp<VhloOpTy>>(
++          vhloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs);
+     }
+ 
+     for (auto [vhloRegion, stablehloRegion] :
+@@ -854,6 +854,8 @@
+                                              /*entryConversion=*/nullptr)))
+         return failure();
+     }
++
++    rewriter.replaceOp(vhloOp, stablehloOp);
+     return success();
+   }
+ };
 

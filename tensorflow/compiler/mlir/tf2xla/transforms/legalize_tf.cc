@@ -6806,9 +6806,6 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
                                         adaptor.getOperands());
     }
 
-    // Replace all uses of `op` results with the newly created op.
-    rewriter.replaceOp(op, mhlo_op.getResults());
-
     int64_t num_regions = op.getNumRegions();
     for (int64_t idx = 0; idx < num_regions; ++idx) {
       Region &region = mhlo_op.getBodyRegion(idx);
@@ -6828,6 +6825,9 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
         rewriter.applySignatureConversion(&region, signature);
       }
     }
+
+    // Replace all uses of `op` results with the newly created op.
+    rewriter.replaceOp(op, mhlo_op);
     return success();
   }
 };
