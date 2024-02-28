@@ -13,9 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.filter()`."""
+
+from typing import Callable
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -228,6 +232,66 @@ class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                          checkpoint_test_base.default_test_combinations()))
   def testSparse(self, verify_fn):
     verify_fn(self, self._build_sparse_filter_dataset, num_outputs=5)
+
+
+class FilterGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleFilter(self):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = global_shuffle_op._global_shuffle(dataset)
+    dataset = dataset.filter(lambda x: math_ops.equal(x % 2, 0))
+    self.assertDatasetProduces(
+        dataset,
+        list(range(0, 100, 2)),
+        requires_initialization=True,
+        assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFilterShuffle(self):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.filter(lambda x: math_ops.equal(x % 2, 0))
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "`global_shuffle` requires all upstream transformations be compatible "
+        "with random access."):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+
+class FilterGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testShuffleFilter(
+      self,
+      verify_fn: Callable[..., None],
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(10)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      dataset = dataset.filter(lambda x: math_ops.equal(x % 2, 0))
+      if symbolic_checkpoint:
+        options = options_lib.Options()
+        options.experimental_symbolic_checkpoint = symbolic_checkpoint
+        dataset = dataset.with_options(options)
+      return dataset
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=5,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":

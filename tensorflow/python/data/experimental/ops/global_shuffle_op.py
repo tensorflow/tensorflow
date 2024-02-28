@@ -41,8 +41,6 @@ def _global_shuffle(  # pylint: disable=unused-private-name
     dataset if it cannot be determined at runtime.
 
   TODO(b/325112575): Move the API to dataset_ops.py.
-  TODO(b/325112575): Support reshuffle_each_iteration.
-  TODO(b/325112575): Support checkpoints.
 
   Args:
     input_dataset: The dataset to be shuffled.
