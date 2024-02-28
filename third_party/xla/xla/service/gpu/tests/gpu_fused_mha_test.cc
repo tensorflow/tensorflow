@@ -23,7 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/reference_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -51,6 +54,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 #if GOOGLE_CUDA
@@ -59,6 +63,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
 class MultiHeadedAttentionTest : public GpuCodegenTest {
  public:
@@ -111,45 +116,42 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_xla_runtime_executable(false);
+    debug_options.set_xla_gpu_enable_cudnn_fmha(false);
     return debug_options;
   }
 
-  void IsFMHACalled(const std::string &hlo_string,
-                    HloModuleConfig &config_with_fmha,
-                    const std::string &prefix, bool is_training) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> verified_module,
-        ParseAndReturnVerifiedModule(hlo_string, config_with_fmha));
+  absl::StatusOr<int> CountFMHACalls(absl::string_view hlo_string,
+                                     const HloModuleConfig &config) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> verified_module,
+                        ParseAndReturnVerifiedModule(hlo_string, config));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<HloModule> optimized_verified_module,
-        GetOptimizedModule(std::move(verified_module)));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_verified_module,
+                        GetOptimizedModule(std::move(verified_module)));
 
-    auto count = absl::c_count_if(
+    return absl::c_count_if(
         optimized_verified_module->entry_computation()->instructions(),
         [&](const HloInstruction *inst) {
           return inst->opcode() == HloOpcode::kCustomCall &&
-                 absl::StrContains(inst->custom_call_target(), prefix);
+                 absl::StrContains(inst->custom_call_target(), "__cudnn$fmha");
         });
-    if (is_training) {
-      EXPECT_EQ(count, 2);
-    } else {
-      EXPECT_EQ(count, 1);
-    }
   }
 
-  void ExecuteAndCompare(const std::string hlo_string,
+  void ExecuteAndCompare(absl::string_view hlo_string,
                          const std::vector<Literal *> &literals,
-                         bool is_training = false) {
+                         int expected_num_fmha_calls = 1) {
     HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    config.set_debug_options(debug_options);
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_string, config));
     auto expected_result = ExecuteAndTransfer(std::move(module), literals);
 
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
+    // Sanity check to ensure the first computation doesn't use FMHA.
+    TF_ASSERT_OK_AND_ASSIGN(int num_fmha_calls,
+                            CountFMHACalls(hlo_string, config));
+    EXPECT_EQ(num_fmha_calls, 0);
 
+    debug_options.set_xla_gpu_enable_cudnn_fmha(true);
     HloModuleConfig config_with_fmha;
     config_with_fmha.set_debug_options(debug_options);
 
@@ -160,8 +162,9 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     EXPECT_TRUE(
         LiteralTestUtil::Near(expected_result, actual_result, error_spec_));
 
-    std::string prefix = "__cudnn$fmha";
-    IsFMHACalled(hlo_string, config_with_fmha, prefix, is_training);
+    TF_ASSERT_OK_AND_ASSIGN(num_fmha_calls,
+                            CountFMHACalls(hlo_string, config_with_fmha));
+    EXPECT_EQ(num_fmha_calls, expected_num_fmha_calls);
   }
 
   template <typename T>
@@ -1338,7 +1341,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     ExecuteAndCompare(hlo_string,
                       {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
                        &do_bmm2_literal, &mask_literal},
-                      true);
+                      /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -2135,7 +2138,7 @@ class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM
     ExecuteAndCompare(hlo_string,
                       {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
                        &bias_literal, &mask_literal, &do_literal},
-                      true);
+                      /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -2354,7 +2357,7 @@ class FlashAttentionBMMScaleCausalMaskSoftmaxBMM
     ExecuteAndCompare(
         hlo_string,
         {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
-        true);
+        /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -2591,7 +2594,7 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
     ExecuteAndCompare(hlo_string,
                       {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
                        &bias_literal, &do_literal},
-                      true);
+                      /*expected_num_fmha_calls=*/2);
   }
 
   template <typename T>
@@ -2741,7 +2744,7 @@ class FlashAttentionBMMScaleBiasMaskSoftmaxBMM
     ExecuteAndCompare(hlo_string,
                       {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
                        &do_literal, &mask_literal},
-                      true);
+                      /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -2858,7 +2861,7 @@ class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
     ExecuteAndCompare(
         hlo_string,
         {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal, &do_literal},
-        true);
+        /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -2982,7 +2985,7 @@ class FlashAttentionBMMScaleMaskSoftmaxBMM : public MultiHeadedAttentionTest {
     ExecuteAndCompare(hlo_string,
                       {&lhs_bmm1_literal, &rhs_bmm1_literal, &rhs_bmm2_literal,
                        &do_literal, &mask_literal},
-                      true);
+                      /*expected_num_fmha_calls=*/2);
   }
 };
 
@@ -3162,5 +3165,6 @@ XLA_TEST_F(FlashAttentionBMMScaleMaskSoftmaxBMM,
            Flash_Attention_Training_BMM1_Mask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_Mask_Softmax_BMM2<bfloat16>();
 }
+}  // namespace
 }  // namespace gpu
 }  // namespace xla
