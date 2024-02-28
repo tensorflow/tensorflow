@@ -534,29 +534,6 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
       hlo_module_and_arguments.hlo_module.get(), loaded_arguments);
 }
 
-absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
-FunctionalHloRunner::LoadAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
-    const CompileOptions& compile_options,
-    const RunningOptions& running_options,
-    absl::Span<const std::string> hlo_files, InputFormat input_format,
-    const LiteralVec& argument_literals,
-    const PerDeviceIndexVecType& per_device_index_vec) {
-  CHECK(!hlo_files.empty());
-  // We only support SPMD as of now, i.e., all devices are supposed
-  // to execute the same HLO module.
-  // TODO(tdanyluk): Consider revising this API which takes multiple HLOs, but
-  // uses only one.
-  HloModuleAndArguments hlo_module_and_arguments;
-  TF_ASSIGN_OR_RETURN(hlo_module_and_arguments,
-                      LoadHloModuleAndArguments(hlo_files[0], input_format));
-  return CompileAndRun(client, debug_options, preproc_options, compile_options,
-                       running_options,
-                       hlo_module_and_arguments.hlo_module.get(),
-                       argument_literals, per_device_index_vec);
-}
-
 Status FunctionalHloRunner::LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
@@ -654,21 +631,6 @@ FunctionalHloRunner::CompileAndRun(PjRtClient& client,
                               preproc_options, compile_options));
 
   return Run(client, executable.get(), arguments, running_options);
-}
-
-absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
-FunctionalHloRunner::CompileAndRun(
-    PjRtClient& client, const DebugOptions& debug_options,
-    const PreprocessingOptions& preproc_options,
-    const CompileOptions& compile_options,
-    const RunningOptions& running_options, HloModule* hlo_module,
-    const LiteralVec& argument_literals,
-    const PerDeviceIndexVecType& argument_indices) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      Compile(client, hlo_module, debug_options,
-                              preproc_options, compile_options));
-  return Run(client, executable.get(), argument_literals, argument_indices,
-             running_options);
 }
 
 namespace {
@@ -855,67 +817,6 @@ FunctionalHloRunner::Run(PjRtClient& client, PjRtLoadedExecutable* executable,
     // already been flattened.
     return CopyArgumentsToDevice(client, executable->addressable_devices(),
                                  arguments, running_options.log_input_output());
-  };
-  return RunInternal(client, executable, create_argument_buffers_on_device,
-                     running_options);
-}
-
-// Runs the executable and may repeat for multiple times.
-// Since the input buffers may be donated by the PjrtClient, we re-create the
-// input PjrtBuffers for each repetition.
-absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
-FunctionalHloRunner::Run(
-
-    PjRtClient& client, PjRtLoadedExecutable* executable,
-    const LiteralVec& argument_literals,
-    const PerDeviceIndexVecType& argument_indices,
-    const RunningOptions& running_options) {
-  auto create_argument_buffers_on_device = [&client, &executable,
-                                            &argument_literals,
-                                            &argument_indices,
-                                            &running_options](
-                                               bool flatten_arguments) {
-    CHECK_GE(argument_literals.size(), 1);
-    bool arguments_can_be_flattened = absl::c_all_of(
-        argument_literals,
-        [](const Literal& literal) { return literal.shape().IsTuple(); });
-    arguments_can_be_flattened &= absl::c_all_of(
-        argument_indices, [](PerDeviceIndexVecType::const_reference
-                                 device_id_and_argument_indices) {
-          return device_id_and_argument_indices.second.size() == 1;
-        });
-    if (flatten_arguments && arguments_can_be_flattened) {
-      int tuple_shape_size =
-          argument_literals.front().shape().tuple_shapes_size();
-      LiteralVec flattened_argument_literals;
-      for (const Literal& tupled_argument : argument_literals) {
-        LiteralVec flattened_arguments =
-            tupled_argument.Clone().DecomposeTuple();
-        for (Literal& flattened_argument : flattened_arguments) {
-          flattened_argument_literals.push_back(std::move(flattened_argument));
-        }
-      }
-      PerDeviceIndexVecType flattened_per_device_index_vec;
-      for (const auto& device_id_and_argument_indices : argument_indices) {
-        std::vector<int> flattened_argument_indices(tuple_shape_size);
-        int tupled_argument_index =
-            device_id_and_argument_indices.second.front();
-        for (int i = 0; i < tuple_shape_size; i++) {
-          flattened_argument_indices[i] =
-              tupled_argument_index * tuple_shape_size + i;
-        }
-        int device_id = device_id_and_argument_indices.first;
-        flattened_per_device_index_vec.insert(
-            {device_id, std::move(flattened_argument_indices)});
-      }
-      return CopyArgumentsToDevice(client, executable->addressable_devices(),
-                                   flattened_argument_literals,
-                                   flattened_per_device_index_vec,
-                                   running_options.log_input_output());
-    }
-    return CopyArgumentsToDevice(client, executable->addressable_devices(),
-                                 argument_literals, argument_indices,
-                                 running_options.log_input_output());
   };
   return RunInternal(client, executable, create_argument_buffers_on_device,
                      running_options);
