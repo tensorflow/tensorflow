@@ -4611,10 +4611,16 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cudnn_fused_mha_rewriter_test",
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-nvidia",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -4643,7 +4649,10 @@ xla_cc_test(
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ]),
 )
 
 xla_test(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_fused_mha_rewriter.h"
 
 #include <cstddef>
+#include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -44,6 +45,11 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
+#endif
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -57,6 +63,13 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
     // we don't run any kernels in these tests so they should be safe
     // to run anywhere.
     return se::CudaComputeCapability(8, 0);
+  }
+
+  se::CudaComputeCapability GetRealCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
   }
 
   se::dnn::VersionInfo GetCudnnVersion() {
@@ -90,7 +103,12 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
   CudnnFusedMhaRewriterTestHloTest()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/false,
-                    /*instruction_can_change_layout_func=*/{}) {}
+                    /*instruction_can_change_layout_func=*/{}) {
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    skip_reason_ = "cuDNN fused MHA requires CUDA 12 or later.";
+    return;
+#endif
+  }
 
  protected:
   size_t CountFusedAttentionCall(HloModule* module, bool is_backward = false) {
@@ -118,10 +136,38 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
     config_with_fmha.set_debug_options(debug_options);
     return config_with_fmha;
   }
+
+  // Centralize skip checks in the constructor. Unfortunately we cannot call
+  // GTEST_SKIP from the constructor. Instead, we set (if needed) `skip_reason`,
+  // and then check it from all test fixtures.
+  // An alternative would be to use the SetUp() override, but for this to be
+  // correct we'd have to ensure that all the parents' SetUp() methods are
+  // called, which is error prone.
+  std::optional<absl::string_view> skip_reason_;
 };
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2Pattern) {
-  const char* module_str = R"(
+class CudnnFusedMhaRewriterPipelineTest
+    : public CudnnFusedMhaRewriterTestHloTest {
+ public:
+  CudnnFusedMhaRewriterPipelineTest() {
+    if (skip_reason_) return;  // the parent might have set it.
+#if !defined(GOOGLE_CUDA) || CUDNN_VERSION < 8800  // NOLINT
+    skip_reason_ = "Pipeline test requires cuDNN 8.8.0 or later.";
+    return;
+#endif
+    stream_executor::CudaComputeCapability cc = GetRealCudaComputeCapability();
+    // Enforce capability minor == 0 because hardware with a non-zero minor
+    // number typically has insufficient shared memory for cuDNN FMHA.
+    if (!cc.IsAtLeastAmpere() || cc.minor != 0) {
+      skip_reason_ =
+          "Pipeline test requires Nvidia AMPERE+ GPUs with minor "
+          "compute capability == 0.";
+      return;
+    }
+  }
+};
+
+constexpr absl::string_view hlo_BF16Bmm1Bmm2Pattern = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 ENTRY main.6 {
   Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
@@ -129,13 +175,13 @@ ENTRY main.6 {
   Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
   dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
-}
+})";
 
-
-)";
-
+TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(hlo_BF16Bmm1Bmm2Pattern, GetModuleConfig()));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
@@ -152,12 +198,17 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+}
+
+TEST_F(CudnnFusedMhaRewriterPipelineTest, BF16Bmm1Bmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(hlo_BF16Bmm1Bmm2Pattern, GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
+
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
       optimized_module->entry_computation()->root_instruction(),
@@ -169,11 +220,9 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2UncanonicalizedPattern) {
-  const char* module_str = R"(
+constexpr absl::string_view hlo_BF16Bmm1Bmm2UncanonicalizedPattern = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
 ENTRY main.6 {
@@ -182,12 +231,12 @@ ENTRY main.6 {
   Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
   dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   ROOT dot.1 = bf16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, dot.0), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
-}
+})";
 
-
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2UncanonicalizedPattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(
+                                      hlo_BF16Bmm1Bmm2UncanonicalizedPattern));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
@@ -204,12 +253,16 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+}
+
+TEST_F(CudnnFusedMhaRewriterPipelineTest, BF16Bmm1Bmm2UncanonicalizedPattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m, ParseAndReturnVerifiedModule(
+                  hlo_BF16Bmm1Bmm2UncanonicalizedPattern, GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
@@ -222,12 +275,10 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor) {
-  const char* module_str = R"(
+constexpr absl::string_view
+    hlo_BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
 ENTRY main.6 {
@@ -236,10 +287,15 @@ ENTRY main.6 {
   Arg_1.2 = bf16[16,16,256,64]{2,3,1,0} parameter(1)
   dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
-}
-)";
+})";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m,
+      ParseAndReturnVerifiedModule(
+          hlo_BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
@@ -257,12 +313,19 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             2);
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+}
+
+TEST_F(CudnnFusedMhaRewriterPipelineTest,
+       BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(
+          hlo_BF16Bmm1Bmm2Pattern_bmm1_rhs_contracting_dim_not_most_minor,
+          GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -275,12 +338,10 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             2);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor) {
-  const char* module_str = R"(
+constexpr absl::string_view
+    hlo_BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
 ENTRY main.6 {
@@ -289,10 +350,15 @@ ENTRY main.6 {
   Arg_1.2 = bf16[16,16,256,64]{2,3,1,0} parameter(1)
   dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
-}
-)";
+})";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m,
+      ParseAndReturnVerifiedModule(
+          hlo_BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
@@ -312,12 +378,19 @@ ENTRY main.6 {
             2);
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             2);
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+}
+
+TEST_F(CudnnFusedMhaRewriterPipelineTest,
+       BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(
+          hlo_BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor,
+          GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -332,12 +405,10 @@ ENTRY main.6 {
             2);
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             2);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor) {
-  const char* module_str = R"(
+constexpr absl::string_view
+    hlo_BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
 ENTRY main.6 {
@@ -346,10 +417,15 @@ ENTRY main.6 {
   Arg_1.2 = bf16[16,16,256,64]{2,3,1,0} parameter(1)
   dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
-}
-)";
+})";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m,
+      ParseAndReturnVerifiedModule(
+          hlo_BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
@@ -369,12 +445,19 @@ ENTRY main.6 {
             3);
   EXPECT_EQ(config.bmm2_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             3);
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+}
+
+TEST_F(CudnnFusedMhaRewriterPipelineTest,
+       BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(
+          hlo_BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor,
+          GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -389,11 +472,9 @@ ENTRY main.6 {
             3);
   EXPECT_EQ(config.bmm2_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             3);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1Bmm2Pattern) {
-  const char* module_str = R"(
+absl::string_view F16Bmm1Bmm2Pattern_str = R"(
 HloModule fmha_test, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 ENTRY main.6 {
   Arg_2.3 = f16[16,16,256,64]{3,2,1,0} parameter(2)
@@ -401,13 +482,13 @@ ENTRY main.6 {
   Arg_1.2 = f16[16,16,256,64]{3,2,1,0} parameter(1)
   dot.0 = f16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
   ROOT dot.1 = f16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
-}
+})";
 
-
-)";
-
+TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1Bmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(F16Bmm1Bmm2Pattern_str, GetModuleConfig()));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
@@ -424,12 +505,16 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+}
+
+TEST_F(CudnnFusedMhaRewriterPipelineTest, F16Bmm1Bmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(F16Bmm1Bmm2Pattern_str, GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -442,11 +527,9 @@ ENTRY main.6 {
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 1.0);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1ScaleMaskSoftmaxBmm2Pattern) {
-  const char* module_str = R"(
+constexpr absl::string_view hlo_BF16Bmm1ScaleMaskSoftmaxBmm2Pattern = R"(
 HloModule jit_bmm_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
 region_0.14.clone {
@@ -487,11 +570,12 @@ ENTRY main.38 {
   convert.49 = bf16[16,16,256,256]{3,2,1,0} convert(divide.36)
   Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
   ROOT dot.37 = bf16[16,16,256,64]{3,2,1,0} dot(convert.49, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-}
+})";
 
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1ScaleMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(
+                                      hlo_BF16Bmm1ScaleMaskSoftmaxBmm2Pattern));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
@@ -510,13 +594,16 @@ ENTRY main.38 {
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 4);
+}
 
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+TEST_F(CudnnFusedMhaRewriterPipelineTest, BF16Bmm1ScaleMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m, ParseAndReturnVerifiedModule(
+                  hlo_BF16Bmm1ScaleMaskSoftmaxBmm2Pattern, GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -531,12 +618,9 @@ ENTRY main.38 {
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 4);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       BF16Bmm1ScaleBiasMaskSoftmaxBmm2Pattern) {
-  const char* module_str = R"(
+constexpr absl::string_view hlo_BF16Bmm1ScaleBiasMaskSoftmaxBmm2Pattern = R"(
 HloModule jit_bmm_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
 region_0.17.clone {
@@ -580,11 +664,14 @@ ENTRY main.41 {
   convert.49 = bf16[16,16,256,256]{3,2,1,0} convert(divide.36)
   Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
   ROOT dot.37 = bf16[16,16,256,64]{3,2,1,0} dot(convert.49, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-}
+})";
 
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1ScaleBiasMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(
+                              hlo_BF16Bmm1ScaleBiasMaskSoftmaxBmm2Pattern));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
@@ -604,13 +691,18 @@ ENTRY main.41 {
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
+}
 
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+TEST_F(CudnnFusedMhaRewriterPipelineTest,
+       BF16Bmm1ScaleBiasMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m,
+      ParseAndReturnVerifiedModule(hlo_BF16Bmm1ScaleBiasMaskSoftmaxBmm2Pattern,
+                                   GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -626,12 +718,10 @@ ENTRY main.41 {
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
-TEST_F(CudnnFusedMhaRewriterTestHloTest,
-       BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern) {
-  const char* module_str = R"(
+constexpr absl::string_view
+    hlo_BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern = R"(
 HloModule jit_bmm_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
 region_0.17.clone {
@@ -676,11 +766,14 @@ ENTRY main.41 {
   convert.49 = bf16[16,16,256,256]{3,2,1,0} convert(divide.36)
   Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
   ROOT dot.37 = bf16[16,16,256,64]{3,2,1,0} dot(convert.49, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-}
+})";
 
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(
+                  hlo_BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern));
   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
                                          GetCudnnVersion()};
   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
@@ -702,13 +795,18 @@ ENTRY main.41 {
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
+}
 
-#if GOOGLE_CUDA && CUDNN_VERSION >= 8800
-  // run whole pipeline
+TEST_F(CudnnFusedMhaRewriterPipelineTest,
+       BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   TF_ASSERT_OK_AND_ASSIGN(
-      m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+      auto m, ParseAndReturnVerifiedModule(
+                  hlo_BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern,
+                  GetModuleConfig()));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(m)));
+  const HloInstruction* fmha;
 
   SCOPED_TRACE(optimized_module->ToString());
   EXPECT_THAT(
@@ -724,10 +822,10 @@ ENTRY main.41 {
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
-#endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1CombinedMaskBiasSoftmaxBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_,
 entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[1,16,256,256]{3,2,1,0},pred[16,1,256,256]{3,2,1,0})->bf16[16,256,16,64]{3,2,1,0}}
@@ -809,6 +907,7 @@ ENTRY main.61 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16Bmm1ScaleBiasMaskSoftmaxDropoutBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0})->f16[2,6,40,64]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
 
@@ -917,6 +1016,7 @@ ENTRY main.83 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1UnfusedSoftmaxBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0})->f16[2,6,40,64]{3,2,1,0}}
 
@@ -973,6 +1073,7 @@ ENTRY main.31 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16Bmm1UnfusedSoftmaxWithConvertF32ToReduceMaxBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[128,6,400,64]{3,2,1,0},f16[128,6,64,400]{3,2,1,0},f16[128,6,400,64]{3,2,1,0})->f16[128,6,400,64]{3,2,1,0}}
 
@@ -1042,6 +1143,7 @@ ENTRY main.41 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1UnfusedScaleMaskBiasSoftmaxBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[1,16,256,256]{3,2,1,0},pred[16,1,256,256]{3,2,1,0})->bf16[16,256,16,64]{3,2,1,0}}
 
@@ -1127,6 +1229,7 @@ ENTRY main.61 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1ConvertedMaskAddedAfterFirstGemmSoftmaxBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},pred[16,1,256,256]{3,2,1,0})->bf16[16,256,16,64]{3,2,1,0}}
 
@@ -1203,6 +1306,7 @@ ENTRY main.56 {
 // negative test
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1Bmm2Pattern_bmm1_contracting_dim_not_equal_64) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 ENTRY main.6 {
@@ -1230,6 +1334,7 @@ ENTRY main.6 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1Bmm2Pattern_bmm1_non_contracting_dim_larger_than_512) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,1024,64]{3,2,1,0},bf16[16,16,1024,64]{3,2,1,0},bf16[16,16,1024,64]{3,2,1,0})->bf16[16,16,1024,64]{3,2,1,0}}
 ENTRY main.6 {
@@ -1256,6 +1361,7 @@ ENTRY main.6 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1Bmm2Pattern_bmm2_rhs_non_contracting_dim_not_equal_64) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,32]{3,2,1,0})->bf16[16,16,256,32]{3,2,1,0}}
 ENTRY main.6 {
@@ -1283,6 +1389,7 @@ ENTRY main.6 {
 // check if MHA is unsupported, canonicalization will not kick in
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1Bmm2PatternUncanonicalized_bmm1_contracting_dim_not_equal_64) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
@@ -1310,6 +1417,7 @@ ENTRY main.6 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1BiasSoftmaxDropoutBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[1,16,256,256]{3,2,1,0})->bf16[16,256,16,64]{3,2,1,0}}
 
@@ -1422,6 +1530,7 @@ ENTRY main.82 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16Bmm1ScaleBiasSoftmaxDropoutForm2Bmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[32,40,60,64]{3,2,1,0},bf16[32,40,60,64]{3,2,1,0},bf16[32,40,60,64]{3,2,1,0})->bf16[32,40,60,64]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
 
@@ -1531,6 +1640,7 @@ ENTRY main.79 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16TrainingBmm1Bmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->(bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0})}
 
@@ -1584,6 +1694,7 @@ ENTRY main.17 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16TrainingBmm1ScaleBiasSoftmaxDropoutBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[1,16,256,256]{3,2,1,0},pred[16,1,256,256]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->(bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[1,16,256,256]{3,2,1,0})}
 
@@ -1777,6 +1888,7 @@ ENTRY main.146 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasSoftmaxDropoutBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[1,16,256,256]{3,2,1,0},pred[16,1,256,256]{3,2,1,0},f16[16,256,16,64]{3,2,1,0})->(f16[16,256,16,64]{3,2,1,0}, f16[16,256,16,64]{3,2,1,0}, f16[16,256,16,64]{3,2,1,0}, f16[16,256,16,64]{3,2,1,0}, f16[1,16,256,256]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
 
@@ -1968,6 +2080,7 @@ ENTRY main.146 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasSoftmaxDropoutBmm2WithTransposeFusion) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[1,16,256,256]{3,2,1,0},pred[16,1,256,256]{3,2,1,0},f16[16,256,16,64]{3,2,1,0})->(f16[16,256,16,64]{3,2,1,0}, f16[16,256,16,64]{3,2,1,0}, f16[16,256,16,64]{3,2,1,0}, f16[16,256,16,64]{3,2,1,0}, f16[1,16,256,256]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true,true}
 
@@ -2180,6 +2293,7 @@ ENTRY main.146 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16MiniT5xTest) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__lambda_, entry_computation_layout={(bf16[12,512,32,64]{3,2,1,0},bf16[12,512,2,32,64]{4,3,2,1,0},f32[12,512]{1,0},f32[12,512]{1,0})->(bf16[], bf16[12,512,32,64]{3,2,1,0}, bf16[12,512,2,32,64]{4,3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true}
 
@@ -2329,6 +2443,7 @@ ENTRY main.129 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16TrainingBmm1ScaleBiasMaskSoftmaxDropoutBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,128,64]{3,2,1,0},bf16[2,6,64,128]{3,2,1,0},bf16[2,6,128,64]{3,2,1,0},bf16[2,6,128,64]{3,2,1,0})->(bf16[2,6,128,64]{3,2,1,0}, bf16[2,6,128,64]{3,2,1,0}, bf16[2,6,64,128]{3,2,1,0}, bf16[2,6,128,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -2480,6 +2595,7 @@ ENTRY main.126 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasMaskSoftmaxDropoutBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,128,64]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -2632,6 +2748,7 @@ ENTRY main.126 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasMaskSoftmaxBmm2) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,128,64]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -2748,6 +2865,7 @@ ENTRY main.82 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16TrainingBmm1ScaleBiasSoftmaxDropoutBmm2DbiasShouldHaveUserShape) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[1,16,256,256]{3,2,1,0},pred[16,1,256,256]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->(bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[16,256,16,64]{3,2,1,0}, bf16[1,16,256,256]{3,2,1,0})}
 
@@ -2943,6 +3061,7 @@ ENTRY main.146 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        ActivationHasMoreThan1UserShouldNotLower) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule test
 
@@ -3001,6 +3120,7 @@ ENTRY main {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16InvalidTrainingBmm1ScaleBiasMaskSoftmaxBmm2ShouldNotBeLowered) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,128,64]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -3094,6 +3214,7 @@ ENTRY main.82 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16InvalidTrainingBmm1ScaleBiasMaskSoftmaxDropoutBmm2ShouldNotLower) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,128,64]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -3230,6 +3351,7 @@ ENTRY main.126 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasSoftmaxBmm2QTranspose) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,64,128]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -3339,6 +3461,7 @@ ENTRY main.82 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16Bmm1UnfusedSoftmaxBmm2IncorrectBmm1NumUsers) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0})->(f16[2,6,40,64]{3,2,1,0}, f16[2,6,40,40]{3,2,1,0})}
 
@@ -3388,6 +3511,7 @@ ENTRY main.31 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16Bmm1UnfusedSoftmaxBmm2IncorrectSoftmaxNumUsers) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0})->(f16[2,6,40,64]{3,2,1,0}, f16[2,6,40,40]{3,2,1,0})}
 
@@ -3437,6 +3561,7 @@ ENTRY main.31 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasSoftmaxBmm2IncorrectSoftmaxBwdNumUsers) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,64,128]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -3524,6 +3649,7 @@ ENTRY main.82 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1SoftmaxBmm2IncorrectRank) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule reproducer, entry_computation_layout={(f16[1,8,16,5,128]{4,3,2,1,0}, f16[1,8,16,5,128]{4,3,2,1,0}, f16[1,8,16,5,128]{4,3,2,1,0}, f32[128,2,64]{2,1,0}, f32[2,64]{1,0}, /*index=5*/f32[128,2,64]{2,1,0}, f32[2,64]{1,0}, f32[128,2,64]{2,1,0}, f32[2,64]{1,0})->f16[8,16,2,5,64]{4,3,2,1,0}}
 
@@ -3619,6 +3745,7 @@ ENTRY main {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        F16TrainingBmm1ScaleBiasSoftmaxBmm2NonContractingDimNotDivisibleBy64) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,64,100]{3,2,1,0},f16[2,6,64,100]{3,2,1,0},f16[2,6,100,64]{3,2,1,0},f16[2,6,100,64]{3,2,1,0})->(f16[2,6,100,64]{3,2,1,0}, f16[2,6,100,64]{3,2,1,0}, f16[2,6,64,100]{3,2,1,0}, f16[2,6,100,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -3706,6 +3833,7 @@ ENTRY main.82 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16TrainingBmm2Grad1IncorrectPattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,64,128]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -3795,6 +3923,7 @@ ENTRY main.82 {
 // flash attention
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        FlashAttentionBF16TrainingBmm1CausalMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,128,2048]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0})->(bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 region_0.32 {
@@ -3907,6 +4036,7 @@ ENTRY main.92 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        FlashAttentionBF16TrainingBmm1BiasSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,128,2048]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,2048,2048]{3,2,1,0})->(bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 region_0.32 {
@@ -4014,6 +4144,7 @@ ENTRY main.92 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        FlashAttentionBF16TrainingBmm1SoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,128,2048]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0},bf16[2,6,2048,128]{3,2,1,0})->(bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0}, bf16[2,6,128,2048]{3,2,1,0}, bf16[2,6,2048,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 region_0.32 {
@@ -4116,6 +4247,7 @@ ENTRY main.92 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        FlashAttentionBF16TrainingBmm1ScaleMaskSoftmaxBmm2Pattern) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,2048,64]{3,2,1,0},bf16[2,6,64,2048]{3,2,1,0},bf16[2,6,2048,64]{3,2,1,0},bf16[2,6,2048,64]{3,2,1,0})->(bf16[2,6,2048,64]{3,2,1,0}, bf16[2,6,2048,64]{3,2,1,0}, bf16[2,6,64,2048]{3,2,1,0}, bf16[2,6,2048,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
 
@@ -4228,6 +4360,7 @@ ENTRY main.82 {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        FlashAttentionF16Bmm1BiasSoftmaxBmm2PatternCrossAttention) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,2048,64]{3,2,1,0},f16[2,6,64,1024]{3,2,1,0},f16[2,6,1024,64]{3,2,1,0},f16[2,6,2048,1024]{3,2,1,0})->f16[2,6,2048,64]{3,2,1,0}}
 
@@ -4294,6 +4427,7 @@ ENTRY main.31 {
 
 // GPT3 pattern
 TEST_F(CudnnFusedMhaRewriterTestHloTest, FlashAttentionBF16TrainingGPT3_5B) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule jit__unnamed_wrapped_function_, entry_computation_layout={((s32[], bf16[32,2048,2048]{1,0,2}, bf16[24,8192]{1,0}, bf16[24,1024,8192]{2,1,0}, bf16[24,1024]{0,1}, /*index=5*/bf16[24,8192,1024]{1,2,0}, bf16[24,1024]{0,1}, bf16[24,1024]{0,1}, bf16[24,1024]{0,1}, bf16[24,1024]{0,1}, /*index=10*/bf16[24,3,16,128]{3,2,1,0}, bf16[24,3,1024,16,128]{4,3,1,2,0}, bf16[24,1024]{1,0}, bf16[24,1024,16,128]{3,2,1,0}, bf16[24,8192]{1,0}, /*index=15*/bf16[24,1024,8192]{2,1,0}, bf16[24,8192,1024]{1,2,0}, bf16[24,2048]{1,0}, bf16[24,2048]{1,0}, bf16[24,2048]{1,0}, /*index=20*/bf16[24,2048]{1,0}, bf16[24,3,16,128]{3,2,1,0}, bf16[24,3,1024,16,128]{4,3,1,2,0}, bf16[24,1024]{1,0}, bf16[24,1024,16,128]{3,2,1,0}, /*index=25*/bf16[24,32,2048,2048]{2,1,3,0}, bf16[32,1,2048,2048]{3,2,0,1}, bf16[32,2048]{1,0}))->(s32[], bf16[32,2048,2048]{1,0,2}, bf16[24,8192]{1,0}, bf16[24,1024,8192]{2,1,0}, bf16[24,1024]{0,1}, /*index=5*/bf16[24,8192,1024]{1,2,0}, bf16[24,1024]{0,1}, bf16[24,1024]{0,1}, bf16[24,1024]{0,1}, bf16[24,1024]{0,1}, /*index=10*/bf16[24,3,16,128]{3,2,1,0}, bf16[24,3,1024,16,128]{4,3,1,2,0}, bf16[24,1024]{1,0}, bf16[24,1024,16,128]{3,2,1,0}, bf16[24,8192]{1,0}, /*index=15*/bf16[24,1024,8192]{2,1,0}, bf16[24,8192,1024]{1,2,0}, bf16[24,2048]{1,0}, bf16[24,2048]{1,0}, bf16[24,2048]{1,0}, /*index=20*/bf16[24,2048]{1,0}, bf16[24,3,16,128]{3,2,1,0}, bf16[24,3,1024,16,128]{4,3,1,2,0}, bf16[24,1024]{1,0}, bf16[24,1024,16,128]{3,2,1,0}, /*index=25*/bf16[24,32,2048,2048]{2,1,3,0}, bf16[32,1,2048,2048]{3,2,0,1}, bf16[32,2048]{1,0})}
 add {
@@ -4880,6 +5014,7 @@ main {
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest,
        BF16TrainingBmm2CanonicalizationRestoreFwdGraph) {
+  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   const char* module_str = R"(
 HloModule pjit__unnamed_function_, entry_computation_layout={(bf16[2,256,4,64]{3,2,1,0}, bf16[2,256,4,64]{3,2,1,0}, bf16[2,256,4,64]{3,2,1,0}, bf16[2,256,4,64]{3,2,1,0}, bf16[2,4,256,256]{3,2,1,0})->(bf16[4,256,8,64]{3,2,1,0}, bf16[2,256,4,64]{3,2,1,0}, bf16[2,256,4,64]{3,2,1,0}, bf16[2,256,4,64]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={false,false,false,false}, num_partitions=4
 
