@@ -299,11 +299,15 @@ cc_test(
         "c_api_opaque.h",
         "c_api_opaque_test.cc",
     ],
+    data = [
+        "//tensorflow/lite:testdata/custom_sinh.bin",
+    ],
     deps = [
         ":c_api",
         ":c_api_types",
         ":common",
         ":registration_external",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_opaque_internal",
