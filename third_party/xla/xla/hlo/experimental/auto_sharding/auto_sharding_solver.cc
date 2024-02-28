@@ -470,15 +470,17 @@ AutoShardingSolverResult CallORToolsSolver(
                                      accumulated_coefficient + memory_cost);
         }
       }
-      if (request.live_edges().empty()) continue;
-      for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
-        for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-          const double accumulated_coefficient =
-              constraint->GetCoefficient(e[edge_idx][j]);
-          const double memory_cost =
-              kMemoryMultiplier * request.memory_edge_costs(edge_idx).costs(j);
-          constraint->SetCoefficient(e[edge_idx][j],
-                                     accumulated_coefficient + memory_cost);
+      if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
+        for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
+          for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
+            const double accumulated_coefficient =
+                constraint->GetCoefficient(e[edge_idx][j]);
+            const double memory_cost =
+                kMemoryMultiplier *
+                request.memory_edge_costs(edge_idx).costs(j);
+            constraint->SetCoefficient(e[edge_idx][j],
+                                       accumulated_coefficient + memory_cost);
+          }
         }
       }
     }
@@ -887,6 +889,13 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
         const auto& m = request.memory_costs(node_idx).costs();
         total_memory_cost += m[s_val[node_idx]];
         lower_bound_memory_cost += *std::min_element(m.begin(), m.end());
+      }
+      if (!request.live_edges().empty() && request.enable_memory_edge_costs()) {
+        for (EdgeIdx edge_idx : request.live_edges(time_idx).edges()) {
+          const auto& m = request.memory_edge_costs(edge_idx).costs();
+          total_memory_cost += m[e_val[edge_idx]];
+          lower_bound_memory_cost += *std::min_element(m.begin(), m.end());
+        }
       }
       if (request.has_overbudget_coeff()) {
         total_overbudget = std::max(

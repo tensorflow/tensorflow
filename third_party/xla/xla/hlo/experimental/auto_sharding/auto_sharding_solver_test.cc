@@ -361,6 +361,7 @@ TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
                                          7000, 7100, 7200, 7300}};
   AddEdges(request.mutable_live_edges(), live_edges);
   AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
+  request.set_enable_memory_edge_costs(true);
 
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
