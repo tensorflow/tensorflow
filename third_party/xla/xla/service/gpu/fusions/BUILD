@@ -649,7 +649,6 @@ cc_library(
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/model:indexing_map",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
