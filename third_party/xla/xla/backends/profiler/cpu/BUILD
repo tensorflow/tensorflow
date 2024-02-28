@@ -1,3 +1,7 @@
+load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -113,5 +117,25 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:xplane_builder",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
+    ],
+)
+
+xla_cc_test(
+    name = "host_tracer_test",
+    srcs = ["host_tracer_test.cc"],
+    deps = [
+        ":host_tracer_impl",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:types",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_tsl//tsl/profiler/utils:xplane_schema",
+        "@local_tsl//tsl/profiler/utils:xplane_visitor",
     ],
 )

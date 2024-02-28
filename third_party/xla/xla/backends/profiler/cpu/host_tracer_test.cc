@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/backends/cpu/host_tracer.h"
+#include "xla/backends/profiler/cpu/host_tracer.h"
 
 #include <memory>
 #include <optional>
@@ -21,26 +21,32 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
+#include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 namespace {
 
+using ::tsl::Env;
+using ::tsl::Thread;
+using ::tsl::ThreadOptions;
+using ::tsl::profiler::TraceMe;
+using ::tsl::profiler::XEventVisitor;
+using ::tsl::profiler::XPlaneVisitor;
+using ::tsl::profiler::XStatVisitor;
+
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  uint32 thread_id;
+  tsl::uint32 thread_id;
   std::string thread_name = "MyThreadName";
-  XSpace space;
+  tensorflow::profiler::XSpace space;
 
   // We start a thread with a known and controlled name. As of the time of
   // writing, not all platforms (example: Windows) allow reading through the
@@ -74,7 +80,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);
   XPlaneVisitor xplane(&plane);
-  ASSERT_EQ(plane.name(), kHostThreadsPlaneName);
+  ASSERT_EQ(plane.name(), ::tsl::profiler::kHostThreadsPlaneName);
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 7);
   ASSERT_EQ(plane.stat_metadata_size(), 4);
@@ -150,4 +156,4 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla
