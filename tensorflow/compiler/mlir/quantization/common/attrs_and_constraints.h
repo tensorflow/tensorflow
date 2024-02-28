@@ -186,6 +186,13 @@ inline FlatSymbolRefAttr GetFuncAttr(TF::XlaCallModuleOp call_op) {
       TF::kStablehloEntryFunctionAttrName);
 }
 
+// Returns the entry function name for the given tf.XlaCallModule op. Returns
+// empty string if such attribute does not exist.
+StringRef GetEntryFunctionName(TF::XlaCallModuleOp op);
+
+// Checks whether the given op contains QuantizationTrait::FullyQuantizable.
+bool HasQuantizableTrait(Operation *op);
+
 }  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_ATTRS_AND_CONSTRAINTS_H_

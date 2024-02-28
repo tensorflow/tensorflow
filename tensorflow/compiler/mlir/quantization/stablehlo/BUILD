@@ -55,6 +55,7 @@ cc_library(
         "passes/optimize_graph.cc",
         "passes/post_quantize.cc",
         "passes/prepare_quantize.cc",
+        "passes/prepare_quantize_hybrid.cc",
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_weight.cc",

@@ -90,6 +90,20 @@ constexpr absl::string_view kModuleXlaCallModule = R"mlir(
   }
 )mlir";
 
+constexpr absl::string_view kModuleXlaCallModuleNoEntryNoQuantTrait = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<?x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<?x2xf32>) {
+      %0 = stablehlo.constant dense<[-0.211145893, -0.708605706]> : tensor<2xf32>
+      %1 = stablehlo.constant dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>
+      %2 = "tf.XlaCallModule"(%arg0, %1, %0) <{Sout = [#tf_type.shape<?x2>], module = "", version = 9 : i64}> {_original_entry_function = "composite_fn_1"} : (tensor<?x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+      return %2 : tensor<?x2xf32>
+    }
+    func.func private @composite_fn_1(%arg0: tensor<?x2xf32>, %arg1: tensor<2x2xf32>, %arg2: tensor<2xf32>) -> tensor<?x2xf32> attributes {_from_xla_call_module, tf_quant.composite_function} {
+      return %arg0 : tensor<?x2xf32>
+    }
+  }
+)mlir";
+
 constexpr absl::string_view kModulePartitionedCall = R"mlir(
   module {
     func.func @main(%arg0: tensor<2x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<2x2xf32>) {
@@ -296,6 +310,46 @@ TEST_F(AttrsAndConstraintsTest, CallGetFuncAttr) {
       dyn_cast_or_null<TF::PartitionedCallOp>(*partitioned_op);
   FlatSymbolRefAttr partitioned_call_op_attr = GetFuncAttr(partitioned_call_op);
   EXPECT_EQ(partitioned_call_op_attr.getValue(), "composite_fn_1");
+}
+
+TEST_F(AttrsAndConstraintsTest, GetEntryFunctionNameCorrectly) {
+  OwningOpRef<ModuleOp> xla_module_op_ref =
+      ParseModuleOpString(kModuleXlaCallModule);
+  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
+  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
+  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+
+  EXPECT_EQ(GetEntryFunctionName(xla_call_op), StringRef("composite_fn_1"));
+}
+
+TEST_F(AttrsAndConstraintsTest, GetEntryFunctionNameWhenNotSet) {
+  OwningOpRef<ModuleOp> xla_module_op_ref =
+      ParseModuleOpString(kModuleXlaCallModuleNoEntryNoQuantTrait);
+  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
+  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
+  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+
+  EXPECT_EQ(GetEntryFunctionName(xla_call_op), StringRef());
+}
+
+TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitTrue) {
+  OwningOpRef<ModuleOp> xla_module_op_ref =
+      ParseModuleOpString(kModuleXlaCallModule);
+  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
+  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
+  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+
+  EXPECT_TRUE(HasQuantizableTrait(xla_call_op));
+}
+
+TEST_F(AttrsAndConstraintsTest, HasQuantizableTraitFalse) {
+  OwningOpRef<ModuleOp> xla_module_op_ref =
+      ParseModuleOpString(kModuleXlaCallModuleNoEntryNoQuantTrait);
+  func::FuncOp xml_main_fn = FindMainFuncOp(*xla_module_op_ref);
+  Operation* xla_op = FindOperationOfType<TF::XlaCallModuleOp>(xml_main_fn);
+  auto xla_call_op = dyn_cast_or_null<TF::XlaCallModuleOp>(*xla_op);
+
+  EXPECT_FALSE(HasQuantizableTrait(xla_call_op));
 }
 
 }  // namespace

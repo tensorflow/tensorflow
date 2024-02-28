@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -27,6 +28,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
 namespace mlir::quant {
 
@@ -86,6 +89,22 @@ FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
     int32_array.push_back(*cast_i32);
   }
   return int32_array;
+}
+
+StringRef GetEntryFunctionName(TF::XlaCallModuleOp op) {
+  if (!op->hasAttrOfType<FlatSymbolRefAttr>(
+          TF::kStablehloEntryFunctionAttrName)) {
+    return StringRef();
+  }
+  return op
+      ->getAttrOfType<FlatSymbolRefAttr>(TF::kStablehloEntryFunctionAttrName)
+      .getValue();
+}
+
+bool HasQuantizableTrait(Operation* op) {
+  return op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
+         op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
+             QuantTraitValues[QuantizationTrait::FullyQuantizable];
 }
 
 }  // namespace mlir::quant

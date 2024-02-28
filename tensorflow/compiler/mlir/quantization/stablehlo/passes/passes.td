@@ -148,3 +148,12 @@ def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
+def PrepareQuantizeHybridPass : Pass<"stablehlo-prepare-quantize-hybrid", "mlir::func::FuncOp"> {
+  let summary = "Prepare hybrid quantization for weight-only quantization and dynamic range quantization.";
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
