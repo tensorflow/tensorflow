@@ -42,6 +42,7 @@ using ::mlir::stablehlo::ConvolutionOp;
 using ::mlir::stablehlo::DotGeneralOp;
 using ::mlir::stablehlo::SubtractOp;
 using ::testing::ElementsAreArray;
+using ::testing::Eq;
 using ::testing::NotNull;
 
 class AttrsAndConstraintsTest : public QuantizationTestBase {};
@@ -125,6 +126,74 @@ TEST_F(AttrsAndConstraintsTest, HasStaticShapeFailsWithDynamicShapes) {
   EXPECT_FALSE(HasStaticShape(dot_general_result));
   EXPECT_FALSE(HasStaticShapeAtDims(dot_general_result, /*dims=*/{0}));
   EXPECT_TRUE(HasStaticShapeAtDims(dot_general_result, /*dims=*/{1}));
+}
+
+TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsTrueForMatchingRank) {
+  constexpr absl::string_view kConstantOpWithRankFour =
+      R"mlir(%0 = stablehlo.constant dense<0> : tensor<1x1x1x1xi8>)mlir";
+  OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kConstantOpWithRankFour);
+
+  ASSERT_FALSE(module_op_ref->getBodyRegion().empty());
+  ASSERT_FALSE(module_op_ref->getBodyRegion().front().empty());
+
+  auto constant_op = dyn_cast_or_null<mlir::stablehlo::ConstantOp>(
+      module_op_ref->getBodyRegion().front().front());
+  ASSERT_THAT(constant_op, NotNull());
+
+  EXPECT_TRUE(HasRankOf(constant_op, /*rank=*/4));
+}
+
+TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsFalseForNonMatchingRank) {
+  constexpr absl::string_view kConstantOpWithRankFour =
+      R"mlir(%0 = stablehlo.constant dense<0> : tensor<1x1x1x1xi8>)mlir";
+  OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kConstantOpWithRankFour);
+
+  ASSERT_FALSE(module_op_ref->getBodyRegion().empty());
+  ASSERT_FALSE(module_op_ref->getBodyRegion().front().empty());
+
+  auto constant_op = dyn_cast_or_null<mlir::stablehlo::ConstantOp>(
+      module_op_ref->getBodyRegion().front().front());
+  ASSERT_THAT(constant_op, NotNull());
+
+  EXPECT_FALSE(HasRankOf(constant_op, /*rank=*/3));
+}
+
+TEST_F(AttrsAndConstraintsTest,
+       HasRankOfReturnsTrueForMatchingRankWithUnknownDimensions) {
+  // Argument has rank 2, but its dimensions are unknown.
+  constexpr absl::string_view kArgumentWithUnknownDims = R"mlir(
+    func.func @unknown_dims_arg(%arg: tensor<?x?xi8>) -> tensor<?x?xi8> {
+      return %arg : tensor<?x?xi8>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kArgumentWithUnknownDims);
+
+  auto func_op = module_op_ref->lookupSymbol<func::FuncOp>("unknown_dims_arg");
+  ASSERT_THAT(func_op, NotNull());
+  ASSERT_THAT(func_op.getNumArguments(), Eq(1));
+
+  EXPECT_TRUE(HasRankOf(func_op.getArgument(0), /*rank=*/2));
+}
+
+TEST_F(AttrsAndConstraintsTest, HasRankOfReturnsFalseForUnknownRank) {
+  constexpr absl::string_view kArgumentWithUnknownRank = R"mlir(
+    func.func @unknown_rank_arg(%arg: tensor<*xi8>) -> tensor<*xi8> {
+      return %arg : tensor<*xi8>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op_ref =
+      ParseModuleOpString(kArgumentWithUnknownRank);
+
+  auto func_op = module_op_ref->lookupSymbol<func::FuncOp>("unknown_rank_arg");
+  ASSERT_THAT(func_op, NotNull());
+  ASSERT_THAT(func_op.getNumArguments(), Eq(1));
+
+  EXPECT_FALSE(HasRankOf(func_op.getArgument(0), /*rank=*/1));
 }
 
 TEST_F(AttrsAndConstraintsTest, TryCastSucceeds) {
