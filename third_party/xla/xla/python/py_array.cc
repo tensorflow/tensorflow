@@ -1280,6 +1280,8 @@ StatusOr<pybind11::object> PyHostValue::AsNumPyArray(
   if (!ready_.IsReady()) {
     py::gil_scoped_release gil;
     TF_RETURN_IF_ERROR(ready_.Await());
+  } else {
+    TF_RETURN_IF_ERROR(ready_.Await());
   }
   return value_;
 }
