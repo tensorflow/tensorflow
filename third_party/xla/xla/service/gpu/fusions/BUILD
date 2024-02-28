@@ -202,10 +202,12 @@ cc_library(
     testonly = True,
     srcs = ["mlir_emitter_test_base.cc"],
     hdrs = ["mlir_emitter_test_base.h"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
+        "//xla/service:gpu_plugin",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
@@ -290,12 +292,10 @@ cc_library(
 xla_cc_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":loop_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/service/gpu/model:indexing_test_utils",
@@ -349,14 +349,12 @@ cc_library(
 xla_cc_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":mlir_emitter_test_base",
         ":transpose_mlir",
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
@@ -744,12 +742,10 @@ cc_library(
 xla_cc_test(
     name = "concatenate_mlir_test",
     srcs = ["concatenate_mlir_test.cc"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":concatenate_mlir",
         ":mlir_emitter_test_base",
         "//xla:error_spec",
-        "//xla/service:gpu_plugin",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/tests:filecheck",
