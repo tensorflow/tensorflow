@@ -30,7 +30,6 @@ limitations under the License.
 #include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
@@ -47,7 +46,6 @@ namespace py = pybind11;
 namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
-using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
 using ::stablehlo::quantization::EnableDebugging;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::tensorflow::SignatureDef;
@@ -248,8 +246,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                                            tags, quantization_options,
                                            function_aliases);
         if (!exported_model.ok()) return exported_model.status();
-
-        AssignIdsToCustomAggregatorOps(*exported_model->mutable_graph_def());
 
         const absl::StatusOr<std::string> precalibrated_saved_model_dir =
             CreateTmpDir();

@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/representative_dataset.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
@@ -64,7 +63,6 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
-using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
 using ::stablehlo::quantization::CreateRepresentativeDatasetFileMap;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::RepresentativeDatasetConfig;
@@ -194,8 +192,6 @@ absl::StatusOr<ExportedModel> CalibrationComponent::ExportToSavedModel(
                       ConvertMlirModuleToExportedModel(
                           module_op, checkpoint_dir, updated_function_aliases,
                           {asset_file_defs.begin(), asset_file_defs.end()}));
-
-  AssignIdsToCustomAggregatorOps(*exported_model.mutable_graph_def());
 
   py_function_lib_->SaveExportedModel(dst_saved_model_path, exported_model,
                                       src_saved_model_path_, tags_,
