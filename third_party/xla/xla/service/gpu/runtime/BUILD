@@ -592,6 +592,34 @@ cc_library(
 )
 
 cc_library(
+    name = "nccl_collective_permute_thunk",
+    srcs = ["nccl_collective_permute_thunk.cc"],
+    hdrs = ["nccl_collective_permute_thunk.h"],
+    deps = [
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo:lhlo_gpu",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:nccl_api",
+        "//xla/service/gpu:nccl_collective_thunks",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "//xla/translate/mhlo_to_hlo:attribute_exporter",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "norm_thunk",
     srcs = ["norm_thunk.cc"],
     hdrs = ["norm_thunk.h"],
