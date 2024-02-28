@@ -16,6 +16,7 @@ def repo():
         patch_file = [
             "//third_party/triton:cl607293980.patch",  # long standing :(
             "//third_party/triton:cl610393680.patch",
+            "//third_party/triton:cl610484237.patch",
             "//third_party/triton:cl610740193.patch",
         ],
     )
