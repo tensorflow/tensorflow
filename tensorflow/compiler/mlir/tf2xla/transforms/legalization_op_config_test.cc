@@ -62,7 +62,7 @@ class LegalizationOpConfigTest : public ::testing::Test {
     return tsl::OkStatus();
   }
 
-  tsl::StatusOr<FuncOp> GetMain() {
+  absl::StatusOr<FuncOp> GetMain() {
     func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
       return absl::NotFoundError("Could not find main function");
