@@ -838,6 +838,7 @@ cc_library(
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
         "@com_google_absl//absl/strings",
+        "//third_party/nanobind",
         "//xla:status",
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
@@ -847,14 +848,14 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
-        "//xla/python/profiler/internal:traceme_wrapper",
+        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_session",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:capture_profile",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@pybind11",
     ] + select({
         ":gpu_enabled": [
             "//xla/backends/profiler/gpu:device_tracer",

@@ -880,7 +880,7 @@ static void Init(py::module_& m) {
           return xla::ValueOrThrow(
               CudaArrayInterfaceToBuffer(cai, std::move(cuda_client)));
         });
-  BuildProfilerSubmodule(&m);
+  BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(&m);
   BuildOutfeedReceiverSubmodule(&m);
   BuildPytreeSubmodule(m_nb);
