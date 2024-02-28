@@ -827,6 +827,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     shard_count = 2,
     deps = [
         ":gpu_codegen_test",
@@ -855,9 +856,12 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 # This library is here to be reused by tests.

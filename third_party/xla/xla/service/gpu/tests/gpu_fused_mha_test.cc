@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
@@ -51,11 +53,35 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
 class MultiHeadedAttentionTest : public GpuCodegenTest {
  public:
+  MultiHeadedAttentionTest() {
+#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
+    skip_reason_ = "cuDNN Fused MHA requires CUDA 12 or later.";
+    return;
+#endif
+    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+    // Enforce capability minor == 0 because hardware with a non-zero minor
+    // number typically has insufficient shared memory for cuDNN FMHA.
+    if (!cc.IsAtLeastAmpere() || cc.minor != 0) {
+      skip_reason_ =
+          "cuDNN Fused MHA requires Nvidia AMPERE+ GPUs with minor "
+          "compute capability == 0.";
+      return;
+    }
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 8, 0)) {
+      skip_reason_ = "cuDNN Fused MHA requires cuDNN 8.8.0 or later.";
+      return;
+    }
+  }
+
   se::CudaComputeCapability GetCudaComputeCapability() {
     return backend()
         .default_stream_executor()
@@ -158,6 +184,14 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     return LiteralUtil::CreateR4FromArray4DWithLayout(
         input_data, LayoutUtil::MakeLayout(minor_to_major));
   }
+
+  // Centralize skip checks in the constructor. Unfortunately we cannot call
+  // GTEST_SKIP from the constructor. Instead, we set (if needed) `skip_reason`,
+  // and then check it from all test fixtures.
+  // An alternative would be to use the SetUp() override, but for this to be
+  // correct we'd have to ensure that all the parents' SetUp() methods are
+  // called, which is error prone.
+  std::optional<absl::string_view> skip_reason_;
 };
 
 class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
@@ -441,13 +475,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -470,13 +498,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_arg_reversal() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -498,13 +520,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -528,13 +544,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_arg_reversal_epilogue_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -559,13 +569,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   template <typename T>
   void
   TestImpl_FMHABMM_BMM_arg_layout_manipulation_arg_reversal_prologue_transpose_fusion() {  // NOLINT
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -589,13 +593,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -619,13 +617,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_all_canonicalization() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -647,13 +639,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_FMHABMM_BMM_all_canonicalization_transpose_fusion_small() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 4, 2, 64}, {3, 2, 1, 0});
@@ -671,13 +657,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_BMM_BMM1_contracting_dim_stride_not_1() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -699,13 +679,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_BMM_BMM2_non_contracting_dim_stride_not_1() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -1269,13 +1243,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
   // BMM1 - Scale - Bias - Mask - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -1301,13 +1269,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
 
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla_smaller() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 40, 64}, {3, 2, 1, 0});
@@ -1330,13 +1292,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
 
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -1362,13 +1318,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
   // Traning BMM1 - Scale - bias - Mask - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHA_Training_BMM1_Scale_Bias_Mask_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 1))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.9.1.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal = GetInput4DLiteral<T>({2, 6, 128, 64}, {3, 2, 1, 0});
@@ -1611,13 +1561,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
   // BMM1 - Scale - Mask - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -1641,13 +1585,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
 
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -1672,8 +1610,8 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
   }
 };
 
+// Bmm1 - Softmax - Bmm2
 class MultiHeadedAttentionBMMSoftmaxBMM : public MultiHeadedAttentionTest {
-  // Bmm1 - Softmax - Bmm2
  protected:
   std::string GetModuleFMHABMM1_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
@@ -1768,13 +1706,7 @@ class MultiHeadedAttentionBMMSoftmaxBMM : public MultiHeadedAttentionTest {
   // BMM1 - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHABMM1_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -2156,13 +2088,7 @@ class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM
   // BMM1 - Scale - bias - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 8, 0))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.8.0.";
-    }
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
     XlaBuilder builder(TestName());
 
     auto lhs_bmm1_literal =
@@ -2185,12 +2111,9 @@ class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM
   // Training BMM1 - Scale - bias - Softmax - BMM2
   template <typename T>
   void TestImpl_FMHA_Training_BMM1_Scale_Bias_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 1))) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs and "
-                      "cuDNN >= 8.9.1.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 1)) {
+      GTEST_SKIP() << "Backward fused MHA requires cuDNN >= 8.9.1.";
     }
     XlaBuilder builder(TestName());
 
@@ -2393,12 +2316,9 @@ class FlashAttentionBMMScaleCausalMaskSoftmaxBMM
 
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_CausalMask_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -2416,12 +2336,9 @@ class FlashAttentionBMMScaleCausalMaskSoftmaxBMM
 
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_CausalMask_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -2634,12 +2551,9 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
   }
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -2658,12 +2572,9 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Bias_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -2685,13 +2596,10 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Cross_Attention() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 4))) {
-      GTEST_SKIP() << "Flash Attention cross attention is supported with the "
-                      "Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.4.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 4)) {
+      GTEST_SKIP() << "Flash Attention cross attention requires "
+                      "cuDNN >= 8.9.4.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -2815,12 +2723,9 @@ class FlashAttentionBMMScaleBiasMaskSoftmaxBMM
 
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Bias_Mask_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -2935,12 +2840,9 @@ class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
@@ -3062,12 +2964,9 @@ class FlashAttentionBMMScaleMaskSoftmaxBMM : public MultiHeadedAttentionTest {
 
   template <typename T>
   void TestImpl_Flash_Attention_Training_BMM1_Mask_Softmax_BMM2() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    se::dnn::VersionInfo real_cudnn_version = GetCudnnVersion();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0 &&
-          real_cudnn_version >= se::dnn::VersionInfo(8, 9, 3))) {
-      GTEST_SKIP() << "Flash Attention is supported with the Nvidia AMPERE+ "
-                      "GPUs and cuDNN >= 8.9.3.";
+    if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+    if (GetCudnnVersion() < se::dnn::VersionInfo(8, 9, 3)) {
+      GTEST_SKIP() << "Flash Attention requires cuDNN >= 8.9.3.";
     }
     XlaBuilder builder(TestName());
     auto lhs_bmm1_literal =
