@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/py_array.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_utils.h"

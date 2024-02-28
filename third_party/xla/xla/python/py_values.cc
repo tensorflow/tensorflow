@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/py_array.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
 #include "xla/python/types.h"

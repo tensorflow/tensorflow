@@ -92,7 +92,6 @@ limitations under the License.
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/profiler.h"
 #include "xla/python/py_array.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_compile_only_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/py_executable.h"

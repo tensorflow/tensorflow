@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/py_array.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_executable.h"
 #include "xla/python/py_host_callback.h"
 #include "xla/python/py_values.h"

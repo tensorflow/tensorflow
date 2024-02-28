@@ -29,14 +29,15 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -279,12 +280,17 @@ absl::StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
     py::handle py_buffer, std::optional<std::intptr_t> stream) {
   ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
-  auto pack = std::make_unique<DLPackTensor>();
   if (ifrt_array == nullptr) {
     return Unimplemented(
         "BufferToDLPackManagedTensor called on deleted array.");
   }
-  PjRtBuffer* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
+  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
+  if (arr == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  PjRtBuffer* pjrt_buffer = arr->pjrt_buffers().front().get();
+
   if (pjrt_buffer->IsTuple()) {
     return Unimplemented(
         "BufferToDLPackManagedTensor is not implemented for tuple "
@@ -294,6 +300,7 @@ absl::StatusOr<py::capsule> BufferToDLPackManagedTensor(
     return Unimplemented("DynamicShape is not implemented in DLPack.");
   }
 
+  auto pack = std::make_unique<DLPackTensor>();
   DLTensor& dt = pack->tensor.dl_tensor;
   {
     // AcquireExternalReference may block; there are no API guarantees.

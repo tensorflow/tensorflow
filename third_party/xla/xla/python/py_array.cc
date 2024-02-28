@@ -29,11 +29,14 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/layout_util.h"
+#include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -44,7 +47,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/python/py_buffer.h"
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/python_utils.h"
@@ -68,6 +70,40 @@ namespace xla {
 namespace {
 
 namespace py = pybind11;
+
+PjRtBuffer* GetPjrtBuffer(ifrt::Array* ifrt_array) {
+  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
+  if (arr == nullptr) {
+    throw XlaRuntimeError(
+        "This operation is implemented for a PjRt-compatible backend only.");
+  }
+  return arr->pjrt_buffers().front().get();
+}
+
+StatusOr<const Shape*> XlaDynamicShape(ifrt::Array* ifrt_array,
+                                       std::optional<Shape>& scratch) {
+  auto* pjrt_buffer = GetPjrtBuffer(ifrt_array);
+
+  if (!scratch) {
+    absl::Span<const int64_t> dims;
+    std::optional<std::vector<int64_t>> logical_dims_storage;
+    if (pjrt_buffer->has_dynamic_dimensions()) {
+      {
+        py::gil_scoped_release gil_release;
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            pjrt_buffer->logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+      }
+      dims = *logical_dims_storage;
+    } else {
+      dims = pjrt_buffer->dimensions();
+    }
+    Shape shape = ShapeUtil::MakeShape(pjrt_buffer->element_type(), dims);
+    *shape.mutable_layout() = pjrt_buffer->layout();
+    scratch = std::move(shape);
+  }
+  return &scratch.value();
+}
 
 tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     py::object dtype, absl::Span<const int64_t> shape,
@@ -108,7 +144,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   }
   ifrt::Client* client = ifrt_arrays.front()->client();
 
-  auto ifrt_dtype = ToIfRtDType(dtype);
+  auto ifrt_dtype = DtypeToIfRtDType(dtype);
   if (!ifrt_dtype.ok()) {
     // TODO(hyeontaek): Return a Status.
     throw py::value_error(ifrt_dtype.status().ToString());
@@ -585,9 +621,8 @@ StatusOr<size_t> PyArray::GetOnDeviceSizeInBytes() {
         "GetOnDeviceSizeInBytes() called on deleted or donated buffer");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      size_t shard_size,
-      IfrtHelpers::pjrt_buffer(ifrt_array())->GetOnDeviceSizeInBytes());
+  TF_ASSIGN_OR_RETURN(size_t shard_size,
+                      GetPjrtBuffer(ifrt_array())->GetOnDeviceSizeInBytes());
   return shard_size * py::len(sharding().attr("device_set"));
 }
 
@@ -641,7 +676,7 @@ StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
   TF_ASSIGN_OR_RETURN(auto arr, AssertUnsharded("UnsafeBufferPointer"));
 
   return py_client()->pjrt_client()->UnsafeBufferPointer(
-      IfrtHelpers::pjrt_buffer(arr.ifrt_array()));
+      GetPjrtBuffer(arr.ifrt_array()));
 }
 
 py::dict PyArray::CudaArrayInterface() {
@@ -654,7 +689,7 @@ py::dict PyArray::CudaArrayInterface() {
 
   ifrt::Array* ifrt_array = arr.ifrt_array();
   std::optional<Shape>& scratch = arr.GetStorage().dynamic_shape;
-  auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
+  auto* pjrt_buffer = GetPjrtBuffer(ifrt_array);
   if (pjrt_buffer->client()->platform_id() != CudaId()) {
     throw py::attribute_error(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
@@ -698,7 +733,7 @@ py::dict PyArray::CudaArrayInterface() {
 
   py::dict result;
   const auto* dynamic_shape =
-      ValueOrThrow(IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
+      ValueOrThrow(XlaDynamicShape(ifrt_array, scratch));
   result["shape"] = SpanToTuple(dynamic_shape->dimensions());
   result["typestr"] = std::move(typestr);
   std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold =
@@ -1247,9 +1282,8 @@ StatusOr<pybind11::object> PyHostValue::AsNumPyArray(
     // For int4 values, we must copy in order to unpack the array.
     if (pjrt_buffer->IsOnCpu() &&
         !primitive_util::Is4BitType(pjrt_buffer->element_type())) {
-      TF_ASSIGN_OR_RETURN(
-          const auto* shape,
-          IfrtHelpers::xla_dynamic_shape(ifrt_array, dynamic_shape_holder));
+      TF_ASSIGN_OR_RETURN(const auto* shape,
+                          XlaDynamicShape(ifrt_array, dynamic_shape_holder));
       TF_ASSIGN_OR_RETURN(py::dtype dtype,
                           PrimitiveTypeToDtype(shape->element_type()));
       // Objects that must be kept alive while the array is alive.
@@ -1301,12 +1335,10 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
     }
   }
   auto transfer_guard_formatter = [ifrt_array] {
-    auto shape =
-        py::cast<std::string>(py::str(IfrtHelpers::python_shape(ifrt_array)));
-    auto dtype =
-        py::cast<std::string>(py::str(IfrtHelpers::python_dtype(ifrt_array)));
-    return absl::StrCat("shape=", shape, ", dtype=", dtype, ", device=",
-                        IfrtHelpers::pjrt_device(ifrt_array)->DebugString());
+    return absl::StrCat(
+        "shape=()", absl::StrJoin(ifrt_array->shape().dims(), ","),
+        "), dtype=", ifrt_array->dtype().DebugString(),
+        ", device=", ifrt_array->sharding().devices().front()->DebugString());
   };
   TF_RETURN_IF_ERROR(
       jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
@@ -1317,8 +1349,8 @@ Status PyHostValue::CopyToHostAsync(std::optional<Shape>& dynamic_shape_holder,
   const xla::Shape* dynamic_shape;
   std::optional<xla::Shape> shape_holder;
   if (llvm::isa<ifrt::PjRtCompatibleArray>(ifrt_array)) {
-    TF_ASSIGN_OR_RETURN(dynamic_shape, IfrtHelpers::xla_dynamic_shape(
-                                           ifrt_array, dynamic_shape_holder));
+    TF_ASSIGN_OR_RETURN(dynamic_shape,
+                        XlaDynamicShape(ifrt_array, dynamic_shape_holder));
   } else {
     // Skip querying the dynamic shape for a non-PjRt Array.
     TF_ASSIGN_OR_RETURN(xla::PrimitiveType type,

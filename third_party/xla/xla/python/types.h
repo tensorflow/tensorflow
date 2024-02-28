@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -47,6 +46,8 @@ absl::StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
 // Converts an IFRT dtype to a NumPy dtype.
 absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
+
+StatusOr<ifrt::DType> DtypeToIfRtDType(pybind11::dtype dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.

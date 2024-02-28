@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "xla/python/types.h"
 
-#include <algorithm>
 #include <complex>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,8 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 
@@ -243,6 +243,11 @@ absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
       return Unimplemented("Unimplemented primitive type %s",
                            dtype.DebugString());
   }
+}
+
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(py::dtype dtype) {
+  TF_ASSIGN_OR_RETURN(auto primitive_type, DtypeToPrimitiveType(dtype));
+  return ifrt::ToDType(primitive_type);
 }
 
 const NumpyScalarTypes& GetNumpyScalarTypes() {
