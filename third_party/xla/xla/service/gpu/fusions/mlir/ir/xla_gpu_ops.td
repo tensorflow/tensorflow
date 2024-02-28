@@ -136,4 +136,74 @@ def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
   }];
 }
 
+def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
+    [Pure,
+     TypesMatchWith<"result type matches type of operands",
+                     "operands", "results", "$_self">]> {
+  let summary = "Performs a full warp shuffle and reduces the values";
+  let description = [{
+    This op performs a full warp shuffle and reduces the results using the given
+    function. The function is invoked with the operands from the low lanes,
+    followed by the operands from the high lanes. For example:
+
+    ```
+    shuffle_reduce @argmax(%value, %idx) : (f32, index)
+    ```
+
+    Will perform shuffles with distance 16, 8, 4, 2 and 1, and will invoke
+    @argmax five times. The first invocations will be
+
+    ```
+    @argmax(%value[i], %idx[i], %value[16+i], %idx[16+i])
+    ```
+  }];
+  let builders = [
+    OpBuilder<(ins "mlir::func::FuncOp":$reducer, CArg<"mlir::ValueRange", "{}">:$operands), [{
+      $_state.addOperands(operands);
+      $_state.addAttribute("reducer", mlir::SymbolRefAttr::get(reducer));
+      $_state.addTypes(reducer.getFunctionType().getResults());
+    }]>];
+  let arguments = (ins FlatSymbolRefAttr:$reducer, Variadic<AnyType>:$operands);
+  let results = (outs Variadic<AnyType>:$results);
+
+  let assemblyFormat = [{
+    $reducer `(` $operands `)` attr-dict `:` type($operands)
+  }];
+}
+
+def XLAGPU_PredicatedInsertOp : XLAGPU_Op<"predicated_insert",
+    [Pure,
+     TypesMatchWith<"result type matches type of operands",
+                    "dest", "result", "$_self">,
+     TypesMatchWith<"value type matches element type of dest",
+                    "dest", "value",
+                    "::llvm::cast<mlir::TensorType>($_self).getElementType()">]> {
+  let summary = "Inserts a value into a tensor if a condition holds";
+  let arguments = (ins I1:$condition, AnyType:$value,
+    AnyStaticShapeTensor:$dest, Variadic<Index>:$indices);
+  let results = (outs AnyStaticShapeTensor:$result);
+
+  let assemblyFormat = [{
+     $value `into` $dest `[` $indices `]` `if` $condition attr-dict `:` type($dest)
+  }];
+}
+
+def XLAGPU_PredicatedExtractOp : XLAGPU_Op<"predicated_extract",
+    [Pure,
+     TypesMatchWith<"fallback type matches element type of src",
+                    "src", "fallback",
+                    "::llvm::cast<mlir::TensorType>($_self).getElementType()">,
+     TypesMatchWith<"result type matches element type of src",
+                    "src", "result",
+                    "::llvm::cast<mlir::TensorType>($_self).getElementType()">]> {
+  let summary = "Inserts a value into a tensor if a condition holds";
+  let arguments = (ins I1:$condition, AnyType:$fallback,
+    AnyStaticShapeTensor:$src, Variadic<Index>:$indices);
+  let results = (outs AnyType:$result);
+
+  let assemblyFormat = [{
+    $src `[` $indices `]` `if` $condition `else` $fallback attr-dict `:` type($src)
+  }];
+}
+
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
