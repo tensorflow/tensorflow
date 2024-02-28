@@ -99,6 +99,8 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 // properties, which do invariant checks before / after the operation.
 class ShapeUtil {
  public:
+  using DynamicSizeType = int32_t;
+
   // Data structure which describes the coordinates and the shape, of a tuple
   // shaped sub-shape.
   struct IndexedShape {
