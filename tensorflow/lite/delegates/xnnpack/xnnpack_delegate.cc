@@ -1817,10 +1817,12 @@ class Subgraph {
       const Delegate& delegate, TfLiteContext* context,
       const TfLiteTensor& tensor, int expected_quantized_dimension,
       int tensor_index, int node_index) {
+    std::vector<size_t> tensor_dims(&tensor.dims->data[0],
+                                    &tensor.dims->data[NumDimensions(&tensor)]);
     switch (tensor.type) {
       case kTfLiteFloat32:
         return kTfLiteOk;
-      case kTfLiteInt8:
+      case kTfLiteInt8: {
         if (delegate.support_signed_8bit_quantization()) {
           if (tensor.quantization.type != kTfLiteAffineQuantization) {
             TF_LITE_MAYBE_KERNEL_LOG(
@@ -1849,9 +1851,35 @@ class Subgraph {
                 node_index);
             return kTfLiteError;
           }
+          if (quantization_params->scale->size > 1) {
+            if (xnn_validate_channelwise_quantized_tensor(
+                    xnn_datatype_qcint8, /*zero_point=*/0,
+                    quantization_params->scale->data, tensor_dims.size(),
+                    /*channel_dim=*/0,
+                    tensor_dims.data()) != xnn_status_success) {
+              TF_LITE_MAYBE_KERNEL_LOG(
+                  context,
+                  "Channelwise quantized tensor #%d in node #%d has invalid "
+                  "quantization parameters",
+                  tensor_index, node_index);
+              return kTfLiteError;
+            }
+          } else if (xnn_validate_quantized_tensor(
+                         xnn_datatype_qint8,
+                         quantization_params->zero_point->data[0],
+                         quantization_params->scale->data[0],
+                         tensor_dims.size(),
+                         tensor_dims.data()) != xnn_status_success) {
+            TF_LITE_MAYBE_KERNEL_LOG(context,
+                                     "Quantized tensor #%d in node #%d has "
+                                     "invalid quantization parameters",
+                                     tensor_index, node_index);
+            return kTfLiteError;
+          }
           return kTfLiteOk;
         }
         break;
+      }
       case kTfLiteUInt8:
         if (delegate.support_unsigned_8bit_quantization()) {
           const auto* quantization_params =
@@ -1867,6 +1895,16 @@ class Subgraph {
                 context,
                 "unsupported quantization type %d in tensor #%d in node #%d",
                 tensor.quantization.type, tensor_index, node_index);
+            return kTfLiteError;
+          }
+          if (xnn_validate_quantized_tensor(
+                  xnn_datatype_quint8, quantization_params->zero_point->data[0],
+                  quantization_params->scale->data[0], tensor_dims.size(),
+                  tensor_dims.data()) != xnn_status_success) {
+            TF_LITE_MAYBE_KERNEL_LOG(context,
+                                     "Quantized tensor #%d in node #%d has "
+                                     "invalid quantization parameters",
+                                     tensor_index, node_index);
             return kTfLiteError;
           }
           return kTfLiteOk;
@@ -1929,14 +1967,43 @@ class Subgraph {
         return kTfLiteOk;
       case kTfLiteInt32:
         if (delegate.support_signed_8bit_quantization()) {
-          if (tensor.quantization.type != kTfLiteAffineQuantization ||
+          const TfLiteAffineQuantization* quantization_params =
               static_cast<const TfLiteAffineQuantization*>(
-                  tensor.quantization.params)
-                      ->quantized_dimension != 0) {
+                  tensor.quantization.params);
+          std::vector<size_t> tensor_dims(
+              &tensor.dims->data[0],
+              &tensor.dims->data[NumDimensions(&tensor)]);
+          if (tensor.quantization.type != kTfLiteAffineQuantization ||
+              quantization_params->quantized_dimension != 0) {
             TF_LITE_MAYBE_KERNEL_LOG(
                 context,
                 "unsupported quantization type %d in tensor #%d in node #%d",
                 tensor.quantization.type, tensor_index, node_index);
+            return kTfLiteError;
+          }
+          if (quantization_params->scale->size > 1) {
+            if (xnn_validate_channelwise_quantized_tensor(
+                    xnn_datatype_qcint32, /*zero_point=*/0,
+                    quantization_params->scale->data, tensor_dims.size(),
+                    /*channel_dim=*/0,
+                    tensor_dims.data()) != xnn_status_success) {
+              TF_LITE_MAYBE_KERNEL_LOG(
+                  context,
+                  "Channelwise quantized tensor #%d in node #%d has invalid "
+                  "quantization parameters",
+                  tensor_index, node_index);
+              return kTfLiteError;
+            }
+          } else if (xnn_validate_quantized_tensor(
+                         xnn_datatype_qint32,
+                         quantization_params->zero_point->data[0],
+                         quantization_params->scale->data[0],
+                         tensor_dims.size(),
+                         tensor_dims.data()) != xnn_status_success) {
+            TF_LITE_MAYBE_KERNEL_LOG(context,
+                                     "Quantized tensor #%d in node #%d has "
+                                     "invalid quantization parameters",
+                                     tensor_index, node_index);
             return kTfLiteError;
           }
           return kTfLiteOk;
