@@ -398,6 +398,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "real_time_in_memory_metric",
+    hdrs = ["real_time_in_memory_metric.h"],
+)
+
 tsl_cc_test(
     name = "cancellation_test",
     size = "small",
@@ -461,5 +466,15 @@ tsl_cc_test(
         "//tsl/platform:test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
         "//tsl/util:device_name_utils",
+    ],
+)
+
+tsl_cc_test(
+    name = "real_time_in_memory_metric_test",
+    srcs = ["real_time_in_memory_metric_test.cc"],
+    deps = [
+        ":real_time_in_memory_metric",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
     ],
 )

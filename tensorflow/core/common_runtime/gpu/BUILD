@@ -465,6 +465,7 @@ cc_library(
     hdrs = ["gpu_serving_device_selector.h"],
     features = ["-layering_check"],
     deps = [
+        ":gpu_scheduling_metrics_storage",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:node_hash_map",
@@ -482,10 +483,18 @@ tf_cc_test(
     size = "small",
     srcs = ["gpu_serving_device_selector_test.cc"],
     deps = [
+        ":gpu_scheduling_metrics_storage",
         ":gpu_serving_device_selector",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/framework:serving_device_selector",
         "@local_tsl//tsl/framework:serving_device_selector_policies",
     ],
+)
+
+cc_library(
+    name = "gpu_scheduling_metrics_storage",
+    srcs = ["gpu_scheduling_metrics_storage.cc"],
+    hdrs = ["gpu_scheduling_metrics_storage.h"],
+    deps = ["@local_tsl//tsl/framework:real_time_in_memory_metric"],
 )

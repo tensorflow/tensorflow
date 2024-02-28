@@ -46,14 +46,15 @@ class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
   // time stats to avoid incorrect estimates.
   void Completed(int32_t index_on_host, bool had_error = false);
 
-  int64_t TotalGpuLoadNsForTest();
-
  private:
   friend class ServingDeviceSelectorTestHelper;
   static void OverwriteNowNsFunctionForTest(int64_t (*now_ns)());
 
   void FreeDeviceReservation(
       const tsl::DeviceReservation& reservation) override;
+
+  // Only for metrics reporting purposes.
+  int64_t TotalEstimatedTimeTillIdleNs() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
   absl::FixedArray<DeviceState, 8> device_states_ ABSL_GUARDED_BY(mu_);
