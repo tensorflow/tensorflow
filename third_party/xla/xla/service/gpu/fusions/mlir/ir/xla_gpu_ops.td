@@ -21,6 +21,7 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/DialectBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -39,7 +40,9 @@ class XLAGPU_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaGpuDialect, mnemonic, traits> {
 }
 
-def XLAGPU_AllocateSharedOp : XLAGPU_Op<"allocate_shared"> {
+def XLAGPU_AllocateSharedOp : XLAGPU_Op<"allocate_shared", [
+      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
   let summary = "Allocates a shared memory tile.";
 
   let description = [{
@@ -58,7 +61,9 @@ def XLAGPU_AllocateSharedOp : XLAGPU_Op<"allocate_shared"> {
 
 def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads", [
    TypesMatchWith<"result type matches type of dest",
-                   "operands", "results", "$_self">]> {
+                   "operands", "results", "$_self">,
+   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
   let summary = "Synchronizes threads.";
 
   let description = [{
@@ -75,7 +80,9 @@ def XLAGPU_SyncThreadsOp : XLAGPU_Op<"sync_threads", [
 def XLAGPU_AtomicRMWOp : XLAGPU_Op<"atomic_rmw",
     [Pure,
      TypesMatchWith<"result type matches type of dest",
-                    "input", "result", "$_self">]> {
+                    "input", "result", "$_self">,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
   let summary = "Atomically updates an element of a tensor.";
 
   let description = [{
@@ -103,7 +110,9 @@ def XLAGPU_YieldOp : XLAGPU_Op<"yield",
 }
 
 def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
-    [Pure, CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    [Pure, CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ]> {
   let summary = "Function call without side effects.";
   let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);

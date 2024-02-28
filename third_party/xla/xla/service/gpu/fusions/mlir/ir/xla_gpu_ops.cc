@@ -108,6 +108,30 @@ mlir::LogicalResult PureCallOp::verifySymbolUses(
   return mlir::success();
 }
 
+void AllocateSharedOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  setNameFn(getResult(), "shmem");
+}
+
+void AtomicRMWOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  setNameFn(getResult(), "atomic_rmw");
+}
+
+void PureCallOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  for (auto result : getResults()) {
+    setNameFn(result, "pure_call");
+  }
+}
+
+void SyncThreadsOp::getAsmResultNames(
+    llvm::function_ref<void(mlir::Value, mlir::StringRef)> setNameFn) {
+  for (auto result : getResults()) {
+    setNameFn(result, "synced_tensor");
+  }
+}
+
 }  // namespace gpu
 }  // namespace xla
 

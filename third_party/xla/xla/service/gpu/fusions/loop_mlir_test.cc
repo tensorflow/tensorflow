@@ -334,9 +334,9 @@ ENTRY main {
     // CHECK:   %[[TID_X:.*]] = gpu.thread_id x
     // CHECK:   %[[BID_X:.*]] = gpu.block_id x
     // CHECK:   %[[IDX:.*]] = affine.apply #[[MAP]]()[%[[TID_X]], %[[BID_X]]]
-    // CHECK:   %[[SCALARS:.*]]:2 = xla_gpu.pure_call @fused_computation_d_1
-    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS]]#0 into %{{.*}}[%[[IDX]]]
-    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS]]#1 into %{{.*}}[%[[IDX]]]
+    // CHECK:   %[[SCALARS_0:.*]], %[[SCALARS_1:.*]] = xla_gpu.pure_call @fused_computation_d_1
+    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[SCALARS_0]] into %{{.*}}[%[[IDX]]]
+    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[SCALARS_1]] into %{{.*}}[%[[IDX]]]
     // CHECK:   yield %[[INSERTED_1]], %[[INSERTED_2]]
 
     // CHECK: func private @fused_computation_d_1
