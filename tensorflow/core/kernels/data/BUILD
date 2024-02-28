@@ -491,6 +491,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -840,6 +841,7 @@ tf_kernel_library(
         "//tensorflow/core/data:stats_utils",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/status",
     ],
 )
 

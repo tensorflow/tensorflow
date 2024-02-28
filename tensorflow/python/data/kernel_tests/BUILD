@@ -703,6 +703,7 @@ tf_py_strict_test(
         "//tensorflow/python:tf2",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/data/experimental/ops:global_shuffle_op",
         "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
