@@ -37,6 +37,9 @@ void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,
                              const QuantizationSpecs& quantization_specs,
                              const DebuggerConfig& debugger_config) {
+  // For models with NCHW convolution format. This pass is required because
+  // downstream pipeline handles NHWC convolution better for most cases.
+  pm.addNestedPass<func::FuncOp>(createNchwConvolutionToNhwcPass());
   pm.addPass(CreateLiftQuantizableSpotsAsFunctionsPass(quantization_specs));
   if (debugger_config.debugger_type() !=
       DebuggerConfig::DEBUGGER_TYPE_UNSPECIFIED) {

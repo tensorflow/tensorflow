@@ -132,3 +132,19 @@ def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
   let summary = "Optimize the sub-optimal patterns after quantization.";
   let dependentDialects = ["mlir::stablehlo::StablehloDialect",];
 }
+
+def NchwConvolutionToNhwcPass : Pass<"stablehlo-nchw-convolution-to-nhwc", "mlir::func::FuncOp"> {
+  let summary = "Converts stablehlo.convolution op of NCHW format to -> NHWC.";
+  let description = [{
+    Matches `ConvolutionOp`s with NCHW format and converts it to NHWC
+    format by inserting `TransposeOp`s to input, filter, and output tensors.
+    In terms of dimension numbers, this matches
+    `[b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]` format and converts it to
+    `[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]` format.
+
+    This pass is useful to convert models that conventionally use the NCHW
+    format to target hardwares that are more NHWC-friendly.
+  }];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
