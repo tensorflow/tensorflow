@@ -1096,14 +1096,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
     const Shape& smaller_shape, const Shape& larger_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
-  if (smaller_shape.is_unbounded_dynamic() ||
-      larger_shape.is_unbounded_dynamic()) {
-    return InvalidArgumentError(StrFormat(
-        "Unbounded dynamic shapes not supported, but we have %s and %s",
-        ShapeUtil::HumanString(smaller_shape),
-        ShapeUtil::HumanString(larger_shape)));
-  }
-
   if (broadcast_dimensions.empty() && !ShapeUtil::IsScalar(smaller_shape)) {
     // Reject "magic" inference for binops on different shapes, requiring
     // the user to provide an explicit broadcast dimension in this case.
@@ -1112,7 +1104,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
         StrFormat("Shapes must be equal rank, but are %s and %s",
                   ShapeUtil::HumanString(smaller_shape),
                   ShapeUtil::HumanString(larger_shape)));
-  } else if (broadcast_dimensions.size() != smaller_shape.rank()) {
+  }
+
+  if (broadcast_dimensions.size() != smaller_shape.rank()) {
     return InvalidArgumentError(StrFormat(
         "Size of broadcast_dimensions has to match lower-rank operand's "
         "rank; "
@@ -1196,7 +1190,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(const Shape& lhs,
       if (small_dimension_size == large_dimension_size ||
           (small_dimension_size == 1 && !small_is_dynamic) ||
           (large_dimension_size == 1 && !large_is_dynamic)) {
-        // Do nothing. It's OK when the size-1 dimension is not static.
+        // Do nothing. It's OK when the size-1 dimension is not static or when
+        // it is unbounded dynamic.
       } else {
         return InvalidArgumentError(
             StrFormat("Broadcast dimension %d dynamism mismatch: %s and %s.", i,

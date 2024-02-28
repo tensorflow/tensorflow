@@ -427,6 +427,9 @@ class ShapeInference {
   // (for example ComputationBuilder::AddInDim). smaller_shape must be a
   // lower-rank shape than larger_shape. Returns the shape that the
   // smaller_shape is broadcast to.
+  //
+  // Since this method is only used by InferBinaryOpShape transitively, this
+  // method also supports inference of unbounded dynamic dimensions.
   static absl::StatusOr<Shape> InferInDimBroadcastShape(
       const Shape& smaller_shape, const Shape& larger_shape,
       absl::Span<const int64_t> broadcast_dimensions);
