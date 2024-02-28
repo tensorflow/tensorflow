@@ -273,26 +273,24 @@ class QuantizationDriver {
     return rescale_states_[arg_states_[arg]];
   }
 
-  // Uses the type of `val` to set the initial state of the index-th result if
-  // `as_result` is true or index-th operand if `as_result` is false. The state
-  // is immutable if the type is a quantized type. Returns the index of this
-  // new state in the state vector.
-  int InitializeState(Operation* op, int index, Value val, bool as_result);
-
   // Sets the state of an argument. If this value is cached, uses the cached
   // result without creating new entry in the state vector. Otherwise, allocate
   // a new entry in the state vector.
   void InitializeArgState(BlockArgument arg, Value arg_value);
 
+  // Sets the state of index-th operand / result of op.
+  void InitializeStateForValue(Operation* op, int index, Value value,
+                               bool as_result);
+
   // Sets the state of the index-th operand of the op. If this operand is
   // cached, uses the cached result without creating new entry in the state
   // vector. Otherwise, allocate a new entry in the state vector.
-  void InitializeOperandState(Operation* op, int index, Value in);
+  void InitializeOperandState(Operation* op, int index, Value value);
 
   // Sets the state of the index-th result of the op. If this result is cached,
   // uses the cached result without creating new entry in the state vector.
   // Otherwise, allocate a new entry in the state vector.
-  void InitializeResultState(Operation* op, int index, Value res);
+  void InitializeResultState(Operation* op, int index, Value value);
 
   func::FuncOp fn_;
   OpBuilder builder_;

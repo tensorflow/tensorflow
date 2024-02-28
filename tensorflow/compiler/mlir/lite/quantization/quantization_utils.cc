@@ -66,6 +66,21 @@ namespace {
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
+// Repeats the content of `data` multiple times to resize to `target_size`.
+// Note that this only broadcast across one dimension.
+template <typename T>
+bool BroadcastVector(int target_size, SmallVectorImpl<T>& data) {
+  const int size = data.size();
+  if (size != target_size) {
+    if (target_size % size != 0) return true;
+    data.reserve(target_size);
+    for (int i = 1; i < target_size / size; ++i) {
+      data.insert(data.end(), data.begin(), data.begin() + size);
+    }
+  }
+  return false;
+}
+
 // This method expands the range to be larger than or equal to 1.0e-6, if it is
 // very small (< 1.0e-6). This is to prevent very large quantized value by this
 // range.
@@ -136,21 +151,6 @@ QuantizedType ResetMinMaxFromNumBits(const QuantizedType type,
     llvm_unreachable("Unsupported QuantizedType in ResetMinMaxFromNumBits");
   }
   return type;
-}
-
-// Repeats the content of `data` multiple times to resize to `target_size`.
-// Note that this only broadcast across one dimension.
-template <typename T>
-bool BroadcastVector(const int target_size, SmallVectorImpl<T>& data) {
-  const int size = data.size();
-  if (size != target_size) {
-    if (target_size % size != 0) return true;
-    data.reserve(target_size);
-    for (int i = 1, e = target_size / size; i != e; ++i) {
-      data.insert(data.end(), data.begin(), data.begin() + size);
-    }
-  }
-  return false;
 }
 
 // Changes the axis of the input per-channel quantized type to match the
@@ -326,10 +326,10 @@ TypeAttr GetQuantizedTypeAttr(const Builder builder, const Type input_type,
   if (mins && maxs) {
     min_value.reserve(mins.getNumElements());
     max_value.reserve(maxs.getNumElements());
-    for (auto it = mins.begin(), e = mins.end(); it != e; ++it) {
+    for (auto it = mins.begin(); it != mins.end(); ++it) {
       min_value.push_back(FloatAttr::getValueAsDouble(*it));
     }
-    for (auto it = maxs.begin(), e = maxs.end(); it != e; ++it) {
+    for (auto it = maxs.begin(); it != maxs.end(); ++it) {
       max_value.push_back(FloatAttr::getValueAsDouble(*it));
     }
   } else {
@@ -402,8 +402,7 @@ void ExtractMinMaxFromAttr(const DenseFPElementsAttr values, const int dim_size,
     }
   } else {
     int64_t flatten_index = 0;
-    for (auto it = values.begin(), e = values.end(); it != e;
-         ++it, ++flatten_index) {
+    for (auto it = values.begin(); it != values.end(); ++it, ++flatten_index) {
       const double ele_value = FloatAttr::getValueAsDouble(*it);
       const int slice_index = flatten_index / slice_size;
       const int channel_index = slice_index % dim_size;
@@ -524,7 +523,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
       }
     } else if (const auto type =
                    op_type.dyn_cast<quant::UniformQuantizedType>()) {
-      for (int index = 0, e = axis_size; index != e; ++index) {
+      for (int index = 0; index < axis_size; ++index) {
         scales[index] *= type.getScale();
       }
     }
@@ -1006,7 +1005,7 @@ Type ConvertSignedQuantizedToUnsigned(const Type signed_tensor_type,
     const auto zero_points = aqtype.getZeroPoints();
     llvm::SmallVector<int64_t, 4> new_zero_points(zero_points.begin(),
                                                   zero_points.end());
-    for (int i = 0, e = new_zero_points.size(); i != e; ++i) {
+    for (int i = 0; i < new_zero_points.size(); ++i) {
       new_zero_points[i] -= offset;
     }
     new_qtype = quant::UniformQuantizedPerAxisType::getChecked(
