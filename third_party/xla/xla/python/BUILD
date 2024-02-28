@@ -918,12 +918,14 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":nb_helpers",
         # placeholder for index annotation deps
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "//third_party/nanobind",
         "//xla/pjrt:lru_cache",
-        "@pybind11",
     ],
 )
 
@@ -1222,4 +1224,16 @@ cc_library(
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     deps = ["//third_party/nanobind"],
+)
+
+cc_library(
+    name = "nb_helpers",
+    srcs = ["nb_helpers.cc"],
+    hdrs = ["nb_helpers.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    deps = [
+        "//third_party/nanobind",
+        "@local_config_python//:python_headers",
+    ],
 )

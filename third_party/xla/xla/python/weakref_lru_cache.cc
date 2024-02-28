@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/weakref_lru_cache.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -22,29 +24,33 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"      // IWYU pragma: keep
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/gil.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
 #include "xla/pjrt/lru_cache.h"
+#include "xla/python/nb_helpers.h"
+
+namespace nb = nanobind;
 
 namespace jax {
 namespace {
 
-// Minimal wrapper to expose a pybind11::dict_iterator's value as something
+// Minimal wrapper to expose a nb::dict_iterator's value as something
 // hashable with Abseil.
 class HashablePyDictValue {
  protected:
-  using Iter = pybind11::detail::dict_iterator;
+  using Iter = nb::detail::dict_iterator;
 
   template <typename H>
   friend H AbslHashValue(H h, const HashablePyDictValue& value) {
-    return H::combine(std::move(h), pybind11::hash(value.iter_->first),
-                      pybind11::hash(value.iter_->second));
+    auto kv = *value.iter_;
+    return H::combine(std::move(h), xla::nb_hash(kv.first),
+                      xla::nb_hash(kv.second));
   }
 
   explicit HashablePyDictValue(const Iter& iter) : iter_(iter) {}
@@ -52,7 +58,7 @@ class HashablePyDictValue {
   Iter iter_;
 };
 
-// Similarly, a minimalist adaptor around the pybind11::detail::dict_iterator
+// Similarly, a minimalist adaptor around the nb::detail::dict_iterator
 // itself. Note that the iterator "is" also a Value. Does not meet the full
 // standard iterator requirements, only enough to support H::combine_unordered.
 class HashablePyDictIter : protected HashablePyDictValue {
@@ -74,9 +80,9 @@ class HashablePyDictIter : protected HashablePyDictValue {
 class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
  public:
   struct Key {
-    pybind11::object context;
-    pybind11::args args;
-    pybind11::kwargs kwargs;
+    nb::object context;
+    nb::args args;
+    nb::kwargs kwargs;
 
     bool operator==(const Key& other) const {
       return context.equal(other.context) && args.equal(other.args) &&
@@ -85,8 +91,8 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
 
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
-      h = H::combine(std::move(h), pybind11::hash(key.context),
-                     pybind11::hash(key.args));
+      h = H::combine(std::move(h), xla::nb_hash(key.context),
+                     xla::nb_hash(key.args));
       h = H::combine_unordered(std::move(h),
                                HashablePyDictIter(key.kwargs.begin()),
                                HashablePyDictIter(key.kwargs.end()));
@@ -97,7 +103,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
 
   struct CacheEntry {
     bool has_result = false;
-    pybind11::object result;
+    nb::object result;
     absl::Notification completed;
     std::thread::id thread_id = std::this_thread::get_id();
   };
@@ -110,13 +116,13 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   };
 
   struct UnboundWeakrefCacheEntry {
-    pybind11::handle object;
+    nb::handle object;
     WeakrefLRUCache* cache;
     size_t cached_hash;
   };
 
   struct WeakrefCacheEntry {
-    pybind11::weakref weakref;
+    nb::weakref weakref;
     size_t cached_hash;
   };
 
@@ -143,13 +149,12 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       if (obj == Py_None) {
         return false;
       }
-      return pybind11::reinterpret_borrow<pybind11::object>(obj).equal(
-          rhs.object);
+      return nb::borrow<nb::object>(obj).equal(rhs.object);
     }
   };
 
   using Cache = xla::LRUCache<Key, std::shared_ptr<CacheEntry>>;
-  WeakrefLRUCache(pybind11::function cache_context_fn, pybind11::function fn,
+  WeakrefLRUCache(nb::callable cache_context_fn, nb::callable fn,
                   int64_t maxsize)
       : cache_context_fn_(cache_context_fn), fn_(fn), lru_list_(maxsize) {}
 
@@ -158,17 +163,16 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     if (it != entries_.end()) {
       return (it->second);
     }
-    pybind11::weakref weakref(
-        key.object, pybind11::cpp_function([this_weak = weak_from_this(),
-                                            cached_hash = key.cached_hash](
-                                               pybind11::handle weakref) {
+    nb::weakref weakref(
+        key.object,
+        nb::cpp_function([this_weak = weak_from_this(),
+                          cached_hash = key.cached_hash](nb::handle weakref) {
           auto cache = this_weak.lock();
           if (cache == nullptr) {
             return;
           }
-          auto it = cache->entries_.find(WeakrefCacheEntry{
-              pybind11::reinterpret_borrow<pybind11::weakref>(weakref),
-              cached_hash});
+          auto it = cache->entries_.find(
+              WeakrefCacheEntry{nb::borrow<nb::weakref>(weakref), cached_hash});
           // Create temp-var to avoid re-entrant erase.
           auto tmp = std::move(it->second);
           cache->entries_.erase(it);
@@ -179,11 +183,10 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
                 .first->second);
   }
 
-  pybind11::object Call(pybind11::object weakref_key, pybind11::args args,
-                        pybind11::kwargs kwargs) {
-    pybind11::object context = cache_context_fn_();
+  nb::object Call(nb::object weakref_key, nb::args args, nb::kwargs kwargs) {
+    nb::object context = cache_context_fn_();
     std::shared_ptr<Cache> cache_ptr = GetCache(UnboundWeakrefCacheEntry{
-        weakref_key, this, static_cast<size_t>(pybind11::hash(weakref_key))});
+        weakref_key, this, static_cast<size_t>(xla::nb_hash(weakref_key))});
     Cache& cache = *cache_ptr;
     ++total_queries_;
 
@@ -191,7 +194,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     {
       // Because the gil can be released during cache insertion, this forces
       // the lock order to be mu_ then gil so we must release the gil first.
-      pybind11::gil_scoped_release release;
+      nb::gil_scoped_release release;
       // Acquire a mutex to avoid problems where the gil is released during
       // cache insertion and then a second thread invalidates the cache order.
       mu_.Lock();
@@ -210,14 +213,14 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
         entry->has_result = true;
       } else {
         if (entry->thread_id == std::this_thread::get_id()) {
-          auto error_string = absl::StrCat(
-              "Recursively calling ",
-              pybind11::cast<std::string>(pybind11::repr(weakref_key)),
-              pybind11::cast<std::string>(pybind11::repr(args)));
+          auto error_string =
+              absl::StrCat("Recursively calling ",
+                           nb::cast<std::string>(nb::repr(weakref_key)),
+                           nb::cast<std::string>(nb::repr(args)));
           PyErr_SetString(PyExc_RecursionError, error_string.c_str());
-          throw pybind11::error_already_set();
+          throw nb::python_error();
         }
-        pybind11::gil_scoped_release release;
+        nb::gil_scoped_release release;
         entry->completed.WaitForNotification();
       }
     }
@@ -229,16 +232,14 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       return fn_(weakref_key, *args, **kwargs);
     }
   }
-  std::vector<pybind11::object> GetKeys() {
-    std::vector<pybind11::object> results;
+  std::vector<nb::object> GetKeys() {
+    std::vector<nb::object> results;
     mu_.Lock();
     for (const auto& wr_key : entries_) {
       for (const auto& rest : *wr_key.second) {
-        pybind11::tuple result(4);
-        result[0] = wr_key.first.weakref;
-        result[1] = rest.first.context;
-        result[2] = rest.first.args;
-        result[3] = rest.first.kwargs;
+        nb::tuple result =
+            nb::make_tuple(wr_key.first.weakref, rest.first.context,
+                           rest.first.args, rest.first.kwargs);
         results.push_back(std::move(result));
       }
     }
@@ -263,8 +264,8 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     deferred_deletes.clear();
   }
 
-  pybind11::function cache_context_fn_;
-  pybind11::function fn_;
+  nb::callable cache_context_fn_;
+  nb::callable fn_;
   Cache::LRUList lru_list_;
   absl::node_hash_map<WeakrefCacheEntry, std::shared_ptr<Cache>, WeakrefKeyHash,
                       WeakrefKeyEq>
@@ -274,24 +275,20 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
   absl::Mutex mu_;
 };
 
-namespace {
-namespace py = ::pybind11;
-}  // namespace
-
-void BuildWeakrefLRUCacheAPI(pybind11::module& m) {
+void BuildWeakrefLRUCacheAPI(nb::module_& m) {
   auto weakref_lru_cache =
-      py::class_<WeakrefLRUCache, std::shared_ptr<WeakrefLRUCache>>(
-          m, "WeakrefLRUCache")
+      nb::class_<WeakrefLRUCache>(m, "WeakrefLRUCache",
+                                  nb::is_weak_referenceable())
           .def("__call__", &WeakrefLRUCache::Call)
           .def("cache_keys", &WeakrefLRUCache::GetKeys)
           .def("cache_info", &WeakrefLRUCache::GetCacheInfo)
           .def("cache_clear", &WeakrefLRUCache::Clear);
-  py::class_<WeakrefLRUCache::CacheInfo>(weakref_lru_cache,
+  nb::class_<WeakrefLRUCache::CacheInfo>(weakref_lru_cache,
                                          "WeakrefLRUCacheInfo")
-      .def_readonly("hits", &WeakrefLRUCache::CacheInfo::hits)
-      .def_readonly("misses", &WeakrefLRUCache::CacheInfo::misses)
-      .def_readonly("maxsize", &WeakrefLRUCache::CacheInfo::maxsize)
-      .def_readonly("currsize", &WeakrefLRUCache::CacheInfo::currsize)
+      .def_ro("hits", &WeakrefLRUCache::CacheInfo::hits)
+      .def_ro("misses", &WeakrefLRUCache::CacheInfo::misses)
+      .def_ro("maxsize", &WeakrefLRUCache::CacheInfo::maxsize)
+      .def_ro("currsize", &WeakrefLRUCache::CacheInfo::currsize)
       .def("__repr__", [](WeakrefLRUCache::CacheInfo& info) {
         return absl::StrCat(
             "WeakrefLRUCache(hits=", info.hits, ", misses=", info.misses,
@@ -299,12 +296,10 @@ void BuildWeakrefLRUCacheAPI(pybind11::module& m) {
       });
   m.def(
       "weakref_lru_cache",
-      [](pybind11::function cache_context_fn, pybind11::function fn,
-         int64_t maxsize) {
+      [](nb::callable cache_context_fn, nb::callable fn, int64_t maxsize) {
         return std::make_shared<WeakrefLRUCache>(cache_context_fn, fn, maxsize);
       },
-      pybind11::arg("cache_context_fn"), pybind11::arg("fn"),
-      pybind11::arg("maxsize") = 2048);
+      nb::arg("cache_context_fn"), nb::arg("fn"), nb::arg("maxsize") = 2048);
 }
 
 }  // namespace jax

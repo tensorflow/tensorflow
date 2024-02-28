@@ -462,7 +462,7 @@ static void Init(py::module_& m) {
              PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes)
       .value("ZERO_COPY", PjRtClient::HostBufferSemantics::kZeroCopy);
 
-  jax::BuildWeakrefLRUCacheAPI(m);
+  jax::BuildWeakrefLRUCacheAPI(m_nb);
 
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)

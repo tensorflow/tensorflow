@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_WEAKREF_LRU_CACHE_H_
-#define XLA_PYTHON_WEAKREF_LRU_CACHE_H_
+#include "xla/python/nb_helpers.h"
 
-// placeholder for index annotation headers
+#include <Python.h>
+
 #include "nanobind/nanobind.h"
 
-namespace jax {
+namespace nb = nanobind;
 
-void BuildWeakrefLRUCacheAPI(nanobind::module_& m);
+namespace xla {
 
-}  // namespace jax
+ssize_t nb_hash(nb::handle o) {
+  Py_hash_t h = PyObject_Hash(o.ptr());
+  if (h == -1) {
+    throw nb::python_error();
+  }
+  return h;
+}
 
-#endif  // XLA_PYTHON_WEAKREF_LRU_CACHE_H_
+}  // namespace xla
