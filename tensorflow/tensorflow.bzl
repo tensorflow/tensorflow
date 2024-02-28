@@ -14,6 +14,10 @@ load(
     "if_cuda",
     "if_cuda_exec",
 )
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "onednn_v3_define",
+)
 
 #
 # Returns the options to use for a C++ library or binary build.
@@ -73,10 +77,6 @@ load(
     _if_cuda_or_rocm = "if_cuda_or_rocm",
     _if_nccl = "if_nccl",
     _transitive_hdrs = "transitive_hdrs",
-)
-load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "onednn_v3_define",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",

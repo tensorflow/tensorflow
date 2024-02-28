@@ -32,7 +32,7 @@ def if_mkl(if_true, if_false = []):
       may need it. It may be deleted in future with refactoring.
     """
     return select({
-        "@local_tsl//tsl/mkl:build_with_mkl_aarch64": if_true,
+        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": if_true,
         "@local_tsl//tsl:linux_x86_64": if_true,
         "@local_tsl//tsl:windows": if_true,
         "//conditions:default": if_false,
@@ -51,7 +51,7 @@ def if_mkl_ml(if_true, if_false = []):
     """
     return select({
         "@local_tsl//third_party/mkl_dnn:build_with_mkl_opensource": if_false,
-        "@local_tsl//tsl/mkl:build_with_mkl": if_true,
+        "@local_xla//xla/tsl/mkl:build_with_mkl": if_true,
         "//conditions:default": if_false,
     })
 
@@ -68,7 +68,7 @@ def if_mkl_lnx_x64(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "@local_tsl//tsl/mkl:build_with_mkl_lnx_x64": if_true,
+        "@local_xla//xla/tsl/mkl:build_with_mkl_lnx_x64": if_true,
         "//conditions:default": if_false,
     })
 
@@ -85,7 +85,7 @@ def if_enable_mkl(if_true, if_false = []):
       A select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "@local_tsl//tsl/mkl:enable_mkl": if_true,
+        "@local_xla//xla/tsl/mkl:enable_mkl": if_true,
         "//conditions:default": if_false,
     })
 
@@ -101,7 +101,7 @@ def mkl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        "@local_tsl//tsl/mkl:build_with_mkl_aarch64": ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
+        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
         "@local_tsl//tsl:linux_x86_64": ["@onednn//:mkl_dnn"],
         "@local_tsl//tsl:windows": ["@onednn//:mkl_dnn"],
         "//conditions:default": [],
@@ -115,7 +115,7 @@ def onednn_v3_define():
       An empty list of all other cases (include ARM builds).
     """
     return select({
-        "@local_tsl//tsl/mkl:build_with_mkl_aarch64": ["-DENABLE_ONEDNN_V3"],
+        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": ["-DENABLE_ONEDNN_V3"],
         "@local_tsl//tsl:linux_x86_64": ["-DENABLE_ONEDNN_V3"],
         "@local_tsl//tsl:windows": ["-DENABLE_ONEDNN_V3"],
         "//conditions:default": [],

@@ -10,16 +10,16 @@ load(
     "xla_cc_test",
 )
 load(
+    "//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
+load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
     "if_enable_acl",
 )
 load("@local_tsl//tsl:tsl.bzl", "internal_visibility", "tf_openmp_copts", "tsl_copts")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load(
-    "@local_tsl//tsl/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",

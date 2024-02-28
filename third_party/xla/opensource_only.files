@@ -1,6 +1,10 @@
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/stream_executor/build_defs.bzl:
 compiler/xla/tsl/cuda/stub.bzl:
+compiler/xla/tsl/mkl/BUILD:
+compiler/xla/tsl/mkl/LICENSE:
+compiler/xla/tsl/mkl/MKL_LICENSE:
+compiler/xla/tsl/mkl/build_defs.bzl:
 third_party/BUILD:
 third_party/__init__:.py
 third_party/compute_library/BUILD:
