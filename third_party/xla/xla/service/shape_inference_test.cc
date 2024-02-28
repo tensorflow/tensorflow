@@ -1926,6 +1926,116 @@ TEST_F(ShapeInferenceTest, DotWithNarrowerPreferredElementType) {
       ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(S8, {32, 32})));
 }
 
+TEST_F(ShapeInferenceTest, DotWithSparseLhs) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(0);
+  sparsity_descriptor.set_dimension(1);
+
+  std::vector<SparsityDescriptor> sparsity = {sparsity_descriptor};
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferDotOpShape(
+          ShapeUtil::MakeShape(F32, {10, 16}),
+          ShapeUtil::MakeShape(F32, {32, 20}), dot_dnums,
+          /*preferred_element_type=*/std::nullopt, absl::MakeSpan(sparsity)));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {10, 20})));
+}
+
+TEST_F(ShapeInferenceTest, DotWithSparseRhs) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(1);
+  sparsity_descriptor.set_dimension(0);
+
+  std::vector<SparsityDescriptor> sparsity = {sparsity_descriptor};
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferDotOpShape(
+          ShapeUtil::MakeShape(F32, {10, 32}),
+          ShapeUtil::MakeShape(F32, {16, 20}), dot_dnums,
+          /*preferred_element_type=*/std::nullopt, absl::MakeSpan(sparsity)));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {10, 20})));
+}
+
+TEST_F(ShapeInferenceTest, DotWithSparseBothOperands) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_lhs;
+  sparsity_lhs.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_lhs.set_n(2);
+  sparsity_lhs.set_m(4);
+  sparsity_lhs.set_index(0);
+  sparsity_lhs.set_dimension(1);
+  SparsityDescriptor sparsity_rhs = sparsity_lhs;
+  sparsity_rhs.set_index(1);
+  sparsity_rhs.set_dimension(0);
+
+  std::vector<SparsityDescriptor> sparsity = {sparsity_lhs, sparsity_rhs};
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
+      ShapeInference::InferDotOpShape(
+          ShapeUtil::MakeShape(F32, {10, 16}),
+          ShapeUtil::MakeShape(F32, {16, 20}), dot_dnums,
+          /*preferred_element_type=*/std::nullopt, absl::MakeSpan(sparsity)));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(F32, {10, 20})));
+}
+
+TEST_F(ShapeInferenceTest, DotWithIncorrectSparseDimensionSizeRatio) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(0);
+  sparsity_descriptor.set_dimension(1);
+
+  std::vector<SparsityDescriptor> sparsity = {sparsity_descriptor};
+  auto inferred_status = ShapeInference::InferDotOpShape(
+      ShapeUtil::MakeShape(F32, {10, 32}), ShapeUtil::MakeShape(F32, {32, 20}),
+      dot_dnums, /*preferred_element_type=*/std::nullopt,
+      absl::MakeSpan(sparsity));
+  ASSERT_FALSE(inferred_status.ok());
+  ASSERT_THAT(
+      inferred_status.status().message(),
+      HasSubstr("Sparse dimension size ratio doesn't match the descriptor"));
+}
+
+TEST_F(ShapeInferenceTest, SparseDotMetadata) {
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(0);
+  sparsity_descriptor.set_dimension(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferSparseDotMetadataShape(
+                              ShapeUtil::MakeShape(F32, {5, 10, 16}), dot_dnums,
+                              sparsity_descriptor));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U16, {10, 2})));
+}
+
 TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
   // Test variations of broadcasting a vector for a binary add with a
   // matrix.

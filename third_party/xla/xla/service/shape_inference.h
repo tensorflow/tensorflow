@@ -351,7 +351,13 @@ class ShapeInference {
   static absl::StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers,
-      std::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type,
+      absl::Span<const SparsityDescriptor> sparsity = {});
+
+  // Helper that infers the shape of the sparse dot metadata.
+  static absl::StatusOr<Shape> InferSparseDotMetadataShape(
+      const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
+      const SparsityDescriptor& sparsity, PrimitiveType element_type = U16);
 
   // Helper that infers the shape of the tensor produced by a gather operation
   // with the given input shape, gather indices shape and gather dimension

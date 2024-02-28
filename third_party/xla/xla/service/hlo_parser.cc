@@ -303,6 +303,7 @@ class HloParserImpl : public HloParser {
     kInstructionAliasing,
     kCustomCallSchedule,
     kCustomCallApiVersion,
+    kSparsityDescriptor,
     // A double-quoted string, or a string that looks like a JSON dictionary
     // enclosed in matching curly braces (returned value includes the curlies).
     kStringOrJsonDict,
@@ -574,6 +575,7 @@ class HloParserImpl : public HloParser {
 
   bool ParseCustomCallSchedule(CustomCallSchedule* result);
   bool ParseCustomCallApiVersion(CustomCallApiVersion* result);
+  bool ParseSparsityDescriptor(std::vector<SparsityDescriptor>* result);
   bool ParseShapeIndex(ShapeIndex* out);
 
   // Returns true if the current token is the beginning of a shape.
@@ -1000,6 +1002,38 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
                   val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseSparsityDescriptor(
+    std::vector<SparsityDescriptor>* result) {
+  VLOG(3) << "ParseSparsityDescriptor";
+  if (lexer_.GetKind() != TokKind::kSparsityDesc) {
+    return TokenError("expects sparsity descriptor, e.g. L.0@2:4");
+  }
+  std::string val = lexer_.GetStrVal();
+  std::vector<absl::string_view> split = absl::StrSplit(val, '_');
+  for (absl::string_view item : split) {
+    std::vector<absl::string_view> splitA = absl::StrSplit(item, '@');
+    std::vector<absl::string_view> splitB = absl::StrSplit(splitA[0], '.');
+    std::vector<absl::string_view> splitC = absl::StrSplit(splitA[1], ':');
+    SparsityDescriptor descriptor;
+    int dim, n, m;
+    if (!absl::SimpleAtoi(splitB[1], &dim) || dim < 0) {
+      return TokenError("Invalid dimension number");
+    }
+    if (!absl::SimpleAtoi(splitC[0], &n) || !absl::SimpleAtoi(splitC[1], &m) ||
+        n < 1 || m <= n) {
+      return TokenError("Invalid structured sparsity type");
+    }
+    descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+    descriptor.set_index(splitB[0] == "L" ? 0 : 1);
+    descriptor.set_dimension(dim);
+    descriptor.set_n(n);
+    descriptor.set_m(m);
+    result->push_back(descriptor);
+  }
   lexer_.Lex();
   return true;
 }
@@ -3027,10 +3061,25 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
+      std::vector<SparsityDescriptor> sparsity;
+      attrs["sparsity"] = {/*required=*/false, AttrTy::kSparsityDescriptor,
+                           &sparsity};
 
-      if ((!preset_operands &&
-           !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
+      LocTy loc = lexer_.GetLoc();
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes)) {
+        return nullptr;
+      }
+
+      int expected_size = HloDotInstruction::kOperands + sparsity.size();
+      if (sparsity.size() > HloDotInstruction::kOperands) {
+        Error(loc,
+              StrCat("too many sparse dot descriptors: ", sparsity.size()));
+        return nullptr;
+      }
+      if (operands.size() != expected_size) {
+        Error(loc, StrCat("expects ", expected_size, " operands, but has ",
+                          operands.size(), " operands"));
         return nullptr;
       }
 
@@ -3058,7 +3107,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             operand_precision->begin(), operand_precision->end()};
       } else {
         precision_config.mutable_operand_precision()->Resize(
-            operands.size(), PrecisionConfig::DEFAULT);
+            HloDotInstruction::kOperands, PrecisionConfig::DEFAULT);
       }
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
@@ -3068,7 +3117,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateDot(
-          *shape, operands[0], operands[1], dnum, precision_config));
+          *shape, operands[0], operands[1], dnum, precision_config, sparsity,
+          absl::MakeSpan(operands).subspan(HloDotInstruction::kOperands)));
     }
     case HloOpcode::kGather: {
       optional<std::vector<int64_t>> offset_dims;
@@ -4905,6 +4955,15 @@ bool HloParserImpl::ParseAttributeHelper(
         }
         static_cast<optional<CustomCallApiVersion>*>(attr_out_ptr)
             ->emplace(result);
+        return true;
+      }
+      case AttrTy::kSparsityDescriptor: {
+        std::vector<SparsityDescriptor> result;
+        if (!ParseSparsityDescriptor(&result)) {
+          return false;
+        }
+        *static_cast<std::vector<SparsityDescriptor>*>(attr_out_ptr) =
+            std::move(result);
         return true;
       }
     }

@@ -106,6 +106,31 @@ void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
   });
 }
 
+void PrintSparsityDescriptor(HloInstruction::AttributePrinter& printer,
+                             absl::Span<const SparsityDescriptor> sparsity) {
+  printer.Next([&sparsity](Printer* printer) {
+    printer->Append("sparsity=");
+    for (int i = 0; i < sparsity.size(); ++i) {
+      if (i != 0) {
+        printer->Append("_");
+      }
+      const SparsityDescriptor& cur = sparsity[i];
+      printer->Append(cur.index() == 0 ? "L." : "R.");
+      printer->Append(cur.dimension());
+      printer->Append("@");
+      switch (cur.type()) {
+        case SPARSITY_STRUCTURED_N_M:
+          printer->Append(cur.n());
+          printer->Append(":");
+          printer->Append(cur.m());
+          break;
+        default:
+          LOG(FATAL) << "Unknown sparsity type: " << cur.type();
+      }
+    }
+  });
+}
+
 void SetThreadName(HloComputation* called_computation,
                    absl::string_view execution_thread,
                    bool skip_async_execution_thread_overwrite) {
@@ -3534,18 +3559,34 @@ std::unique_ptr<HloInstruction> HloIotaInstruction::CloneWithNewOperandsImpl(
 HloDotInstruction::HloDotInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config)
+    const PrecisionConfig& precision_config,
+    std::vector<SparsityDescriptor> sparsity,
+    absl::Span<HloInstruction* const> sparse_meta)
     : HloInstruction(HloOpcode::kDot, shape),
       dot_dimension_numbers_(dimension_numbers),
-      precision_config_(precision_config) {
+      precision_config_(precision_config),
+      sparsity_(std::move(sparsity)) {
   AppendOperand(lhs);
   AppendOperand(rhs);
+  CHECK_LE(sparsity_.size(), kOperands);
+  CHECK_EQ(sparsity_.size(), sparse_meta.size());
+  for (HloInstruction* meta : sparse_meta) {
+    AppendOperand(meta);
+  }
+  if (sparsity_.size() == kOperands &&
+      sparsity_[0].index() > sparsity_[1].index()) {
+    std::swap(sparsity_[0], sparsity_[1]);  // Keep descriptors ordered.
+    std::swap(mutable_operands()[2], mutable_operands()[3]);
+  }
 }
 
 HloInstructionProto HloDotInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
   *proto.mutable_precision_config() = precision_config_;
+  for (const SparsityDescriptor& descriptor : sparsity_) {
+    *proto.add_dot_sparsity() = descriptor;
+  }
   return proto;
 }
 
@@ -3555,6 +3596,9 @@ void HloDotInstruction::PrintExtraAttributesImpl(
     printer->Append(DotDimensionNumbersToString(dot_dimension_numbers_));
   });
   PrintPrecisionConfig(printer, precision_config_);
+  if (!sparsity_.empty()) {
+    PrintSparsityDescriptor(printer, absl::MakeSpan(sparsity_));
+  }
 }
 
 bool HloDotInstruction::IdenticalSlowPath(
@@ -3565,16 +3609,18 @@ bool HloDotInstruction::IdenticalSlowPath(
   return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
                                        casted_other.dot_dimension_numbers()) &&
          protobuf_util::ProtobufEquals(precision_config(),
-                                       casted_other.precision_config());
+                                       casted_other.precision_config()) &&
+         absl::c_equal(sparsity_, casted_other.sparsity_,
+                       protobuf_util::ProtobufEquals);
 }
 
 std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_EQ(new_operands.size(), kOperands + sparse_operands());
   return std::make_unique<HloDotInstruction>(
       shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
-      precision_config_);
+      precision_config_, sparsity_, new_operands.subspan(kOperands));
 }
 
 HloDomainInstruction::HloDomainInstruction(

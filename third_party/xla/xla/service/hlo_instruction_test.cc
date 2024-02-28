@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -1661,6 +1662,35 @@ TEST_F(HloInstructionTest, StringifyDot) {
   EXPECT_EQ(dot->ToString(options2),
             "dot = f32[5,20] dot(x, transpose), "
             "lhs_contracting_dims={1}, rhs_contracting_dims={0}");
+}
+
+TEST_F(HloInstructionTest, StringifySparseDot) {
+  HloComputation::Builder builder("SparseDot");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 16}), "x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {32, 20}), "y"));
+  HloInstruction* meta = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(U16, {5, 2}), "meta"));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  SparsityDescriptor sparsity_descriptor;
+  sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
+  sparsity_descriptor.set_n(2);
+  sparsity_descriptor.set_m(4);
+  sparsity_descriptor.set_index(0);
+  sparsity_descriptor.set_dimension(1);
+  std::vector<HloInstruction*> meta_operands = {meta};
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(F32, {5, 20}), x, y, dot_dnums,
+      DefaultPrecisionConfig(2), {sparsity_descriptor}, meta_operands));
+
+  EXPECT_EQ(dot->ToString(),
+            "%dot = f32[5,20]{1,0} dot(f32[5,16]{1,0} %x, f32[32,20]{1,0} %y, "
+            "u16[5,2]{1,0} %meta), lhs_contracting_dims={1}, "
+            "rhs_contracting_dims={0}, sparsity=L.1@2:4");
 }
 
 TEST_F(HloInstructionTest, StringifyConditional) {

@@ -857,6 +857,7 @@ xla_cc_test(
         "//xla:test_helpers",
         "//xla:util",
         "//xla:window_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:hlo_test_base",
