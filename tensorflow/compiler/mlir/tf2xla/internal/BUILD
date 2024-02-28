@@ -161,7 +161,6 @@ tf_cc_test(
         ":legalize_tf_to_hlo",
         ":test_matchers",
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",

@@ -59,8 +59,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_pass_instrumentation.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/lowering_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -378,6 +378,9 @@ void CreateConvertMlirToXlaHloPipeline(
         custom_legalization_passes,
     bool lower_to_xla_hlo, bool allow_partial_conversion) {
   bool legalize_chlo = true;
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      tensorflow::tf2xla::internal::CreateInputLoweringMetricsPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::CreateTFXLADeviceSpecificTransformsPass(device_type));

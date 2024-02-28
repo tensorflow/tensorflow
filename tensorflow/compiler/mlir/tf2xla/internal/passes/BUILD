@@ -10,6 +10,7 @@ package(
         "//learning/pathways/serving/transforms:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     licenses = ["notice"],

@@ -134,6 +134,19 @@ TEST(LegalizeWithCombinedBridge,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure), 1));
 }
 
+TEST(LegalizeWithCombinedBridge, RecordsDynamicOps) {
+  static constexpr char kDynamismFunctionCounterStreamzName[] =
+      "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter";
+  constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
+  CellReader<int64_t> dynamic_function_op_count(
+      kDynamismFunctionCounterStreamzName);
+
+  auto result = CompileMlirModule(kMlirModuleStr);
+
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(dynamic_function_op_count.Delta(kNotDynamicFunctionName), 1);
+}
+
 };  // namespace internal
 };  // namespace tf2xla
 };  // namespace tensorflow
