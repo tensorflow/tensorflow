@@ -33,6 +33,12 @@ config_setting(
     define_values = {"xnnpack_use_latest_ops": "true"},
 )
 
+# Force XNNPACK to enable subgraph reshaping.
+config_setting(
+    name = "xnnpack_enable_subgraph_reshaping_explicit",
+    define_values = {"xnnpack_enable_subgraph_reshaping": "true"},
+)
+
 # Use transient indirection buffers.
 config_setting(
     name = "xnnpack_use_transient_indirection_buffers_explicit",
@@ -225,6 +231,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + select({
         ":xnnpack_force_float_precision_explicit_fp16": ["-DXNNPACK_DELEGATE_FORCE_PRECISION_FP16=1"],
+        "//conditions:default": [],
+    }) + select({
+        ":xnnpack_enable_subgraph_reshaping_explicit": ["-DXNNPACK_DELEGATE_ENABLE_SUBGRAPH_RESHAPING=1"],
         "//conditions:default": [],
     }) + select({
         ":xnnpack_use_latest_ops_explicit": ["-DXNNPACK_DELEGATE_USE_LATEST_OPS=1"],
