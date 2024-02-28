@@ -72,7 +72,7 @@ else
 
     if is_linux_cpu_arm64_job ; then
         TAGS_FILTER="$TAGS_FILTER,-no_aarch64"
-        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --action_env PYTHON_BIN_PATH=/usr/bin/python3.10 --python_path=/usr/bin/python3.10"
+        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --action_env PYTHON_BIN_PATH=/usr/bin/python3.11 --python_path=/usr/bin/python3.11"
     fi
 fi
 
