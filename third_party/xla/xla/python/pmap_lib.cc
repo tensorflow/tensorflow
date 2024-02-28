@@ -25,8 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "nanobind/nanobind.h"
-#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -34,6 +32,8 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11

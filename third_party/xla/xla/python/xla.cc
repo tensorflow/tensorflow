@@ -26,9 +26,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "nanobind/nanobind.h"
-#include "nanobind/nb_defs.h"
 #include "absl/base/casts.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/nb_defs.h"
 // clang-format off
 // Must be included first
 #include "absl/strings/str_cat.h"

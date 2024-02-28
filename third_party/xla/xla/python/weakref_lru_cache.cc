@@ -24,14 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "nanobind/nanobind.h"
-#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "nanobind/stl/vector.h"      // IWYU pragma: keep
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/lru_cache.h"
 #include "xla/python/nb_helpers.h"
 

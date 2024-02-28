@@ -29,13 +29,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "nanobind/nanobind.h"
-#include "nanobind/stl/optional.h"     // IWYU pragma: keep
-#include "nanobind/stl/pair.h"         // IWYU pragma: keep
-#include "nanobind/stl/shared_ptr.h"   // IWYU pragma: keep
-#include "nanobind/stl/string.h"       // IWYU pragma: keep
-#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "nanobind/stl/vector.h"       // IWYU pragma: keep
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -44,6 +37,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/pair.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/exceptions.h"
 #include "xla/python/nb_class_ptr.h"
 #include "tsl/platform/logging.h"

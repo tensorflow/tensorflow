@@ -23,8 +23,8 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
-#include "nanobind/nanobind.h"
 #include "absl/container/inlined_vector.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/python/nb_class_ptr.h"
 
 namespace xla {

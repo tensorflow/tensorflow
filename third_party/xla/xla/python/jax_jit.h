@@ -24,10 +24,10 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
-#include "nanobind/nanobind.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"

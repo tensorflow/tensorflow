@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "nanobind/nanobind.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 
 namespace nb = nanobind;
 

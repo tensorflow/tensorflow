@@ -39,10 +39,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "nanobind/nanobind.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11

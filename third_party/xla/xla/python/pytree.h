@@ -27,10 +27,10 @@ limitations under the License.
 #include <vector>
 
 // placeholder for index annotation headers
-#include "nanobind/nanobind.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
+#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/pytree.pb.h"
 
