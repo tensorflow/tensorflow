@@ -1,4 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -inline='default-pipeline=''' | FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file -inline | FileCheck %s
 
 module {
   func.func private @mul(%a: f32, %b: f32) -> f32 {
@@ -54,3 +54,125 @@ module {
 // CHECK-NEXT: arith.divf
 // CHECK-NEXT: math.atan2
 // CHECK-NEXT: tensor.insert
+
+// -----
+
+module {
+  // Do not inline this function as it has two callers. Even if the callers are
+  // in different functions at the start, after inlining the two callers are in
+  // the same function.
+  func.func private @large(%a: f32, %b: f32) -> f32 {
+    %mul = arith.mulf %a, %b : f32
+    %add = arith.addf %a, %mul : f32
+    %div = arith.divf %add, %b : f32
+    %sub = arith.subf %div, %a : f32
+    %atan2 = math.atan2 %b, %sub : f32
+    %neg = arith.negf %atan2 : f32
+    %zero = arith.constant 0.0 : f32
+    %comp = arith.cmpf olt, %neg, %zero : f32
+    %ret = arith.select %comp, %zero, %neg : f32
+    return %ret : f32
+  }
+
+  func.func private @add(%a: f32, %b: f32) -> f32 {
+    %add = arith.addf %a, %b : f32
+    %ret = xla_gpu.pure_call @large(%add, %add) : (f32, f32) -> (f32)
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %add = xla_gpu.pure_call @add(%a, %b) : (f32, f32) -> (f32)
+    %ret = xla_gpu.pure_call @large(%add, %add) : (f32, f32) -> (f32)
+    return %ret : f32
+  }
+}
+// CHECK: @caller
+// CHECK: arith.addf
+// CHECK: xla_gpu.pure_call @large
+// CHECK: xla_gpu.pure_call @large
+
+// -----
+
+module {
+  func.func private @add(%a: f32, %b: f32) -> f32 {
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %add = xla_gpu.pure_call @add(%a, %b) : (f32, f32) -> (f32)
+    %ret = xla_gpu.pure_call @add(%add, %add) : (f32, f32) -> (f32)
+    return %ret : f32
+  }
+}
+// CHECK: @caller
+// CHECK-NOT: xla_gpu.pure_call
+// CHECK: arith.addf
+// CHECK: arith.addf
+
+// -----
+
+module {
+  func.func private @fib0(%start : f32) -> f32 {
+    %zero = arith.constant 0.0 : f32
+    return %zero : f32
+  }
+  func.func private @fib1(%start : f32) -> f32 {
+    return %start : f32
+  }
+  func.func private @fib2(%start : f32) -> f32 {
+    %a = xla_gpu.pure_call @fib0(%start) : (f32) -> (f32)
+    %b = xla_gpu.pure_call @fib1(%start) : (f32) -> (f32)
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+  func.func private @fib3(%start : f32) -> f32 {
+    %a = xla_gpu.pure_call @fib1(%start) : (f32) -> (f32)
+    %b = xla_gpu.pure_call @fib2(%start) : (f32) -> (f32)
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+  func.func private @fib4(%start : f32) -> f32 {
+    %a = xla_gpu.pure_call @fib2(%start) : (f32) -> (f32)
+    %b = xla_gpu.pure_call @fib3(%start) : (f32) -> (f32)
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+  // When inlining the other functions into @fib5, this function exceeds the
+  // threshold for inlining.
+  func.func private @fib5(%start : f32) -> f32 {
+    %a = xla_gpu.pure_call @fib3(%start) : (f32) -> (f32)
+    %b = xla_gpu.pure_call @fib4(%start) : (f32) -> (f32)
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+  // As we do not inline @fib5 into @fib6, this function stays below the
+  // threshold for inlining.
+  func.func private @fib6(%start : f32) -> f32 {
+    %a = xla_gpu.pure_call @fib4(%start) : (f32) -> (f32)
+    %b = xla_gpu.pure_call @fib5(%start) : (f32) -> (f32)
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+  func.func private @fib7(%start : f32) -> f32 {
+    %a = xla_gpu.pure_call @fib5(%start) : (f32) -> (f32)
+    %b = xla_gpu.pure_call @fib6(%start) : (f32) -> (f32)
+    %ret = arith.addf %a, %b : f32
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32) -> f32 {
+    %ret = xla_gpu.pure_call @fib7(%a) : (f32) -> (f32)
+    return %ret : f32
+  }
+}
+// CHECK: @caller
+// CHECK: arith.constant 0.000000e+00
+// CHECK: xla_gpu.pure_call @fib5
+// CHECK: arith.addf
+// CHECK: arith.addf
+// CHECK: arith.addf
+// CHECK: arith.addf
+// CHECK: xla_gpu.pure_call @fib5
+// CHECK: arith.addf
+// CHECK: arith.addf

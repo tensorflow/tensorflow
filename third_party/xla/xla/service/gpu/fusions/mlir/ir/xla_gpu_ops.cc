@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_dialect.cc.inc"
 
@@ -45,8 +46,20 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
       // 'callable'.
       return true;
     }
-    // TODO(akuegel): Implement logic to decide when inlining makes sense.
-    return false;
+    // Otherwise, inline only if the called function is small. We could
+    // theoretically also inline if there is no other caller in the function
+    // that contains the callee that has a call path to the callable, but that
+    // is more expensive to check.
+    auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(callable);
+    if (!func_op) {
+      return false;
+    }
+    auto region = func_op.getCallableRegion();
+    if (!region) {
+      return false;
+    }
+    const int kMaxOperationsToInline = 8;
+    return region->front().getOperations().size() <= kMaxOperationsToInline;
   }
   // Returns true if the given operation 'op', that is registered to this
   // dialect, can be inlined into the given region, false otherwise.
