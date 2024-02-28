@@ -96,7 +96,6 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
               errors::InvalidArgument(
                   "input and filter must have the same depth: ", depth, " vs ",
                   filter.dim_size(2)));
-    
   // Effective filter size, after introducing rate - 1 zeros between each
   // non-zero filter element.
   const int filter_rows_eff =
