@@ -54,7 +54,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -75,7 +74,7 @@ class KernelArgsPackedArrayBase;  // defined in kernel.h
 // files at build time, but can also be specified manually.
 class KernelLoaderSpec {
  public:
-  virtual ~KernelLoaderSpec() {}
+  virtual ~KernelLoaderSpec() = default;
 
   // Returns the kernel name to load out of the program.
   const std::string &kernel_name() const { return kernel_name_; }
@@ -119,15 +118,13 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   //
   // Warning: the string backing the provided absl::string_view ptx must outlive
   // this instance.
-  CudaPtxInMemory(absl::string_view ptx, absl::string_view kernel_name,
-                  bool ptx_compressed = false);
+  CudaPtxInMemory(absl::string_view ptx, absl::string_view kernel_name);
 
   // Multiple-PTX-version constructor. Adds each item in spec_list to this
   // object. Note that the PTX can be compressed, which is indicated by the
   // argument ptx_compressed.
   CudaPtxInMemory(const std::initializer_list<PtxSpec> &spec_list,
-                  absl::string_view kernel_name, bool ptx_compressed = false);
-  ~CudaPtxInMemory() override {}
+                  absl::string_view kernel_name);
 
   // Add the PTX implementation described by ptx_spec to this object. On
   // collision (i.e., if a version with the same compute_capability already
@@ -138,27 +135,13 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   // lowest-valued compute capability. For example, if PTX written to CC2.0,
   // 3.0, and 3.5 are all available, the version for CC2.0 will be set. Returns
   // nullptr on failed lookup (if any version is not available).
-  // When the ptx is compressed, returns the decompressed ptx.
   const char *default_text() const;
-
-  // Similar to default_text().
-  // When the ptx is compressed, returns the decompressed ptx.
-  const char *original_default_text() const;
 
   // Returns pointer to the ptx for the requested compute capability.
   // Returns nullptr on failed lookup (if the requested version is not
   // available).
-  // When the ptx is compressed, returns the decompressed ptx.
   const char *text(int compute_capability_major,
                    int compute_capability_minor) const;
-
-  // Similar to text().
-  // When the ptx is compressed, returns the original compressed ptx.
-  const char *original_text(int compute_capability_major,
-                            int compute_capability_minor) const;
-
-  // Decompresses the PTX string using bzip2.
-  static std::string DecompressPtx(const char *ptx);
 
  private:
   // PTX translation unit text contents in memory. The key is of as a tuple
@@ -168,11 +151,6 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   std::map<std::tuple<int, int>, const char *,
            bool (*)(const std::tuple<int, int> &, const std::tuple<int, int> &)>
       ptx_by_compute_capability_;
-
-  // Stores all decompressed ptx strings, with original ptx string as keys.
-  // It is marked as mutable for lazy decompression.
-  mutable std::map<const char *, std::string> decompressed_ptx_;
-  mutable absl::Mutex mu_;
 
   // Defines the minimum compute capability possible. Used when PTX has no
   // compute capability specified (in the single-PTX constructor).
@@ -186,7 +164,6 @@ class CudaPtxInMemory : public KernelLoaderSpec {
 class CudaCubinInMemory : public KernelLoaderSpec {
  public:
   CudaCubinInMemory(const char *bytes, absl::string_view kernel_name);
-  ~CudaCubinInMemory() override {}
 
   const char *bytes() const { return bytes_; }
 
