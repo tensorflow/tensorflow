@@ -87,6 +87,8 @@ class PartitionedComputation {
     // to the argument after the last index argument.
     absl::flat_hash_map<std::pair<const HloInstruction*, int>, int>
         injected_param_indices;
+
+    std::string ToString() const;
   };
 
   absl::Span<const Subgraph> subgraphs() const { return subgraphs_; }
@@ -101,6 +103,8 @@ class PartitionedComputation {
   const Subgraph& FindSubgraph(const HloInstruction* instr) const {
     return *instructions_to_subgraphs_.at(instr);
   }
+
+  std::string ToString() const;
 
  private:
   const HloComputation* computation_;
@@ -158,6 +162,8 @@ class PartitionedComputations {
   absl::flat_hash_map<const PartitionedComputation::Subgraph*,
                       mlir::func::FuncOp>
   DeclareFunctions(mlir::ModuleOp module) const;
+
+  std::string ToString() const;
 
  private:
   std::vector<PartitionedComputation> partitioned_computations_;

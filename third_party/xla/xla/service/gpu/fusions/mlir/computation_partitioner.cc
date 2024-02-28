@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -95,6 +96,38 @@ absl::flat_hash_map<const HloInstruction*, int> PartitionGraphByIndexing(
 }
 
 }  // namespace
+
+std::string PartitionedComputation::Subgraph::ToString() const {
+  std::ostringstream ss;
+  ss << "SUBGRAPH " << name << " {\n";
+  for (auto instr : instructions_post_order) {
+    ss << "  ";
+    if (absl::c_linear_search(roots, instr)) {
+      ss << "ROOT ";
+    }
+    ss << instr->ToString() << "\n";
+  }
+  ss << "}";
+  return ss.str();
+}
+
+std::string PartitionedComputation::ToString() const {
+  std::ostringstream ss;
+  ss << "PartitionedComputation " << computation_->name() << ":";
+  for (const Subgraph& subgraph : subgraphs_) {
+    ss << "\n" << subgraph.ToString();
+  }
+  return ss.str();
+}
+
+std::string PartitionedComputations::ToString() const {
+  std::ostringstream ss;
+  ss << "PartitionedComputations:";
+  for (const auto& partitioned_computation : partitioned_computations_) {
+    ss << "\n" << partitioned_computation.ToString();
+  }
+  return ss.str();
+}
 
 PartitionedComputation::PartitionedComputation(
     const HloComputation* computation,
