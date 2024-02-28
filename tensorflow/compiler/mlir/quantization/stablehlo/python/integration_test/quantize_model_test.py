@@ -218,6 +218,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       testing.parameter_combinations([{
           'same_scale_op': (
               'reshape',  # This corresponds to stablehlo.dynamic_reshape
+              'slice',  # This corresponds to stablehlo.dynamic_slice.
               # TODO: b/326242075 - Support other same-scale ops.
           ),
           'dim_sizes': (([None, 1024], [1024, 3]),),
