@@ -29,7 +29,9 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_driver.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -56,8 +58,8 @@ class PrepareQuantizePass
   using impl::PrepareQuantizePassBase<
       PrepareQuantizePass>::PrepareQuantizePassBase;
 
-  explicit PrepareQuantizePass(bool enable_per_channel_quantized_weight,
-                               int bit_width) {
+  explicit PrepareQuantizePass(const bool enable_per_channel_quantized_weight,
+                               const int bit_width) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
     bit_width_ = bit_width;
   }
@@ -182,7 +184,7 @@ void PrepareQuantizePass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    bool enable_per_channel_quantized_weight, int bit_width) {
+    const bool enable_per_channel_quantized_weight, const int bit_width) {
   return std::make_unique<PrepareQuantizePass>(
       enable_per_channel_quantized_weight, bit_width);
 }

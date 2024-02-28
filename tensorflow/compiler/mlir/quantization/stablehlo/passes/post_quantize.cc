@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
@@ -66,7 +67,7 @@ class RemoveVolatileQdqPattern
       // If the quantize op is a requantize op, it is being used in other scale
       // adjustments and should be kept. Instead, move dequantize op before the
       // requantize op to remove the unnecessary requantize op.
-      if (auto qtype =
+      if (const QuantizedType qtype =
               QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
         rewriter.replaceOpWithNewOp<quantfork::DequantizeCastOp>(
@@ -92,7 +93,7 @@ class QuantizeConstPattern
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
     if (matchPattern(op.getOperand(), m_Constant(&attr))) {
-      auto qtype = op.getResult().getType();
+      const Type qtype = op.getResult().getType();
       ElementsAttr quantized_attr = Quantize(attr, qtype);
       if (quantized_attr) {
         rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(

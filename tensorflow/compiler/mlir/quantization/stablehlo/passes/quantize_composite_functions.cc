@@ -54,7 +54,7 @@ class QuantizeCompositeFunctionsPass
       QuantizeCompositeFunctionsPass>::QuantizeCompositeFunctionsPassBase;
 
   explicit QuantizeCompositeFunctionsPass(
-      bool enable_per_channel_quantized_weight) {
+      const bool enable_per_channel_quantized_weight) {
     enable_per_channel_quantized_weight_ = enable_per_channel_quantized_weight;
   }
 
@@ -98,7 +98,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
 // Creates an instance of the TensorFlow dialect QuantizeCompositeFunctionsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    bool enable_per_channel_quantized_weight) {
+    const bool enable_per_channel_quantized_weight) {
   return std::make_unique<QuantizeCompositeFunctionsPass>(
       enable_per_channel_quantized_weight);
 }
