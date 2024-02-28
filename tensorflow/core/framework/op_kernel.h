@@ -637,6 +637,9 @@ class OpKernelContext {
     // with parallel instances running on other devices.
     CollectiveExecutor* collective_executor = nullptr;
 
+    // Session configuration parameters. Can be nullptr.
+    const ConfigProto* session_config = nullptr;
+
     // The session state for this op.
     SessionState* session_state = nullptr;
 
@@ -707,6 +710,8 @@ class OpKernelContext {
   int64_t step_id() const { return params_->step_id; }
 
   int64_t start_time_usecs() const { return params_->start_time_usecs; }
+
+  const ConfigProto* session_config() const { return params_->session_config; }
 
   // The deadline for the session to complete by. Empty if unspecified in
   // RunOptions.
