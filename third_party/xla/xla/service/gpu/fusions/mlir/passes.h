@@ -33,6 +33,7 @@ std::unique_ptr<mlir::Pass> CreateExpandFloatConversionsPass(bool enable_bf16);
 std::unique_ptr<mlir::Pass> CreateLowerFuncPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
+std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();

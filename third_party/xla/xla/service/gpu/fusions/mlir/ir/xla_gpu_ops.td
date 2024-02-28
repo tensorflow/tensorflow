@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-
 #ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_OPS
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_OPS
 
@@ -167,16 +165,22 @@ def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
     ```
   }];
   let builders = [
-    OpBuilder<(ins "mlir::func::FuncOp":$reducer, CArg<"mlir::ValueRange", "{}">:$operands), [{
+    OpBuilder<(ins "mlir::func::FuncOp":$reducer, "mlir::ValueRange":$operands, "int64_t":$max_distance), [{
       $_state.addOperands(operands);
       $_state.addAttribute("reducer", mlir::SymbolRefAttr::get(reducer));
+      $_state.addAttribute("max_distance",
+          mlir::IntegerAttr::get(
+              mlir::IntegerType::get(reducer.getContext(), 64),
+              max_distance));
       $_state.addTypes(reducer.getFunctionType().getResults());
     }]>];
-  let arguments = (ins FlatSymbolRefAttr:$reducer, Variadic<AnyType>:$operands);
+  let arguments = (ins FlatSymbolRefAttr:$reducer,
+                   Variadic<AnyType>:$operands,
+                   I64Attr:$max_distance);
   let results = (outs Variadic<AnyType>:$results);
 
   let assemblyFormat = [{
-    $reducer `(` $operands `)` attr-dict `:` type($operands)
+    $reducer `(` $operands `)` `to` $max_distance attr-dict `:` type($operands)
   }];
 }
 

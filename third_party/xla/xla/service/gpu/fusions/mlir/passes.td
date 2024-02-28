@@ -122,6 +122,18 @@ def ExpandFloatConversionsPass : Pass<"xla-gpu-expand-conversions", "mlir::Modul
   ];
 }
 
+def LowerXlaGpuToScfPass :
+   Pass<"xla-gpu-lower-xla-gpu-to-scf", "mlir::ModuleOp"> {
+  let summary = "Lowers xla_gpu to SCF.";
+
+  let dependentDialects = [
+    "mlir::gpu::GPUDialect", "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+  ];
+
+  let constructor = "CreateLowerXlaGpuToScfPass()";
+}
+
 def LowerToLLVMPass :
    Pass<"xla-gpu-lower-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lowers to LLVM.";
