@@ -100,7 +100,6 @@ static void SetSourceFileAndLine(Location loc, xla::OpMetadata& metadata) {
       SetSourceFileAndLine(it, metadata);
     }
   }
-  LOG(INFO) << "loc is not FileLineColLoc or FusedLoc";
 }
 
 xla::OpMetadata CreateOpMetadataFromLocation(
