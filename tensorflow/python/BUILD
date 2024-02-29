@@ -798,7 +798,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler:profiler_impl",
-        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/util:determinism",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
@@ -836,6 +835,7 @@ pywrap_tensorflow_macro(
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/backends/profiler/cpu:python_tracer",
         "@local_xla//xla/stream_executor:stream_executor_impl",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
@@ -918,7 +918,6 @@ filegroup(
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
         "//tensorflow/core/platform:cpu_feature_guard",  # cpu_feature_guard
         "//tensorflow/core/platform:statusor",  # tfe
-        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
         "//tensorflow/core/util:determinism",  # determinism
@@ -948,6 +947,7 @@ filegroup(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
+        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",

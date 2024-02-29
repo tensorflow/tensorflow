@@ -142,7 +142,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ] + if_not_android([
-        "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
+        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
         "@local_tsl//tsl/profiler/utils:time_utils",
     ]),
 )
