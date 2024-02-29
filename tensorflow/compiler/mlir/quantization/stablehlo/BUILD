@@ -399,6 +399,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tf2xla/api/v2:legalize_tf",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
