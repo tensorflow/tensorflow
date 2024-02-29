@@ -219,6 +219,19 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      I64Attr:$dimension /*get_dimension_size_i2*/
    );
    // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
+@@ -3126,9 +3126,9 @@
+   }];
+ }
+ 
+-def StableHLO_ReducePrecisionOp :
+-    StableHLO_Op<"reduce_precision", [Pure,
+-    HLO_CompatibleOperandsAndResultType /*reduce_precision_c1*/]> {
++def StableHLO_ReducePrecisionOp : StableHLO_Op<"reduce_precision",
++      [Pure, Elementwise,
++       HLO_CompatibleOperandsAndResultType /*reduce_precision_c1*/]> {
+   let summary = "ReducePrecision operation";
+   let description = [{
+     Performs element-wise conversion of `operand` to another floating-point type
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
