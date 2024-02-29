@@ -415,6 +415,21 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitPad(
   return if_op.getResults();
 }
 
+absl::StatusOr<llvm::SmallVector<Value>> EmitParameter(
+    const HloInstruction* instr, ValueRange indices,
+    const CallTargetProvider& call_target_provider,
+    mlir::ImplicitLocOpBuilder& b) {
+  auto this_fn = call_target_provider(instr);
+
+  mlir::Value value = this_fn.getArgument(instr->parameter_number());
+  if (value.getType().isa<mlir::TensorType>()) {
+    value = b.create<mlir::tensor::ExtractOp>(value, indices);
+  } else {
+    TF_RET_CHECK(indices.empty());
+  }
+  return {{value}};
+}
+
 template <typename MhloOp, typename... ExtraArgs>
 llvm::SmallVector<mlir::Value> MapHloOp(llvm::ArrayRef<mlir::Type> result_types,
                                         llvm::ArrayRef<mlir::Value> args,
@@ -513,6 +528,8 @@ absl::StatusOr<llvm::SmallVector<Value>> HloToMlir(
     }
     case HloOpcode::kPad:
       return EmitPad(instr, indices, operand_provider, builder);
+    case HloOpcode::kParameter:
+      return EmitParameter(instr, indices, call_target_provider, builder);
     case HloOpcode::kReduce:
       return EmitReduce(instr, indices, operand_provider, call_target_provider,
                         builder);
@@ -845,15 +862,6 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> ProvideParameter(
   auto this_fn = call_target_provider(caller_subgraph.roots[0]);
 
   auto* operand = instr->operand(operand_index);
-  if (operand->opcode() == HloOpcode::kParameter) {
-    mlir::Value value = this_fn.getArgument(operand->parameter_number());
-    if (value.getType().isa<mlir::TensorType>()) {
-      value = builder.create<mlir::tensor::ExtractOp>(value, indices);
-    } else {
-      TF_RET_CHECK(indices.size() == 0);
-    }
-    return {{value}};
-  }
 
   const auto& injected_params = caller_subgraph.injected_param_indices;
   if (auto it = injected_params.find(std::make_pair(instr, operand_index));
@@ -907,8 +915,7 @@ absl::StatusOr<llvm::SmallVector<mlir::Value>> SubgraphToMlir(
                              mlir::ValueRange indices)
       -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
     auto* operand = instr->operand(index);
-    if (operand->opcode() != HloOpcode::kParameter &&
-        &computation.FindSubgraph(operand) == &subgraph) {
+    if (&computation.FindSubgraph(operand) == &subgraph) {
       return emit_instr(operand, indices);
     }
     return ProvideParameter(computation, instr, index, indices,

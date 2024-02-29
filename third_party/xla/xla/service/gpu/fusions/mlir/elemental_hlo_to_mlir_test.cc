@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
+#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
@@ -52,7 +53,8 @@ class ElementalHloToMlirTest : public HloTestBase {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
                          mlir::affine::AffineDialect, mlir::arith::ArithDialect,
                          mlir::math::MathDialect, mlir::scf::SCFDialect,
-                         mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect>();
+                         mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect,
+                         xla::gpu::XlaGpuDialect>();
   }
 
   // Converts the root subgraph of the entry function of the given hlo module to
@@ -159,20 +161,20 @@ TEST_F(ElementalHloToMlirTest, Concatenate) {
     // CHECK-DAG:    %[[C20:.*]] = arith.constant 20
     // CHECK:        %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[Y]], %[[C20]]
     // CHECK:        %[[CONCAT:.*]] = scf.if %[[IN_BOUNDS]]
-    // CHECK:          %[[P0_VAL:.*]] = tensor.extract %[[ARG0]]
-    // CHECK-SAME:         [%[[X]], %[[Y]], %[[Z]]]
+    // CHECK:          %[[P0_VAL:.*]] = xla_gpu.pure_call @main_p0
+    // CHECK-SAME:         %[[X]], %[[Y]], %[[Z]]
     // CHECK:          scf.yield %[[P0_VAL]]
     // CHECK:        } else {
     // CHECK:          %[[IN_BOUNDS:.*]] = arith.cmpi ult, %[[Y]], %[[C35]]
     // CHECK:          %[[CONCAT2:.*]] = scf.if %[[IN_BOUNDS]]
     // CHECK:            %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C20]]
-    // CHECK:            %[[P1_VAL:.*]] = tensor.extract %[[ARG1]]
-    // CHECK-SAME:           [%[[X]], %[[OFFSET]], %[[Z]]]
+    // CHECK:            %[[P1_VAL:.*]] = xla_gpu.pure_call @main_p1
+    // CHECK-SAME:           %[[X]], %[[OFFSET]], %[[Z]]
     // CHECK:            scf.yield %[[P1_VAL]]
     // CHECK:          } else {
     // CHECK:            %[[OFFSET:.*]] = arith.subi %[[Y]], %[[C35]]
-    // CHECK:            %[[P2_VAL:.*]] = tensor.extract %[[ARG2]]
-    // CHECK-SAME:           [%[[X]], %[[OFFSET]], %[[Z]]]
+    // CHECK:            %[[P2_VAL:.*]] = xla_gpu.pure_call @main_p2
+    // CHECK-SAME:           %[[X]], %[[OFFSET]], %[[Z]]
     // CHECK:            scf.yield %[[P2_VAL]]
     // CHECK:          }
     // CHECK:          scf.yield %[[CONCAT2]]

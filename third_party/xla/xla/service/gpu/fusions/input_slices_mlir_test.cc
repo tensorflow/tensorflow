@@ -45,8 +45,10 @@ TEST_F(MlirInputSlicesFusionTest, SimpleInputSlices) {
     // CHECK: arith.cmpi sle
     // CHECK: arith.andi
     // CHECK: scf.if
+    // CHECK: func.func private @fused_computation_input
+    // CHECK: tensor.extract
     // CHECK: func.func private @fused_computation_tuple
-    // CHECK-COUNT-2: tensor.extract
+    // CHECK-COUNT-2: xla_gpu.pure_call
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

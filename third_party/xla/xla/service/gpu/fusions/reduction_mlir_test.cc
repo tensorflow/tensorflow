@@ -63,11 +63,11 @@ TEST_F(ReductionTest, VariadicRowReduce) {
 // CHECK-SAME:   %[[INIT_TENSOR:.*]]: tensor<f32> {xla.slice_index = 2
 // CHECK-SAME:   %[[OUT0:.*]]: tensor<5x200xf32> {xla.slice_index = 3
 // CHECK-SAME:   %[[OUT1:.*]]: tensor<5x200xf32> {xla.slice_index = 4
-// CHECK:        %[[INIT:.*]] = tensor.extract %[[INIT_TENSOR]][]
+// CHECK:        %[[INIT:.*]] = xla_gpu.pure_call @fused_computation_param_2
 // CHECK:        %[[PER_THREAD:.*]]:2 = scf.for
 // CHECK-SAME:       iter_args(%[[A:.*]] = %[[INIT]], %[[B:.*]] = %[[INIT]])
-// CHECK:          %[[A2:.*]] = tensor.extract %[[ARG0]]
-// CHECK:          %[[B2:.*]] = tensor.extract %[[ARG1]]
+// CHECK:          %[[A2:.*]] = xla_gpu.pure_call @fused_computation_param_0
+// CHECK:          %[[B2:.*]] = xla_gpu.pure_call @fused_computation_param_1
 // CHECK:          xla_gpu.pure_call @Add_t(%[[A]], %[[B]], %[[A2]], %[[B2]])
 // CHECK:        %[[SHUFFLED:.*]]:2 = xla_gpu.shuffle_reduce
 // CHECK-SAME:     @Add_t(%[[PER_THREAD]]#0, %[[PER_THREAD]]#1) to 16

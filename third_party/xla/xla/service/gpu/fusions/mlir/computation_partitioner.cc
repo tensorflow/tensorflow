@@ -152,12 +152,9 @@ PartitionedComputation::PartitionedComputation(
       disjoint_sets;
   auto indexing = PartitionGraphByIndexing(*computation, is_subgraph_root);
   for (auto* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kParameter) continue;
     disjoint_sets[instruction].Get() = instruction;
   }
   for (auto* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kParameter) continue;
-
     // If the instruction has to become a subgraph root, then we do not merge.
     bool can_merge = !is_subgraph_root(instruction);
     can_merge &=
@@ -190,7 +187,6 @@ PartitionedComputation::PartitionedComputation(
 
   ConstHloInstructionMap<std::vector<const HloInstruction*>> functions;
   for (auto* instruction : computation->MakeInstructionPostOrder()) {
-    if (instruction->opcode() == HloOpcode::kParameter) continue;
     functions[disjoint_sets[instruction].Get()].push_back(instruction);
   }
 

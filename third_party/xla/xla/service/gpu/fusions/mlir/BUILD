@@ -105,6 +105,7 @@ xla_cc_test(
         "//xla:status_macros",
         "//xla/mlir_hlo",
         "//xla/service:hlo_parser",
+        "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",

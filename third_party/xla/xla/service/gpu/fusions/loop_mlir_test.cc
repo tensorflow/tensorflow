@@ -243,8 +243,8 @@ TEST_F(MlirLoopFusionTest, TwoUsersConsistentIndexing) {
     // CHECK-NEXT: return
 
     // CHECK: func.func private @fused_computation_atan2
-    // CHECK-NEXT: tensor.extract
-    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: xla_gpu.pure_call
+    // CHECK-NEXT: xla_gpu.pure_call
     // CHECK-NEXT: addf
     // CHECK-NEXT: subf
     // CHECK-NEXT: mulf
