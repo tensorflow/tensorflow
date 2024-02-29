@@ -27,7 +27,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -52,12 +54,6 @@ namespace gpu {
 /*static*/ bool MlirConcatenateFusion::IsSupported(
     const HloFusionAnalysis& analysis) {
   if (analysis.fusion_roots().size() != 1) return false;
-  auto* root = analysis.fusion_roots()[0];
-
-  for (auto operand : root->operands()) {
-    // Different operands shapes are not yet supported.
-    if (operand->shape() != root->operand(0)->shape()) return false;
-  }
 
   return true;
 }
@@ -140,6 +136,8 @@ absl::Status MlirConcatenateFusion::EmitMlir(
       /*root_index=*/0, /*hero_operand_index=*/0, module.getContext());
 
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
+    int64_t operand_concat_dim_size = operand->shape().dimensions(concat_dim);
+
     auto loop_nest_body_builder = [&](mlir::ValueRange output_tensors,
                                       mlir::ValueRange dim_values,
                                       mlir::ValueRange symbol_values)
@@ -148,47 +146,66 @@ absl::Status MlirConcatenateFusion::EmitMlir(
           mlir_converter::ApplyAffineMap(thread_id_to_input_map.GetAffineMap(),
                                          dim_values, symbol_values, builder);
 
-      TF_ASSIGN_OR_RETURN(auto result_scalars,
-                          mlir_converter::ProvideParameter(
-                              root_computation, concat, operand_index,
-                              input_indices, call_target_lookup, builder));
+      auto operand_concat_dim_size_val =
+          builder.create<mlir::arith::ConstantOp>(
+              builder.getIndexAttr(operand_concat_dim_size));
+      auto in_bounds = builder.create<mlir::arith::CmpIOp>(
+          mlir::arith::CmpIPredicate::ult, input_indices[concat_dim],
+          operand_concat_dim_size_val);
 
-      llvm::SmallVector<mlir::Value> output_indices(input_indices);
+      auto then_body = [&, operand_index](mlir::OpBuilder& b,
+                                          mlir::Location loc) {
+        mlir::ImplicitLocOpBuilder builder(loc, b);
 
-      auto operand_offset_val = builder.create<mlir::arith::ConstantOp>(
-          builder.getIndexAttr(operand_offset));
-      output_indices[concat_dim] = builder.create<mlir::arith::AddIOp>(
-          output_indices[concat_dim], operand_offset_val);
+        auto result_scalars = mlir_converter::ProvideParameter(
+                                  root_computation, concat, operand_index,
+                                  input_indices, call_target_lookup, builder)
+                                  .value();
 
-      if (&root_graph != &hero_graph) {
-        // Concatenate is not the root of the computation. Call epilogue
-        // function.
-        auto epilogue_fn = subgraph_to_mlir_fn[&root_graph];
+        llvm::SmallVector<mlir::Value> output_indices(input_indices);
+        output_indices[concat_dim] = builder.create<mlir::arith::AddIOp>(
+            output_indices[concat_dim],
+            builder.create<mlir::arith::ConstantOp>(
+                builder.getIndexAttr(operand_offset)));
 
-        llvm::SmallVector<mlir::Value> operands = input_tensors;
-        absl::c_copy(output_indices, std::back_inserter(operands));
-        absl::c_copy(result_scalars, std::back_inserter(operands));
+        if (&root_graph != &hero_graph) {
+          // Concatenate is not the root of the computation. Call epilogue
+          // function.
+          auto epilogue_fn = subgraph_to_mlir_fn[&root_graph];
 
-        result_scalars =
-            builder.create<PureCallOp>(epilogue_fn, operands).getResults();
-      }
+          llvm::SmallVector<mlir::Value> operands = input_tensors;
+          absl::c_copy(output_indices, std::back_inserter(operands));
+          absl::c_copy(result_scalars, std::back_inserter(operands));
 
-      llvm::SmallVector<mlir::Value> result_tensors;
-      result_tensors.reserve(output_tensor_args.size());
-      for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
-        result_tensors.push_back(
-            builder
-                .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
-                .getResult());
-      }
-      return result_tensors;
+          result_scalars =
+              builder.create<PureCallOp>(epilogue_fn, operands).getResults();
+        }
+
+        llvm::SmallVector<mlir::Value> yield_tensors;
+        yield_tensors.reserve(output_tensor_args.size());
+        for (auto [tensor, value] : llvm::zip(output_tensors, result_scalars)) {
+          yield_tensors.push_back(
+              builder
+                  .create<mlir::tensor::InsertOp>(value, tensor, output_indices)
+                  .getResult());
+        }
+
+        builder.create<mlir::scf::YieldOp>(yield_tensors);
+      };
+
+      auto else_body = [&](mlir::OpBuilder& b, mlir::Location loc) {
+        b.create<mlir::scf::YieldOp>(loc, output_tensors);
+      };
+
+      return builder.create<mlir::scf::IfOp>(in_bounds, then_body, else_body)
+          .getResults();
     };
 
     TF_ASSIGN_OR_RETURN(result_tensors, EmitLoopNest(builder, result_tensors,
                                                      thread_id_to_input_map,
                                                      loop_nest_body_builder));
 
-    operand_offset += operand->shape().dimensions(concat_dim);
+    operand_offset += operand_concat_dim_size;
   }
 
   builder.create<mlir::func::ReturnOp>(result_tensors);
