@@ -125,7 +125,6 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   auto output_tensor_args =
       entry_function.getArguments().drop_front(num_inputs);
 
-
   int64_t concat_dim = concat->concatenate_dimension();
   int64_t operand_offset = 0;
 
@@ -138,7 +137,8 @@ absl::Status MlirConcatenateFusion::EmitMlir(
   for (auto [operand_index, operand] : llvm::enumerate(concat->operands())) {
     int64_t operand_concat_dim_size = operand->shape().dimensions(concat_dim);
 
-    auto loop_nest_body_builder = [&](mlir::ValueRange output_tensors,
+    auto loop_nest_body_builder = [&, operand_index = operand_index](
+                                      mlir::ValueRange output_tensors,
                                       mlir::ValueRange dim_values,
                                       mlir::ValueRange symbol_values)
         -> absl::StatusOr<llvm::SmallVector<mlir::Value>> {
