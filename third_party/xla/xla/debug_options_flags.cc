@@ -230,6 +230,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
 
+  opts.set_xla_gpu_enable_mlir_emitters(false);
   return opts;
 }
 
