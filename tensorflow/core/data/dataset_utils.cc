@@ -788,9 +788,8 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
 }
 
 Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::vector<Tensor>* out_tensors) {
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors) {
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64_t num_batch_elements = batch_elements.size();

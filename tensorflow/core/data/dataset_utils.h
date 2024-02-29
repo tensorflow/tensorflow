@@ -306,9 +306,8 @@ struct CopyBatchParams {
 // The `out_tensors` argument will be used to store the resulting batch (one for
 // each component of the input).
 Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::vector<Tensor>* out_tensors);
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, task id,
 // rollout percentage of registered experiments, and the
