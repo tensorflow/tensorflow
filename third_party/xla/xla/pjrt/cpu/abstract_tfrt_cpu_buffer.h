@@ -130,22 +130,22 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   const Shape& on_device_shape() const override { return on_device_shape_; }
 
-  StatusOr<Shape> logical_on_device_shape() override;
+  absl::StatusOr<Shape> logical_on_device_shape() override;
 
-  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
+  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
       override;
 
-  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
-      bool wait_for_operations_to_complete) override;
+  absl::StatusOr<std::unique_ptr<ExternalReference>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                    int64_t transfer_size) override {
     return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override {
     return Unimplemented("CopyToMemorySpace not implemented");
   }
@@ -232,7 +232,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // serialize this donation with previous usages. After this method is called,
   // calls to AcquireUsage() will fail. Returns error status if the buffer is
   // already donated or there is outstanding external references.
-  StatusOr<DonationTransaction> AcquireDonation();
+  absl::StatusOr<DonationTransaction> AcquireDonation();
 
   // A helper function for PjRtClient::BufferFromHostLiteral. Copy the literal
   // to the current buffer asynchronously. `avs` is used to signal when the copy
@@ -245,7 +245,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   // Allocates a new `TrackedTfrtCpuDeviceBuffer` with the given shape and
   // definition events.
-  static StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  static absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
   AllocateTrackedDeviceBuffer(
       const Shape& on_device_shape,
       absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
@@ -264,7 +264,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // device buffer from the host buffer (maybe zero-copy or async).
   // `transpose_mu` and `transpose_cache` are used to transpose the input
   // layout.
-  static StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  static absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
   BufferFromHostBufferHelper(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
@@ -279,11 +279,11 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   PjRtFuture<Status> ToLiteralHelper(MutableLiteralBase* literal,
                                      AsyncWorkRunner* async_work_runner);
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);
 
-  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> CopyToDeviceHelper(
-      AsyncWorkRunner* async_work_runner);
+  absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
+  CopyToDeviceHelper(AsyncWorkRunner* async_work_runner);
 
   bool IsEmptyTuple() const {
     return on_device_shape_.IsTuple() &&
@@ -315,7 +315,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // If the buffer was shared via an external reference it is the client's
   // responsibility that accesses via that reference do not interfere with
   // accesses via the buffer returned from Release.
-  StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
+  absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
   // Releases the device buffer by returning a unique_ptr of it. If there is

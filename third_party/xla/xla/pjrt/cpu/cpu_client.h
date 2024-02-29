@@ -224,7 +224,7 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   // Returns a semaphore for admission control on inflight computations.
   Semaphore& max_inflight_computations_semaphore() {
@@ -268,13 +268,13 @@ class TfrtCpuClient final : public PjRtClient {
     return addressable_devices_;
   }
 
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
-  StatusOr<PjRtDevice*> LookupDevice(
+  absl::StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
+  absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 
-  StatusOr<PjRtDevice*> LookupAddressableDevice(
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
-  StatusOr<PjRtDevice*> LookupAddressableDevice(
+  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
@@ -289,34 +289,34 @@ class TfrtCpuClient final : public PjRtClient {
 
   PjRtRuntimeType runtime_type() const override { return kTfrt; }
 
-  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<Layout> GetDefaultLayout(PrimitiveType element_type,
-                                    absl::Span<const int64_t> dims) override;
+  absl::StatusOr<Layout> GetDefaultLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dims) override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+  absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
   // For TfrtCpuClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       Status error, const Shape& shape, PjRtDevice* device) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
                                     PjRtDevice* device) override;
 
@@ -327,24 +327,24 @@ class TfrtCpuClient final : public PjRtClient {
         "CreateBuffersForAsyncHostToDevice with memory_space not implemented.");
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtDevice* device) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) override {
     return Unimplemented("MakeCrossHostReceiveBuffers not implemented.");
   }
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
@@ -352,18 +352,18 @@ class TfrtCpuClient final : public PjRtClient {
         "MakeCrossHostReceiveBuffersForGather not implemented.");
   }
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
-  StatusOr<ChannelHandle> CreateChannelHandle() override {
+  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
     return Unimplemented("CreateChannelHandle not implemented.");
   }
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
+  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return Unimplemented("CreateDeviceToHostChannelHandle not implemented.");
   }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
+  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
     return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
   }
 
@@ -394,7 +394,7 @@ class TfrtCpuClient final : public PjRtClient {
     last_collective_launch_event_ = std::move(event);
   }
 
-  StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+  absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return &topology_;
   }
@@ -465,7 +465,7 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
 
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
  private:
@@ -516,18 +516,18 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
     return addressable_devices_;
   }
 
-  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return std::vector<std::shared_ptr<HloModule>>{
         cpu_executable_->shared_module()};
   }
 
-  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
-      const override {
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override {
     return Unimplemented("GetOutputMemoryKinds is not supported.");
   }
 
-  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     CompiledMemoryStats memory_stats = CompiledMemoryStats();
     memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
     const HloProto* proto = cpu_executable_->hlo_proto();
@@ -540,21 +540,21 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   }
 
   using PjRtLoadedExecutable::Execute;
-  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
   using PjRtLoadedExecutable::ExecuteSharded;
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
   using PjRtLoadedExecutable::ExecutePortable;
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<Status>>& returned_future,
@@ -564,19 +564,19 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 
   bool IsDeleted() override;
 
-  StatusOr<std::string> SerializeExecutable() const override;
+  absl::StatusOr<std::string> SerializeExecutable() const override;
 
   bool IsReturnedFutureSupported() const override { return true; }
 
-  StatusOr<std::optional<std::string>> Fingerprint() const;
+  absl::StatusOr<std::optional<std::string>> Fingerprint() const;
 
   std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
-  StatusOr<std::string> FingerprintExecutable() const override {
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
     return Unimplemented("Fingerprinting executable is not supported.");
   }
 
-  StatusOr<CompileOptions> GetCompileOptions() const override {
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
     return compile_options_;
   }
 
@@ -591,7 +591,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
       absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
           input_buffers) const;
 
-  StatusOr<Result> ExecuteHelper(
+  absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
       tsl::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
@@ -665,11 +665,11 @@ struct CpuClientOptions {
   // in-process collectives implementation will be used.
   std::shared_ptr<cpu::CollectivesInterface> collectives;
 };
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     const CpuClientOptions& options);
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
@@ -677,7 +677,7 @@ inline StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
 }
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     bool asynchronous, int cpu_device_count,
     int max_inflight_computations_per_device = 32) {
   CpuClientOptions options;
