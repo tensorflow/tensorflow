@@ -68,11 +68,16 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
   absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> EmitWriteToShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::ModuleOp module,
       mlir::func::FuncOp entry_function, const HloFusionInstruction& fusion,
+      const mlir_converter::PartitionedComputation& root_computation,
       mlir_converter::CallTargetProvider& call_target_provider) const;
   absl::Status EmitReadFromShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::ModuleOp module,
       mlir::func::FuncOp entry_function, const HloFusionInstruction& fusion,
       mlir_converter::CallTargetProvider& call_target_provider,
+      const absl::flat_hash_set<
+          const mlir_converter::PartitionedComputation::Subgraph*>&
+          hero_subgraphs,
+      const mlir_converter::PartitionedComputation::Subgraph* root_subgraph,
       mlir::ValueRange shmem_tensors) const;
 
  private:
