@@ -144,7 +144,8 @@ std::string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, num_replicas_);
 }
 
-StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
+absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
+    const {
   ExecutableBuildOptionsProto output;
   output.set_device_ordinal(device_ordinal());
   if (result_layout()) {
@@ -199,7 +200,7 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   return output;
 }
 
-StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     const ExecutableBuildOptionsProto& input) {
   xla::ExecutableBuildOptions output;
   if (input.device_ordinal() != -1) {
