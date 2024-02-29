@@ -42,14 +42,13 @@ class NcclRecvThunk : public NcclCollectiveThunk {
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
                                  NcclApi::NcclCommHandle comm) override;
-  AsyncStreamKind GetAsyncStreamKind() const override {
-    return AsyncStreamKind::kP2P0;
-  }
+  AsyncStreamKind GetAsyncStreamKind() const override { return stream_kind_; }
   bool NeedFirstCallRendzevous() const override { return false; }
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
+  const AsyncStreamKind stream_kind_;
 };
 
 absl::Status RunRecv(NcclApi* nccl_api,
