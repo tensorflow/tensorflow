@@ -373,6 +373,74 @@ TEST_F(ElementalHloToMlirTest, ScalarConstant) {
   })"));
 }
 
+TEST_F(ElementalHloToMlirTest, DynamicSlice) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      in = f32[20,30] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      ROOT slice = f32[4,5] dynamic-slice(in, i0, i1), dynamic_slice_sizes={4,5}
+    })",
+                   R"(
+    // CHECK:      @main_slice(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>,
+    // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {
+    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:    %[[C16:.*]] = arith.constant 16
+    // CHECK-DAG:    %[[C25:.*]] = arith.constant 25
+    // CHECK:        %[[I0:.*]] = tensor.extract %[[I0_T]]
+    // CHECK:        %[[I0_1:.*]] = arith.index_cast %[[I0]]
+    // CHECK:        %[[I0_2:.*]] = arith.minsi %[[I0_1]], %[[C16]]
+    // CHECK:        %[[I0_3:.*]] = arith.maxsi %[[I0_2]], %[[C0]]
+    // CHECK:        %[[X_IN:.*]] = arith.addi %[[X]], %[[I0_3]]
+    // CHECK:        %[[I1:.*]] = tensor.extract %[[I1_T]]
+    // CHECK:        %[[I1_1:.*]] = arith.index_cast %[[I1]]
+    // CHECK:        %[[I1_2:.*]] = arith.minsi %[[I1_1]], %[[C25]]
+    // CHECK:        %[[I1_3:.*]] = arith.maxsi %[[I1_2]], %[[C0]]
+    // CHECK:        %[[Y_IN:.*]] = arith.addi %[[Y]], %[[I1_3]]
+    // CHECK:        %[[RET:.*]] = tensor.extract %[[ARG0]][%[[X_IN]], %[[Y_IN]]]
+    // CHECK:        return %[[RET]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DynamicUpdateSlice) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      in = f32[20,30] parameter(0)
+      updates = f32[5,6] parameter(1)
+      i0 = s32[] parameter(2)
+      i1 = s32[] parameter(3)
+      ROOT updated = f32[20,30] dynamic-update-slice(in, updates, i0, i1)
+    })",
+                   R"(
+    // CHECK:      @main_updated(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<20x30xf32>, %[[ARG1:.*]]: tensor<5x6xf32>
+    // CHECK-SAME:     %[[I0_T:.*]]: tensor<i32>, %[[I1_T:.*]]: tensor<i32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {
+    // CHECK-DAG:    %[[C0:.*]] = arith.constant 0
+    // CHECK-DAG:    %[[C5:.*]] = arith.constant 5
+    // CHECK-DAG:    %[[C6:.*]] = arith.constant 6
+    // CHECK-DAG:    %[[C15:.*]] = arith.constant 15
+    // CHECK-DAG:    %[[C24:.*]] = arith.constant 24
+    // CHECK:        %[[I0:.*]] = tensor.extract %[[I0_T]]
+    // CHECK:        %[[I0_1:.*]] = arith.index_cast %[[I0]]
+    // CHECK:        %[[I0_2:.*]] = arith.minsi %[[I0_1]], %[[C15]]
+    // CHECK:        %[[START_X:.*]] = arith.maxsi %[[I0_2]], %[[C0]]
+    // CHECK:        %[[END_X:.*]] = arith.addi %[[START_X]], %[[C5]]
+    // CHECK:        %[[LOW_X:.*]] = arith.cmpi sge, %[[X]], %[[START_X]]
+    // CHECK:        %[[HIGH_X:.*]] = arith.cmpi slt, %[[X]], %[[END_X]]
+    // CHECK:        %[[BOUNDS_X:.*]] = arith.andi %[[LOW_X]], %[[HIGH_X]]
+    // CHECK:        %[[UPDATES_X:.*]] = arith.subi %[[X]], %[[START_X]]
+    // CHECK:        arith.andi
+    // CHECK:        %[[BOUNDS:.*]] = arith.andi
+    // CHECK:        scf.if %[[BOUNDS]]
+    // CHECK:          tensor.extract %[[ARG1]][%[[UPDATES_X]]
+    // CHECK:        } else {
+    // CHECK:          tensor.extract %[[ARG0]][%[[X]]
+  )"));
+}
+
 }  // namespace
 }  // namespace mlir_converter
 }  // namespace gpu

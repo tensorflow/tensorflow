@@ -117,7 +117,6 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kCustomCall,
                                         HloOpcode::kDomain,
                                         HloOpcode::kDynamicReshape,
-                                        HloOpcode::kDynamicSlice,
                                         HloOpcode::kFft,
                                         HloOpcode::kFusion,
                                         HloOpcode::kGetDimensionSize,
@@ -146,8 +145,8 @@ static auto& kUnsupportedOps =
                                         HloOpcode::kCall};
 
 static auto& kUnimplementedOps = *new absl::flat_hash_set<HloOpcode>{
-    HloOpcode::kConvolution, HloOpcode::kDot, HloOpcode::kDynamicUpdateSlice,
-    HloOpcode::kMap, HloOpcode::kReduceWindow,
+    HloOpcode::kConvolution, HloOpcode::kDot, HloOpcode::kMap,
+    HloOpcode::kReduceWindow,
     // Custom approximations in XLA:
     HloOpcode::kErf, HloOpcode::kTanh,
     // Incorrect NaN handling:
@@ -307,6 +306,85 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitConcat(
   return outermost_if.getResults();
 }
 
+mlir::Value ClampIndex(mlir::Value index, int64_t high,
+                       mlir::ImplicitLocOpBuilder& b) {
+  auto zero = b.create<ConstantOp>(b.getIndexAttr(0));
+  if (high <= 0) {
+    return zero;
+  }
+
+  if (index.getType() != b.getIndexType()) {
+    index = b.create<arith::IndexCastOp>(b.getIndexType(), index);
+  }
+  index = b.create<arith::MinSIOp>(index,
+                                   b.create<ConstantOp>(b.getIndexAttr(high)));
+  index = b.create<arith::MaxSIOp>(index, zero);
+  return index;
+}
+
+absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicSlice(
+    const HloInstruction* instr, ValueRange indices,
+    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+  llvm::SmallVector<Value> input_indices(indices);
+
+  const auto& input_shape = instr->operand(0)->shape();
+  for (int i = 0; i < input_shape.rank(); ++i) {
+    TF_ASSIGN_OR_RETURN(
+        auto offset, GetSingleOperandValue(operand_provider, instr, i + 1, {}));
+    offset = ClampIndex(
+        offset, input_shape.dimensions(i) - instr->shape().dimensions(i), b);
+    input_indices[i] = b.create<arith::AddIOp>(input_indices[i], offset);
+  }
+
+  return operand_provider(instr, 0, input_indices);
+}
+
+absl::StatusOr<llvm::SmallVector<Value>> EmitDynamicUpdateSlice(
+    const HloInstruction* instr, ValueRange indices,
+    const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
+  mlir::Value is_in_bounds =
+      b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
+  mlir::SmallVector<Value> update_indices;
+  const auto& updates_shape = instr->operand(1)->shape();
+  for (int i = 0; i < instr->shape().rank(); ++i) {
+    int64_t update_size = updates_shape.dimensions(i);
+    TF_ASSIGN_OR_RETURN(
+        auto start_index,
+        GetSingleOperandValue(operand_provider, instr, i + 2, {}));
+    start_index =
+        ClampIndex(start_index, instr->shape().dimensions(i) - update_size, b);
+
+    auto end_index = b.create<arith::AddIOp>(
+        start_index, b.create<ConstantOp>(b.getIndexAttr(update_size)));
+
+    is_in_bounds = b.create<AndIOp>(
+        is_in_bounds,
+        b.create<CmpIOp>(CmpIPredicate::sge, indices[i], start_index));
+    is_in_bounds = b.create<AndIOp>(
+        is_in_bounds,
+        b.create<CmpIOp>(CmpIPredicate::slt, indices[i], end_index));
+
+    update_indices.push_back(b.create<arith::SubIOp>(indices[i], start_index));
+  }
+
+  auto ty = *ConvertPrimitiveTypeToMLIRType(instr->shape().element_type(), b);
+  auto if_op = b.create<IfOp>(mlir::TypeRange{ty}, is_in_bounds, true, true);
+  b.setInsertionPointToStart(if_op.getBody(0));
+  TF_ASSIGN_OR_RETURN(
+      auto updated_value,
+      GetSingleOperandValue(operand_provider, instr, 1, update_indices));
+  b.create<YieldOp>(updated_value);
+
+  b.setInsertionPointToStart(if_op.getBody(1));
+  TF_ASSIGN_OR_RETURN(
+      auto original_value,
+      GetSingleOperandValue(operand_provider, instr, 0, indices));
+  b.create<YieldOp>(original_value);
+
+  b.setInsertionPointAfter(if_op);
+  return if_op.getResults();
+}
+
 absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
     const HloInstruction* instr, ValueRange indices,
     const OperandProvider& operand_provider, mlir::ImplicitLocOpBuilder& b) {
@@ -323,24 +401,13 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitGather(
     auto i_val = i == 0 ? zero : b.create<ConstantOp>(b.getIndexAttr(i));
     int64_t slice_size = instr->gather_slice_sizes()[i];
     int64_t input_size = instr->operand(0)->shape().dimensions()[i];
-    if (slice_size == input_size) {
-      // We're reading the full dimension, so clamping would always result in a
-      // zero index.
-      operand_indices[i] = zero;
-    } else {
-      // Read and clamp index.
-      TF_ASSIGN_OR_RETURN(auto input_index,
-                          operand_provider(instr, 1, {row, i_val}));
-      TF_RET_CHECK(input_index.size() == 1)
-          << "Expected operand to be a single value.";
-      mlir::Value index =
-          b.create<arith::IndexCastOp>(b.getIndexType(), input_index.front());
-      auto max_minus_size =
-          b.create<ConstantOp>(b.getIndexAttr(input_size - slice_size));
-      index = b.create<arith::MinSIOp>(index, max_minus_size);
-      index = b.create<arith::MaxSIOp>(index, zero);
-      operand_indices[i] = index;
-    }
+    // Read and clamp index.
+    TF_ASSIGN_OR_RETURN(auto input_index,
+                        operand_provider(instr, 1, {row, i_val}));
+    TF_RET_CHECK(input_index.size() == 1)
+        << "Expected operand to be a single value.";
+    operand_indices[i] =
+        ClampIndex(input_index.front(), input_size - slice_size, b);
   }
 
   // Add offsets.
@@ -385,7 +452,6 @@ absl::StatusOr<llvm::SmallVector<Value>> EmitPad(
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
   const auto& indexing_map = *indexing.indexing_maps[0].begin();
   mlir::Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
-  b.create<ConstantOp>(b.getIntegerAttr(b.getI1Type(), 1));
   for (auto&& [index, range] :
        llvm::enumerate(indexing_map.GetDimensionRanges())) {
     // If the range is the full output dimension, it's always in bounds. Sadly,
@@ -513,6 +579,10 @@ absl::StatusOr<llvm::SmallVector<Value>> HloToMlir(
       }
       return absl::UnimplementedError(
           absl::StrCat("Unimplemented: ", instr->ToShortString()));
+    case HloOpcode::kDynamicSlice:
+      return EmitDynamicSlice(instr, indices, operand_provider, builder);
+    case HloOpcode::kDynamicUpdateSlice:
+      return EmitDynamicUpdateSlice(instr, indices, operand_provider, builder);
     case HloOpcode::kGather:
       return EmitGather(instr, indices, operand_provider, builder);
     case HloOpcode::kIota: {
