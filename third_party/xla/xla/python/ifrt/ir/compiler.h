@@ -76,7 +76,7 @@ struct IfrtIRCompileOptions
 };
 
 // Gets `xla::ifrt::IfrtIRCompileOptions` from `xla::ifrt::CompileOptions`.
-StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
+absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options);
 
 }  // namespace ifrt
