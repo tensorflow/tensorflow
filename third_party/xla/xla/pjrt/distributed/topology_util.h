@@ -30,7 +30,7 @@ namespace xla {
 
 // Retrieve content of /proc/sys/kernel/random/boot_id as a string.
 // Empty on non-Linux platforms.
-StatusOr<std::string> GetBootIdString();
+absl::StatusOr<std::string> GetBootIdString();
 
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to

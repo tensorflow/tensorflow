@@ -50,7 +50,7 @@ static constexpr char kBootIdPath[] = "/proc/sys/kernel/random/boot_id";
 // Retrieve content of /proc/sys/kernel/random/boot_id as a string.
 // Note that procfs file may have file size 0 which throws off generic file
 // readers such as tsl::ReadFileToString.
-StatusOr<std::string> GetBootIdString() {
+absl::StatusOr<std::string> GetBootIdString() {
   std::string boot_id_str;
 #ifdef __linux__
   std::ifstream file(kBootIdPath);
@@ -74,7 +74,7 @@ static std::string GetGlobalTopologyKey(std::string_view platform) {
   return absl::StrCat("global_topology/", platform);
 }
 
-static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
+static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
     std::string_view platform, int num_nodes, KeyValueStoreInterface* kv_store,
     absl::Duration timeout) {
   std::vector<StatusOr<std::string>> local_topology_strs(num_nodes);
@@ -87,7 +87,7 @@ static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
   absl::Mutex mu;
   for (int i = 0; i < num_nodes; i++) {
     thread_pool.Schedule([&, i] {
-      StatusOr<std::string> local_topology_str =
+      absl::StatusOr<std::string> local_topology_str =
           kv_store->Get(GetLocalTopologyKey(platform, i), timeout);
       {
         absl::MutexLock lock(&mu);
@@ -102,7 +102,7 @@ static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
   std::vector<LocalTopologyProto> local_topologies;
   int max_num_failed_message = 10;
   int failed_count = 0;
-  for (const StatusOr<std::string>& str : local_topology_strs) {
+  for (const absl::StatusOr<std::string>& str : local_topology_strs) {
     if (str.ok()) {
       LocalTopologyProto local;
       local.ParseFromString(*str);
