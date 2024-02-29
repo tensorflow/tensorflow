@@ -11,12 +11,12 @@ def workspace():
 
     native.local_repository(
         name = "local_xla",
-        path = "/usr/local/google/home/vam/_/projects/github/vam-google/tensorflow/third_party/xla"
+        path = "third_party/xla"
     )
 
     native.local_repository(
         name = "local_tsl",
-        path = "/usr/local/google/home/vam/_/projects/github/vam-google/tensorflow/third_party/xla/third_party/tsl"
+        path = "third_party/xla/third_party/tsl"
     )
 
 

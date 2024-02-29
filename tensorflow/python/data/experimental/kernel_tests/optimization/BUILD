@@ -7,9 +7,10 @@ package(
 )
 
 tf_py_strict_test(
-    name = "filter_fusion_test",
+    name = "fusion_test",
     size = "medium",
     srcs = ["filter_fusion_test.py"],
+    main = "filter_fusion_test.py",
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -46,9 +47,10 @@ cuda_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "map_and_batch_fusion_test",
+    name = "map_batch_test",
     size = "small",
-    srcs = ["map_and_batch_fusion_test.py"],
+    srcs = ["map_batch_test.py"],
+    main = "map_batch_test.py",
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -61,9 +63,10 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "map_and_filter_fusion_test",
+    name = "map_filter_test",
     size = "small",
-    srcs = ["map_and_filter_fusion_test.py"],
+    srcs = ["map_filter_test.py"],
+    main = "map_filter_test.py",
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -97,9 +100,9 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "map_parallelization_test",
+    name = "map_par_test",
     size = "small",
-    srcs = ["map_parallelization_test.py"],
+    srcs = ["map_par_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -118,9 +121,10 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "filter_parallelization_test",
+    name = "parallel_test",
     size = "medium",
-    srcs = ["filter_parallelization_test.py"],
+    srcs = ["filter_parallel_test.py"],
+    main = "filter_parallel_test.py",
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
@@ -140,9 +144,10 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "make_deterministic_test",
+    name = "deter_test",
     size = "small",
     srcs = ["make_deterministic_test.py"],
+    main = "make_deterministic_test.py",
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/experimental/ops:batching",
@@ -170,9 +175,9 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "noop_elimination_test",
+    name = "noop_elim_test",
     size = "small",
-    srcs = ["noop_elimination_test.py"],
+    srcs = ["noop_elim_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -188,9 +193,9 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "optimization_test",
+    name = "optim_test",
     size = "medium",
-    srcs = ["optimization_test.py"],
+    srcs = ["optim_test.py"],
     shard_count = 2,
     deps = [
         "//tensorflow/python/data/experimental/ops:batching",

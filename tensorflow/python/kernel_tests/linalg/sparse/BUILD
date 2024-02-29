@@ -101,7 +101,7 @@ cuda_py_strict_test(
 )
 
 cuda_py_strict_test(
-    name = "csr_sparse_matrix_dense_mat_mul_grad_test",
+    name = "csr_sm_dense_mat_test",
     size = "medium",
     srcs = ["csr_sparse_matrix_dense_mat_mul_grad_test.py"],
     main = "csr_sparse_matrix_dense_mat_mul_grad_test.py",
@@ -122,7 +122,7 @@ cuda_py_strict_test(
 )
 
 cuda_py_strict_test(
-    name = "csr_sparse_matrix_sparse_mat_mul_grad_test",
+    name = "csr_sm_mul_grad_test",
     size = "medium",
     srcs = ["csr_sparse_matrix_sparse_mat_mul_grad_test.py"],
     main = "csr_sparse_matrix_sparse_mat_mul_grad_test.py",

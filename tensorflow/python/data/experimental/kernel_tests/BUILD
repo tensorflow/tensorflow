@@ -299,9 +299,9 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "make_batched_features_dataset_test",
+    name = "make_batched_features_test",
     size = "small",
-    srcs = ["make_batched_features_dataset_test.py"],
+    srcs = ["make_batched_features_test.py"],
     shard_count = 6,
     deps = [
         "//tensorflow/python/data/experimental/ops:readers",
@@ -342,9 +342,10 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "make_saveable_from_iterator_test",
+    name = "make_saveable_from_it_test",
     size = "small",
     srcs = ["make_saveable_from_iterator_test.py"],
+    main = "make_saveable_from_iterator_test.py",
     deps = [
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/ops:dataset_ops",

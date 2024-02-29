@@ -1103,6 +1103,9 @@ pybind_extension(
     deps = [
         "//tensorflow/core/platform:logging",
         "//third_party/python_runtime:headers",
+#        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+    private_deps = [
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

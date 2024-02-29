@@ -26,8 +26,8 @@ package_group(
 )
 
 py_strict_binary(
-    name = "gen_quantized_function_library",
-    srcs = ["gen_quantized_function_library.py"],
+    name = "gen_qlib",
+    srcs = ["gen_qlib.py"],
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
@@ -46,9 +46,10 @@ genrule(
     outs = [
         "passes/quantized_function_library.h",
     ],
-    cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src '$(SRCS)'",
+    cmd = "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
+        "$(location gen_qlib) --output_file $(RULEDIR)/passes/quantized_function_library.h --src '$(SRCS)'",
     compatible_with = get_compatible_with_portable(),
-    tools = ["gen_quantized_function_library"],
+    tools = ["gen_qlib"],
 )
 
 cc_library(

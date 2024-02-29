@@ -181,10 +181,10 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "kubernetes_cluster_resolver_py_test",
+    name = "kuber_cluster_resolver_py_test",
     size = "small",
-    srcs = ["kubernetes_cluster_resolver_test.py"],
-    main = "kubernetes_cluster_resolver_test.py",
+    srcs = ["kuber_cluster_resolver_test.py"],
+    main = "kuber_cluster_resolver_test.py",
     deps = [
         ":kubernetes_cluster_resolver_py",
         "//tensorflow/python/platform:client_testlib",

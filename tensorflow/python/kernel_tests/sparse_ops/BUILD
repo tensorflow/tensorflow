@@ -221,9 +221,9 @@ cuda_py_strict_test(
 )
 
 cuda_py_strict_test(
-    name = "sparse_tensor_dense_matmul_grad_test",
+    name = "sparse_tensor_dense_matmul_test",
     size = "small",
-    srcs = ["sparse_tensor_dense_matmul_grad_test.py"],
+    srcs = ["sparse_tensor_dense_matmul_test.py"],
     xla_tags = [
         "no_cuda_asan",  # b/182392418 times out
     ],
@@ -241,9 +241,9 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     # Test name is shortened to workaround Windows Bazel's 259 char path limit.
-    name = "sparse_tensor_dense_matmul_op_d9m_test",
+    name = "sparse_t_dense_matmul_op_d9m_test",
     size = "medium",
-    srcs = ["sparse_tensor_dense_matmul_op_d9m_test.py"],
+    srcs = ["sparse_t_dense_matmul_op_d9m_test.py"],
     deps = [
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",

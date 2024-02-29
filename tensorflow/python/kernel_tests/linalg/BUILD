@@ -209,9 +209,9 @@ cuda_py_strict_test(
 )
 
 cuda_py_strict_test(
-    name = "linear_operator_block_lower_triangular_test",
+    name = "linear_oper_block_lo_triangular_test",
     size = "medium",
-    srcs = ["linear_operator_block_lower_triangular_test.py"],
+    srcs = ["linear_oper_block_lo_triangular_test.py"],
     shard_count = 8,
     tags = ["optonly"],
     deps = [

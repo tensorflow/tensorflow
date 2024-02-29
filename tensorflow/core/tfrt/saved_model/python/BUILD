@@ -73,6 +73,8 @@ pybind_extension(
         ":saved_model_load_and_run",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
+    private_deps = [
+        "@pybind11_abseil//pybind11_abseil:status_casters",
+    ]
 )

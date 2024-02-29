@@ -27,7 +27,6 @@
 # Other build options:
 #     short_logs:       Only log errors during build, skip warnings.
 #     verbose_logs:     Show all compiler warnings during build.
-#     monolithic:       Build all TF C++ code into a single shared object.
 #     dbg:              Build with debug info
 #
 # TF version options;
@@ -334,7 +333,7 @@ build:windows --host_copt=/d2ReducedOptimizeHugeFunctions
 # build_pip_package script in its current form (as of Aug 2023) uses the
 # runfiles symlink tree to decide what to put into the Python wheel.
 startup --windows_enable_symlinks
-build:windows --enable_runfiles
+#build:windows --enable_runfiles
 
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
@@ -358,9 +357,6 @@ build:macos --cxxopt=-std=c++17
 build:macos --host_cxxopt=-std=c++17
 build:windows --cxxopt=/std:c++17
 build:windows --host_cxxopt=/std:c++17
-
-# On windows, we still link everything into a single DLL.
-build:windows --config=monolithic
 
 # Make sure to include as little of windows.h as possible
 build:windows --copt=-DWIN32_LEAN_AND_MEAN
@@ -794,3 +790,23 @@ test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integ
 
 build --config=pycpp_filters
 build --experimental_convenience_symlinks=clean
+
+build:pycpp_filters_win --nodistinct_host_configuration
+build:pycpp_filters_win --dynamic_mode=off
+build:pycpp_filters_win --config=xla
+build:pycpp_filters_win --config=short_logs
+build:pycpp_filters_win --announce_rc
+build:pycpp_filters_win --build_tag_filters=-no_windows,-no_oss
+
+build:pycpp_filters_win --keep_going
+build:pycpp_filters_win --verbose_failures
+build:pycpp_filters_win --copt=/d2ReducedOptimizeHugeFunctions
+build:pycpp_filters_win --host_copt=/d2ReducedOptimizeHugeFunctions
+build:pycpp_filters_win --enable_runfiles
+build:pycpp_filters_win --test_timeout="300,450,1200,3600"
+test:pycpp_filters_win --flaky_test_attempts=1
+build:pycpp_filters_win --nobuild_python_zip
+test:pycpp_filters_win --test_tag_filters=-no_windows,-no_oss,-gpu,-tpu
+
+#build --config=pycpp_filters_win
+#test --config=pycpp_filters_win

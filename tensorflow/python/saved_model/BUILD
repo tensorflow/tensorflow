@@ -879,33 +879,23 @@ tf_py_strict_test(
     ],
 )
 
-pybind_extension(
-    name = "pywrap_saved_model",
+cc_library(
+    name = "pywrap_saved_model_lib",
     srcs = [
-        "pywrap_saved_model.cc",
         "pywrap_saved_model_constants.cc",
         "pywrap_saved_model_fingerprinting.cc",
         "pywrap_saved_model_metrics.cc",
+
+    ] + if_google([
+        "pywrap_saved_model_merger.cc",
+    ]),
+    hdrs = [
         "pywrap_saved_model_constants.h",
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ] + if_google([
-        "pywrap_saved_model_merger.cc",
         "pywrap_saved_model_merger.h",
     ]),
-    data = [
-        "pywrap_saved_model/__init__.pyi",
-        "pywrap_saved_model/constants.pyi",
-        "pywrap_saved_model/fingerprinting.pyi",
-        "pywrap_saved_model/merger.pyi",
-        "pywrap_saved_model/metrics.pyi",
-    ],
-    visibility = [
-        "//tensorflow/python/checkpoint:__subpackages__",
-        "//tensorflow/python/tpu:__pkg__",
-        "//tensorflow/python/training:__subpackages__",
-        "//tensorflow/python:__pkg__",
-    ],
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/log",
@@ -927,6 +917,29 @@ pybind_extension(
     ] + if_google([
         "//tensorflow/tools/proto_splitter:merge",
     ]),
+)
+
+pybind_extension(
+    name = "pywrap_saved_model",
+    srcs = [
+        "pywrap_saved_model.cc",
+    ],
+    data = [
+        "pywrap_saved_model/__init__.pyi",
+        "pywrap_saved_model/constants.pyi",
+        "pywrap_saved_model/fingerprinting.pyi",
+        "pywrap_saved_model/merger.pyi",
+        "pywrap_saved_model/metrics.pyi",
+    ],
+    visibility = [
+        "//tensorflow/python/checkpoint:__subpackages__",
+        "//tensorflow/python/tpu:__pkg__",
+        "//tensorflow/python/training:__subpackages__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        ":pywrap_saved_model_lib",
+    ],
 )
 
 tf_py_strict_test(

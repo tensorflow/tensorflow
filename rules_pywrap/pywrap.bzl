@@ -22,6 +22,7 @@ def pywrap_library(
         name,
         deps,
         win_def_file = None,
+        linkopts = None,
         pywrap_count = None,
         extra_deps = ["@pybind11//:pybind11"],
         visibility = None,
@@ -65,6 +66,7 @@ def pywrap_library(
         testonly = testonly,
         compatible_with = compatible_with,
         win_def_file = win_def_file,
+        linkopts = linkopts,
     )
 
     # The following filegroup/cc_import shenanigans to extract .if.lib from

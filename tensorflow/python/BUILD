@@ -746,205 +746,6 @@ py_strict_library(
 #    ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
 #)
 
-# ** Targets for Windows build (start) **
-# We need the following targets to expose symbols from _pywrap_tensorflow.dll
-
-filegroup(
-    name = "win_lib_files_for_exported_symbols",
-    srcs = [
-        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
-        "//tensorflow/c:python_api",  # tf_session
-        "//tensorflow/c:safe_ptr",  # checkpoint_reader
-        "//tensorflow/c:tf_status_helper",  # tfe
-        "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
-        "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
-        "//tensorflow/compiler/jit:flags",  # tfe
-        "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",  # quantization
-        "//tensorflow/compiler/tf2xla:tf2xla_opset",  # pywrap_xla_ops
-        "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:op_gen_lib",  # tf_session
-        "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
-        "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
-        "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
-        "//tensorflow/core/common_runtime:session_state",  # tf_session
-        "//tensorflow/core/common_runtime/eager:context",  # tfe
-        "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
-        "//tensorflow/core/common_runtime/eager:tensor_handle",  # tfe
-        "//tensorflow/core/config:flag_defs",  # flags_api
-        "//tensorflow/core/config:flags",  # flags_api
-        "//tensorflow/core/data/service:dispatcher_client",  # dispatcher_client
-        "//tensorflow/core/data/service:grpc_util",  # grpc_util
-        "//tensorflow/core/data/service:server_lib",  # server_lib
-        "//tensorflow/core/framework:attr_value_proto_cc",  # tf_text
-        "//tensorflow/core/framework:op_def_proto_cc",  # tf_text
-        "//tensorflow/core/function/runtime_client:runtime_client_cc",  # runtime_client_pybind
-        "//tensorflow/core/grappler:devices",  # tf_cluster
-        "//tensorflow/core/grappler:grappler_item",  # tf_item
-        "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
-        "//tensorflow/core/grappler/clusters:cluster",  # tf_cluster
-        "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
-        "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
-        "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
-        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
-        "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
-        "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
-        "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
-        "//tensorflow/core/grappler/costs:op_level_cost_estimator",  # tf_cluster
-        "//tensorflow/core/grappler/costs:utils",  # tf_cluster
-        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
-        "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
-        "//tensorflow/core/platform:cpu_feature_guard",  # cpu_feature_guard
-        "//tensorflow/core/platform:statusor",  # tfe
-        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
-        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler
-        "//tensorflow/core/util:determinism",  # determinism
-        "//tensorflow/core/util:port",  # util_port
-        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
-        "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
-        "//tensorflow/dtensor/cc:tensor_layout",  # DTensor
-        "//tensorflow/lite/kernels/shim:shape",  # tf_text
-        "//tensorflow/lite/kernels/shim:tf_op_shim",  # tf_text
-        "//tensorflow/lite/toco/python:toco_python_api",  # toco
-        "//tensorflow/python/client:tf_session_helper",  # tf_session
-        "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
-        "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
-        "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
-        "//tensorflow/python/framework:python_api_info",  # python_api_info
-        "//tensorflow/python/framework:python_api_parameter_converter",  # python_api_parameter_converter
-        "//tensorflow/python/framework:python_op_gen",  # python_op_gen
-        "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
-        "//tensorflow/python/grappler:cost_analyzer_lib",
-        "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
-        "//tensorflow/python/lib/core:ndarray_tensor",  # checkpoint_reader
-        "//tensorflow/python/lib/core:py_exception_registry",  # py_exception_registry
-        "//tensorflow/python/lib/core:py_func_lib",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr",  # checkpoint_reader
-        "//tensorflow/python/util:cpp_nest",
-        "//tensorflow/python/util:cpp_python_util",
-        "//tensorflow/python/util:kernel_registry",
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-        "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
-        "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
-        "@local_tsl//tsl/python/lib/core:numpy",  # checkpoint_reader
-        "@local_xla//xla/stream_executor",  # stat_summarizer
-    ] + select({
-        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
-        "//conditions:default": [
-            "//tensorflow/compiler/mlir/python:mlir",  # mlir
-        ],
-    }) + if_xla_available([
-        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
-        "@local_xla//xla:status_macros",  # tfcompile
-        "@local_xla//xla/hlo/ir:hlo",  # tfcompile
-    ]),
-    visibility = ["//visibility:private"],
-)
-
-# Filter the DEF file to reduce the number of symbols to 64K or less.
-# Note that we also write the name of the pyd file into DEF file so that
-# the dynamic libraries of custom ops can find it at runtime.
-genrule(
-    name = "pywrap_tensorflow_filtered_def_file",
-    srcs = select({
-        "//tensorflow:windows": [
-            ":pybind_symbol_target_libs_file",
-            ":win_lib_files_for_exported_symbols",
-            "//tensorflow:tensorflow_def_file",
-            "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ],
-        "//conditions:default": [],
-    }),
-    outs = ["pywrap_tensorflow_filtered_def_file.def"],
-    cmd = select({
-        "//tensorflow:windows": """
-              $(location @local_config_def_file_filter//:def_file_filter) \\
-              --input $(location //tensorflow:tensorflow_def_file) \\
-              --output $@ \\
-              --target _pywrap_tensorflow_internal.pyd \\
-              --symbols $(location //tensorflow/tools/def_file_filter:symbols_pybind) \\
-              --lib_paths_file $(location :pybind_symbol_target_libs_file)
-          """,
-        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
-    }),
-    tools = ["@local_config_def_file_filter//:def_file_filter"],
-    visibility = ["//visibility:public"],
-)
-
-# Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
-genrule(
-    name = "pybind_symbol_target_libs_file",
-    srcs = [":win_lib_files_for_exported_symbols"],
-    outs = ["pybind_symbol_target_libs_file.txt"],
-    cmd = select({
-        "//tensorflow:windows": """
-            for SRC in $(SRCS); do
-              echo $$SRC | sed 's/third_party\\///g' >> $@
-            done
-          """,
-        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
-    }),
-    visibility = ["//visibility:public"],
-)
-
-# Get the import library of _pywrap_tensorflow_internal.pyd, platform-specific to Windows.
-filegroup(
-    name = "get_pywrap_tensorflow_import_lib_file",
-    srcs = [":_pywrap_tensorflow_internal.so"],
-    output_group = "interface_library",
-)
-
-cc_import(
-    name = "_pywrap_tensorflow_internal_linux",
-    shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.so",
-    visibility = tf_external_workspace_visible(visibility),
-)
-
-cc_import(
-    name = "_pywrap_tensorflow_internal_macos",
-    shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.dylib",
-    visibility = tf_external_workspace_visible(visibility),
-)
-
-cc_import(
-    name = "_pywrap_tensorflow_internal_windows",
-    interface_library = "//tensorflow/python:pywrap_tensorflow_import_lib_file",
-    shared_library = "//tensorflow/python:_pywrap_tensorflow_internal.dll",
-    visibility = tf_external_workspace_visible(visibility),
-)
-
-# Rename the import library for _pywrap_tensorflow_internal.pyd to _pywrap_tensorflow_internal.lib
-# (It was _pywrap_tensorflow_internal.so.if.lib).
-genrule(
-    name = "pywrap_tensorflow_import_lib_file",
-    srcs = [":get_pywrap_tensorflow_import_lib_file"],
-    outs = ["_pywrap_tensorflow_internal.lib"],
-    cmd = select({
-        "//tensorflow:windows": "cp -f $< $@",
-        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
-    }),
-    visibility = ["//visibility:public"],
-)
-
-# Create a cc_import rule for the import library of _pywrap_tensorflow_internal.dll
-# so that custom ops' dynamic libraries can link against it.
-cc_import(
-    name = "pywrap_tensorflow_import_lib",
-    interface_library = select({
-        "//tensorflow:windows": ":pywrap_tensorflow_import_lib_file",
-        "//conditions:default": "not_existing_on_unix.lib",  # Just a placeholder for Unix platforms
-    }),
-    system_provided = 1,
-)
-
-# ** Targets for Windows build (end) **
-
 py_strict_library(
     name = "pywrap_mlir",
     srcs = ["pywrap_mlir.py"],
@@ -1273,6 +1074,7 @@ pytype_strict_library(
 
 pywrap_library(
     name = "_pywrap_tensorflow",
+    win_def_file = "_pywrap_tensorflow.def",
     deps = [
         ":_pywrap_quantize_training",
         ":_pywrap_tensorflow_cc_only",
@@ -1344,6 +1146,15 @@ pywrap_library(
         "//tensorflow/python/framework/experimental:_nn_ops",
         "//tensorflow/python/framework/experimental:_tape",
     ],
+    linkopts = select({
+        "//tensorflow:windows": [
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
 )
 
