@@ -1243,6 +1243,7 @@ cc_library(
         "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:GPUCommonTransforms",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:GPUToROCDLTransforms",
