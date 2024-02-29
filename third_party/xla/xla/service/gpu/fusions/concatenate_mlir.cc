@@ -153,8 +153,8 @@ absl::Status MlirConcatenateFusion::EmitMlir(
           mlir::arith::CmpIPredicate::ult, input_indices[concat_dim],
           operand_concat_dim_size_val);
 
-      auto then_body = [&, operand_index](mlir::OpBuilder& b,
-                                          mlir::Location loc) {
+      auto then_body = [&, operand_index = operand_index](mlir::OpBuilder& b,
+                                                          mlir::Location loc) {
         mlir::ImplicitLocOpBuilder builder(loc, b);
 
         auto result_scalars = mlir_converter::ProvideParameter(
