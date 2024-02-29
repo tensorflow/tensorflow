@@ -67,19 +67,6 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
       return false;
     }
 
-    // TODO(berkin): disable aliased custom calls until NaN issue is resolved.
-    if (auto* callable =
-            DynCast<HloCallableInstruction>(position.instruction)) {
-      for (const auto& pair : callable->output_to_operand_aliasing()) {
-        if (position.index == pair.first) {
-          VLOG(4) << "Keeping value " << value->ToShortString()
-                  << " in default mem because it is a custom-call/fusion output"
-                     " that aliases an operand buffer.";
-          return false;
-        }
-      }
-    }
-
     // If the tensor is pre-colored to a memory space that is neither the
     // default (0) nor the alternate, disallow it from the alternate memory
     // space.
