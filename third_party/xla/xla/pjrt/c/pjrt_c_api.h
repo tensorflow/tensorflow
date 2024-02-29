@@ -20,9 +20,14 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+// Read more on C API ABI versioning and compatibility here:
+// https://docs.google.com/document/d/1TKB5NyGtdzrpgw5mpyFjVAhJjpSNdF31T6pjPl_UT2o/edit?usp=sharing
+
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
 
+// Must update PJRT_DEFINE_STRUCT_TRAITS with the new `last_field` after
+// adding a new member to a struct.
 #define PJRT_DEFINE_STRUCT_TRAITS(sname, last_field) \
   typedef struct sname sname;                        \
   enum { sname##_STRUCT_SIZE = PJRT_STRUCT_SIZE(sname, last_field) }
@@ -70,7 +75,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 45
+#define PJRT_API_MINOR 46
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -933,7 +938,7 @@ struct PJRT_Device_AddressableMemories_Args {
   PJRT_Memory* const* memories;  // out
   size_t num_memories;           // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_AddressableMemories_Args, memories);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_AddressableMemories_Args, num_memories);
 
 // Returns the memories that a device can address.
 typedef PJRT_Error* PJRT_Device_AddressableMemories(
@@ -1292,7 +1297,7 @@ struct PJRT_ExecuteOptions {
   const int64_t* non_donatable_input_indices;
   size_t num_non_donatable_input_indices;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, launch_id);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_non_donatable_input_indices);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;
