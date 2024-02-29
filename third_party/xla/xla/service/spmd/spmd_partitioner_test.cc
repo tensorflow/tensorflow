@@ -47,7 +47,7 @@ class SpmdPartitioningTest
     : public HloTestBase,
       public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
  public:
-  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+  absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_devices,
       bool conv_halo_exchange_always_on_lhs = true,
       bool choose_faster_windowed_einsum = false,
@@ -99,7 +99,7 @@ class SpmdPartitioningTest
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
 
     VerifyNoShardingOnCollectives(module.get());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   void VerifyNoShardingOnCollectives(HloModule* module) {

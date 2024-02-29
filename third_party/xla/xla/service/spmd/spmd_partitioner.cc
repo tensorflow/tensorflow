@@ -2406,7 +2406,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
         auto get_grouped_sharding =
             [&](const HloSharding& sharding, const Shape& shape,
                 const GroupedSharding* ref =
-                    nullptr) -> StatusOr<GroupedSharding> {
+                    nullptr) -> absl::StatusOr<GroupedSharding> {
           if (!sharding.IsTuple()) {
             GroupedSharding grouped =
                 hlo_sharding_util::GetManualSubgroupSharding(sharding);
@@ -2995,7 +2995,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
 
   auto shard_reshape =
       [](PartitionedHlo& operand, const HloSharding& sharding,
-         const Shape& base_shape) -> StatusOr<HloInstruction*> {
+         const Shape& base_shape) -> absl::StatusOr<HloInstruction*> {
     auto replicate = [&] {
       HloInstruction* rep = operand.Replicate().hlo();
       HloInstruction* reshape = operand.state().b->AddInstruction(
@@ -3156,11 +3156,11 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
 
   // Try to use PropagateShardingThroughReshape to find compatible dimensions,
   // then group them and recursively partition other dimensions.
-  std::function<StatusOr<HloInstruction*>(PartitionedHlo&, const HloSharding&,
-                                          const Shape&)>
+  std::function<absl::StatusOr<HloInstruction*>(
+      PartitionedHlo&, const HloSharding&, const Shape&)>
       recursive_shard =
           [&](PartitionedHlo& operand, const HloSharding& sharding,
-              const Shape& base_shape) -> StatusOr<HloInstruction*> {
+              const Shape& base_shape) -> absl::StatusOr<HloInstruction*> {
     const Shape& operand_base_shape = operand.base_shape();
     HloSharding propagated = hlo_sharding_util::PropagateShardingThroughReshape(
         operand_base_shape, base_shape, operand.sharding());
@@ -4639,7 +4639,7 @@ Status SpmdPartitioningVisitor::HandleTuple(HloInstruction* hlo) {
   return OkStatus();
 }
 
-StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
+absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
     HloComputation* computation, const HloSharding& root_sharding,
     const SpmdPartitionerOptions& options) {
   VLOG(2) << "Partitioning computation " << computation->name() << " for "
@@ -4925,7 +4925,7 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
   return result;
 }
 
-StatusOr<bool> SpmdPartitioner::PartitionComputation(
+absl::StatusOr<bool> SpmdPartitioner::PartitionComputation(
     HloComputation* computation, const HloSharding& root_sharding,
     int64_t* next_channel_id, SpmdLogger* logger, const CallGraph& call_graph) {
   auto visitor = CreateVisitor(computation, num_partitions_, num_replicas_,
@@ -4996,7 +4996,7 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   }
 }
 
-StatusOr<bool> SpmdPartitioner::Run(
+absl::StatusOr<bool> SpmdPartitioner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   set_execution_threads(execution_threads);

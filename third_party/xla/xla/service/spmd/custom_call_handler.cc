@@ -43,8 +43,8 @@ namespace spmd {
 
 namespace {
 
-StatusOr<absl::flat_hash_map<std::string, int64_t>> ParseOpaqueAsAttributes(
-    const HloInstruction* hlo) {
+absl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
+ParseOpaqueAsAttributes(const HloInstruction* hlo) {
   absl::string_view opaque = Cast<HloCustomCallInstruction>(hlo)->opaque();
   HloLexer lexer(opaque);
   absl::flat_hash_map<std::string, int64_t> result;

@@ -57,7 +57,7 @@ class PartitioningAlgorithm {
   int64_t num_partitions() const;
 
   // Assigns shardings to the given module.
-  virtual StatusOr<bool> Run(HloModule* module) const = 0;
+  virtual absl::StatusOr<bool> Run(HloModule* module) const = 0;
 
  protected:
   // Internal constructor for a given algorithm kind. Other fields must be
@@ -78,7 +78,7 @@ class NoopPartitioning : public PartitioningAlgorithm {
   explicit NoopPartitioning(int64_t num_partitions);
 
   // Assigns shardings to the given module.
-  StatusOr<bool> Run(HloModule* module) const override;
+  absl::StatusOr<bool> Run(HloModule* module) const override;
 };
 
 // PartitionAssignment assigns sharding annotations to some HLOs in the given
@@ -100,7 +100,7 @@ class PartitionAssignment : public HloModulePass {
 
   // Runs the pass.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
