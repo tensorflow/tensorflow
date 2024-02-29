@@ -86,6 +86,10 @@ void MergeOptions(const protobuf::MessageLite& source,
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
+// Maps the index of dataset elements to a globally shuffled index. See the
+// comment for IteratorContext::Params::index_mapper for more details.
+using IndexMapperFn = std::function<std::optional<int64_t>(int64_t)>;
+
 constexpr char kTFDataFunction[] = "_tf_data_function";
 
 constexpr int kInfiniteCardinality = -1;
@@ -787,9 +791,10 @@ class IteratorContext {
     RunMode run_mode = RunMode::DEFAULT;
 
     // Maps the index of dataset elements to a shuffled index. In other words,
-    // given an index i, returns the permuted index p(i) for the iterator. Used
-    // to support global shuffling of datasets that support random access.
-    std::function<int64_t(int64_t)> index_mapper = nullptr;
+    // given an index i, returns the permuted index p(i) for the iterator.
+    // Returns `std::nullopt` if the input index is out of range. Used to
+    // support global shuffling of datasets that support random access.
+    IndexMapperFn index_mapper = nullptr;
 
     // This is set when restoring a globally shuffled iterator. Records the
     // number of elements that have been produced prior to the checkpoint.
@@ -882,9 +887,7 @@ class IteratorContext {
 
   RunMode run_mode() { return params_.run_mode; }
 
-  std::function<int64_t(int64_t)> index_mapper() const {
-    return params_.index_mapper;
-  }
+  IndexMapperFn index_mapper() const { return params_.index_mapper; }
 
   std::optional<int64_t> element_count() const { return params_.element_count; }
 

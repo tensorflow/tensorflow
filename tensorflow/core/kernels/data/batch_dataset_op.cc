@@ -306,18 +306,18 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       return ctx_with_index_mapper;
     }
 
-    std::function<int64_t(int64_t)> GetIndexMapper(
-        std::function<int64_t(int64_t)> parent_index_mapper) const {
+    IndexMapperFn GetIndexMapper(IndexMapperFn parent_index_mapper) const {
       int64_t batch_size = dataset()->batch_size_;
-      return [parent_index_mapper, batch_size](int64_t element_position) {
+      return [parent_index_mapper,
+              batch_size](int64_t element_position) -> std::optional<int64_t> {
         int64_t batch_element_position = element_position / batch_size;
         int64_t input_element_offset = element_position % batch_size;
-        int64_t shuffled_element_position =
+        std::optional<int64_t> shuffled_element_position =
             parent_index_mapper(batch_element_position);
-        if (shuffled_element_position < 0) {
-          return shuffled_element_position;
+        if (!shuffled_element_position.has_value()) {
+          return std::nullopt;
         }
-        return shuffled_element_position * batch_size + input_element_offset;
+        return *shuffled_element_position * batch_size + input_element_offset;
       };
     }
 
