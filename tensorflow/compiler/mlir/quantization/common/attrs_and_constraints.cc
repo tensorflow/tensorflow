@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
@@ -40,7 +39,7 @@ bool HasStaticShape(Value value) {
   return shaped_type.hasStaticShape();
 }
 
-bool HasStaticShapeAtDims(Value value, ArrayRef<int> dims) {
+bool HasStaticShapeAtDims(Value value, const ArrayRef<int> dims) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();
   if (!shaped_type || !shaped_type.hasRank()) return false;
 
@@ -57,7 +56,7 @@ Type CloneTypeWithNewElementType(Type old_type, Type element_type) {
 }
 
 SmallVector<Value> CloneOpWithReplacedOperands(
-    OpBuilder& builder, Operation* op, const SmallVector<Value>& new_operands) {
+    OpBuilder& builder, Operation* op, const ArrayRef<Value> new_operands) {
   IRMapping mapping;
   for (const auto& arg : enumerate(new_operands)) {
     mapping.map(op->getOperand(arg.index()), arg.value());
@@ -99,12 +98,6 @@ StringRef GetEntryFunctionName(TF::XlaCallModuleOp op) {
   return op
       ->getAttrOfType<FlatSymbolRefAttr>(TF::kStablehloEntryFunctionAttrName)
       .getValue();
-}
-
-bool HasQuantizableTrait(Operation* op) {
-  return op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
-         op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
-             QuantTraitValues[QuantizationTrait::FullyQuantizable];
 }
 
 }  // namespace mlir::quant

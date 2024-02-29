@@ -28,14 +28,13 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
 namespace mlir::quant {
 
-constexpr char kQuantizeFuncName[] = "quantize_i8";
-constexpr char kDequantizeFuncName[] = "dequantize_i8";
 constexpr char kAttrMapAttribute[] = "attr_map";
 
 // TODO(b/238829558): Populate quantization config based on the
@@ -61,43 +60,46 @@ inline bool HasRankOf(Value value, const int64_t rank) {
 Type CloneTypeWithNewElementType(Type old_type, Type element_type);
 
 // Creates an array with integer/float type.
-template <typename T>
-Value CreateConstValue(OpBuilder &builder, Location loc,
-                       const SmallVector<int64_t> &shape,
-                       const SmallVector<T> &values) {
-  static_assert(std::is_integral_v<T> || std::is_same_v<T, float>);
-  if (std::is_integral_v<T>) {
+template <typename T,
+          typename = std::enable_if_t<
+              (std::is_integral_v<T> || std::is_same_v<T, float>), void>>
+Value CreateConstValue(OpBuilder& builder, const Location loc,
+                       const SmallVector<int64_t>& shape,
+                       const SmallVector<T>& values) {
+  if constexpr (std::is_integral_v<T>) {
     auto shape_type =
         RankedTensorType::get(shape, builder.getIntegerType(sizeof(T) * 8));
 
-    DenseIntElementsAttr attr = DenseIntElementsAttr::get(shape_type, values);
+    const auto attr = DenseIntElementsAttr::get(shape_type, values);
     return builder.create<TF::ConstOp>(loc, attr);
   }
 
-  auto type = RankedTensorType::get(shape, builder.getF32Type());
-  auto value_attr = DenseFPElementsAttr::get(type, values);
+  const auto type = RankedTensorType::get(shape, builder.getF32Type());
+  const auto value_attr = DenseFPElementsAttr::get(type, values);
   return builder.create<TF::ConstOp>(loc, value_attr);
 }
 
 // Creates a 1D array with integer/float type.
 template <typename T>
-Value Create1DConstValue(OpBuilder &builder, Location loc,
-                         const SmallVector<T> &values) {
+Value Create1DConstValue(OpBuilder& builder, const Location loc,
+                         const SmallVector<T>& values) {
   return CreateConstValue<T>(builder, loc,
                              {static_cast<int64_t>(values.size())}, values);
 }
 
-// Creates a scalar with integer/float type.
+// Creates a scalar with integer / float type.
 template <typename T>
-Value CreateScalarConstValue(OpBuilder &builder, Location loc, T value) {
-  return CreateConstValue<T>(builder, loc, {}, {value});
+Value CreateScalarConstValue(OpBuilder& builder, const Location loc,
+                             const T value) {
+  return CreateConstValue<T>(builder, loc, /*shape=*/{}, {value});
 }
 
 // Checks if the value is a constant and return its splat value.
-template <typename T>
-bool GetSplatValue(Value value, T &splat_value) {
-  static_assert(std::is_integral_v<T> || std::is_same_v<T, float>);
-  if (std::is_integral_v<T>) {
+template <typename T,
+          typename = std::enable_if_t<
+              (std::is_integral_v<T> || std::is_same_v<T, float>), void>>
+bool GetSplatValue(Value value, T& splat_value) {
+  if constexpr (std::is_integral_v<T>) {
     DenseIntElementsAttr value_attr;
     if (!matchPattern(value, m_Constant(&value_attr)) ||
         !value_attr.isSplat()) {
@@ -112,13 +114,12 @@ bool GetSplatValue(Value value, T &splat_value) {
     return false;
   }
   splat_value = value_attr.getSplatValue<T>();
-
   return true;
 }
 
 // Checks if the value is a constant and its splat value is equal to x.
 template <typename T>
-bool IsSplatValueEqual(Value value, T x) {
+bool IsSplatValueEqual(Value value, const T x) {
   T splat_value;
   if (!GetSplatValue(value, splat_value)) return false;
 
@@ -137,14 +138,15 @@ bool AreSplatValuesEqual(Value x, Value y) {
 }
 
 // Clones an operation with new operands while keeping attributes.
-SmallVector<Value> CloneOpWithReplacedOperands(
-    OpBuilder &builder, Operation *op, const SmallVector<Value> &new_operands);
+SmallVector<Value> CloneOpWithReplacedOperands(OpBuilder& builder,
+                                               Operation* op,
+                                               ArrayRef<Value> new_operands);
 
 // Tries casting `op` with a concrete op type `T`. If the cast fails or `op` is
 // a `nullptr`, returns `failure` and prints a debugging message identifying
 // the cast attempt as `name`.
 template <typename T>
-FailureOr<T> TryCast(Operation *op, const StringRef name) {
+FailureOr<T> TryCast(Operation* op, const StringRef name) {
   auto cast_op = dyn_cast_or_null<T>(op);
   if (cast_op) {
     return cast_op;
@@ -165,9 +167,9 @@ FailureOr<SmallVector<int32_t>> CastI64ArrayToI32(
 
 // Returns the first user of the given operation, optionally of the given
 // type if provided. If there is no user or user of type, return nullptr.
-template <typename T = Operation *>
-Operation *FindUserOfType(Operation *op) {
-  for (Operation *user : op->getUsers()) {
+template <typename T = Operation*>
+Operation* FindUserOfType(Operation* op) {
+  for (Operation* user : op->getUsers()) {
     if (isa<T>(user)) {
       return user;
     }
@@ -191,7 +193,11 @@ inline FlatSymbolRefAttr GetFuncAttr(TF::XlaCallModuleOp call_op) {
 StringRef GetEntryFunctionName(TF::XlaCallModuleOp op);
 
 // Checks whether the given op contains QuantizationTrait::FullyQuantizable.
-bool HasQuantizableTrait(Operation *op);
+inline bool HasQuantizableTrait(Operation* op) {
+  return op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
+         op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
+             QuantTraitValues[QuantizationTrait::FullyQuantizable];
+}
 
 }  // namespace mlir::quant
 
