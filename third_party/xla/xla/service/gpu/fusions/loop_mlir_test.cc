@@ -15,7 +15,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/loop_mlir.h"
 
 #include <memory>
-#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -263,6 +262,45 @@ ENTRY entry_computation {
     // CHECK-NEXT: divf
     // CHECK-NEXT: atan2
     // CHECK-NEXT: return
+    )")
+                  .value());
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
+}
+
+TEST_F(MlirLoopFusionTest, ComplexOps) {
+  auto kHloString = R"(
+HloModule test_module
+%fused_computation {
+  %p0 = f32[2]{0} parameter(0)
+  %p1 = f32[2]{0} parameter(1)
+  %p2 = c64[2]{0} parameter(2)
+  %complex = c64[2] complex(%p0, %p1)
+  ROOT %add = c64[2] add(%complex, %p2)
+}
+
+ENTRY entry_computation {
+  p0 = f32[2] parameter(0)
+  p1 = f32[2] parameter(1)
+  p2 = c64[2] parameter(2)
+  ROOT %fusion = c64[2] fusion(p0, p1, p2), kind=kLoop, calls=%fused_computation
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
+
+  ASSERT_TRUE(RunFileCheck(ir, R"(
+    // CHECK: func.func @fused_computation
+    // CHECK-NEXT: gpu.thread_id
+    // CHECK-NEXT: pure_call @fused_computation_add
+    // CHECK-NEXT: tensor.insert
+    // CHECK-NEXT: return
+
+    // CHECK: func.func private @fused_computation_add
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: complex.create
+    // CHECK-NEXT: tensor.extract
+    // CHECK-NEXT: complex.add
     )")
                   .value());
 

@@ -136,6 +136,42 @@ module {
 // -----
 
 module {
+  func.func @complex_tensor_insert(
+      %arg0: tensor<10xcomplex<f32>>) -> tensor<10xcomplex<f32>> {
+    %c1 = arith.constant 1 : index
+    %real = arith.constant 3.0 : f32
+    %imag = arith.constant 2.0 : f32
+    %complex = complex.create %real, %imag : complex<f32>
+    %out = tensor.insert %complex into %arg0[%c1] : tensor<10xcomplex<f32>>
+    func.return %out : tensor<10xcomplex<f32>>
+  }
+}
+
+// CHECK: @complex_tensor_insert(%[[ARG0:.*]]: !llvm.ptr
+// CHECK: %[[C:.*]] = complex.create
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[C]] : complex<f32> to !llvm.struct<(f32, f32)>
+// CHECK: llvm.store %[[CAST]], %[[GEP]] : !llvm.struct<(f32, f32)>, !llvm.ptr
+
+// -----
+
+module {
+  func.func @complex_tensor_extract(
+      %arg0: tensor<10xcomplex<f32>>) -> complex<f32> {
+    %c1 = arith.constant 1 : index
+    %v2 = tensor.extract %arg0[%c1] : tensor<10xcomplex<f32>>
+    func.return %v2 : complex<f32>
+  }
+}
+
+// CHECK: @complex_tensor_extract(%[[ARG0:.*]]: !llvm.ptr
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> !llvm.struct<(f32, f32)>
+// CHECK: builtin.unrealized_conversion_cast %[[LOAD]] : !llvm.struct<(f32, f32)> to complex<f32>
+
+// -----
+
+module {
   // This example is a bit silly, in real life there wouldn't be a loop (the
   // loop body would be executed by different threads). We're just doing it this
   // way so control flow with shared memory is tested as well.

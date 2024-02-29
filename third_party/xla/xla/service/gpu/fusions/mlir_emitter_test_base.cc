@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -45,11 +46,12 @@ namespace xla {
 namespace gpu {
 
 MlirEmitterTestBase::MlirEmitterTestBase() {
-  mlir_context_.loadDialect<
-      mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-      mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-      mlir::gpu::GPUDialect, xla::gpu::XlaGpuDialect>();
+  mlir_context_
+      .loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
+                   mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+                   mlir::complex::ComplexDialect, mlir::math::MathDialect,
+                   mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
+                   mlir::gpu::GPUDialect, xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir_context_.appendDialectRegistry(registry);

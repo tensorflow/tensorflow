@@ -25,6 +25,8 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"  // from @llvm-project
@@ -220,6 +222,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(CreatePropagateSliceIndicesPass());
   pm.addPass(CreateLowerFuncPass());
   pm.addPass(CreateLowerTensorsPass());
+  pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(CreateMergePointersToSameSlicePass());
 
   // LowerTensors creates new affine.apply ops. Fold and CSE them so
@@ -239,6 +242,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addPass(CreateExpandFloatConversionsPass(
       !device.cuda_compute_capability().IsAtLeastAmpere()));
   pm.addPass(CreateLowerToLLVMPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   TF_RET_CHECK(pm.run(module.get()).succeeded());
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);

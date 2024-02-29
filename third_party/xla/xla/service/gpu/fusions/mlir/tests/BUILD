@@ -15,6 +15,7 @@ xla_cc_binary(
         "//xla/service/gpu/fusions/mlir/ir:xla_gpu",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:GPUDialect",

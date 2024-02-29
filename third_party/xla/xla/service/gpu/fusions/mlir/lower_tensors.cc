@@ -109,10 +109,10 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
   }
 };
 
-mlir::Value CreateGep(mlir::Operation* op,
-                      mlir::TypedValue<mlir::RankedTensorType> tensor,
-                      mlir::ValueRange indices,
-                      mlir::PatternRewriter& rewriter) {
+mlir::LLVM::GEPOp CreateGep(mlir::Operation* op,
+                            mlir::TypedValue<mlir::RankedTensorType> tensor,
+                            mlir::ValueRange indices,
+                            mlir::PatternRewriter& rewriter) {
   auto ptr = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
   auto byte_shape = ShapeUtil::MakeShape(U8, tensor.getType().getShape());
   if (auto encoding = tensor.getType().getEncoding()) {
@@ -140,9 +140,11 @@ mlir::Value CreateGep(mlir::Operation* op,
                         .create<mlir::UnrealizedConversionCastOp>(
                             tensor.getLoc(), ptr, tensor)
                         .getResult(0);
+  mlir::LLVMTypeConverter converter(rewriter.getContext());
+  auto llvm_element_type =
+      converter.convertType(tensor.getType().getElementType());
   auto gep = rewriter.create<mlir::LLVM::GEPOp>(
-      tensor.getLoc(), ptr, tensor.getType().getElementType(), tensor_ptr,
-      index);
+      tensor.getLoc(), ptr, llvm_element_type, tensor_ptr, index);
   gep.setInbounds(true);
   return gep;
 }
@@ -154,7 +156,12 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
       mlir::tensor::ExtractOp op,
       mlir::PatternRewriter& rewriter) const override {
     auto gep = CreateGep(op, op.getTensor(), op.getIndices(), rewriter);
-    rewriter.replaceOpWithNewOp<mlir::LLVM::LoadOp>(op, op.getType(), gep);
+    auto load =
+        rewriter
+            .create<mlir::LLVM::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
+            .getResult();
+    rewriter.replaceOpWithNewOp<mlir::UnrealizedConversionCastOp>(
+        op, op.getType(), load);
     return success();
   }
 };
@@ -182,7 +189,14 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     auto gep =
         CreateGep(op, dest.cast<mlir::TypedValue<mlir::RankedTensorType>>(),
                   op.getIndices(), rewriter);
-    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), op.getScalar(), gep);
+    auto scalar_value = op.getScalar();
+    mlir::LLVMTypeConverter converter(getContext());
+    auto llvm_type = converter.convertType(scalar_value.getType());
+    scalar_value = rewriter
+                       .create<mlir::UnrealizedConversionCastOp>(
+                           gep.getLoc(), llvm_type, scalar_value)
+                       .getResult(0);
+    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), scalar_value, gep);
 
     op.replaceAllUsesWith(op.getDest());
     op.erase();

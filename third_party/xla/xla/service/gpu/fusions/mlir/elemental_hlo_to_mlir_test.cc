@@ -303,6 +303,24 @@ TEST_F(ElementalHloToMlirTest, Add) {
   )"));
 }
 
+TEST_F(ElementalHloToMlirTest, Complex) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      ROOT add = c64[4] complex(p0, p1)
+    })",
+                   R"(
+    // CHECK:      @main_add(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<4xf32>, %[[ARG1:.*]]: tensor<4xf32>,
+    // CHECK-SAME:     %[[X:.*]]: index {{.*}}
+    // CHECK:        %[[A:.*]] = tensor.extract %[[ARG0]][%[[X]]]
+    // CHECK:        %[[B:.*]] = tensor.extract %[[ARG1]][%[[X]]]
+    // CHECK:        %[[RET:.*]] = complex.create %[[A]], %[[B]]
+    // CHECK:        return %[[RET]]
+  )"));
+}
+
 TEST_F(ElementalHloToMlirTest, InjectedParameter) {
   TF_EXPECT_OK(Run(
       R"(

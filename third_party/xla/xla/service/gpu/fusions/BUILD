@@ -219,6 +219,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:GPUDialect",
