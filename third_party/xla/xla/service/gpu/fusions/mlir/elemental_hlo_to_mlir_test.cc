@@ -355,6 +355,24 @@ TEST_F(ElementalHloToMlirTest, InjectedParameter) {
       }));
 }
 
+TEST_F(ElementalHloToMlirTest, ScalarConstant) {
+  TF_EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[1,1] parameter(0)
+      c1 = f32[1,1] constant({{1.0}})
+      ROOT add = f32[1,1] add(p0, c1)
+    })",
+                   R"(
+    // CHECK:      @main_add(
+    // CHECK-SAME:     %[[ARG0:.*]]: tensor<1x1xf32>
+    // CHECK-SAME:     %[[X:.*]]: index {{.*}}, %[[Y:.*]]: index {{.*}}
+    // CHECK:        %[[C_1:.*]] = arith.constant 1
+    // CHECK:        %[[A:.*]] = tensor.extract %[[ARG0]][%[[X]], %[[Y]]]
+    // CHECK:        %[[RET:.*]] = arith.addf %[[A]], %[[C_1]]
+    // CHECK:        return %[[RET]]
+  })"));
+}
+
 }  // namespace
 }  // namespace mlir_converter
 }  // namespace gpu

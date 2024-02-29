@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -153,7 +154,8 @@ static auto& kUnimplementedOps = *new absl::flat_hash_set<HloOpcode>{
     HloOpcode::kMaximum, HloOpcode::kMinimum, HloOpcode::kClamp};
 
 bool IsUnsupportedConstant(const HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kConstant && instr->shape().rank() != 0;
+  return instr->opcode() == HloOpcode::kConstant &&
+         !ShapeUtil::IsEffectiveScalar(instr->shape());
 }
 
 bool IsUnsupportedTuple(const HloInstruction* instr) {
@@ -503,7 +505,7 @@ absl::StatusOr<llvm::SmallVector<Value>> HloToMlir(
     case HloOpcode::kConcatenate:
       return EmitConcat(instr, indices, operand_provider, builder);
     case HloOpcode::kConstant:
-      if (instr->shape().rank() == 0) {
+      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
         auto val = mlir::cast<mlir::TypedAttr>(
             CreateDenseElementsAttrFromLiteral(instr->literal(), builder)
                 ->getValues<mlir::Attribute>()[0]);
