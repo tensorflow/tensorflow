@@ -10056,6 +10056,62 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
   }
 }
 
+// Check that a spurious GetTupleElement instruction in a later iteration of a
+// loop does not cause MSA to CHECK fail, when identifying loops. Prior to the
+// change instroduced with this test, IdentifyAndOptimizeMemoryBoundLoops()
+// would recognize 4 iterations to the loop thinking that gte is a repeat of
+// op2. Doing so triggers the CHECKs introduced by the change that added this
+// test to fail. So, the point of this test is to verfiy that we do not check
+// fail.
+TEST_F(MemoryBoundLoopOptimizerTest, GetTupleElement) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[1,4] parameter(0)
+    p1 = f32[1,4] parameter(1)
+    p2 = f32[1,4] parameter(2)
+    p3 = f32[1,4] parameter(3)
+    p4 = f32[1,4] parameter(4)
+    p5 = f32[1,4] parameter(5)
+    p6 = f32[1,4] parameter(6)
+    tupleparam = (f32[1,4], f32[1,4]) parameter(7)
+
+    // Iteration 0
+    op1 = tanh(p0)
+    op2 = tanh(p1)
+    op3 = tanh(op2)
+    op4 = add(op1, op3)
+
+    // Iteration 1
+    op5 = tanh(p2)
+    op6 = tanh(p3)
+    op7 = tanh(op6)
+    op8 = add(op5, op7)
+
+    // Iteration 2
+    op9 = tanh(p4)
+    op10 = tanh(p5)
+    op11 = tanh(op10)
+    op12 = add(op9, op11)
+
+    // Not an iteration
+    op13 = tanh(p6)
+    gte = get-tuple-element(tupleparam), index=1
+    op14 = tanh(gte)
+    op15 = tanh(op14)
+    op16 = add(op13, op15)
+
+    ROOT root = tuple(tupleparam, op4, op8, op12, op16)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments, RunMsa(module.get()));
+}
+
 TEST_F(MemoryBoundLoopOptimizerTest, NoAlternateMem) {
   absl::string_view hlo_loop_str = R"(
     $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
