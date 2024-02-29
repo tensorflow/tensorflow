@@ -17,9 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_GPU_CUSOLVER_CONTEXT_H_
 
 #include <complex>
+#include <cstdint>
 #include <memory>
+#include <type_traits>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 
 #define TENSORFLOW_USE_HIPSOLVER \
   (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION >= 40500))
@@ -44,7 +47,6 @@ using gpusolverHandle_t = rocblas_handle;
 #endif  // TF_ROCM_VERSION >= 40500
 #endif  // TENSORFLOW_USE_ROCM
 
-#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"

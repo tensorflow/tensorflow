@@ -13,16 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -30,11 +41,12 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
 #include "xla/tests/filecheck.h"
 #include "xla/xla.pb.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"

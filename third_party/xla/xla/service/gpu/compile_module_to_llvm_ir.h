@@ -18,21 +18,25 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 
 namespace xla {

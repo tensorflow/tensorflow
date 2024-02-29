@@ -16,25 +16,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 #define XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "absl/log/log.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

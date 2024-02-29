@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
 
+#include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {

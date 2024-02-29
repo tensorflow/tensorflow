@@ -16,12 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_GPUBLAS_LT_MATMUL_THUNK_H_
 
+#include <cstdint>
 #include <optional>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {

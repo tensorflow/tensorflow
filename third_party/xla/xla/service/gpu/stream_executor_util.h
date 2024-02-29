@@ -16,20 +16,26 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 #define XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string_view>
+#include <tuple>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 // Helper functions for interacting with StreamExecutor.

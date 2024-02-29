@@ -19,7 +19,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/thunk.h"

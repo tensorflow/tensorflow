@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_OUTFEED_MANAGER_H_
 #define XLA_SERVICE_GPU_OUTFEED_MANAGER_H_
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"

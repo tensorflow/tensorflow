@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_CUSTOM_KERNEL_FUSION_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {

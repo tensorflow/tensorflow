@@ -22,9 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "xla/service/collective_ops_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {

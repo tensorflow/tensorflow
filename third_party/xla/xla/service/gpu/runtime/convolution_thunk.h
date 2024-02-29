@@ -16,13 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {

@@ -16,13 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"

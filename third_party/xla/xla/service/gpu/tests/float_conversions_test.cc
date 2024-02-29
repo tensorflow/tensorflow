@@ -16,7 +16,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tests/test_utils.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

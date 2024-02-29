@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
 #define XLA_SERVICE_GPU_RUNTIME_ANNOTATION_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>

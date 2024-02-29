@@ -16,10 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 #define XLA_SERVICE_GPU_PARALLEL_LOOP_EMITTER_H_
 
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {

@@ -16,17 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 #define XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 
+#include <memory>
 #include <optional>
+#include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

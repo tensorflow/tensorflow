@@ -15,17 +15,19 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <cstdint>
 #include <memory>
 
-#include "xla/client/global_data.h"
-#include "xla/client/lib/arithmetic.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/shape_util.h"
+#include "xla/literal_util.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "tsl/platform/env.h"
 
 namespace xla {

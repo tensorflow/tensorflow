@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"

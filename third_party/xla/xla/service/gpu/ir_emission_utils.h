@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/shape.h"

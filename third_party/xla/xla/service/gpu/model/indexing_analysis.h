@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_INDEXING_ANALYSIS_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <ostream>
 #include <string>
@@ -25,7 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

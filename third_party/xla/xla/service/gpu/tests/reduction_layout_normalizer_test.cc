@@ -16,13 +16,10 @@ limitations under the License.
 #include "xla/service/gpu/reduction_layout_normalizer.h"
 
 #include <optional>
-#include <utility>
 
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/tests/filecheck.h"
+#include "absl/strings/string_view.h"
+#include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
