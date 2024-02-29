@@ -39,9 +39,9 @@ defvar MHLO_Complex = HLO_Complex;
 
 // Integer-based uniform quantized types. The definitions can be used to specify
 // operand's tensor types.
-defvar MHLO_QuantizedSignedInt = HLO_QuantizedSignedInt;
-defvar MHLO_QuantizedUnsignedInt = HLO_QuantizedUnsignedInt;
-defvar MHLO_QuantizedInt = HLO_QuantizedInt;
+defvar MHLO_QuantizedSignedInt = AnyTypeOf<[HLO_QuantizedSignedInt, HLO_PerAxisQuantizedSignedInt]>;
+defvar MHLO_QuantizedUnsignedInt = AnyTypeOf<[HLO_QuantizedUnsignedInt, HLO_PerAxisQuantizedUnsignedInt]>;
+defvar MHLO_QuantizedInt = AnyTypeOf<[HLO_QuantizedSignedInt, HLO_PerAxisQuantizedSignedInt, HLO_QuantizedUnsignedInt, HLO_PerAxisQuantizedUnsignedInt]>;
 
 // The broadcasting dimensions correspond to a tuple that describes how a
 // smaller rank shape is broadcast into a larger rank shape. For example,
@@ -65,11 +65,11 @@ defvar MHLO_FpTensor = HLO_FpTensor;
 defvar MHLO_Fp32Or64Tensor = HLO_Fp32Or64Tensor;
 
 // Any quantized integer tensor types
-defvar MHLO_QuantizedIntTensor = HLO_QuantizedIntTensor;
+defvar MHLO_QuantizedIntTensor = HLO_QuantizedIntOrPerAxisQuantizedIntTensor;
 
 defvar MHLO_PredTensor = HLO_PredTensor;
 
-defvar MHLO_Tensor = HLO_Tensor;
+defvar MHLO_Tensor = HLO_TensorOrPerAxisQuantizedTensor;
 
 defvar MHLO_AnyTensor = HLO_AnyTensor;
 
@@ -77,7 +77,7 @@ defvar MHLO_ComplexTensor = HLO_ComplexTensor;
 
 defvar MHLO_Tuple = HLO_Tuple;
 
-defvar MHLO_TensorOrToken = HLO_TensorOrToken;
+defvar MHLO_TensorOrToken = HLO_TensorOrPerAxisQuantizedTensorOrToken;
 
 defvar MHLO_TensorOrTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_Token, MHLO_Tuple]>;
 
@@ -107,7 +107,7 @@ defvar MHLO_FpOrComplexTensor = HLO_FpOrComplexTensor;
 defvar MHLO_FpComplexOrQuantizedIntTensor = HLO_FpComplexOrQuantizedIntTensor;
 
 // Any int, floating-point, complex or quantized tensor types
-defvar MHLO_IntFpOrComplexOrQuantizedIntTensor = HLO_IntFpOrComplexOrQuantizedIntTensor;
+defvar MHLO_IntFpOrComplexOrQuantizedIntTensor = RankedTensorOf<[HLO_Int, HLO_Float, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt]>;
 
 // Any pred, int or floating-point tensor types
 defvar MHLO_PredIntOrFpTensor = HLO_PredIntOrFpTensor;
@@ -121,9 +121,9 @@ defvar MHLO_PredIntFpOrQuantizedTensor = HLO_PredIntFpOrQuantizedTensor;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
-defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensor;
+defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensorOrPerAxisQuantizedTensor;
 
-defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrToken;
+defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken;
 
 defvar MHLO_StaticShapeIntOrFpTensor = HLO_StaticShapeIntOrFpTensor;
 

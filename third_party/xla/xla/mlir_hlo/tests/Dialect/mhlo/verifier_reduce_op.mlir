@@ -471,7 +471,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 // -----
 
 func.func @reduce_parsing_pretty_reduce_non_commutative(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
-  // expected-error@+1 {{expected the inner-op to be a commutative binary-op that matching the reduce op dialect, with zero region, producing single result}}
+  // expected-error@+1 {{expected the inner-op to be a commutative binary-op from the mhlo dialect, with zero region, producing single result}}
  %0 = mhlo.reduce(%arg0 init: %arg1) applies mhlo.divide across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
  func.return %0 : tensor<?xf32>
 }
@@ -479,7 +479,7 @@ func.func @reduce_parsing_pretty_reduce_non_commutative(%arg0: tensor<?x?xf32> ,
 // -----
 
 func.func @reduce_parsing_pretty_reduce_wrong_dialect(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
-  // expected-error@+1 {{expected the inner-op to be a commutative binary-op that matching the reduce op dialect, with zero region, producing single result}}
+  // expected-error@+1 {{expected the inner-op to be a commutative binary-op from the mhlo dialect, with zero region, producing single result}}
  %0 = mhlo.reduce(%arg0 init: %arg1) applies std.add across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
  func.return %0 : tensor<?xf32>
 }
@@ -487,7 +487,7 @@ func.func @reduce_parsing_pretty_reduce_wrong_dialect(%arg0: tensor<?x?xf32> , %
 // -----
 
 func.func @reduce_parsing_pretty_reduce_non_binary(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
-  // expected-error@+1 {{expected the inner-op to be a commutative binary-op that matching the reduce op dialect, with zero region, producing single result}}
+  // expected-error@+1 {{expected the inner-op to be a commutative binary-op from the mhlo dialect, with zero region, producing single result}}
  %0 = mhlo.reduce(%arg0 init: %arg1) applies mhlo.reshape across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
  func.return %0 : tensor<?xf32>
 }
