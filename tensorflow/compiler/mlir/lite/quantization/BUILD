@@ -109,6 +109,7 @@ cc_library(
     ],
     deps = [
         ":quantization_config",
+        ":quantization_interfaces_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",

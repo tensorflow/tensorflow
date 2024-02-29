@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
-#include <algorithm>
 #include <ios>
 #include <optional>
 #include <sstream>
@@ -29,7 +28,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/core/framework/types.pb.h"
 
-// Is this dtype a quantization type from TensorFlow.
+// Returns whether the given dtype is a quantization type in TensorFlow.
 static bool IsQuantizationType(tensorflow::DataType dtype) {
   switch (dtype) {
     case tensorflow::DT_QINT8:
@@ -54,23 +53,23 @@ bool GetBooleanSpecs(const std::string& bool_val) {
 }
 }  // namespace
 
-void ParseCustomOpSpecs(absl::string_view node_names,
+void ParseCustomOpSpecs(const absl::string_view node_names,
                         const CustomOpUpdateOptions& update_option,
                         CustomOpMap& custom_op_map) {
   if (node_names.empty()) return;
 
-  std::vector<std::string> custom_nodes = absl::StrSplit(node_names, ',');
+  const std::vector<std::string> custom_nodes = absl::StrSplit(node_names, ',');
 
-  for (auto& cur_node : custom_nodes) {
-    std::vector<std::string> node_infos = absl::StrSplit(cur_node, '=');
-    std::string node_name = node_infos[0];
-    auto node_specification = node_infos[1];
+  for (const std::string& cur_node : custom_nodes) {
+    const std::vector<std::string> node_infos = absl::StrSplit(cur_node, '=');
+    const std::string& node_name = node_infos[0];
+    const std::string& node_specification = node_infos[1];
     CustomOpInfo new_node_info;
     switch (update_option) {
       case CustomOpUpdateOptions::kInputIndices: {
-        std::vector<std::string> indices =
+        const std::vector<std::string> indices =
             absl::StrSplit(node_specification, '-');
-        for (auto& cur_index : indices) {
+        for (const std::string& cur_index : indices) {
           custom_op_map[node_name].quantizable_input_indices.push_back(
               std::stoi(cur_index));
         }
@@ -88,18 +87,19 @@ void ParseCustomOpSpecs(absl::string_view node_names,
   }
 }
 
-bool ParseInputNodeQuantSpecs(absl::string_view node_names,
-                              absl::string_view min_values,
-                              absl::string_view max_values,
-                              absl::string_view inference_type,
+bool ParseInputNodeQuantSpecs(const absl::string_view node_names,
+                              const absl::string_view min_values,
+                              const absl::string_view max_values,
+                              const absl::string_view inference_type,
                               QuantizationSpecs* quant_specs) {
-  std::vector<std::string> input_nodes = absl::StrSplit(node_names, ',');
+  const std::vector<std::string> input_nodes = absl::StrSplit(node_names, ',');
   std::vector<std::optional<double>> node_mins;
   if (!min_values.empty()) {
     std::vector<std::string> node_mins_str = absl::StrSplit(min_values, ',');
-    for (int i = 0, e = node_mins_str.size(); i < e; i++) {
+    for (const std::string& node_mins_str : node_mins_str) {
       double value;
-      if (!absl::SimpleAtod(node_mins_str[i], &value)) {
+      if (!absl::SimpleAtod(node_mins_str, &value)) {
+        llvm::errs() << "Unexpected mins: " << node_mins_str << "\n";
         return true;
       }
       node_mins.push_back(value);
@@ -108,11 +108,12 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
 
   std::vector<std::optional<double>> node_maxs;
   if (!max_values.empty()) {
-    std::vector<std::string> node_maxs_str = absl::StrSplit(max_values, ',');
-    for (int i = 0, e = node_maxs_str.size(); i < e; i++) {
+    const std::vector<std::string> node_maxs_str =
+        absl::StrSplit(max_values, ',');
+    for (const std::string& node_maxs_str : node_maxs_str) {
       double value;
-      if (!absl::SimpleAtod(node_maxs_str[i], &value)) {
-        llvm::errs() << "Unexpected mins: " << node_maxs_str[i] << "\n";
+      if (!absl::SimpleAtod(node_maxs_str, &value)) {
+        llvm::errs() << "Unexpected mins: " << node_maxs_str << "\n";
         return true;
       }
       node_maxs.push_back(value);
@@ -131,7 +132,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
 bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
                             const std::vector<std::optional<double>>& node_mins,
                             const std::vector<std::optional<double>>& node_maxs,
-                            tensorflow::DataType inference_type,
+                            const tensorflow::DataType inference_type,
                             QuantizationSpecs* quant_specs) {
   quant_specs->inference_type = inference_type;
 
@@ -145,7 +146,7 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
         node_names.size() != node_maxs.size()) {
       return true;
     }
-    for (int i = 0, e = node_names.size(); i != e; ++i) {
+    for (int i = 0; i < node_names.size(); ++i) {
       quant_specs->input_ranges.push_back({node_mins[i], node_maxs[i]});
     }
     return false;
@@ -159,7 +160,7 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
   return false;
 }
 
-std::string GetQDQQuantModeString(QDQConversionMode mode) {
+std::string GetQDQQuantModeString(const QDQConversionMode mode) {
   switch (mode) {
     case QDQConversionMode::kQDQStatic:
       return "Static";

@@ -59,8 +59,8 @@ namespace tensorflow {
 namespace internal {
 namespace {
 
-using ::mlir::quant::ReducedPrecisionSupport;
 using ::tensorflow::quantization::PyFunctionLibrary;
+using ::tflite::optimize::ReducedPrecisionSupport;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 constexpr mlir::StringRef kDetectionPostProcessOp =

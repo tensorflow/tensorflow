@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
@@ -42,7 +41,6 @@ struct CustomOpInfo {
   bool no_side_effect = true;
 };
 
-using ::tflite::optimize::ReducedPrecisionSupport;
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
 enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
@@ -51,23 +49,22 @@ struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
   std::string target_func = "main";
 
-  // Whether the quantization passes are triggered for post-training
-  // quantization. If it is true, the model input doesn't require user specified
-  // input ranges.
+  // Whether to trigger quantization passses for post-training quantization.
+  // If true, the model input doesn't require user specified input ranges.
   bool post_training_quantization = false;
 
-  // Whether allow dynamic range quantization. This is the easiest quantization
-  // mode which doesn't require QAT or sample inputs. But it can only target
-  // DT_HALF and DT_QINT8 inference type.
+  // Whether to allow dynamic range quantization. This is the easiest
+  // quantization mode which doesn't require QAT or sample inputs.
+  // This option only targets `DT_HALF` and `DT_QINT8` inference type.
   bool weight_quantization = false;
 
-  // Whether use the MLIR dynamic range quantizer instead of the old TOCO one.
+  // Whether to use the MLIR dynamic range quantizer instead of TOCO.
   bool enable_mlir_dynamic_range_quantizer = false;
 
-  // Whether allow weight-only quantization. This scheme quantize weights but
-  // will dequantize them back at runtime which is useful to save memory when
-  // the kernel support is not yet avilable in lower precisions. Used in MLIR
-  // dynamic range quantizer.
+  // Whether to allow weight-only quantization. This scheme quantizes
+  // weights but will dequantize them back at runtime which is useful for
+  // memory bound case without kernel support available in lower precisions.
+  // Used in MLIR dynamic range quantizer.
   bool weight_only_quantization = false;
 
   // The minimum number of elements in a weights array required to apply
@@ -76,29 +73,29 @@ struct QuantizationSpecs {
   // in MLIR dynamic range quantizer with int8 weight data type.
   int64_t minimum_elements_for_weights = 1024;
 
-  // Calculate scales in float to keep quantized values the same with old TOCO
-  // quantizer.
+  // Whether to calculate scales in float to keep quantized values the same with
+  // old TOCO quantizer.
   bool legacy_float_scale = false;
 
-  // When set to true, quantization will be done per-tensor. Currently, this
-  // option is only valid when the quantization parameters need to be created by
-  // scanning the constant content (post-training quantization or QAT without
-  // weight FakeQuant).
+  // Whether to perform per-tensor quantization. Currently, this option is only
+  // valid when the quantization parameters need to be created by scanning the
+  // constant content (post-training quantization or QAT without weight
+  // FakeQuant).
   bool disable_per_channel = false;
 
-  // Disables per channel weights quantization for Dense layers and enables
-  // legacy per tensor quantization. The legacy quantization for Dense layers is
+  // Whether to disable per-channel weight quantization and enable legacy per
+  // tensor quantization. The legacy quantization for Dense layers is
   // inconsistent with Conv 1x1 which always performs per channel quantization.
   bool disable_per_channel_for_dense_layers = false;
 
-  // When set to true, the fixed output ranges of the activation ops (tanh,
-  // sigmoid, etc.) and the weight constants are not inferred. Then, to quantize
-  // these ops, quantization emulation ops should be placed after the ops in the
-  // input graph. This flag should be set to false for post-training
-  // quantization.
+  // Whether to use fixed output ranges of the activation ops (tanh, sigmoid,
+  // etc.) and not infer weight constants.
+  // If this option is set, quantization emulation ops should be placed after
+  // the ops in the input graph. This flag should be set to false for
+  // post-training quantization.
   bool disable_infer_tensor_range = false;
 
-  // Whether use the unfrozen variable quantization in MLIR. Typically,
+  // Whether to use the unfrozen variable quantization in MLIR. Typically,
   // variables are frozen for passing passes, but some variables aren't frozen.
   // If it is true, QuantizeVariables pass will be added after the
   // PrepareQuantizePass.
@@ -137,19 +134,20 @@ struct QuantizationSpecs {
   std::string serialized_quant_stats = "";
 
   // A bitmask to encode support for reduced precision inference in the model.
-  ReducedPrecisionSupport support_mask = ReducedPrecisionSupport::None;
+  tflite::optimize::ReducedPrecisionSupport support_mask =
+      tflite::optimize::ReducedPrecisionSupport::None;
 
-  // Whether run the passes to propagate the quantization parameters and graph
-  // rewrites. Returns false if the inference_type is DT_FLOAT or
+  // Whether to run the passes to propagate the quantization parameters and
+  // graph rewrites. Returns false if the inference_type is DT_FLOAT or
   // `weight_quantization` flag is set.
   bool RunPropagationAndRewriteQuantizationPasses() const {
     return inference_type != tensorflow::DT_FLOAT && !weight_quantization;
   }
 
-  // TODO(b/202075505): make implicit weight type clearer
+  // TODO: b/202075505 - make implicit weight type clearer
   // Whether run the passes and graph rewrites for dynamic range quantization.
   bool RunAndRewriteDynamicRangeQuantizationPasses() const {
-    // TODO(b/201389248): add condition that symmetric, signed, int8 only
+    // TODO: b/201389248 - add condition that symmetric, signed, int8 only
     // If fail, log will appear to let user know nothing happened.
     bool dynamic_range_quantize =
         (inference_type != tensorflow::DT_FLOAT) && weight_quantization &&
@@ -158,7 +156,7 @@ struct QuantizationSpecs {
     return dynamic_range_quantize;
   }
 
-  // Whether this inference type represents a signed storage type.
+  // Returns whether this inference type represents a signed storage type.
   bool IsSignedInferenceType() const {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
@@ -191,7 +189,7 @@ struct QuantizationSpecs {
     }
   }
 
-  // Whether add the NumericVerify ops to verify numbers before and after
+  // Whether to add the NumericVerify ops to verify numbers before and after
   // quantization.
   bool verify_numeric = false;
   // Whether to add verification for layer by layer, or on whole model. When
@@ -244,7 +242,7 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
                             tensorflow::DataType inference_type,
                             QuantizationSpecs* quant_specs);
 
-// Return a human-readable string of the QDQQuantMode enum class
+// Returns a human-readable string of the QDQQuantMode enum class
 std::string GetQDQQuantModeString(QDQConversionMode mode);
 }  // namespace quant
 }  // namespace mlir
