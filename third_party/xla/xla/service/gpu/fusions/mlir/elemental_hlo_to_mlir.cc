@@ -758,11 +758,13 @@ bool IsHloOpSupported(const HloInstruction* instr,
   auto is_unsupported_type = [](const HloInstruction* instr) {
     auto e = instr->shape().element_type();
     // TODO(jreiffers): Convert to signless.
+    // TODO(akuegel): Fix remaining issues with complex.
     // TODO(jreiffers): Support fp8, fp16, bf16.
     // TODO(jreiffers): Support int4.
     return (primitive_util::IsIntegralType(e) &&
             primitive_util::BitWidth(e) > 1 &&
             primitive_util::BitWidth(e) < 8) ||
+           primitive_util::IsComplexType(e) ||
            primitive_util::IsUnsignedIntegralType(e) ||
            (primitive_util::IsFloatingPointType(e) &&
             primitive_util::BitWidth(e) < 32);
