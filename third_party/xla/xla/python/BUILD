@@ -1126,6 +1126,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/cpu:cpu_client",

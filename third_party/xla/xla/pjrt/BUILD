@@ -363,6 +363,17 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_layout",
+    hdrs = ["pjrt_layout.h"],
+    visibility = ["//xla:friends"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla/service:hlo_parser",
+    ],
+)
+
+cc_library(
     name = "layout_mode",
     srcs = ["layout_mode.cc"],
     hdrs = ["layout_mode.h"],
