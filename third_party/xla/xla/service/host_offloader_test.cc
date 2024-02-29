@@ -47,7 +47,7 @@ class HostOffloaderTest : public HloTestBase {
  protected:
   static constexpr int64_t kHostMemorySpaceColor{5};
 
-  StatusOr<bool> RunHostOffloader(HloModule* module) {
+  absl::StatusOr<bool> RunHostOffloader(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
@@ -586,7 +586,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  StatusOr<bool> statusOrChanged = RunHostOffloader(module.get());
+  absl::StatusOr<bool> statusOrChanged = RunHostOffloader(module.get());
   // The pass should return an error.
   ASSERT_FALSE(statusOrChanged.ok());
 }
@@ -611,7 +611,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  StatusOr<bool> statusOrChanged = RunHostOffloader(module.get());
+  absl::StatusOr<bool> statusOrChanged = RunHostOffloader(module.get());
   // The pass should return an error.
   ASSERT_FALSE(statusOrChanged.ok());
 }

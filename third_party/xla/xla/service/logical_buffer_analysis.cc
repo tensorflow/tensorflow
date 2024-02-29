@@ -43,7 +43,7 @@ void GatherFusionInstructions(
 
 }  // namespace
 
-/* static */ StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
+/* static */ absl::StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
 LogicalBufferAnalysis::Run(const HloModule* module) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
       new LogicalBufferAnalysis(module));

@@ -89,7 +89,7 @@ using EinsumDepthMap =
 
 class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
  public:
-  static StatusOr<std::unique_ptr<EinsumDepthAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<EinsumDepthAnalysis>> Run(
       const HloComputation& computation,
       const SendRecvGroupMap& send_recv_group_map);
   ~EinsumDepthAnalysis() override = default;
@@ -141,7 +141,7 @@ using EinsumHeightMap =
 
 class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
  public:
-  static StatusOr<std::unique_ptr<EinsumHeightAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<EinsumHeightAnalysis>> Run(
       const HloComputation& computation,
       const SendRecvGroupMap& send_recv_group_map);
   ~EinsumHeightAnalysis() override = default;
@@ -238,7 +238,7 @@ class HloValueSemanticsPropagation;
 
 class HloValueSemanticsAnalysis {
  public:
-  static StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloValueSemanticsAnalysis>> Run(
       const HloModule& module);
   virtual ~HloValueSemanticsAnalysis() = default;
   bool HasSemanticsFor(const HloInstruction* instruction) const;
@@ -262,7 +262,7 @@ class HloValueSemanticsAnalysis {
     return *send_recv_group_map_;
   }
 
-  StatusOr<HloInstruction*> GetMatchingSendOrRecv(
+  absl::StatusOr<HloInstruction*> GetMatchingSendOrRecv(
       HloInstruction* send_or_recv) const;
 
  protected:
@@ -384,34 +384,35 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   bool OriginDependsOn(const HloValueSemantics& semantics,
                        const HloPosition& origin_dependence,
                        bool recursive = false) const;
-  StatusOr<HloValueSemantics> MaybeCreateGradientSemantics(
+  absl::StatusOr<HloValueSemantics> MaybeCreateGradientSemantics(
       HloInstruction* gradient_candidate,
       HloValueSemanticLabel fallback_label) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromStaticAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromStaticAndOther(
       const HloValueSemantics& static_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromRandomAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromRandomAndOther(
       const HloValueSemantics& random_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromWeightAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromWeightAndOther(
       const HloValueSemantics& weight_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromActivationAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromActivationAndOther(
       const HloValueSemantics& activation_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromActivationGradientAndOther(
+  absl::StatusOr<HloValueSemantics>
+  ComputeSemanticsFromActivationGradientAndOther(
       const HloValueSemantics& activation_gradient_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromWeightGradientAndOther(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromWeightGradientAndOther(
       const HloValueSemantics& weight_gradient_semantics,
       const HloValueSemantics& other_semantics,
       HloInstruction* instruction) const;
-  StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
+  absl::StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
       absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
   Status HandleTupleLike(HloInstruction* tuple_like);

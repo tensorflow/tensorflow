@@ -82,8 +82,8 @@ bool DefiningPositionIsAllowed(const HloInstruction* instruction) {
 }
 
 template <typename MatcherType>
-StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
-                                                    MatcherType matcher) {
+absl::StatusOr<HloInstruction*> BufferHasPositionWithUser(
+    const HloBuffer& buffer, MatcherType matcher) {
   HloInstruction* result = nullptr;
   for (const HloValue* value : buffer.values()) {
     for (const HloPosition& position : value->positions()) {
@@ -102,7 +102,7 @@ StatusOr<HloInstruction*> BufferHasPositionWithUser(const HloBuffer& buffer,
 }
 
 template <typename MatcherType>
-StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
+absl::StatusOr<std::vector<HloInstruction*>> GetBufferUsersOfType(
     const HloBuffer& buffer, MatcherType matcher) {
   std::vector<HloInstruction*> result;
   for (const HloValue* value : buffer.values()) {
@@ -511,7 +511,7 @@ Status HostOffloader::DynamifySlice(HloInstruction* slice) {
   return OkStatus();
 }
 
-StatusOr<bool> HostOffloader::Run(
+absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -1887,8 +1887,9 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   return OkStatus();
 }
 
-Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
-                                 const StatusOr<Shape>& inferred_shape_status) {
+Status ShapeVerifier::CheckShape(
+    const HloInstruction* instruction,
+    const absl::StatusOr<Shape>& inferred_shape_status) {
   if (!inferred_shape_status.ok()) {
     Status s = inferred_shape_status.status();
     tsl::errors::AppendToMessage(&s, ", for instruction ",
@@ -2786,14 +2787,14 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-StatusOr<bool> HloVerifier::Run(
+absl::StatusOr<bool> HloVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;
   }
-  auto status_or_changed = [&]() -> StatusOr<bool> {
+  auto status_or_changed = [&]() -> absl::StatusOr<bool> {
     TF_RET_CHECK(!module->name().empty());
 
     if (module->entry_computation()->IsFusionComputation()) {

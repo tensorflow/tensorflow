@@ -1370,7 +1370,7 @@ int64_t ReplicaCount(const std::vector<std::vector<int64_t>>& replica_groups) {
   return replica_count;
 }
 
-StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
+absl::StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count, std::optional<int64_t> num_partitions,
     absl::string_view other_attributes, absl::string_view template_str) {
@@ -1388,7 +1388,7 @@ StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
       config);
 }
 
-StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
+absl::StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count = std::nullopt,
     std::optional<int64_t> num_partitions = std::nullopt,
@@ -1581,7 +1581,7 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
                         "needs to be all-reduce-start, found tuple"));
 }
 
-StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
+absl::StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count = std::nullopt,
     std::optional<int64_t> num_partitions = std::nullopt,

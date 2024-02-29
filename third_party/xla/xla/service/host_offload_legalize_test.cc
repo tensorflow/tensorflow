@@ -46,7 +46,7 @@ class HostOffloadLegalizeTest : public HloTestBase {
  protected:
   static constexpr int64_t kHostMemorySpaceColor{5};
 
-  StatusOr<bool> RunHostOffloadLegalize(HloModule* module) {
+  absl::StatusOr<bool> RunHostOffloadLegalize(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
