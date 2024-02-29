@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"

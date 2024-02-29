@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_MLIR_EMITTER_TEST_BASE_H_
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_EMITTER_TEST_BASE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -33,21 +34,34 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class MlirEmitterTestBase : public HloTestBase {
+class MlirEmitterTestBaseImpl : public HloTestBase {
  public:
-  MlirEmitterTestBase();
+  MlirEmitterTestBaseImpl();
 
   virtual std::unique_ptr<MlirFusionEmitterBase> GetEmitter(
       const HloFusionAnalysis& analysis) = 0;
 
   DebugOptions GetDebugOptionsForTest() override;
 
-  absl::StatusOr<std::string> EmitIR(std::string_view hlo_string);
+  absl::Status EmitAndCheckIR(std::string_view hlo_string,
+                              std::string_view pattern);
 
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;
   AffineMapPrinter thread_id_printer_;
+
+ private:
+  absl::StatusOr<std::string> EmitIR(std::string_view hlo_string);
+};
+
+template <typename EmitterType>
+class MlirEmitterTestBase : public MlirEmitterTestBaseImpl {
+ public:
+  std::unique_ptr<MlirFusionEmitterBase> GetEmitter(
+      const HloFusionAnalysis& analysis) override {
+    return std::make_unique<EmitterType>(analysis);
+  }
 };
 
 }  // namespace gpu

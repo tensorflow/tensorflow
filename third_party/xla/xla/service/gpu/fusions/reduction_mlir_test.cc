@@ -14,28 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/reduction_mlir.h"
 
-#include <memory>
 #include <optional>
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/tests/filecheck.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class ReductionTest : public MlirEmitterTestBase {
- public:
-  std::unique_ptr<MlirFusionEmitterBase> GetEmitter(
-      const HloFusionAnalysis& analysis) override {
-    return std::make_unique<MlirReductionFusion>(analysis);
-  }
-};
+using ReductionTest = MlirEmitterTestBase<MlirReductionFusion>;
 
 TEST_F(ReductionTest, VariadicRowReduce) {
   constexpr auto kHloString = R"(
@@ -50,24 +42,21 @@ TEST_F(ReductionTest, VariadicRowReduce) {
       add.1 = f32[] add(scalar_rhs.0, scalar_rhs.1)
       ROOT t = (f32[], f32[]) tuple(add.0, add.1)
     }
-
     fused_computation {
       param_0 = f32[5,200,300] parameter(0)
       param_1 = f32[5,200,300] parameter(1)
       param_2 = f32[] parameter(2)
-      ROOT d.1 = (f32[5,200], f32[5,200]) reduce(param_0, param_1, param_2, param_2), dimensions={2}, to_apply=Add
+      ROOT d.1 = (f32[5,200], f32[5,200])
+        reduce(param_0, param_1, param_2, param_2), dimensions={2}, to_apply=Add
     }
-
     ENTRY main {
       a = f32[5, 200, 300] parameter(0)
       b = f32[5, 200, 300] parameter(1)
       c = f32[] constant(0)
-      ROOT fusion = (f32[5,200], f32[5,200]) fusion(a, b, c), kind=kInput, calls=fused_computation
+      ROOT fusion = (f32[5,200], f32[5,200]) fusion(a, b, c),
+        kind=kInput, calls=fused_computation
     })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
-
-  EXPECT_TRUE(RunFileCheck(ir, R"(
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
 // CHECK:      @fused_computation
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<5x200x300xf32> {xla.slice_index = 0
 // CHECK-SAME:   %[[ARG1:.*]]: tensor<5x200x300xf32> {xla.slice_index = 1
@@ -87,8 +76,8 @@ TEST_F(ReductionTest, VariadicRowReduce) {
 // CHECK:        predicated_insert %[[SHUFFLED]]#0 into %[[A_SHARED]]
 // CHECK:        predicated_insert %[[SHUFFLED]]#1 into %[[B_SHARED]]
 // CHECK:        sync_threads
-// CHECK-NOT:    shuffle_reduce)")
-                  .value());
+// CHECK-NOT:    shuffle_reduce)
+  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -101,29 +90,24 @@ TEST_F(ReductionTest, RowReduceEpilogue) {
       rhs = f32[] parameter(1)
       ROOT add = f32[] add(lhs, rhs)
     }
-
     fused_computation {
       param_0 = f32[8,2048] parameter(0)
       param_1 = f32[] parameter(1)
       reduce = f32[8] reduce(param_0, param_1), dimensions={1}, to_apply=Add
       ROOT log = f32[8] log(reduce)
     }
-
     ENTRY main {
       a = f32[8,2048] parameter(0)
       c = f32[] constant(0)
       ROOT fusion = f32[8] fusion(a, c), kind=kInput, calls=fused_computation
     })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
-
-  EXPECT_TRUE(RunFileCheck(ir, R"(
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: pure_call @Add_add
     // CHECK: shuffle_reduce
     // CHECK: allocate_shared
     // CHECK: sync_threads
-    // CHECK: shuffle_reduce)")
-                  .value());
+    // CHECK: shuffle_reduce
+  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
@@ -136,13 +120,11 @@ TEST_F(ReductionTest, RowReduceMOFEpilogue) {
       rhs = f32[] parameter(1)
       ROOT add = f32[] add(lhs, rhs)
     }
-
     Mul {
       lhs = f32[] parameter(0)
       rhs = f32[] parameter(1)
       ROOT mul = f32[] multiply(lhs, rhs)
     }
-
     fused_computation {
       param_0 = f32[8,2048] parameter(0)
       param_1 = f32[] parameter(1)
@@ -152,16 +134,12 @@ TEST_F(ReductionTest, RowReduceMOFEpilogue) {
       neg = f32[8] negate(reduce2)
       ROOT tuple = (f32[8], f32[8]) tuple(log, neg)
     }
-
     ENTRY main {
       a = f32[8,2048] parameter(0)
       c = f32[] constant(0)
       ROOT fusion = (f32[8], f32[8]) fusion(a, c), kind=kInput, calls=fused_computation
     })";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto ir, EmitIR(kHloString));
-
-  EXPECT_TRUE(RunFileCheck(ir, R"(
+  TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
     // CHECK: pure_call @Add_add
     // CHECK: shuffle_reduce
     // CHECK: allocate_shared
@@ -170,8 +148,8 @@ TEST_F(ReductionTest, RowReduceMOFEpilogue) {
     // CHECK: allocate_shared
     // CHECK: sync_threads
     // CHECK: shuffle_reduce
-    // CHECK: shuffle_reduce)")
-                  .value());
+    // CHECK: shuffle_reduce
+  )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
 
