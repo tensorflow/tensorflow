@@ -181,9 +181,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = [":friends"],
     deps = [
-        ":nb_helpers",
-        ":nb_numpy",
-        "//third_party/nanobind",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -335,13 +332,11 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "//third_party/nanobind",
         "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:status",
@@ -369,7 +364,6 @@ cc_library(
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:platform_util",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -396,28 +390,22 @@ cc_library(
     hdrs = [
         "callback.h",
     ],
-    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":nb_numpy",
         ":python_ref_manager",
-        "//third_party/nanobind",
         "//xla:comparison_util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:transpose",
         "//xla/service:custom_call_status",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
+        "@pybind11",
     ],
 )
 
@@ -429,7 +417,6 @@ cc_library(
     hdrs = if_cuda_or_rocm([
         "py_client_gpu.h",
     ]),
-    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -440,14 +427,13 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":callback",
-        ":nb_numpy",
-        "//third_party/nanobind",
         "//xla:comparison_util",
         "//xla/pjrt:exceptions",
         "//xla/service:custom_call_status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
+        "@pybind11",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
@@ -1250,20 +1236,5 @@ cc_library(
     deps = [
         "//third_party/nanobind",
         "@local_config_python//:python_headers",
-    ],
-)
-
-cc_library(
-    name = "nb_numpy",
-    srcs = ["nb_numpy.cc"],
-    hdrs = ["nb_numpy.h"],
-    compatible_with = [],
-    copts = ["-fexceptions"],
-    features = ["-use_header_modules"],
-    deps = [
-        "//third_party/nanobind",
-        "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",
-        "@local_tsl//tsl/python/lib/core:numpy",
     ],
 )

@@ -17,78 +17,52 @@ limitations under the License.
 
 #include <sys/types.h>
 
-#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
-#include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
-#include "xla/pjrt/transpose.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/primitive_util.h"
-#include "xla/python/nb_numpy.h"
-#include "xla/python/python_ref_manager.h"
 #include "xla/service/custom_call_status.h"
 #include "tsl/platform/statusor.h"
 
-namespace nb = nanobind;
+namespace py = pybind11;
 
 namespace xla {
 
-CpuCallback::~CpuCallback() {
-  // The destructor may be called without GIL held. In that case, we defer it
-  // to GlobalPyRefManager.
-  std::vector<nb::object> objects;
-  objects.push_back(std::move(callable_));
-  for (auto& arg : args_) {
-    objects.push_back(std::move(arg.dtype));
-  }
-
-  GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
-}
-
-absl::Status CpuCallback::PrepareAndCallInternal(void* result,
-                                                 void** arg_ptrs) {
+Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
   absl::Span<void* const> inputs(arg_ptrs, args_.size());
   absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
                                   results_.size());
 
-  nb::gil_scoped_acquire gil;
-  nb::tuple args = nb::steal<nb::tuple>(PyTuple_New(inputs.size()));
+  py::gil_scoped_acquire gil;
+  py::tuple args(inputs.size());
   for (size_t i = 0; i < inputs.size(); ++i) {
     if (args_[i].type == xla::TOKEN) {
-      PyTuple_SET_ITEM(args.ptr(), i, nb::none().release().ptr());
+      args[i] = py::none();
     } else {
       static_assert(sizeof(ssize_t) == sizeof(int64_t));
       absl::Span<ssize_t> strides(
           reinterpret_cast<ssize_t*>(args_[i].strides.data()),
           args_[i].strides.size());
-      nb_numpy_ndarray array = nb_numpy_ndarray(
-          args_[i].dtype, args_[i].dims, strides, const_cast<void*>(inputs[i]));
-      array.attr("flags").attr("writeable") = nb::bool_(false);
-      PyTuple_SET_ITEM(args.ptr(), i, array.release().ptr());
+      args[i] = py::array(args_[i].dtype, args_[i].dims, strides,
+                          const_cast<void*>(inputs[i]));
+      args[i].attr("flags").attr("writeable") = Py_False;
     }
   }
 
   TF_ASSIGN_OR_RETURN(auto result_tuple, CallInternal(std::move(args)));
 
   for (size_t i = 0; i < results_.size(); ++i) {
-    if (results_[i].type == xla::TOKEN) {
-      continue;
-    }
-    nb::object output =
-        nb::borrow<nb::object>(PyTuple_GetItem(result_tuple.ptr(), i));
-    nb_numpy_ndarray array = nb_numpy_ndarray::ensure(std::move(output));
+    py::object output = py::reinterpret_borrow<py::object>(
+        PyTuple_GetItem(result_tuple.ptr(), i));
+    py::array array = py::cast<py::array>(std::move(output));
     absl::Span<int64_t const> dims(
         reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
     absl::Span<int64_t const> strides(
@@ -111,7 +85,7 @@ absl::Status CpuCallback::PrepareAndCallInternal(void* result,
     }
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
@@ -124,15 +98,15 @@ void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
   }
 }
 
-absl::Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
+Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
   return PrepareAndCallInternal(result, arg_ptrs);
 }
 
-absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
-  nb::object result_object;
+absl::StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args) {
+  py::object result_object;
   try {
-    result_object = callable_(*nb::borrow<nb::args>(args));
-  } catch (nb::python_error& e) {
+    result_object = callable_(*py::reinterpret_borrow<py::args>(args));
+  } catch (py::error_already_set& e) {
     PyErr_Clear();
     std::string error_message = e.what();
     return absl::InternalError(
@@ -141,26 +115,26 @@ absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
   if (!PyTuple_Check(result_object.ptr())) {
     return absl::InternalError(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
-                        nb::cast<std::string_view>(nb::repr(result_object))));
+                        static_cast<std::string>(py::repr(result_object))));
   }
   if (PyTuple_Size(result_object.ptr()) != results_.size()) {
     return absl::InternalError(
         absl::StrFormat("CPU callback expected a tuple with %d results, got %d",
                         results_.size(), PyTuple_Size(result_object.ptr())));
   }
-  nb::tuple result_tuple = nb::cast<nb::tuple>(result_object);
+  py::tuple result_tuple = py::cast<py::tuple>(result_object);
   for (size_t i = 0; i < results_.size(); ++i) {
-    nb::object output =
-        nb::borrow<nb::object>(PyTuple_GetItem(result_tuple.ptr(), i));
+    py::object output = py::reinterpret_borrow<py::object>(
+        PyTuple_GetItem(result_tuple.ptr(), i));
     if (results_[i].type == xla::TOKEN) {
       if (!output.is_none()) {
         return absl::InternalError(absl::StrFormat(
             "Token output from Python callback should be None, got %s",
-            nb::cast<std::string_view>(nb::repr(output))));
+            static_cast<std::string>(py::repr(output))));
       }
       continue;
     }
-    nb_numpy_ndarray array = nb_numpy_ndarray::ensure(output);
+    py::array array = py::cast<py::array>(std::move(output));
     static_assert(sizeof(ssize_t) == sizeof(int64_t),
                   "Expected ssize_t to be of equal size to int64_t");
     absl::Span<int64_t const> dims(
@@ -176,15 +150,15 @@ absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
   return result_tuple;
 }
 
-absl::StatusOr<nb::tuple> CpuCallback::Call(nb::tuple args) {
+absl::StatusOr<py::tuple> CpuCallback::Call(py::tuple args) {
   return CallInternal(std::move(args));
 }
 
-std::optional<nb::tuple> CpuCallback::Call(nb::tuple args,
+std::optional<py::tuple> CpuCallback::Call(py::tuple args,
                                            XlaCustomCallStatus* status) {
   auto statusor = CallInternal(std::move(args));
   if (!statusor.ok()) {
-    std::string_view msg = statusor.status().message();
+    absl::string_view msg = statusor.status().message();
     XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return std::nullopt;
   }

@@ -24,11 +24,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/pjrt/exceptions.h"
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
-#include "xla/python/nb_numpy.h"
 
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
@@ -46,7 +45,7 @@ limitations under the License.
 #define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
 #endif
 
-namespace nb = nanobind;
+namespace py = pybind11;
 
 namespace xla {
 
@@ -80,38 +79,36 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
   }
   CHECK_EQ(gpuStreamSynchronize(stream), gpuSuccess)
       << "Failed to gpuStreamSynchronize";
-  nb::gil_scoped_acquire gil;
-  nb::tuple host_input_arrays = nb::steal<nb::tuple>(PyTuple_New(arity));
+  py::gil_scoped_acquire gil;
+  py::tuple host_input_arrays(arity);
   for (size_t i = 0; i < arity; ++i) {
     CpuCallback::Arg arg = callback->args()[i];
     if (arg.type == TOKEN) {
-      PyTuple_SET_ITEM(host_input_arrays.ptr(), i, nb::none().inc_ref().ptr());
+      host_input_arrays[i] = py::none();
       continue;
     }
-    nb::capsule base(host_input_buffers[i], [](void* ptr) noexcept {
-      delete[] static_cast<char*>(ptr);
-    });
-    auto array = nb_numpy_ndarray(arg.dtype, arg.dims, arg.strides,
-                                  const_cast<void*>(host_input_buffers[i]),
-                                  /*base=*/base);
-    array.attr("flags").attr("writeable") = nb::bool_(false);
-    PyTuple_SET_ITEM(host_input_arrays.ptr(), i, array.inc_ref().ptr());
+    py::capsule base(host_input_buffers[i],
+                     [](void* ptr) { delete[] static_cast<char*>(ptr); });
+    host_input_arrays[i] =
+        py::array(arg.dtype, arg.dims, arg.strides,
+                  const_cast<void*>(host_input_buffers[i]), /*base=*/base);
+    host_input_arrays[i].attr("flags").attr("writeable") = Py_False;
   }
-  std::optional<nb::tuple> maybe_result_tuple =
+  std::optional<py::tuple> maybe_result_tuple =
       callback->Call(host_input_arrays, status);
   if (!maybe_result_tuple) {
     return;
   }
-  nb::tuple result_tuple = maybe_result_tuple.value();
+  py::tuple result_tuple = maybe_result_tuple.value();
   std::vector<void*> temp_buffers;
   for (size_t i = 0; i < callback->results().size(); ++i) {
     CpuCallback::Result result = callback->results()[i];
     if (result.type == TOKEN) {
       continue;
     }
-    nb::object output =
-        nb::borrow<nb::object>(PyTuple_GetItem(result_tuple.ptr(), i));
-    nb_numpy_ndarray array = nb_numpy_ndarray::ensure(std::move(output));
+    py::object output = py::reinterpret_borrow<py::object>(
+        PyTuple_GetItem(result_tuple.ptr(), i));
+    py::array array = py::cast<py::array>(std::move(output));
     absl::Span<int64_t const> dims(
         reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
     absl::Span<int64_t const> strides(
@@ -141,7 +138,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       CHECK_EQ(gpu_res, gpuSuccess) << "Failed to gpuMemcpyAsync";
     }
   }
-  nb::gil_scoped_release release;
+  py::gil_scoped_release release;
   CHECK_EQ(gpuStreamSynchronize(stream), gpuSuccess)
       << "Failed to gpuStreamSynchronize";
   for (int i = 0; i < temp_buffers.size(); ++i) {

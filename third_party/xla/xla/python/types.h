@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
@@ -30,7 +29,6 @@ limitations under the License.
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/nb_numpy.h"
 #include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -45,11 +43,9 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(
 
 // Converts a PrimitiveType to a Numpy dtype.
 absl::StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
-absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 
 // Converts an IFRT dtype to a NumPy dtype.
 absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
-absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
 StatusOr<ifrt::DType> DtypeToIfRtDType(pybind11::dtype dtype);
 
