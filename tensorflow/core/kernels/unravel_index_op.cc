@@ -50,7 +50,9 @@ class UnravelIndexOp : public OpKernel {
                 errors::InvalidArgument(
                     "The indices can only be scalar or vector, got \"",
                     indices_tensor.shape().DebugString(), "\""));
-
+    OP_REQUIRES(ctx, indices_tensor.NumElements() > 0,
+                errors::InvalidArgument("received empty tensor indices: ",
+                                        indices_tensor.DebugString()));    
     const Tensor& dims_tensor = ctx->input(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(dims_tensor.shape()),
