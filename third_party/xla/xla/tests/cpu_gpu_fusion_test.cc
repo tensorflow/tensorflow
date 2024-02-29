@@ -887,6 +887,24 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(CpuGpuFusionTest, DontUpcastBf16Small) {
+  const char* hlo = R"(
+HloModule module
+ENTRY entry {
+  %param_0.6 = bf16[4,64,64,320]{3,2,1,0} parameter(0)
+  %param_2.4 = bf16[4,4096,320]{2,1,0} parameter(2)
+  %param_1.13 = bf16[320]{0} parameter(1)
+  %broadcast.2 = bf16[4,4096,320]{2,1,0} broadcast(%param_1.13), dimensions={2}
+  %add.7 = bf16[4,4096,320]{2,1,0} add(%param_2.4, %broadcast.2)
+  %bitcast.89 = bf16[4,64,64,320]{3,2,1,0} bitcast(bf16[4,4096,320]{2,1,0} %add.7)
+  %add.6 = bf16[4,64,64,320]{3,2,1,0} add(
+    bf16[4,64,64,320]{3,2,1,0} %param_0.6, bf16[4,64,64,320]{3,2,1,0} %bitcast.89)
+  ROOT convert.0 = f32[4,64,64,320]{3,2,1,0} convert(bf16[4,64,64,320]{3,2,1,0} %add.6)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0.05, 0.05}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 

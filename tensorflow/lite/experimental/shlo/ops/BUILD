@@ -225,3 +225,36 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "cosine",
+    srcs = ["cosine.cc"],
+    hdrs = ["cosine.h"],
+    deps = [
+        ":unary_elementwise",
+        ":util",
+        "//tensorflow/lite/experimental/shlo:bf16",
+        "//tensorflow/lite/experimental/shlo:data_type",
+        "//tensorflow/lite/experimental/shlo:dispatch",
+        "//tensorflow/lite/experimental/shlo:f16",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "cosine_test",
+    srcs = ["cosine_test.cc"],
+    deps = [
+        ":cosine",
+        ":test_util",
+        "//tensorflow/lite/experimental/shlo:bf16",
+        "//tensorflow/lite/experimental/shlo:f16",
+        "//tensorflow/lite/experimental/shlo:quantize",
+        "//tensorflow/lite/experimental/shlo:quantized_tensor_element_type",
+        "//tensorflow/lite/experimental/shlo:shape",
+        "//tensorflow/lite/experimental/shlo:tensor",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

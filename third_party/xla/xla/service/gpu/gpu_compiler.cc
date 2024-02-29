@@ -1329,9 +1329,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                       GetAutotuneConfig(stream_exec, debug_options, options,
                                         gpu_target_config));
   // Lambdas and related constants:
-  const GpuFloatSupport bf16_support(BF16);
-  const GpuFloatSupport f8e5m2_support(F8E5M2, F16);
-  const GpuFloatSupport f8e4m3fn_support(F8E4M3FN, F16);
+  const GpuFloatSupport bf16_support(gpu_version, BF16);
+  const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
+  const GpuFloatSupport f8e4m3fn_support(gpu_version, F8E4M3FN, F16);
   const FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ, F16);
   const FloatSupport f8e5m2fnuz_support(F8E5M2FNUZ, F16);
   const FloatSupport f8e4m3fnuz_support(F8E4M3FNUZ, F16);

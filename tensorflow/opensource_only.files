@@ -265,7 +265,6 @@ tf_staging/third_party/llvm_openmp/cmake_vars.bzl:
 tf_staging/third_party/llvm_openmp/expand_cmake_vars:.py
 tf_staging/third_party/llvm_openmp/openmp.bzl:
 tf_staging/third_party/mkl/BUILD:
-tf_staging/third_party/mkl/build_defs.bzl:
 tf_staging/third_party/mkl_dnn/LICENSE:
 tf_staging/third_party/mkl_dnn/build_defs.bzl:
 tf_staging/third_party/mkl_dnn/mkldnn_acl.BUILD:
