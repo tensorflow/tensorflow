@@ -889,7 +889,7 @@ static void Init(py::module_& m) {
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
   jax::BuildPjitSubmodule(m);
-  jax::BuildTransferGuardSubmodule(m);
+  jax::BuildTransferGuardSubmodule(m_nb);
   BuildTracebackSubmodule(m_nb);
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
