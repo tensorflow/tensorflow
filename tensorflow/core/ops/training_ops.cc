@@ -63,7 +63,7 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, int grad_idx,
   const auto rank = c->Rank(grad);
   if (!rank) {
       return errors::InvalidArgument("Argument grad must not be a scalar. ",
-          "Got grad with rank ",c->Rank(grad));
+          "Got grad with rank ", rank);
   }
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices, 0), c->Dim(grad, 0), &unused));
   // Trailing part of grad matches trailing part of *s.
