@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/array.h"
 #include "xla/client/lib/approx_topk.h"
@@ -885,8 +886,20 @@ LogicalResult ExportXlaOp(CstrReshapableOp, OpLoweringContext) {
 }
 
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
-  // This op has no expression in the legacy export format.
-  return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  xla::XlaOp outputDimensions;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(
+          GetXlaOp(op.getOutputDimensions(), value_map, &outputDimensions, op)))
+    return failure();
+
+  value_map[op] = xla::DynamicBroadcastInDim(
+      operand, outputDimensions,
+      Convert_broadcast_dimensions(op.getBroadcastDimensions()),
+      xla::TypeToShape(op.getResult().getType()));
+  return success();
 }
 
 LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
@@ -912,9 +925,6 @@ LogicalResult ExportXlaOp(DynamicPadOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
   if (!resultType) return op->emitOpError() << "expected ranked result";
-  auto resultBounds = hlo::encodingToBounds(resultType.getEncoding());
-  if (resultBounds.empty())
-    return op->emitOpError() << "expected bounded result";
   auto shapeType = op.getOutputShape().getType().dyn_cast<RankedTensorType>();
   if (!shapeType || !shapeType.getElementType().isInteger(32))
     return op->emitOpError() << "expected output shape to be tensor<Nxi32>";
@@ -926,6 +936,14 @@ LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
     return failure();
   if (failed(GetXlaOp(op.getOutputShape(), value_map, &outputShape, op)))
     return failure();
+
+  auto resultBounds = hlo::encodingToBounds(resultType.getEncoding());
+  if (resultBounds.empty()) {
+    value_map[op] = xla::CustomCall(operand.builder(), "mhlo.dynamic_reshape",
+                                    /*operands=*/{operand, outputShape},
+                                    /*shape=*/xla::TypeToShape(resultType));
+    return success();
+  }
 
   SmallVector<xla::XlaOp> dimSizes;
   SmallVector<int64_t> newSizeBounds;
