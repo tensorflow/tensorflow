@@ -452,13 +452,16 @@ struct PyGraphData {
   void Dismantle();
 
   void Clear() {
-    Py_CLEAR(op_list.release().ptr());
+    Py_CLEAR(op_list.ptr());
+    op_list.release();
     for (auto it = ops_by_id.begin(); it != ops_by_id.end(); ++it) {
-      Py_CLEAR(it->second.release().ptr());
+      Py_CLEAR(it->second.ptr());
+      it->second.release();
     }
     ops_by_id.clear();
     for (auto it = ops_by_name.begin(); it != ops_by_name.end(); ++it) {
-      Py_CLEAR(it->second.release().ptr());
+      Py_CLEAR(it->second.ptr());
+      it->second.release();
     }
     ops_by_name.clear();
   }
@@ -592,7 +595,8 @@ struct PyOperationData {
   void Dismantle(PyOperation* py_op);
 
   void Clear() {
-    Py_CLEAR(outputs.release().ptr());
+    Py_CLEAR(outputs.ptr());
+    outputs.release();
     graph.Clear();
   }
 
@@ -702,11 +706,16 @@ struct PyTensorData {
   ~PyTensorData() { Clear(); }
 
   void Clear() {
-    Py_CLEAR(tf_output.release().ptr());
-    Py_CLEAR(name.release().ptr());
-    Py_CLEAR(dtype.release().ptr());
-    Py_CLEAR(shape_val.release().ptr());
-    Py_CLEAR(uid.release().ptr());
+    Py_CLEAR(tf_output.ptr());
+    tf_output.release();
+    Py_CLEAR(name.ptr());
+    name.release();
+    Py_CLEAR(dtype.ptr());
+    dtype.release();
+    Py_CLEAR(shape_val.ptr());
+    shape_val.release();
+    Py_CLEAR(uid.ptr());
+    uid.release();
     op.Clear();
     graph.Clear();
   }
