@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -135,6 +136,7 @@ struct WindowedEinsumConfig {
   bool windowed_at_contracting_dims;
   bool windowed_at_batch_dims;
   bool operands_sharded_at_contracting_dims;
+  bool is_ag_einsum;
 };
 
 struct DotDimensionIndexMapping {
@@ -677,21 +679,24 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           /*windowed_op=*/WindowedEinsumOperand::RHS,
           /*windowed_at_contracting_dims*/ true,
           /*windowed_at_batch_dims=*/false,
-          /*operands_sharded_at_contracting_dims=*/false};
+          /*operands_sharded_at_contracting_dims=*/false,
+          /*is_ag_einsum=*/true};
     }
     if (rhs_non_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
           /*windowed_at_contracting_dims*/ false,
           /*windowed_at_batch_dims=*/false,
-          /*operands_sharded_at_contracting_dims=*/false};
+          /*operands_sharded_at_contracting_dims=*/false,
+          /*is_ag_einsum=*/true};
     }
     if (rhs_batch_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
           /*windowed_at_contracting_dims*/ false,
           /*windowed_at_batch_dims=*/true,
-          /*operands_sharded_at_contracting_dims=*/false};
+          /*operands_sharded_at_contracting_dims=*/false,
+          /*is_ag_einsum=*/true};
     }
   }
   if (output_rhs_non_contracting_partitions == num_partitions &&
@@ -706,21 +711,24 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           /*windowed_op=*/WindowedEinsumOperand::LHS,
           /*windowed_at_contracting_dims*/ true,
           /*windowed_at_batch_dims=*/false,
-          /*operands_sharded_at_contracting_dims=*/false};
+          /*operands_sharded_at_contracting_dims=*/false,
+          /*is_ag_einsum=*/true};
     }
     if (lhs_non_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::LHS,
           /*windowed_at_contracting_dims*/ false,
           /*windowed_at_batch_dims=*/false,
-          /*operands_sharded_at_contracting_dims=*/false};
+          /*operands_sharded_at_contracting_dims=*/false,
+          /*is_ag_einsum=*/true};
     }
     if (lhs_batch_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::LHS,
           /*windowed_at_contracting_dims*/ false,
           /*windowed_at_batch_dims=*/true,
-          /*operands_sharded_at_contracting_dims=*/false};
+          /*operands_sharded_at_contracting_dims=*/false,
+          /*is_ag_einsum=*/true};
     }
   }
   if (lhs_contracting_partitions == rhs_contracting_partitions &&
@@ -733,18 +741,18 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
                                /*rhs_needs_ag=*/false) &&
       options.enable_windowed_einsum_for_reduce_scatter) {
     if (output_lhs_non_contracting_partitions == num_partitions) {
-      return WindowedEinsumConfig{
-          /*windowed_op=*/WindowedEinsumOperand::RHS,
-          /*windowed_at_contracting_dims*/ false,
-          /*windowed_at_batch_dims=*/false,
-          /*operands_sharded_at_contracting_dims=*/true};
+      return WindowedEinsumConfig{/*windowed_op=*/WindowedEinsumOperand::RHS,
+                                  /*windowed_at_contracting_dims*/ false,
+                                  /*windowed_at_batch_dims=*/false,
+                                  /*operands_sharded_at_contracting_dims=*/true,
+                                  /*is_ag_einsum=*/false};
     }
     if (output_rhs_non_contracting_partitions == num_partitions) {
-      return WindowedEinsumConfig{
-          /*windowed_op=*/WindowedEinsumOperand::LHS,
-          /*windowed_at_contracting_dims*/ false,
-          /*windowed_at_batch_dims=*/false,
-          /*operands_sharded_at_contracting_dims=*/true};
+      return WindowedEinsumConfig{/*windowed_op=*/WindowedEinsumOperand::LHS,
+                                  /*windowed_at_contracting_dims*/ false,
+                                  /*windowed_at_batch_dims=*/false,
+                                  /*operands_sharded_at_contracting_dims=*/true,
+                                  /*is_ag_einsum=*/false};
     }
   }
   return std::nullopt;
@@ -965,7 +973,9 @@ StatusOr<HloInstruction*> EmitWindowedDotGeneral(
   // Create a while loop that computes one window per iteration. During each
   // iteration, each partition sends its input window to its neighbor using
   // collective-permute for the next iteration.
-  SpmdBuilder body_b("windowed_dot_general_body", original_hlo);
+  std::string body_name = "windowed_dot_general_body";
+  body_name += (einsum_config.is_ag_einsum) ? "_ag" : "_rs";
+  SpmdBuilder body_b(body_name, original_hlo);
 
   // Generate partial results used by bidirectional algorithm.
   auto get_partial_bid_results =
@@ -1671,7 +1681,9 @@ StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         HloInstruction::CreateTuple({l, r, o, extra_inout, i}));
   }
 
-  SpmdBuilder cond_b("windowed_dot_general_cond", original_hlo);
+  std::string cond_name = "windowed_dot_general_cond";
+  cond_name += (einsum_config.is_ag_einsum) ? "_ag" : "_rs";
+  SpmdBuilder cond_b(cond_name, original_hlo);
   auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
       ShapeUtil::MakeTupleShapeWithPtrs(
