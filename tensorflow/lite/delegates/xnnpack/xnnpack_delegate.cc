@@ -4468,8 +4468,6 @@ class Subgraph {
     uint32_t flags = 0;
     if (!reducer_params->keep_dims) {
       expected_output_dims -= num_reduction_axes;
-    } else {
-      flags = XNN_FLAG_KEEP_DIMS;
     }
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, output_tensor, expected_output_dims,
@@ -4638,7 +4636,7 @@ class Subgraph {
         node_index));
 
     if (subgraph != nullptr) {
-      uint32_t flags = reducer_params->keep_dims ? XNN_FLAG_KEEP_DIMS : 0;
+      uint32_t flags = 0;
       xnn_status status = xnn_status_success;
       switch (num_reduction_axes) {
         case 1:
