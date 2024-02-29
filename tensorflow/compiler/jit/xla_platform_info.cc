@@ -85,7 +85,7 @@ PjRtDeviceCompiler* CreatePjRtDeviceCompiler(DeviceType compilation_device_type,
       std::make_unique<PjRtDeviceCompilerClient>(pjrt_client));
 }
 
-StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
+absl::StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
     FunctionLibraryRuntime* flr) {
   std::optional<std::set<int>> gpu_ids = std::nullopt;
 
@@ -170,7 +170,7 @@ std::string GetPersistentCacheDirectory(
   return GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory;
 }
 
-xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
+absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list) {
   std::set<int> gpu_ids;
   if (visible_device_list.empty()) {
@@ -191,7 +191,7 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   return {{gpu_ids}};
 }
 
-xla::StatusOr<DeviceType> GetCompilationDeviceType(
+absl::StatusOr<DeviceType> GetCompilationDeviceType(
     const DeviceType& platform_device_type) {
   DeviceType compilation_device_type = platform_device_type;
   const XlaOpRegistry::DeviceRegistration* registration = nullptr;
@@ -254,7 +254,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     return platform.status();
   }
 
-  StatusOr<xla::Compiler*> compiler_for_platform =
+  absl::StatusOr<xla::Compiler*> compiler_for_platform =
       xla::Compiler::GetForPlatform(platform.value());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we

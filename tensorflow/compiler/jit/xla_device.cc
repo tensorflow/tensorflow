@@ -249,7 +249,7 @@ XlaDevice::~XlaDevice() {
   }
 }
 
-StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
+absl::StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
   // We lazily create the client because the platform commits to the
   // details of the host hardware when the client is created, so we
   // don't want to do it until we get a chance to hook the platform up
@@ -308,7 +308,8 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
   return absl::OkStatus();
 }
 
-StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
+absl::StatusOr<std::vector<DeviceContext*>>
+XlaDevice::GetDeviceContextLocked() {
   if (UsePjRtForSingleDeviceCompilation(device_name_)) {
     if (device_contexts_.empty()) {
       for (const auto& iter : shape_determination_fns_) {
@@ -428,13 +429,13 @@ StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   return device_contexts_;
 }
 
-StatusOr<DeviceContext*> XlaDevice::GetDeviceContextWithIndex(int index) {
+absl::StatusOr<DeviceContext*> XlaDevice::GetDeviceContextWithIndex(int index) {
   mutex_lock lock(mu_);
   TF_ASSIGN_OR_RETURN(auto device_contexts, GetDeviceContextLocked());
   return device_contexts.at(index);
 }
 
-StatusOr<DeviceContext*> XlaDevice::GetDeviceContextDefault() {
+absl::StatusOr<DeviceContext*> XlaDevice::GetDeviceContextDefault() {
   return GetDeviceContextWithIndex(0);
 }
 
