@@ -364,7 +364,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->element_count().has_value()) {
+      if (ctx->restored_element_count().has_value()) {
         return RestoreInput(ctx, reader, input_impl_);
       }
 

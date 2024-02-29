@@ -272,9 +272,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (ctx->element_count().has_value()) {
+      if (ctx->restored_element_count().has_value()) {
         IteratorContext::Params params(ctx);
-        params.element_count = *ctx->element_count() * dataset()->batch_size_;
+        params.restored_element_count =
+            *ctx->restored_element_count() * dataset()->batch_size_;
         IteratorContext ctx_copy(params);
         return RestoreInput(&ctx_copy, reader, input_impl_);
       }

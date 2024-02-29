@@ -212,14 +212,14 @@ class GlobalShuffleDatasetOp::Dataset::Iterator
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override {
     absl::MutexLock l(&mu_);
-    if (ctx->element_count().has_value()) {
-      element_count_ = *ctx->element_count();
+    if (ctx->restored_element_count().has_value()) {
+      element_count_ = *ctx->restored_element_count();
     } else {
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kElementCount, &element_count_));
     }
     IteratorContext::Params params(ctx);
-    params.element_count = element_count_;
+    params.restored_element_count = element_count_;
     IteratorContext ctx_copy(params);
     TF_RETURN_IF_ERROR(RestoreInput(&ctx_copy, reader, input_impl_));
     ctx->MergeCheckpoint(ctx_copy.checkpoint());
