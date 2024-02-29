@@ -149,7 +149,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (enable_mlir_emitters &&
           mlir_converter::IsHloConversionSupported(
               analysis.fusion(),
-              fusion_info.analysis().device_info().gpu_compute_capability())) {
+              analysis.device_info().gpu_compute_capability())) {
         return std::make_unique<MlirInputSlicesFusion>(analysis);
       }
       return std::make_unique<InputSlicesFusion>(analysis);
@@ -166,7 +166,7 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (enable_mlir_emitters &&
           mlir_converter::IsHloConversionSupported(
               analysis.fusion(),
-              fusion_info.analysis().device_info().gpu_compute_capability())) {
+              analysis.device_info().gpu_compute_capability())) {
         return std::make_unique<MlirLoopFusion>(analysis);
       }
       return std::make_unique<LoopFusion>(analysis);

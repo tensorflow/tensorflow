@@ -55,7 +55,8 @@ namespace gpu {
     const HloFusionAnalysis& analysis) {
   if (analysis.fusion_roots().size() != 1) return false;
 
-  return true;
+  return mlir_converter::IsHloConversionSupported(
+      analysis.fusion(), analysis.device_info().gpu_compute_capability());
 }
 
 LaunchDimensions MlirConcatenateFusion::launch_dimensions() const {

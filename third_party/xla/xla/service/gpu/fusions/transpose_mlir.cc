@@ -146,7 +146,8 @@ MlirTransposeFusion::MlirTransposeFusion(const HloFusionAnalysis& analysis)
     // supported right now.
     if (operand->opcode() == HloOpcode::kParameter) return false;
   }
-  return true;
+  return mlir_converter::IsHloConversionSupported(
+      analysis.fusion(), analysis.device_info().gpu_compute_capability());
 }
 
 std::optional<IndexingMap> MlirTransposeFusion::ComputeThreadIdToOutputIndexing(
