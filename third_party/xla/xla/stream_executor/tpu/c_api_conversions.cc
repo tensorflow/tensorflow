@@ -500,7 +500,7 @@ XLA_HloModule ToC(const xla::HloModule& module) {
   return c_module;
 }
 
-xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
     const XLA_HloModule& c_module) {
   xla::HloModuleProto module_proto =
       stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
